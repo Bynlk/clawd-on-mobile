@@ -14,6 +14,14 @@ Place built sidecar binaries in platform/architecture directories:
   linux-x64/cc-connect-clawd
   linux-arm64/cc-connect-clawd
 
+Clawd release builds fetch the pinned public fork release with:
+
+  npm run fetch:sidecars
+
+The fetch script downloads release archives from
+`rullerzhou-afk/cc-connect-clawd`, verifies `checksums.txt`, and extracts the
+binaries into this directory layout. Do not use upstream latest artifacts.
+
 The resolver uses Go-style OS names (`windows`, `darwin`, `linux`) and
 Electron/Node architecture names (`x64`, `arm64`). Source runs use this same
 layout under the repo-local `bin/cc-connect-clawd/` directory.

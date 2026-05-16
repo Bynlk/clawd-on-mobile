@@ -151,5 +151,38 @@ describe("package build config", () => {
       assert.match(text, /darwin-arm64\/cc-connect-clawd/);
       assert.match(text, /linux-x64\/cc-connect-clawd/);
     });
+
+    it("fetches and verifies pinned sidecars before release builds", () => {
+      const workflow = fs.readFileSync(path.join(ROOT, ".github", "workflows", "build.yml"), "utf8");
+      assertWorkflowOrder(
+        workflow,
+        "npm run fetch:sidecars -- --target windows-x64,windows-arm64",
+        "node scripts/verify-sidecar-binaries.js prebuild:win:all",
+        "npx electron-builder --win --publish never"
+      );
+      assertWorkflowOrder(
+        workflow,
+        "npm run fetch:sidecars -- --target darwin-x64,darwin-arm64",
+        "node scripts/verify-sidecar-binaries.js prebuild:mac",
+        "npx electron-builder --mac --publish never"
+      );
+      assertWorkflowOrder(
+        workflow,
+        "npm run fetch:sidecars -- --target linux-x64",
+        "node scripts/verify-sidecar-binaries.js prebuild:linux",
+        "npx electron-builder --linux --publish never"
+      );
+    });
   });
 });
+
+function assertWorkflowOrder(workflow, fetchCommand, verifyCommand, buildCommand) {
+  const fetchIndex = workflow.indexOf(fetchCommand);
+  const verifyIndex = workflow.indexOf(verifyCommand);
+  const buildIndex = workflow.indexOf(buildCommand);
+  assert.ok(fetchIndex >= 0, `workflow should run: ${fetchCommand}`);
+  assert.ok(verifyIndex >= 0, `workflow should run: ${verifyCommand}`);
+  assert.ok(buildIndex >= 0, `workflow should run: ${buildCommand}`);
+  assert.ok(fetchIndex < verifyIndex, `${fetchCommand} should run before ${verifyCommand}`);
+  assert.ok(verifyIndex < buildIndex, `${verifyCommand} should run before ${buildCommand}`);
+}

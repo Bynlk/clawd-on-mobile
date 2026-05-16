@@ -12,6 +12,7 @@
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder --win --mac --linux",
+    "fetch:sidecars": "node scripts/fetch-sidecar-binaries.js",
     "verify:sidecars": "node scripts/verify-sidecar-binaries.js",
     "prebuild": "node scripts/verify-sidecar-binaries.js",
     "prebuild:win:x64": "node scripts/verify-sidecar-binaries.js",
