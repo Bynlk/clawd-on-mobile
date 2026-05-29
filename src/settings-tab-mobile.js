@@ -174,9 +174,16 @@
       if (info && status.ip && status.port) {
         var copyStyle = "margin-left:6px;padding:1px 6px;font-size:10px;border:1px solid var(--row-border);border-radius:4px;background:var(--bg);color:var(--text-secondary);cursor:pointer;";
         info.innerHTML =
-          '<div>IP: ' + helpers.escapeHtml(status.ip) + ' <button style="' + copyStyle + '" onclick="navigator.clipboard.writeText(\'' + helpers.escapeHtml(status.ip) + '\');this.textContent=\'OK\';setTimeout(function(){this.textContent=\'Copy\'},1000)">Copy</button></div>' +
-          '<div>Port: ' + helpers.escapeHtml(String(status.port)) + ' <button style="' + copyStyle + '" onclick="navigator.clipboard.writeText(\'' + helpers.escapeHtml(String(status.port)) + '\');this.textContent=\'OK\';setTimeout(function(){this.textContent=\'Copy\'},1000)">Copy</button></div>' +
-          (status.token ? '<div>Token: ' + helpers.escapeHtml(status.token) + ' <button style="' + copyStyle + '" onclick="navigator.clipboard.writeText(\'' + helpers.escapeHtml(status.token) + '\');this.textContent=\'OK\';setTimeout(function(){this.textContent=\'Copy\'},1000)">Copy</button></div>' : '');
+          '<div>IP: ' + helpers.escapeHtml(status.ip) + ' <button class="copy-btn" data-copy="' + helpers.escapeHtml(status.ip) + '" style="' + copyStyle + '">Copy</button></div>' +
+          '<div>Port: ' + helpers.escapeHtml(String(status.port)) + ' <button class="copy-btn" data-copy="' + helpers.escapeHtml(String(status.port)) + '" style="' + copyStyle + '">Copy</button></div>' +
+          (status.token ? '<div>Token: ' + helpers.escapeHtml(status.token) + ' <button class="copy-btn" data-copy="' + helpers.escapeHtml(status.token) + '" style="' + copyStyle + '">Copy</button></div>' : '');
+        info.querySelectorAll(".copy-btn").forEach(function(btn) {
+          btn.addEventListener("click", function() {
+            navigator.clipboard.writeText(btn.getAttribute("data-copy"));
+            btn.textContent = "OK";
+            setTimeout(function() { btn.textContent = "Copy"; }, 1000);
+          });
+        });
       }
 
       // 更新状态
