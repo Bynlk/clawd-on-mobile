@@ -1,11 +1,6 @@
 package com.clawd.mobile.ui.sessions
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
@@ -22,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
@@ -135,11 +129,6 @@ fun SessionsScreen(
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                         )
                     }
-
-                    // Action row
-                    item {
-                        ActionRow(modifier = Modifier.padding(top = 10.dp))
-                    }
                 }
             }
 
@@ -149,9 +138,8 @@ fun SessionsScreen(
                 onTabSelected = { tab ->
                     selectedTab = tab
                     when (tab) {
-                        1 -> { /* 通知 — 暂无功能 */ }
-                        2 -> navController.navigate("scan")
-                        3 -> navController.navigate("manual")
+                        1 -> navController.navigate("scan")
+                        2 -> navController.navigate("manual")
                     }
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)
@@ -250,18 +238,6 @@ private fun TopBar(onScan: () -> Unit, onSettings: () -> Unit) {
 
 @Composable
 private fun ConnectionBadge(isConnected: Boolean, hostLabel: String) {
-    // Breathing dot animation (matches HTML mockup: 2s pulse, opacity 1→0.4)
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val dotAlpha by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isConnected) 0.4f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2000),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "dotAlpha"
-    )
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -275,11 +251,10 @@ private fun ConnectionBadge(isConnected: Boolean, hostLabel: String) {
             .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Status dot with breathing animation
+        // Status dot
         Box(
             modifier = Modifier
                 .size(7.dp)
-                .graphicsLayer { alpha = dotAlpha }
                 .clip(CircleShape)
                 .background(if (isConnected) ClawdGreenBright else ClawdFaintDark)
         )
@@ -532,52 +507,14 @@ private fun EventTimeline(events: List<RecentEvent>) {
     }
 }
 
-// ─── Action Row ───────────────────────────────────────────────────────
-
-@Composable
-private fun ActionRow(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        ActionButton(icon = ClawdIcons.Checks, label = "批量审批", modifier = Modifier.weight(1f))
-        ActionButton(icon = ClawdIcons.Refresh, label = "刷新", modifier = Modifier.weight(1f))
-        ActionButton(icon = ClawdIcons.History, label = "历史", modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun ActionButton(icon: ImageVector, label: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .border(0.5.dp, ClawdCardBorderDark, RoundedCornerShape(12.dp))
-            .background(ClawdCardDark, RoundedCornerShape(12.dp))
-            .padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        Icon(icon, label, tint = ClawdMutedDark, modifier = Modifier.size(18.dp))
-        Text(
-            label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            color = ClawdMuted,
-            letterSpacing = 0.3.sp
-        )
-    }
-}
-
 // ─── Bottom Navigation ────────────────────────────────────────────────
 
 @Composable
 private fun BottomNav(selectedTab: Int, onTabSelected: (Int) -> Unit, modifier: Modifier = Modifier) {
     val tabs = listOf(
         Triple(ClawdIcons.LayoutList, "会话", 0),
-        Triple(ClawdIcons.Bell, "通知", 1),
-        Triple(ClawdIcons.DeviceDesktop, "设备", 2),
-        Triple(ClawdIcons.UserCircle, "我的", 3)
+        Triple(ClawdIcons.DeviceDesktop, "设备", 1),
+        Triple(ClawdIcons.UserCircle, "我的", 2)
     )
 
     Row(
