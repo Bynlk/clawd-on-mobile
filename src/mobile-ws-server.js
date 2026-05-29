@@ -1,13 +1,16 @@
 const WebSocket = require("ws");
 const crypto = require("crypto");
+const { EventEmitter } = require("events");
 
 const DEFAULT_MAX_CLIENTS = 10;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30000;
 const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX_MESSAGES = 60;
+const MAX_HISTORY = 50;
 
-class MobileWSServer {
+class MobileWSServer extends EventEmitter {
   constructor(httpServer, options) {
+    super();
     this.token = options.token;
     this.maxClients = options.maxClients || DEFAULT_MAX_CLIENTS;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs || DEFAULT_HEARTBEAT_INTERVAL_MS;
@@ -18,6 +21,7 @@ class MobileWSServer {
     this.clientMeta = new Map();
     this._heartbeatTimer = null;
     this._messageHandlers = new Set();
+    this.connectionHistory = [];
 
     this.wss.on("connection", (ws, req) => this._handleConnection(ws, req));
   }
@@ -41,14 +45,24 @@ class MobileWSServer {
     this.clients.add(ws);
     const clientId = crypto.randomBytes(8).toString("hex");
     const clientIp = req.socket.remoteAddress || "unknown";
+    const now = Date.now();
     this.clientMeta.set(ws, {
       messageCount: 0,
-      windowStart: Date.now(),
+      windowStart: now,
       clientId: clientId,
       ip: clientIp,
-      connectedAt: Date.now(),
+      connectedAt: now,
     });
+
+    // Track connection history
+    const historyEntry = { clientId, ip: clientIp, connectedAt: now };
+    this.connectionHistory.push(historyEntry);
+    if (this.connectionHistory.length > MAX_HISTORY) {
+      this.connectionHistory = this.connectionHistory.slice(-MAX_HISTORY);
+    }
+
     console.log("[mobile-ws] Client connected (total: " + this.clients.size + ")");
+    this.emit("client-connected", { clientId, ip: clientIp, connectedAt: now });
 
     ws.send(JSON.stringify({
       type: "snapshot",
@@ -89,9 +103,11 @@ class MobileWSServer {
     });
 
     ws.on("close", () => {
+      const meta = this.clientMeta.get(ws);
       this.clients.delete(ws);
       this.clientMeta.delete(ws);
       console.log("[mobile-ws] Client disconnected (total: " + this.clients.size + ")");
+      this.emit("client-disconnected", { clientId: meta && meta.clientId });
       if (this.clients.size === 0) this._stopHeartbeat();
     });
 
@@ -178,6 +194,16 @@ class MobileWSServer {
       });
     }
     return list;
+  }
+
+  getConnectionHistory() {
+    return [...this.connectionHistory];
+  }
+
+  loadConnectionHistory(history) {
+    if (Array.isArray(history)) {
+      this.connectionHistory = history.slice(-MAX_HISTORY);
+    }
   }
 
   disconnectClient(clientId) {

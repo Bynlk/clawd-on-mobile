@@ -462,6 +462,7 @@ function registerSettingsIpc(options = {}) {
       ip: ip,
       port: getHookServerPort() || null,
       clients: mobileWS.getClientInfoList ? mobileWS.getClientInfoList() : [],
+      connectionHistory: mobileWS.getConnectionHistory ? mobileWS.getConnectionHistory() : [],
     };
   });
 

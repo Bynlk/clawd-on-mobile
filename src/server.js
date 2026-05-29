@@ -64,7 +64,34 @@ const readRuntimePortFn = ctx.readRuntimePort || readRuntimePort;
 const writeRuntimeConfigFn = ctx.writeRuntimeConfig || writeRuntimeConfig;
 
 let httpServer = null;
-const MOBILE_TOKEN = crypto.randomBytes(16).toString("hex");
+
+// Persist mobile state to survive restarts
+const MOBILE_STATE_PATH = require("path").join(
+  (typeof ctx.getDataDir === "function" ? ctx.getDataDir() : require("os").homedir()),
+  ".clawd-mobile-state.json"
+);
+
+function loadMobileState() {
+  try {
+    const data = require("fs").readFileSync(MOBILE_STATE_PATH, "utf8");
+    return JSON.parse(data);
+  } catch { return {}; }
+}
+
+function saveMobileState(patch) {
+  try {
+    const current = loadMobileState();
+    const updated = { ...current, ...patch, savedAt: Date.now() };
+    require("fs").writeFileSync(MOBILE_STATE_PATH, JSON.stringify(updated, null, 2));
+  } catch (err) {
+    console.warn("[mobile] Failed to save state:", err.message);
+  }
+}
+
+const savedState = loadMobileState();
+const MOBILE_TOKEN = savedState.token || crypto.randomBytes(16).toString("hex");
+if (!savedState.token) saveMobileState({ token: MOBILE_TOKEN });
+
 let mobileWS = null;
 const mobileApprovalClient = new MobileApprovalClient(() => mobileWS);
 let activeServerPort = null;
@@ -377,6 +404,30 @@ function startHttpServer() {
     maxClients: 10,
     heartbeatIntervalMs: 30000,
   });
+
+  // Load persisted connection history
+  const savedHistory = savedState.connectionHistory;
+  if (savedHistory) mobileWS.loadConnectionHistory(savedHistory);
+
+  // Forward WS events to settings window and persist state
+  function notifyMobileState() {
+    try {
+      const { BrowserWindow } = require("electron");
+      for (const bw of BrowserWindow.getAllWindows()) {
+        if (bw && !bw.isDestroyed()) {
+          bw.webContents.send("settings-changed", {
+            mobileStatus: mobileWS.getClientCount() > 0 ? "Connected" : "Listening",
+            mobileClients: mobileWS.getClientInfoList(),
+          });
+        }
+      }
+    } catch {}
+    // Persist connection history
+    saveMobileState({ connectionHistory: mobileWS.getConnectionHistory() });
+  }
+
+  mobileWS.on("client-connected", notifyMobileState);
+  mobileWS.on("client-disconnected", notifyMobileState);
 
   const listenPorts = getPortCandidatesFn();
   let listenIndex = 0;
