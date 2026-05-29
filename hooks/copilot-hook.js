@@ -452,8 +452,10 @@ function hasUserPermissionHookInRepoHooks(cwd, options = {}) {
   if (!pathImpl.isAbsolute(cwd)) return false;
 
   let level = cwd;
-  // Walk up until fs root. 64-level cap defends against pathological
-  // symlink loops; real paths never approach that depth.
+  // Walk up until fs root. 64-level cap is a string-dirname depth limit
+  // (we never follow symlinks here), defending against pathological cwd
+  // strings or unexpected dirname() behavior on a future Node release.
+  // Real absolute paths never approach this depth.
   for (let i = 0; i < 64; i++) {
     if (levelDeclaresPermissionHook(level, fsImpl, pathImpl)) return true;
     const parent = pathImpl.dirname(level);

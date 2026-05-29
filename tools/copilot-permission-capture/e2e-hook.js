@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// Throwaway e2e harness for hooks/copilot-hook.js permissionRequest path.
+// Long-lived end-to-end harness for hooks/copilot-hook.js permissionRequest
+// path. Run before shipping any change to copilot-hook.js or copilot-install.js
+// to catch regressions in allow/deny/no-decision wire format, exit-0
+// guarantees, and fail-open paths. Documented in this directory's README.
 //
 // Spins up a mock Clawd HTTP server on 127.0.0.1:23333 returning each of
 // the response shapes Clawd can actually emit (200/204/500), then spawns
