@@ -351,120 +351,159 @@ object ClawdIcons {
     // Checks — batch approve (double checkmark)
     val Checks: ImageVector = iconBuilder("checks") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(3f, 12f); lineTo(6f, 15f); lineTo(10f, 9f)
-            moveTo(7f, 12f); lineTo(10f, 15f); lineTo(14f, 9f)
+            moveTo(7f, 12f); lineTo(10f, 15f); lineTo(17f, 8f)
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(15f, 9f); lineTo(18f, 15f); lineTo(21f, 9f)
+            moveTo(3f, 12f); lineTo(6f, 15f)
         }
     }
 
-    // Refresh — circular arrows
+    // Refresh — circular arrows (simplified)
     val Refresh: ImageVector = iconBuilder("refresh") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(1f, 4f); lineTo(1f, 10f); lineTo(7f, 10f)
+            // top arc arrow
+            moveTo(20f, 8f); lineTo(20f, 4f); lineTo(16f, 4f)
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(23f, 20f); lineTo(23f, 14f); lineTo(17f, 14f)
+            // bottom arc arrow
+            moveTo(4f, 16f); lineTo(4f, 20f); lineTo(8f, 20f)
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(20.49f, 9f)
-            arcTo(9f, 9f, 0f, false, false, 5.64f, 5.64f)
-            lineTo(1f, 10f)
-            moveTo(23f, 14f)
-            lineTo(18.36f, 18.36f)
-            arcTo(9f, 9f, 0f, false, true, 3.51f, 15f)
+            // top arc
+            moveTo(20f, 4f)
+            lineTo(18f, 5f)
+            lineTo(14f, 5f)
+            lineTo(10f, 6f)
+            lineTo(6f, 8f)
+            lineTo(4f, 10f)
+            lineTo(4f, 16f)
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // bottom arc
+            moveTo(4f, 20f)
+            lineTo(6f, 19f)
+            lineTo(10f, 19f)
+            lineTo(14f, 18f)
+            lineTo(18f, 16f)
+            lineTo(20f, 14f)
+            lineTo(20f, 8f)
         }
     }
 
     // History — clock with counter-arrow
     val History: ImageVector = iconBuilder("history") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // circle
             moveTo(12f, 2f)
             arcTo(10f, 10f, 0f, true, true, 12f, 22f)
             arcTo(10f, 10f, 0f, true, true, 12f, 2f)
             close()
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // clock hands
             moveTo(12f, 6f); lineTo(12f, 12f); lineTo(16f, 14f)
         }
-        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(3f, 7f); lineTo(6f, 4f); lineTo(9f, 7f)
-        }
     }
 
-    // Bell — notification tab
+    // Bell — notification tab (simplified)
     val Bell: ImageVector = iconBuilder("bell") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(10f, 5f)
-            arcTo(2f, 2f, 0f, false, true, 14f, 5f)
-            curveTo(14f, 7f, 16f, 8.5f, 16f, 12f)
-            lineTo(4f, 12f)
-            curveTo(4f, 8.5f, 6f, 7f, 6f, 5f)
-        }
-        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // bell body
             moveTo(4f, 12f)
-            lineTo(2f, 16f)
-            lineTo(22f, 16f)
+            lineTo(4f, 10f)
+            lineTo(5f, 8f)
+            lineTo(6f, 6f)
+            lineTo(8f, 5f)
+            lineTo(10f, 4f)
+            lineTo(12f, 4f)
+            lineTo(14f, 4f)
+            lineTo(16f, 5f)
+            lineTo(18f, 6f)
+            lineTo(19f, 8f)
+            lineTo(20f, 10f)
             lineTo(20f, 12f)
+            lineTo(4f, 12f)
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // bottom
+            moveTo(4f, 12f); lineTo(2f, 16f); lineTo(22f, 16f); lineTo(20f, 12f)
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // clapper
             moveTo(9f, 16f)
-            curveTo(9f, 18f, 10.5f, 20f, 12f, 20f)
-            curveTo(13.5f, 20f, 15f, 18f, 15f, 16f)
+            lineTo(10f, 18f)
+            lineTo(12f, 19f)
+            lineTo(14f, 18f)
+            lineTo(15f, 16f)
         }
     }
 
-    // DeviceDesktop — device tab
+    // DeviceDesktop — device tab (simplified)
     val DeviceDesktop: ImageVector = iconBuilder("deviceDesktop") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(3f, 4f)
-            lineTo(21f, 4f)
-            arcTo(2f, 2f, 0f, false, true, 23f, 6f)
-            lineTo(23f, 14f)
-            arcTo(2f, 2f, 0f, false, true, 21f, 16f)
-            lineTo(3f, 16f)
-            arcTo(2f, 2f, 0f, false, true, 1f, 14f)
-            lineTo(1f, 6f)
-            arcTo(2f, 2f, 0f, false, true, 3f, 4f)
-            close()
+            // screen
+            moveTo(2f, 4f); lineTo(22f, 4f); lineTo(22f, 15f); lineTo(2f, 15f); close()
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(8f, 20f); lineTo(16f, 20f)
+            // stand
+            moveTo(8f, 19f); lineTo(16f, 19f)
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(12f, 16f); lineTo(12f, 20f)
+            // neck
+            moveTo(12f, 15f); lineTo(12f, 19f)
         }
     }
 
-    // UserCircle — my tab
+    // UserCircle — my tab (simplified)
     val UserCircle: ImageVector = iconBuilder("userCircle") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // circle
             moveTo(12f, 2f)
             arcTo(10f, 10f, 0f, true, true, 12f, 22f)
             arcTo(10f, 10f, 0f, true, true, 12f, 2f)
             close()
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(7f, 18f)
-            curveTo(7f, 15f, 9f, 13f, 12f, 13f)
-            curveTo(15f, 13f, 17f, 15f, 17f, 18f)
+            // head
+            moveTo(12f, 4f)
+            lineTo(14f, 5f)
+            lineTo(15f, 7f)
+            lineTo(15f, 9f)
+            lineTo(14f, 10f)
+            lineTo(12f, 11f)
+            lineTo(10f, 10f)
+            lineTo(9f, 9f)
+            lineTo(9f, 7f)
+            lineTo(10f, 5f)
+            close()
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(12f, 11f)
-            arcTo(3f, 3f, 0f, true, true, 12f, 5f)
-            arcTo(3f, 3f, 0f, true, true, 12f, 11f)
-            close()
+            // body
+            moveTo(5f, 19f)
+            lineTo(7f, 15f)
+            lineTo(9f, 13f)
+            lineTo(12f, 13f)
+            lineTo(15f, 13f)
+            lineTo(17f, 15f)
+            lineTo(19f, 19f)
         }
     }
 
-    // LayoutList — sessions tab
+    // LayoutList — sessions tab (simplified)
     val LayoutList: ImageVector = iconBuilder("layoutList") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             moveTo(4f, 4f); lineTo(20f, 4f)
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             moveTo(4f, 8f); lineTo(20f, 8f)
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             moveTo(4f, 12f); lineTo(16f, 12f)
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             moveTo(4f, 16f); lineTo(18f, 16f)
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             moveTo(4f, 20f); lineTo(14f, 20f)
         }
     }
@@ -479,30 +518,15 @@ object ClawdIcons {
     // Activity — event label icon
     val Activity: ImageVector = iconBuilder("activity") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(3f, 12f)
-            lineTo(6f, 12f)
-            lineTo(9f, 4f)
-            lineTo(12f, 20f)
-            lineTo(15f, 8f)
-            lineTo(18f, 12f)
-            lineTo(21f, 12f)
+            moveTo(3f, 12f); lineTo(7f, 12f); lineTo(10f, 4f); lineTo(13f, 20f); lineTo(16f, 8f); lineTo(19f, 12f); lineTo(21f, 12f)
         }
     }
 
-    // Robot — agent icon
+    // Robot — agent icon (simplified, no arcs)
     val Robot: ImageVector = iconBuilder("robot") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             // head
-            moveTo(5f, 7f)
-            lineTo(19f, 7f)
-            arcTo(2f, 2f, 0f, false, true, 21f, 9f)
-            lineTo(21f, 15f)
-            arcTo(2f, 2f, 0f, false, true, 19f, 17f)
-            lineTo(5f, 17f)
-            arcTo(2f, 2f, 0f, false, true, 3f, 15f)
-            lineTo(3f, 9f)
-            arcTo(2f, 2f, 0f, false, true, 5f, 7f)
-            close()
+            moveTo(4f, 7f); lineTo(20f, 7f); lineTo(20f, 16f); lineTo(4f, 16f); close()
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             // antenna
@@ -515,6 +539,8 @@ object ClawdIcons {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             // left eye
             moveTo(8f, 10f); lineTo(8.01f, 10f)
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             // right eye
             moveTo(16f, 10f); lineTo(16.01f, 10f)
         }
@@ -523,55 +549,70 @@ object ClawdIcons {
             moveTo(9f, 14f); lineTo(15f, 14f)
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            // body
-            moveTo(8f, 17f); lineTo(8f, 21f)
-            moveTo(16f, 17f); lineTo(16f, 21f)
+            // legs
+            moveTo(8f, 16f); lineTo(8f, 21f); lineTo(10f, 21f)
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            // feet
-            moveTo(4f, 21f); lineTo(12f, 21f); lineTo(20f, 21f)
+            moveTo(16f, 16f); lineTo(16f, 21f); lineTo(14f, 21f)
         }
     }
 
-    // QR Code — scan button
+    // QR Code — scan button (simplified)
     val QrCode: ImageVector = iconBuilder("qrCode") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
             // top-left block
-            moveTo(3f, 3f); lineTo(10f, 3f); lineTo(10f, 10f); lineTo(3f, 10f); close()
-            // top-right block
-            moveTo(14f, 3f); lineTo(21f, 3f); lineTo(21f, 10f); lineTo(14f, 10f); close()
-            // bottom-left block
-            moveTo(3f, 14f); lineTo(10f, 14f); lineTo(10f, 21f); lineTo(3f, 21f); close()
+            moveTo(4f, 4f); lineTo(10f, 4f); lineTo(10f, 10f); lineTo(4f, 10f); close()
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            // bottom-right pattern
-            moveTo(14f, 14f); lineTo(17f, 14f); lineTo(17f, 17f); lineTo(14f, 17f); close()
-            moveTo(18f, 18f); lineTo(21f, 18f); lineTo(21f, 21f); lineTo(18f, 21f); close()
+            // top-right block
+            moveTo(14f, 4f); lineTo(20f, 4f); lineTo(20f, 10f); lineTo(14f, 10f); close()
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // bottom-left block
+            moveTo(4f, 14f); lineTo(10f, 14f); lineTo(10f, 20f); lineTo(4f, 20f); close()
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            // bottom-right dots
+            moveTo(14f, 14f); lineTo(16f, 14f); lineTo(16f, 16f); lineTo(14f, 16f); close()
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(18f, 18f); lineTo(20f, 18f); lineTo(20f, 20f); lineTo(18f, 20f); close()
         }
     }
 
-    // Settings — gear for settings button
+    // Settings — gear for settings button (simplified, no complex arcs)
     val Settings: ImageVector = iconBuilder("settings") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(10.325f, 4.317f)
-            arcTo(1.5f, 1.5f, 0f, false, true, 12f, 3f)
-            arcTo(1.5f, 1.5f, 0f, false, true, 13.675f, 4.317f)
-            arcTo(6f, 6f, 0f, false, true, 19.683f, 10.325f)
-            arcTo(1.5f, 1.5f, 0f, false, true, 21f, 12f)
-            arcTo(1.5f, 1.5f, 0f, false, true, 19.683f, 13.675f)
-            arcTo(6f, 6f, 0f, false, true, 13.675f, 19.683f)
-            arcTo(1.5f, 1.5f, 0f, false, true, 12f, 21f)
-            arcTo(1.5f, 1.5f, 0f, false, true, 10.325f, 19.683f)
-            arcTo(6f, 6f, 0f, false, true, 4.317f, 13.675f)
-            arcTo(1.5f, 1.5f, 0f, false, true, 3f, 12f)
-            arcTo(1.5f, 1.5f, 0f, false, true, 4.317f, 10.325f)
-            arcTo(6f, 6f, 0f, false, true, 10.325f, 4.317f)
-            close()
+            // gear teeth
+            moveTo(12f, 3f); lineTo(13f, 3f); lineTo(13.5f, 5.5f)
+            lineTo(15f, 6f); lineTo(17f, 4.5f); lineTo(18f, 5.5f)
+            lineTo(17f, 7.5f); lineTo(17.5f, 9f); lineTo(20f, 9.5f)
+            lineTo(20.5f, 11f); lineTo(18f, 12f); lineTo(18f, 12.5f)
+            lineTo(20.5f, 13.5f); lineTo(20f, 15f); lineTo(17.5f, 15f)
+            lineTo(17f, 16.5f); lineTo(18f, 18.5f); lineTo(16.5f, 19.5f)
+            lineTo(15f, 18f); lineTo(13.5f, 18.5f); lineTo(13f, 21f)
+            lineTo(11f, 21f); lineTo(10.5f, 18.5f); lineTo(9f, 18f)
+            lineTo(7.5f, 19.5f); lineTo(6f, 18.5f); lineTo(7f, 16.5f)
+            lineTo(6.5f, 15f); lineTo(4f, 15f); lineTo(3.5f, 13.5f)
+            lineTo(6f, 12.5f); lineTo(6f, 12f); lineTo(3.5f, 11f)
+            lineTo(4f, 9.5f); lineTo(6.5f, 9f); lineTo(7f, 7.5f)
+            lineTo(6f, 5.5f); lineTo(7.5f, 4.5f); lineTo(9f, 6f)
+            lineTo(10.5f, 5.5f); lineTo(11f, 3f); close()
         }
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            moveTo(12f, 8f)
-            arcTo(4f, 4f, 0f, true, true, 12f, 16f)
-            arcTo(4f, 4f, 0f, true, true, 12f, 8f)
+            // inner circle
+            moveTo(16f, 12f)
+            lineTo(15.5f, 14f)
+            lineTo(14f, 15.5f)
+            lineTo(12f, 16f)
+            lineTo(10f, 15.5f)
+            lineTo(8.5f, 14f)
+            lineTo(8f, 12f)
+            lineTo(8.5f, 10f)
+            lineTo(10f, 8.5f)
+            lineTo(12f, 8f)
+            lineTo(14f, 8.5f)
+            lineTo(15.5f, 10f)
             close()
         }
     }

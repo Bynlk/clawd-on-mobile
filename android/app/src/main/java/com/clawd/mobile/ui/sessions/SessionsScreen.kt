@@ -1,6 +1,11 @@
 package com.clawd.mobile.ui.sessions
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
@@ -17,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
@@ -83,6 +89,13 @@ fun SessionsScreen(
     // Bottom nav selected tab
     var selectedTab by remember { mutableIntStateOf(0) }
 
+    // Reset tab to "会话" when screen resumes (e.g. returning from scan/manual)
+    LaunchedEffect(Unit) {
+        navController.currentBackStackEntryFlow.collect {
+            selectedTab = 0
+        }
+    }
+
     Scaffold(
         containerColor = ClawdBgDark
     ) { padding ->
@@ -133,7 +146,14 @@ fun SessionsScreen(
             // Bottom navigation
             BottomNav(
                 selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it },
+                onTabSelected = { tab ->
+                    selectedTab = tab
+                    when (tab) {
+                        1 -> { /* 通知 — 暂无功能 */ }
+                        2 -> navController.navigate("scan")
+                        3 -> navController.navigate("manual")
+                    }
+                },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -230,6 +250,18 @@ private fun TopBar(onScan: () -> Unit, onSettings: () -> Unit) {
 
 @Composable
 private fun ConnectionBadge(isConnected: Boolean, hostLabel: String) {
+    // Breathing dot animation (matches HTML mockup: 2s pulse, opacity 1→0.4)
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isConnected) 0.4f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dotAlpha"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -243,10 +275,11 @@ private fun ConnectionBadge(isConnected: Boolean, hostLabel: String) {
             .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Status dot
+        // Status dot with breathing animation
         Box(
             modifier = Modifier
                 .size(7.dp)
+                .graphicsLayer { alpha = dotAlpha }
                 .clip(CircleShape)
                 .background(if (isConnected) ClawdGreenBright else ClawdFaintDark)
         )
