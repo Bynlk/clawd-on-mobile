@@ -174,17 +174,17 @@
           info.innerHTML = helpers.escapeHtml(status.ip) + ":" + helpers.escapeHtml(String(status.port)) + '<br>Token: <span style="color:var(--accent)">' + helpers.escapeHtml(status.token || "") + "</span>";
         }
         // 生成 QR 码（用服务端已有的 /mobile/pair 页面的 QR 图片）
-        generateQrDataUrl("clawd://" + (status.ip || "") + ":" + (status.port || "") + "/" + (status.token || ""));
+        generateQrDataUrl("clawd://" + (status.ip || "") + ":" + (status.port || "") + "/" + (status.token || ""), status.port);
       }).catch(function() {});
     }
   }
 
-  function generateQrDataUrl(text) {
+  function generateQrDataUrl(text, port) {
     // 简单 QR 生成（如果 qrcode 库可用）或显示占位
     var img = document.getElementById("mobile-qr-image");
     if (!img) return;
-    // 使用服务端已有的 /mobile/pair 页面的 QR 图片
-    img.src = "/mobile/qr?v=" + Date.now();
+    // Electron 用 file:// 协议加载设置页，必须用完整 HTTP URL
+    img.src = "http://127.0.0.1:" + (port || 23333) + "/mobile/qr?v=" + Date.now();
     img.onerror = function() {
       // 降级：显示文字
       img.style.display = "none";
