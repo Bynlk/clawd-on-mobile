@@ -224,13 +224,36 @@ function stopClaudeSettingsWatcher() {
 
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
+  const candidates = [];
+
   for (const [name, addrs] of Object.entries(interfaces)) {
     for (const addr of addrs) {
       if (addr.family === "IPv4" && !addr.internal) {
-        return addr.address;
+        candidates.push({ name, address: addr.address });
       }
     }
   }
+
+  // Prefer LAN addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+  const lan = candidates.find(c =>
+    /^192\.168\./.test(c.address) ||
+    /^10\./.test(c.address) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(c.address)
+  );
+
+  if (lan) {
+    console.log(`[Mobile] Selected LAN IP: ${lan.address} (${lan.name})`);
+    return lan.address;
+  }
+
+  // Fallback to first non-internal
+  const fallback = candidates[0];
+  if (fallback) {
+    console.log(`[Mobile] Fallback IP: ${fallback.address} (${fallback.name})`);
+    return fallback.address;
+  }
+
+  console.log("[Mobile] No external IPv4 found, using 127.0.0.1");
   return "127.0.0.1";
 }
 

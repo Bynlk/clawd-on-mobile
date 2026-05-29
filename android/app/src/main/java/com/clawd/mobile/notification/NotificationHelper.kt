@@ -10,6 +10,9 @@ import com.clawd.mobile.data.PermissionRequestData
 
 object NotificationHelper {
 
+    const val CHANNEL_STATUS = "clawd_status"
+    const val CHANNEL_ALERT = "clawd_alert"
+
     private var notificationId = 1000
 
     fun showApprovalNotification(context: Context, request: PermissionRequestData) {
@@ -73,7 +76,7 @@ object NotificationHelper {
     }
 
     fun showStatusNotification(context: Context, title: String, body: String, priority: Int = NotificationCompat.PRIORITY_DEFAULT) {
-        val notification = NotificationCompat.Builder(context, ClawdApp.CHANNEL_STATUS)
+        val notification = NotificationCompat.Builder(context, CHANNEL_STATUS)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(body)

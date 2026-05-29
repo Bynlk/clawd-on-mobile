@@ -10,36 +10,58 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val ClawdDarkColorScheme = darkColorScheme(
+private val DarkColorScheme = darkColorScheme(
     primary = ClawdAccent,
     onPrimary = Color.White,
     primaryContainer = ClawdAccentDark,
     onPrimaryContainer = Color.White,
     secondary = ClawdAccentLight,
     onSecondary = Color.White,
-    background = ClawdBg,
-    onBackground = ClawdTextPrimary,
-    surface = ClawdSurface,
-    onSurface = ClawdTextPrimary,
-    surfaceVariant = ClawdSurfaceLight,
-    onSurfaceVariant = ClawdTextSecondary,
+    background = ClawdBackgroundDark,
+    onBackground = ClawdTextDark,
+    surface = ClawdSurfaceDark,
+    onSurface = ClawdTextDark,
+    surfaceVariant = ClawdSurfaceAltDark,
+    onSurfaceVariant = ClawdMutedDark,
     error = ClawdError,
     onError = Color.White,
-    outline = Color(0xFF333340),
-    outlineVariant = Color(0xFF222230),
+    outline = ClawdBorderDark,
+    outlineVariant = Color(0xFF333340),
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = ClawdAccent,
+    onPrimary = Color.White,
+    primaryContainer = ClawdAccentLight,
+    onPrimaryContainer = ClawdText,
+    secondary = ClawdAccentDark,
+    onSecondary = Color.White,
+    background = ClawdBackground,
+    onBackground = ClawdText,
+    surface = ClawdSurface,
+    onSurface = ClawdText,
+    surfaceVariant = ClawdSurfaceAlt,
+    onSurfaceVariant = ClawdMuted,
+    error = ClawdError,
+    onError = Color.White,
+    outline = ClawdBorder,
+    outlineVariant = Color(0xFFE0E0E0),
 )
 
 @Composable
-fun ClawdMobileTheme(content: @Composable () -> Unit) {
-    val colorScheme = ClawdDarkColorScheme
+fun ClawdMobileTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
+    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val view = LocalView.current
 
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = ClawdBg.toArgb()
-            window.navigationBarColor = ClawdBg.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            window.statusBarColor = (if (darkTheme) ClawdBackgroundDark else ClawdBackground).toArgb()
+            window.navigationBarColor = (if (darkTheme) ClawdBackgroundDark else ClawdBackground).toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 

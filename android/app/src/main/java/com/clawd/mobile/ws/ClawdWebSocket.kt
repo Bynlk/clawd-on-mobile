@@ -35,6 +35,9 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     private val _permissionRequests = MutableSharedFlow<PermissionRequestData>(extraBufferCapacity = 16)
     val permissionRequests: SharedFlow<PermissionRequestData> = _permissionRequests
 
+    val currentHost: String? get() = config?.host
+    val currentPort: Int? get() = config?.port
+
     private var rawTextHandler: ((String) -> Unit)? = null
 
     fun connect(config: ConnectionConfig) {

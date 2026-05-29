@@ -2,84 +2,132 @@ package com.clawd.mobile.notification
 
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import androidx.core.app.NotificationCompat
+import com.clawd.mobile.ClawdApp
 import com.clawd.mobile.data.SessionData
 
 class StatusNotifier(private val context: Context) {
 
-    // Track previous state to avoid duplicate notifications
-    private val lastState = mutableMapOf<String, String>()
-    // Per-session notification IDs for collapsing
-    private val sessionNotificationIds = mutableMapOf<String, Int>()
-    private var nextId = 2000
+    companion object {
+        private val ANIMATING_STATES = setOf(
+            "working", "thinking", "juggling", "attention", "error", "notification"
+        )
+        private const val ANIM_TICK_MS = 800L
+    }
+
+    private val sessionStates = mutableMapOf<String, String>()
+    private val sessionTitles = mutableMapOf<String, String>()
+    private var animToggle = false
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val animRunnable = object : Runnable {
+        override fun run() {
+            animToggle = !animToggle
+            refreshAnimatingNotifications()
+            handler.postDelayed(this, ANIM_TICK_MS)
+        }
+    }
 
     fun onSessionUpdate(sessionId: String, data: SessionData) {
-        val prevState = lastState[sessionId]
+        val prevState = sessionStates[sessionId]
         val newState = data.state
-        lastState[sessionId] = newState
+        sessionStates[sessionId] = newState
+        sessionTitles[sessionId] = data.sessionTitle ?: data.agentId ?: sessionId
 
-        // State unchanged, skip
         if (prevState == newState) return
 
-        // Only notify for significant transitions
-        when (newState) {
-            "attention" -> {
-                showNotification(
-                    sessionId,
-                    "需要关注",
-                    data.sessionTitle ?: "${data.agentId} 需要关注",
-                    android.app.Notification.PRIORITY_HIGH
-                )
-            }
-            "error" -> {
-                showNotification(
-                    sessionId,
-                    "出现错误",
-                    data.sessionTitle ?: "${data.agentId} 遇到错误",
-                    android.app.Notification.PRIORITY_HIGH
-                )
-            }
-            "notification" -> {
-                showNotification(
-                    sessionId,
-                    "通知",
-                    data.sessionTitle ?: "${data.agentId} 发送通知"
-                )
-            }
-            "idle" -> {
-                if (prevState == "working" || prevState == "thinking") {
-                    showNotification(
-                        sessionId,
-                        "任务完成",
-                        data.sessionTitle ?: "${data.agentId} 已完成"
-                    )
-                }
-            }
-            "sleeping" -> {
-                if (prevState != null && prevState != "sleeping") {
-                    showNotification(
-                        sessionId,
-                        "会话结束",
-                        data.sessionTitle ?: "${data.agentId} 已结束",
-                        android.app.Notification.PRIORITY_LOW
-                    )
-                }
+        // Determine if this transition should fire an alert
+        val shouldAlert = when {
+            // Task completed: was working/thinking, now idle
+            newState == "idle" && (prevState == "working" || prevState == "thinking") -> true
+            // Attention or error always alerts
+            newState == "attention" || newState == "error" -> true
+            else -> false
+        }
+
+        if (shouldAlert) {
+            showAlertNotification(sessionId)
+        }
+
+        updateStatusNotification(sessionId)
+        updateAnimationTimer()
+    }
+
+    private fun showAlertNotification(sessionId: String) {
+        val title = sessionTitles[sessionId] ?: sessionId
+        val state = sessionStates[sessionId] ?: return
+        val alertTitle = when (state) {
+            "idle" -> "任务完成"
+            "attention" -> "需要关注"
+            "error" -> "出现错误"
+            else -> return
+        }
+
+        val notification = NotificationCompat.Builder(context, NotificationHelper.CHANNEL_ALERT)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(alertTitle)
+            .setContentText(title)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .build()
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify("alert:$sessionId".hashCode(), notification)
+    }
+
+    private fun updateStatusNotification(sessionId: String) {
+        val state = sessionStates[sessionId] ?: return
+        val title = sessionTitles[sessionId] ?: sessionId
+        val color = NotificationIcons.colorForState(state)
+        val isAnimating = state in ANIMATING_STATES
+        val icon = if (isAnimating && animToggle) {
+            NotificationIcons.coloredCircleDim(color)
+        } else {
+            NotificationIcons.coloredCircle(color)
+        }
+
+        val builder = NotificationCompat.Builder(context, NotificationHelper.CHANNEL_STATUS)
+            .setSmallIcon(icon)
+            .setContentTitle(title)
+            .setContentText(state)
+            .setOngoing(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setShowBadge(false)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+
+        val notification = builder.build()
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(sessionId.hashCode(), notification)
+    }
+
+    private fun refreshAnimatingNotifications() {
+        for ((sessionId, state) in sessionStates) {
+            if (state in ANIMATING_STATES) {
+                updateStatusNotification(sessionId)
             }
         }
     }
 
-    private fun showNotification(sessionId: String, title: String, body: String, priority: Int = android.app.Notification.PRIORITY_DEFAULT) {
-        // Use consistent ID per session so notifications collapse
-        val id = sessionNotificationIds.getOrPut(sessionId) { nextId++ }
-        NotificationHelper.showStatusNotification(context, title, body, priority)
+    private fun updateAnimationTimer() {
+        val anyAnimating = sessionStates.values.any { it in ANIMATING_STATES }
+        handler.removeCallbacks(animRunnable)
+        if (anyAnimating) {
+            handler.postDelayed(animRunnable, ANIM_TICK_MS)
+        }
     }
 
     fun clearSession(sessionId: String) {
-        lastState.remove(sessionId)
-        // Read the notification ID before removing from map
-        val id = sessionNotificationIds.remove(sessionId)
-        if (id != null) {
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.cancel(id)
-        }
+        sessionStates.remove(sessionId)
+        sessionTitles.remove(sessionId)
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(sessionId.hashCode())
+        manager.cancel("alert:$sessionId".hashCode())
+
+        updateAnimationTimer()
     }
 }

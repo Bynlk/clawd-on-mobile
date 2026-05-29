@@ -199,6 +199,7 @@ function handleStatePost(req, res, options) {
             const recentEvents = (session && Array.isArray(session.recentEvents))
               ? session.recentEvents
               : [];
+            const lastOutput = session && session.lastOutput ? session.lastOutput : null;
             mobileWS.broadcastState(sid, {
               state,
               event: event,
@@ -207,7 +208,32 @@ function handleStatePost(req, res, options) {
               sessionTitle: sessionTitle || null,
               cwd: cwd || null,
               recentEvents,
+              lastOutput,
             });
+
+            // Forward tool output to mobile clients
+            if (data.tool_result || data.output) {
+              const rawOutput = data.tool_result || data.output;
+              const truncated = typeof rawOutput === "string"
+                ? rawOutput.substring(0, 500)
+                : JSON.stringify(rawOutput).substring(0, 500);
+              mobileWS.broadcastToolOutput(sid, {
+                toolName: toolName || event || "",
+                output: truncated,
+                event: event || "",
+              });
+              // Store last output on session
+              if (session) {
+                session.lastOutput = {
+                  toolName: toolName || "",
+                  output: (typeof rawOutput === "string"
+                    ? rawOutput
+                    : JSON.stringify(rawOutput)
+                  ).substring(0, 200),
+                  at: Date.now(),
+                };
+              }
+            }
           }
         }
         res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });

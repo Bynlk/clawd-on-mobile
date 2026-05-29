@@ -27,16 +27,16 @@ data class Session(
 ) {
     companion object {
         val STATE_CONFIG = mapOf(
-            "error" to StateConfig("error", 0xFFD63031, 0, "错误"),
-            "attention" to StateConfig("attention", 0xFFE17055, 1, "需要关注"),
-            "working" to StateConfig("working", 0xFF6C5CE7, 2, "工作中"),
-            "juggling" to StateConfig("juggling", 0xFFA29BFE, 2, "多任务"),
-            "thinking" to StateConfig("thinking", 0xFF0984E3, 3, "思考中"),
-            "notification" to StateConfig("notification", 0xFF00CEC9, 4, "通知"),
-            "sweeping" to StateConfig("sweeping", 0xFF636E72, 5, "清理中"),
-            "carrying" to StateConfig("carrying", 0xFF636E72, 5, "搬运中"),
-            "idle" to StateConfig("idle", 0xFFB2BEC3, 6, "空闲"),
-            "sleeping" to StateConfig("sleeping", 0xFF2D3436, 7, "休眠"),
+            "error" to StateConfig("error", 0xFFEF4444, 0, "错误"),
+            "attention" to StateConfig("attention", 0xFFB45309, 1, "需要关注"),
+            "working" to StateConfig("working", 0xFF16803C, 2, "工作中"),
+            "juggling" to StateConfig("juggling", 0xFF16803C, 2, "多任务"),
+            "thinking" to StateConfig("thinking", 0xFF3B82F6, 3, "思考中"),
+            "notification" to StateConfig("notification", 0xFFD97757, 4, "通知"),
+            "sweeping" to StateConfig("sweeping", 0xFF71717A, 5, "清理中"),
+            "carrying" to StateConfig("carrying", 0xFF71717A, 5, "搬运中"),
+            "idle" to StateConfig("idle", 0xFF71717A, 6, "空闲"),
+            "sleeping" to StateConfig("sleeping", 0xFFA1A1AA, 7, "休眠"),
         )
 
         /** Map event names to user-visible Chinese labels */

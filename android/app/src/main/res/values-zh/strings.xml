@@ -2,6 +2,8 @@
     <string name="app_name">Clawd 移动端</string>
     <string name="channel_approval">审批请求</string>
     <string name="channel_approval_desc">权限审批和确认请求的高优先级通知</string>
-    <string name="channel_status">任务状态</string>
-    <string name="channel_status_desc">任务和会话状态变更通知</string>
+    <string name="channel_status">会话状态</string>
+    <string name="channel_status_desc">显示各会话当前状态的低优先级通知</string>
+    <string name="channel_alert">重要通知</string>
+    <string name="channel_alert_desc">任务完成或需要关注时的通知</string>
 </resources>

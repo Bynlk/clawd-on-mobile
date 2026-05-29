@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -29,7 +32,6 @@ import com.clawd.mobile.data.Session
 import com.clawd.mobile.data.SessionData
 import com.clawd.mobile.ui.approval.ApprovalViewModel
 import com.clawd.mobile.ui.components.ClawdIcons
-import com.clawd.mobile.ui.components.ConnectionStatusBar
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ws.ConnectionState
 import com.clawd.mobile.ws.ClawdWebSocket
@@ -67,6 +69,20 @@ fun SessionsScreen(
                 .thenByDescending { it.data.updatedAt ?: 0 })
     }
 
+    // Connection dot color
+    val connectionColor = when (connectionState) {
+        ConnectionState.CONNECTED -> ClawdSuccess
+        ConnectionState.CONNECTING, ConnectionState.RECONNECTING -> ClawdWarning
+        else -> ClawdSubtleDark
+    }
+
+    // Host label
+    val hostLabel = if (connectionState == ConnectionState.CONNECTED) {
+        webSocket.currentHost?.let { host ->
+            webSocket.currentPort?.let { port -> "$host:$port" }
+        } ?: ""
+    } else ""
+
     // Current request to show in bottom sheet (one at a time)
     val currentRequest = pendingRequests.firstOrNull()
     var showSheet by remember { mutableStateOf(false) }
@@ -75,28 +91,9 @@ fun SessionsScreen(
         showSheet = pendingRequests.isNotEmpty()
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Clawd Mobile") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                actions = {
-                    IconButton(onClick = { navController.navigate("scan") }) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = "扫码")
-                    }
-                    IconButton(onClick = { navController.navigate("manual") }) {
-                        Icon(Icons.Default.Settings, contentDescription = "手动连接")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            ConnectionStatusBar(state = connectionState)
-
+    Scaffold { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Session list
             if (connectionState == ConnectionState.DISCONNECTED && sessions.isEmpty()) {
                 EmptyState(
                     onScan = { navController.navigate("scan") },
@@ -105,12 +102,76 @@ fun SessionsScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 56.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                        bottom = 16.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(sessions, key = { it.id }) { session ->
                         SessionCard(session = session)
                     }
+                }
+            }
+
+            // Floating header (top-right)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 12.dp, end = 12.dp)
+                    .statusBarsPadding(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Connection dot
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(connectionColor)
+                )
+                // Host label
+                if (hostLabel.isNotEmpty()) {
+                    Text(
+                        text = hostLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ClawdSubtleDark,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                // Scan button
+                IconButton(
+                    onClick = { navController.navigate("scan") },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .border(1.dp, ClawdBorderDark, RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ClawdSurfaceDark)
+                ) {
+                    Icon(
+                        Icons.Default.QrCodeScanner,
+                        "扫码",
+                        tint = ClawdMutedDark,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                // Settings button
+                IconButton(
+                    onClick = { navController.navigate("manual") },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .border(1.dp, ClawdBorderDark, RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ClawdSurfaceDark)
+                ) {
+                    Icon(
+                        ClawdIcons.Working, // gear icon
+                        "设置",
+                        tint = ClawdMutedDark,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
@@ -177,9 +238,9 @@ private fun ApprovalSheet(
             Text(
                 request.agentId ?: "Agent",
                 style = MaterialTheme.typography.labelMedium,
-                color = ClawdTextSecondary,
+                color = ClawdMutedDark,
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                    .background(ClawdSurfaceAltDark, RoundedCornerShape(4.dp))
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             )
             Spacer(modifier = Modifier.weight(1f))
@@ -197,8 +258,8 @@ private fun ApprovalSheet(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
-                Icon(ClawdIcons.Tool, contentDescription = null, modifier = Modifier.size(14.dp), tint = ClawdTextTertiary)
-                Text(request.toolName, style = MaterialTheme.typography.bodyMedium, color = ClawdTextPrimary)
+                Icon(ClawdIcons.Tool, contentDescription = null, modifier = Modifier.size(14.dp), tint = ClawdSubtleDark)
+                Text(request.toolName, style = MaterialTheme.typography.bodyMedium, color = ClawdTextDark)
             }
         }
 
@@ -207,7 +268,7 @@ private fun ApprovalSheet(
             Text(
                 request.toolInputSummary,
                 style = MaterialTheme.typography.bodySmall,
-                color = ClawdTextSecondary,
+                color = ClawdMutedDark,
                 modifier = Modifier.padding(bottom = 16.dp),
                 lineHeight = MaterialTheme.typography.bodySmall.lineHeight
             )
@@ -215,7 +276,6 @@ private fun ApprovalSheet(
 
         // Action buttons
         if (isElicitation && request.elicitationOptions.isNotEmpty()) {
-            // Elicitation options
             request.elicitationOptions.forEachIndexed { index, option ->
                 Button(
                     onClick = { onElicitation(requestId, option.value) },
@@ -232,7 +292,6 @@ private fun ApprovalSheet(
                 }
             }
         } else if (request.suggestions.isNotEmpty()) {
-            // Permission suggestions
             request.suggestions.forEachIndexed { index, suggestion ->
                 val isAllow = suggestion.behavior == "allow"
                 val containerColor = if (isAllow) ClawdSuccess.copy(alpha = 0.15f) else ClawdError.copy(alpha = 0.15f)
@@ -257,7 +316,6 @@ private fun ApprovalSheet(
                 }
             }
         } else {
-            // Default allow/deny buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -302,10 +360,10 @@ private fun EmptyState(onScan: () -> Unit, onManual: () -> Unit) {
                 imageVector = ClawdIcons.Paw,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = ClawdTextTertiary
+                tint = ClawdSubtleDark
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Text("扫码配对开始监控", style = MaterialTheme.typography.bodyLarge, color = ClawdTextSecondary)
+            Text("扫码配对开始监控", style = MaterialTheme.typography.bodyLarge, color = ClawdMutedDark)
             Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = onScan) {
                 Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -326,78 +384,92 @@ private fun SessionCard(session: Session) {
     val data = session.data
     var expanded by remember { mutableStateOf(false) }
     val hasEvents = data.recentEvents.isNotEmpty()
+    val isActive = data.state == "working" || data.state == "thinking" || data.state == "juggling"
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, ClawdBorderDark)
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            // Left state color bar
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Status dot (7dp)
             Box(
                 modifier = Modifier
-                    .width(4.dp)
-                    .fillMaxHeight()
+                    .size(7.dp)
+                    .clip(CircleShape)
                     .background(Color(config.color))
             )
 
-            Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
-                // Header: icon + agentId + state label
+            // Main content
+            Column(modifier = Modifier.weight(1f)) {
+                // Title
+                Text(
+                    text = data.sessionTitle ?: data.agentId ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Meta row
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = iconFor(config.iconKey),
-                        contentDescription = config.label,
-                        modifier = Modifier.size(20.dp),
-                        tint = Color(config.color)
-                    )
+                    if (data.agentId != null) {
+                        Text(
+                            text = data.agentId,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = ClawdMutedDark,
+                            modifier = Modifier
+                                .background(ClawdSurfaceAltDark, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
                     Text(
-                        data.agentId ?: "unknown",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = ClawdTextTertiary,
-                        modifier = Modifier
-                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(config.label, style = MaterialTheme.typography.bodySmall, color = Color(config.color))
-                }
-
-                // Session title
-                if (!data.sessionTitle.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        data.sessionTitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ClawdTextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = config.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(config.color)
                     )
                 }
 
-                // Tool name
+                // Tool info
                 if (!data.toolName.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(ClawdIcons.Tool, contentDescription = null, modifier = Modifier.size(14.dp), tint = ClawdTextTertiary)
-                        Text(data.toolName, style = MaterialTheme.typography.bodySmall, color = ClawdTextSecondary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(ClawdIcons.Tool, null, tint = ClawdMutedDark, modifier = Modifier.size(14.dp))
+                        Text(data.toolName, style = MaterialTheme.typography.labelSmall, color = ClawdMutedDark)
                     }
                 }
 
-                // Working directory
+                // CWD
                 if (!data.cwd.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(ClawdIcons.Folder, contentDescription = null, modifier = Modifier.size(14.dp), tint = ClawdTextTertiary)
-                        Text(shortPath(data.cwd), style = MaterialTheme.typography.bodySmall, color = ClawdTextTertiary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(ClawdIcons.Folder, null, tint = ClawdMutedDark, modifier = Modifier.size(14.dp))
+                        Text(
+                            shortPath(data.cwd),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ClawdSubtleDark,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
 
                 // Expand trigger
                 if (hasEvents) {
-                    Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -410,12 +482,12 @@ private fun SessionCard(session: Session) {
                             imageVector = if (expanded) ClawdIcons.Collapse else ClawdIcons.Expand,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = ClawdTextTertiary
+                            tint = ClawdSubtleDark
                         )
                         Text(
                             "最近事件 (${data.recentEvents.size})",
                             style = MaterialTheme.typography.labelSmall,
-                            color = ClawdTextTertiary
+                            color = ClawdSubtleDark
                         )
                     }
 
@@ -429,13 +501,12 @@ private fun SessionCard(session: Session) {
                 }
 
                 // Updated time
-                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(ClawdIcons.Clock, contentDescription = null, modifier = Modifier.size(12.dp), tint = ClawdTextTertiary)
-                    Text(formatAgo(data.updatedAt), style = MaterialTheme.typography.labelSmall, color = ClawdTextTertiary)
+                    Icon(ClawdIcons.Clock, contentDescription = null, modifier = Modifier.size(12.dp), tint = ClawdSubtleDark)
+                    Text(formatAgo(data.updatedAt), style = MaterialTheme.typography.labelSmall, color = ClawdSubtleDark)
                 }
             }
         }
@@ -467,14 +538,14 @@ private fun EventTimeline(events: List<RecentEvent>) {
                 Text(
                     Session.eventLabel(event.event),
                     style = MaterialTheme.typography.bodySmall,
-                    color = ClawdTextSecondary,
+                    color = ClawdMutedDark,
                     modifier = Modifier.weight(1f)
                 )
                 // Time
                 Text(
                     formatAgo(event.at),
                     style = MaterialTheme.typography.labelSmall,
-                    color = ClawdTextTertiary
+                    color = ClawdSubtleDark
                 )
             }
         }

@@ -4,24 +4,24 @@
   // === 常量 ===
 
   var STATE_CONFIG = {
-    error:        { icon: "error",        color: "#d63031", priority: 0, label: "错误" },
-    attention:    { icon: "attention",    color: "#e17055", priority: 1, label: "需要关注" },
-    working:      { icon: "working",      color: "#6c5ce7", priority: 2, label: "工作中" },
-    juggling:     { icon: "juggling",     color: "#a29bfe", priority: 2, label: "多任务" },
-    thinking:     { icon: "thinking",     color: "#0984e3", priority: 3, label: "思考中" },
-    notification: { icon: "notification", color: "#00cec9", priority: 4, label: "通知" },
-    sweeping:     { icon: "sweeping",     color: "#636e72", priority: 5, label: "清理中" },
-    carrying:     { icon: "carrying",     color: "#636e72", priority: 5, label: "搬运中" },
-    idle:         { icon: "idle",         color: "#b2bec3", priority: 6, label: "空闲" },
-    sleeping:     { icon: "sleeping",     color: "#2d3436", priority: 7, label: "休眠" },
+    error:        { icon: "error",        color: "#ef4444", priority: 0, label: "错误" },
+    attention:    { icon: "attention",    color: "#b45309", priority: 1, label: "需要关注" },
+    working:      { icon: "working",      color: "#16803c", priority: 2, label: "工作中" },
+    juggling:     { icon: "juggling",     color: "#16803c", priority: 2, label: "多任务" },
+    thinking:     { icon: "thinking",     color: "#3b82f6", priority: 3, label: "思考中" },
+    notification: { icon: "notification", color: "#d97757", priority: 4, label: "通知" },
+    sweeping:     { icon: "sweeping",     color: "#71717a", priority: 5, label: "清理中" },
+    carrying:     { icon: "carrying",     color: "#71717a", priority: 5, label: "搬运中" },
+    idle:         { icon: "idle",         color: "#71717a", priority: 6, label: "空闲" },
+    sleeping:     { icon: "sleeping",     color: "#a1a1aa", priority: 7, label: "休眠" },
   };
 
   var CONNECTION_STATES = {
-    connected:    { dot: "connected", text: "已连接", color: "#00b894" },
-    connecting:   { dot: "connecting", text: "连接中...", color: "#fdcb6e" },
-    reconnecting: { dot: "reconnecting", text: "重连中...", color: "#e17055" },
-    disconnected: { dot: "", text: "未连接", color: "#636e72" },
-    auth_failed:  { dot: "", text: "认证失败", color: "#d63031" },
+    connected:    { dot: "connected", text: "已连接", color: "#16803c" },
+    connecting:   { dot: "connecting", text: "连接中...", color: "#b45309" },
+    reconnecting: { dot: "reconnecting", text: "重连中...", color: "#ef4444" },
+    disconnected: { dot: "", text: "未连接", color: "#71717a" },
+    auth_failed:  { dot: "", text: "认证失败", color: "#ef4444" },
   };
 
   var STALE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -37,13 +37,6 @@
 
   function icon(name) {
     return (typeof ICONS !== "undefined" && ICONS[name]) || "";
-  }
-
-  function stateIcon(stateName) {
-    var cfg = STATE_CONFIG[stateName];
-    if (!cfg) return "";
-    var svg = icon(cfg.icon);
-    return '<span class="state-icon" style="color:' + cfg.color + '">' + svg + '</span>';
   }
 
   function shortPath(p) {
@@ -381,7 +374,7 @@
     _saveToHistory(config) {
       var history = [];
       try { history = JSON.parse(localStorage.getItem("clawd-history") || "[]"); } catch {}
-      var entry = { host: config.host, port: config.port, timestamp: Date.now() };
+      var entry = { host: config.host, port: config.port, token: config.token, timestamp: Date.now() };
       var filtered = history.filter(function(h) {
         return h.host !== config.host || h.port !== config.port;
       });
@@ -487,29 +480,36 @@
       var isExpanded = this.expandedSet.has(sid);
       var events = (s.recentEvents || []);
       var hasEvents = events.length > 0;
+      var isActive = s.state === "working" || s.state === "thinking" || s.state === "juggling";
 
-      var html = '<div class="session-card" style="border-left: 3px solid ' + config.color + '">';
+      var html = '<div class="session-card" data-sid="' + sid + '">';
 
-      // header
-      html += '<div class="session-header">';
-      html += stateIcon(s.state);
-      html += '<span class="agent-id">' + esc(s.agentId || "unknown") + '</span>';
+      // state dot (7px)
+      html += '<div class="state-dot" style="background:' + config.color +
+        (isActive ? ';animation:pulse 2s infinite' : '') + '"></div>';
+
+      // main content
+      html += '<div class="main">';
+
+      // title
+      html += '<div class="session-title">' + esc(s.sessionTitle || s.agentId || sid) + '</div>';
+
+      // meta row
+      html += '<div class="meta">';
+      if (s.agentId) {
+        html += '<span class="agent-id">' + esc(s.agentId) + '</span>';
+      }
       html += '<span class="state-label" style="color:' + config.color + '">' + config.label + '</span>';
       html += '</div>';
 
-      // title
-      if (s.sessionTitle) {
-        html += '<div class="session-title">' + esc(s.sessionTitle) + '</div>';
-      }
-
-      // tool
+      // tool info
       if (s.toolName) {
-        html += '<div class="tool-info">' + icon("tool") + ' ' + esc(s.toolName) + '</div>';
+        html += '<div class="tool-info">' + icon("tool") + '<span>' + esc(s.toolName) + '</span></div>';
       }
 
       // cwd
       if (s.cwd) {
-        html += '<div class="cwd">' + icon("folder") + ' ' + esc(shortPath(s.cwd)) + '</div>';
+        html += '<div class="cwd">' + icon("folder") + '<span>' + esc(shortPath(s.cwd)) + '</span></div>';
       }
 
       // expand trigger
@@ -525,10 +525,28 @@
         }
       }
 
+      // output panel
+      html += this._renderOutputPanel(sid);
+
       // footer
       html += '<div class="session-footer">' + icon("clock") + ' ' + ago + '</div>';
-      html += '</div>';
+      html += '</div>'; // .main
+      html += '</div>'; // .session-card
       return html;
+    }
+
+    _renderOutputPanel(sid) {
+      var outputs = window._clawdApp ? window._clawdApp._outputs[sid] : null;
+      if (!outputs || outputs.length === 0) return '';
+      var html = '<div class="output-panel">';
+      outputs.forEach(function(o) {
+        html += '<div class="output-entry">' +
+          '<span class="output-time">' + formatAgo(o.at) + '</span>' +
+          '<span class="tool-name">' + esc(o.toolName || '') + '</span>: ' +
+          '<span>' + esc((o.output || '').substring(0, 200)) + '</span>' +
+        '</div>';
+      });
+      return html + '</div>';
     }
 
     _renderEventHistory(events) {
@@ -673,17 +691,31 @@
       );
       this.approval = new ApprovalManager();
       this.notifier = new NotificationManager();
+      this._outputs = {};
 
       window._clawdApp = this;
 
       this._bindEvents();
       this._bindConnection();
       this._bindApproval();
+      this._initThemeColor();
       this.renderer.startStaleCleanup();
 
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/mobile/sw.js").catch(function() {});
       }
+    }
+
+    _initThemeColor() {
+      // Set theme-color based on color scheme
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (!meta) return;
+      var darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      function update() {
+        meta.setAttribute("content", darkQuery.matches ? "#1c1c1f" : "#f5f5f7");
+      }
+      update();
+      darkQuery.addEventListener("change", update);
     }
 
     _bindEvents() {
@@ -701,6 +733,18 @@
         document.getElementById("log-panel").classList.toggle("collapsed");
       });
 
+      // Copy buttons in settings
+      document.querySelectorAll(".copy-btn").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+          var field = btn.getAttribute("data-copy");
+          var text = document.getElementById("info-" + field).textContent;
+          navigator.clipboard.writeText(text).then(function() {
+            btn.textContent = "已复制";
+            setTimeout(function() { btn.textContent = "复制"; }, 1500);
+          });
+        });
+      });
+
       this.scanner.onResult = function(info) {
         self._closeScanner();
         self.connection.connect(info);
@@ -716,12 +760,7 @@
       var self = this;
 
       this.connection.onStateChange = function(state) {
-        var config = CONNECTION_STATES[state] || CONNECTION_STATES.disconnected;
-        var dot = document.getElementById("status-dot");
-        var text = document.getElementById("status-text");
-        dot.className = "status-dot " + config.dot;
-        text.textContent = config.text;
-
+        self._updateFloatingHeader(state);
         if (state === "connected") {
           self.notifier.requestPermission();
         }
@@ -734,6 +773,16 @@
         } else if (msg.type === "state") {
           self.renderer.updateState(msg.sessionId, msg.data);
           self.notifier.onStateChange(msg.sessionId, msg.data);
+        } else if (msg.type === "tool_output") {
+          var sid = msg.sessionId;
+          if (!self._outputs[sid]) self._outputs[sid] = [];
+          self._outputs[sid].unshift({
+            at: msg.timestamp || Date.now(),
+            toolName: msg.data.toolName,
+            output: msg.data.output
+          });
+          if (self._outputs[sid].length > 20) self._outputs[sid].pop();
+          self.renderer.render();
         } else if (msg.type === "permission_request") {
           self.approval.showRequest({ type: "permission_request", requestId: msg.requestId, data: msg.data || msg });
           self.notifier.onApprovalNeeded(msg.data || msg);
@@ -742,6 +791,20 @@
           self.notifier.onApprovalNeeded(msg.data || msg);
         }
       };
+    }
+
+    _updateFloatingHeader(state) {
+      var config = CONNECTION_STATES[state] || CONNECTION_STATES.disconnected;
+      var dot = document.getElementById("status-dot");
+      var label = document.getElementById("host-label");
+
+      dot.className = "status-dot " + config.dot;
+
+      if (state === "connected" && this.connection.config) {
+        label.textContent = this.connection.config.host + ":" + this.connection.config.port;
+      } else {
+        label.textContent = "";
+      }
     }
 
     _bindApproval() {
@@ -776,6 +839,17 @@
         document.getElementById("input-port").value = this.connection.config.port || "";
         document.getElementById("input-token").value = this.connection.config.token || "";
       }
+
+      // Show connection info
+      var info = document.getElementById("current-info");
+      if (this.connection.config && this.connection.state === "connected") {
+        info.style.display = "block";
+        document.getElementById("info-host").textContent = this.connection.config.host;
+        document.getElementById("info-port").textContent = this.connection.config.port;
+        document.getElementById("info-token").textContent = this.connection.config.token;
+      } else {
+        info.style.display = "none";
+      }
     }
 
     _closeSettings() {
@@ -805,7 +879,7 @@
       }
 
       var self = this;
-      var html = '<h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-secondary)">连接历史</h4>';
+      var html = '<h4 style="margin:16px 0 8px;font-size:14px;color:var(--muted)">连接历史</h4>';
       history.forEach(function(h, i) {
         var ago = formatAgo(h.timestamp);
         html += '<div class="history-item">';
