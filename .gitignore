@@ -108,3 +108,10 @@ scripts/*
 
 # Cursor local config (MCP, rules from omc setup)
 .cursor/
+
+# Android build artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.hprof
