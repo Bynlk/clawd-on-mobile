@@ -29,8 +29,9 @@
     // Section 3: 设置
     parent.appendChild(buildSettingsSection());
 
-    // 加载 QR 码
+    // 加载 QR 码和状态
     loadQrCode();
+    loadStatus();
   }
 
   function buildQrSection() {
@@ -61,27 +62,6 @@
     qrRow.appendChild(qrContainer);
     qrRow.appendChild(info);
     rows.push(qrRow);
-
-    // 按钮行
-    var btnRow = document.createElement("div");
-    btnRow.className = "row";
-    btnRow.style.justifyContent = "center";
-    btnRow.style.gap = "12px";
-    btnRow.style.padding = "12px 16px";
-
-    var copyBtn = document.createElement("button");
-    copyBtn.className = "soft-btn";
-    copyBtn.textContent = t("mobileCopyInfo");
-    copyBtn.addEventListener("click", copyConnectionInfo);
-
-    var refreshBtn = document.createElement("button");
-    refreshBtn.className = "soft-btn accent";
-    refreshBtn.textContent = t("mobileRefreshToken");
-    refreshBtn.addEventListener("click", refreshToken);
-
-    btnRow.appendChild(copyBtn);
-    btnRow.appendChild(refreshBtn);
-    rows.push(btnRow);
 
     return helpers.buildSection(t("mobileQrSection"), rows);
   }
@@ -118,6 +98,17 @@
     listRow.appendChild(deviceList);
     rows.push(listRow);
 
+    // 连接历史
+    var historyRow = document.createElement("div");
+    historyRow.className = "row";
+    historyRow.style.flexDirection = "column";
+    historyRow.style.padding = "0";
+    var historyList = document.createElement("div");
+    historyList.id = "mobile-history-list";
+    historyList.style.cssText = "width:100%;max-height:200px;overflow-y:auto;";
+    historyRow.appendChild(historyList);
+    rows.push(historyRow);
+
     return helpers.buildSection(t("mobileStatusSection"), rows);
   }
 
@@ -149,8 +140,6 @@
     maxRow.appendChild(maxControl);
     rows.push(maxRow);
 
-    // 远程审批开关（已移除 — permission.js 自动根据移动端连接状态路由）
-
     return helpers.buildSection(t("mobileSettingsSection"), rows);
   }
 
@@ -158,17 +147,7 @@
 
   function loadQrCode() {
     if (!window.settingsAPI) return;
-    // 并行获取状态和 QR data URL
-    var statusPromise = window.settingsAPI.mobileGetStatus ? window.settingsAPI.mobileGetStatus() : Promise.resolve(null);
     var qrPromise = window.settingsAPI.mobileGetQrDataUrl ? window.settingsAPI.mobileGetQrDataUrl() : Promise.resolve(null);
-
-    statusPromise.then(function(status) {
-      if (!status) return;
-      var info = document.getElementById("mobile-connection-info");
-      if (info && status.ip && status.port) {
-        info.innerHTML = helpers.escapeHtml(status.ip) + ":" + helpers.escapeHtml(String(status.port)) + '<br>Token: <span style="color:var(--accent)">' + helpers.escapeHtml(status.token || "") + "</span>";
-      }
-    }).catch(function() {});
 
     qrPromise.then(function(result) {
       var img = document.getElementById("mobile-qr-image");
@@ -183,6 +162,83 @@
     });
   }
 
+  // === 状态加载 ===
+
+  function loadStatus() {
+    if (!window.settingsAPI || !window.settingsAPI.mobileGetStatus) return;
+    window.settingsAPI.mobileGetStatus().then(function(status) {
+      if (!status) return;
+
+      // 更新连接信息
+      var info = document.getElementById("mobile-connection-info");
+      if (info && status.ip && status.port) {
+        info.innerHTML = helpers.escapeHtml(status.ip) + ":" + helpers.escapeHtml(String(status.port));
+      }
+
+      // 更新状态
+      updateStatusDisplay(status);
+    }).catch(function() {});
+  }
+
+  function updateStatusDisplay(status) {
+    var statusEl = document.getElementById("mobile-ws-status");
+    if (statusEl) {
+      statusEl.textContent = status.enabled ? (status.clients && status.clients.length > 0 ? "Connected" : "Listening") : "Disabled";
+    }
+
+    var countEl = document.getElementById("mobile-device-count");
+    if (countEl) {
+      countEl.textContent = status.clients ? status.clients.length : 0;
+    }
+
+    var listEl = document.getElementById("mobile-device-list");
+    if (listEl && status.clients) {
+      renderDeviceList(listEl, status.clients);
+    }
+
+    var historyEl = document.getElementById("mobile-history-list");
+    if (historyEl && status.connectionHistory && status.connectionHistory.length > 0) {
+      renderHistoryList(historyEl, status.connectionHistory);
+    }
+  }
+
+  function renderDeviceList(listEl, clients) {
+    if (clients.length === 0) {
+      listEl.innerHTML = '<div style="padding:12px 16px;color:var(--text-tertiary);font-size:12px;text-align:center;">No devices connected</div>';
+      return;
+    }
+    listEl.innerHTML = clients.map(function(c) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid var(--row-border);font-size:12px;">' +
+        '<span>' + helpers.escapeHtml(c.ip || "--") + '</span>' +
+        '<span style="color:var(--text-tertiary)">' + formatTime(c.connectedAt) + '</span>' +
+        '<button class="soft-btn" onclick="window.settingsAPI.mobileDisconnectClient(\'' + helpers.escapeHtml(c.id) + '\')">' + helpers.escapeHtml(t("mobileDisconnect")) + '</button>' +
+        '</div>';
+    }).join("");
+  }
+
+  function renderHistoryList(historyEl, history) {
+    // Show last 10 unique devices
+    var seen = {};
+    var unique = [];
+    for (var i = history.length - 1; i >= 0 && unique.length < 10; i--) {
+      var h = history[i];
+      var key = h.ip;
+      if (!seen[key]) {
+        seen[key] = true;
+        unique.push(h);
+      }
+    }
+    if (unique.length === 0) return;
+
+    var header = '<div style="padding:8px 16px;font-size:11px;color:var(--text-tertiary);border-bottom:1px solid var(--row-border);">Recent devices</div>';
+    historyEl.innerHTML = header + unique.map(function(h) {
+      return '<div style="display:flex;justify-content:space-between;padding:6px 16px;font-size:11px;color:var(--text-tertiary);">' +
+        '<span>' + helpers.escapeHtml(h.ip || "--") + '</span>' +
+        '<span>' + formatTime(h.connectedAt) + '</span>' +
+        '</div>';
+    }).join("");
+  }
+
   function showQrFallback() {
     var img = document.getElementById("mobile-qr-image");
     if (img) img.style.display = "none";
@@ -193,30 +249,9 @@
     }
   }
 
-  function copyConnectionInfo() {
-    if (window.settingsAPI && window.settingsAPI.mobileGetStatus) {
-      window.settingsAPI.mobileGetStatus().then(function(status) {
-        if (!status) return;
-        var text = "clawd://" + (status.ip || "") + ":" + (status.port || "") + "/" + (status.token || "");
-        navigator.clipboard.writeText(text).then(function() {
-          showToast(t("mobileCopied"));
-        });
-      });
-    }
-  }
+  // === 状态更新 (from settings-changed broadcast) ===
 
-  function refreshToken() {
-    if (window.settingsAPI && window.settingsAPI.mobileRefreshToken) {
-      window.settingsAPI.mobileRefreshToken().then(function() {
-        loadQrCode();
-        showToast(t("mobileTokenRefreshed"));
-      });
-    }
-  }
-
-  // === 状态更新 ===
-
-  function patchInPlace(changes, ctx) {
+  function patchInPlace(changes) {
     // 更新连接状态
     var statusEl = document.getElementById("mobile-ws-status");
     if (statusEl && changes.mobileStatus) {
@@ -228,15 +263,9 @@
     if (changes.mobileClients && countEl && listEl) {
       var clients = changes.mobileClients;
       countEl.textContent = clients.length;
-      listEl.innerHTML = clients.map(function(c) {
-        return '<div style="display:flex;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--row-border);font-size:12px;">' +
-          '<span>' + helpers.escapeHtml(c.ip || "--") + '</span>' +
-          '<span style="color:var(--text-tertiary)">' + formatTime(c.connectedAt) + '</span>' +
-          '<button class="soft-btn" onclick="window.settingsAPI.mobileDisconnectClient(\'' + helpers.escapeHtml(c.id) + '\')">' + helpers.escapeHtml(t("mobileDisconnect")) + '</button>' +
-          '</div>';
-      }).join("");
+      renderDeviceList(listEl, clients);
     }
-    return false; // 不阻止默认渲染
+    return false;
   }
 
   function onExit() {}
@@ -245,10 +274,6 @@
     if (!ts) return "--";
     var d = new Date(ts);
     return d.getHours().toString().padStart(2, "0") + ":" + d.getMinutes().toString().padStart(2, "0");
-  }
-
-  function showToast(msg) {
-    if (helpers.showToast) helpers.showToast(msg);
   }
 
   root.ClawdSettingsTabMobile = { init: init };
