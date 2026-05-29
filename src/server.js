@@ -401,7 +401,7 @@ function startHttpServer() {
 
   mobileWS = new MobileWSServer(httpServer, {
     token: MOBILE_TOKEN,
-    maxClients: 10,
+    maxClients: savedState.mobileMaxClients || 10,
     heartbeatIntervalMs: 30000,
   });
 
@@ -532,6 +532,7 @@ return {
   getMobileToken: () => MOBILE_TOKEN,
   getMobileApprovalClient: () => mobileApprovalClient,
   getHookServerPort: () => activeServerPort,
+  saveMobileState,
 };
 
 };

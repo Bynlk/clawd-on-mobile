@@ -1369,7 +1369,7 @@ const _serverCtx = {
   permLog,
 };
 const _server = require("./server")(_serverCtx);
-const { startHttpServer, getHookServerPort, getMobileWS, getMobileToken, getMobileApprovalClient } = _server;
+const { startHttpServer, getHookServerPort, getMobileWS, getMobileToken, getMobileApprovalClient, saveMobileState } = _server;
 
 function updateLog(msg) {
   if (!updateDebugLog) return;
@@ -2199,6 +2199,7 @@ const SETTINGS_MIRROR_SETTERS = {
   detachedIdleStaleMs: (v) => { detachedIdleStaleMs = v; },
   soundMuted: (v) => { soundMuted = v; }, soundVolume: (v) => { soundVolume = v; }, lowPowerIdleMode: (v) => { lowPowerIdleMode = v; },
   allowEdgePinning: (v) => { allowEdgePinningCached = v; }, keepSizeAcrossDisplays: (v) => { keepSizeAcrossDisplaysCached = v; },
+  mobileMaxClients: (v) => { const ws = getMobileWS(); if (ws && ws.setMaxClients) ws.setMaxClients(v); saveMobileState({ mobileMaxClients: v }); },
 };
 
 function updateSettingsMirrors(changes) { for (const [key, value] of Object.entries(changes)) if (SETTINGS_MIRROR_SETTERS[key]) SETTINGS_MIRROR_SETTERS[key](value); }

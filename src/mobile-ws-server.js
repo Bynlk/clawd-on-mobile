@@ -206,6 +206,12 @@ class MobileWSServer extends EventEmitter {
     }
   }
 
+  setMaxClients(max) {
+    if (typeof max === "number" && max >= 1 && max <= 10) {
+      this.maxClients = max;
+    }
+  }
+
   disconnectClient(clientId) {
     for (const ws of this.clients) {
       const meta = this.clientMeta.get(ws);
