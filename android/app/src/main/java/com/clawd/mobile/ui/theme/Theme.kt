@@ -10,6 +10,15 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+private fun findActivity(context: android.content.Context): Activity? {
+    var ctx = context
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
 private val DarkColorScheme = darkColorScheme(
     primary = ClawdAccent,
     onPrimary = Color.White,
@@ -58,7 +67,7 @@ fun ClawdMobileTheme(
 
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
+            val window = findActivity(view.context)?.window ?: return@SideEffect
             window.statusBarColor = (if (darkTheme) ClawdBackgroundDark else ClawdBackground).toArgb()
             window.navigationBarColor = (if (darkTheme) ClawdBackgroundDark else ClawdBackground).toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme

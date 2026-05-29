@@ -87,7 +87,7 @@ fun SessionsScreen(
     }
 
     // Bottom nav selected tab
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableStateOf(0) }
 
     // Reset tab to "会话" when screen resumes (e.g. returning from scan/manual)
     LaunchedEffect(Unit) {
