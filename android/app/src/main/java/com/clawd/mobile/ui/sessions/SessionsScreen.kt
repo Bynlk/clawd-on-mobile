@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,26 +30,12 @@ import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.data.RecentEvent
 import com.clawd.mobile.data.Session
 import com.clawd.mobile.data.SessionData
+import com.clawd.mobile.data.parseHexColor
 import com.clawd.mobile.ui.approval.ApprovalViewModel
 import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ws.ConnectionState
 import com.clawd.mobile.ws.ClawdWebSocket
-
-/** Resolve iconKey to ImageVector */
-private fun iconFor(key: String): ImageVector = when (key) {
-    "error" -> ClawdIcons.Error
-    "attention" -> ClawdIcons.Attention
-    "working" -> ClawdIcons.Working
-    "juggling" -> ClawdIcons.Juggling
-    "thinking" -> ClawdIcons.Thinking
-    "notification" -> ClawdIcons.Notification
-    "sweeping" -> ClawdIcons.Sweeping
-    "carrying" -> ClawdIcons.Carrying
-    "idle" -> ClawdIcons.Idle
-    "sleeping" -> ClawdIcons.Sleeping
-    else -> ClawdIcons.Idle
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,8 +54,8 @@ fun SessionsScreen(
 
     val sessions = remember(sessionsMap) {
         sessionsMap.map { (id, data) -> Session(id, data) }
-            .filter { it.effectiveState !in listOf("sleeping", "sweeping") }
-            .sortedWith(compareBy<Session> { it.stateConfig.priority.toLong() }
+            .filter { it.data.isVisible }
+            .sortedWith(compareBy<Session> { Session.STATE_PRIORITY[it.data.state] ?: 6 }
                 .thenByDescending { it.data.updatedAt ?: 0L })
     }
 
@@ -307,7 +292,6 @@ private fun SectionLabel(title: String, count: Int) {
 @Composable
 private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modifier = Modifier) {
     val data = session.data
-    val badge = session.badge
     var expanded by remember { mutableStateOf(false) }
     val hasEvents = data.recentEvents.isNotEmpty()
 
@@ -315,22 +299,16 @@ private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modi
     var showRenameDialog by remember { mutableStateOf(false) }
     var customName by remember { mutableStateOf(prefsStore.getSessionName(session.id) ?: "") }
 
-    // Resolve display name: custom > sessionTitle > agentId
+    // Display name: custom > desktop-provided displayTitle > agentId
     val displayName = customName.ifBlank { null }
-        ?: data.sessionTitle
+        ?: data.displayTitle
         ?: data.agentId
         ?: ""
 
-    // State chip: recentEvent takes priority, then state
-    val chipInfo = deriveChipInfo(data)
-
-    // Status dot color (matching PC HUD badge colors)
-    val dotColor = when (badge) {
-        "running" -> ClawdGreenBright
-        "interrupted" -> Color(0xFFEF4444)
-        "done" -> ClawdMutedDark
-        else -> ClawdFaintDark
-    }
+    // All visual state from desktop — zero inference
+    val chipText = data.chipText
+    val chipColor = parseHexColor(data.chipColor) ?: ClawdMutedDark
+    val dotColor = parseHexColor(data.dotColor) ?: ClawdSubtleDark
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -363,17 +341,17 @@ private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modi
                         .padding(start = 8.dp)
                         .weight(1f, fill = false)
                 )
-                // State chip (matches PC HUD state chip)
-                if (chipInfo != null) {
+                // State chip — from desktop, direct mapping
+                if (chipText != null) {
                     Text(
-                        text = chipInfo.label,
+                        text = chipText,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        color = chipInfo.color,
+                        color = chipColor,
                         modifier = Modifier
                             .padding(start = 6.dp)
-                            .border(0.5.dp, chipInfo.color.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-                            .background(chipInfo.color.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, chipColor.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                            .background(chipColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -407,7 +385,7 @@ private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modi
                         OutlinedTextField(
                             value = editName,
                             onValueChange = { editName = it },
-                            placeholder = { Text(data.sessionTitle ?: data.agentId ?: "", color = ClawdFaintDark) },
+                            placeholder = { Text(data.displayTitle ?: data.agentId ?: "", color = ClawdFaintDark) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = ClawdTextDark,
@@ -544,6 +522,19 @@ private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modi
 
 // ─── Event Timeline ───────────────────────────────────────────────
 
+private val EVENT_STATE_COLORS = mapOf(
+    "error" to Color(0xFFEF4444),
+    "attention" to Color(0xFFB45309),
+    "working" to Color(0xFF16A34A),
+    "juggling" to Color(0xFFB45309),
+    "thinking" to Color(0xFF6366F1),
+    "notification" to Color(0xFFB45309),
+    "sweeping" to Color(0xFF71717A),
+    "carrying" to Color(0xFF71717A),
+    "idle" to Color(0xFF71717A),
+    "sleeping" to Color(0xFFA1A1AA),
+)
+
 @Composable
 private fun EventTimeline(events: List<RecentEvent>) {
     Column(
@@ -551,7 +542,7 @@ private fun EventTimeline(events: List<RecentEvent>) {
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         events.forEach { event ->
-            val eventConfig = Session.STATE_CONFIG[event.state] ?: Session.STATE_CONFIG["idle"]!!
+            val eventColor = EVENT_STATE_COLORS[event.state] ?: EVENT_STATE_COLORS["idle"]!!
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -561,7 +552,7 @@ private fun EventTimeline(events: List<RecentEvent>) {
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(Color(eventConfig.color))
+                        .background(eventColor)
                 )
                 Text(
                     Session.eventLabel(event.event),
@@ -757,8 +748,13 @@ private fun ApprovalSheet(
                     Text(option.label, modifier = Modifier.padding(vertical = 4.dp))
                 }
             }
-        } else if (request.suggestions.isNotEmpty() && request.suggestions.all { it.label.isNotBlank() }) {
+        }
+
+        val hasSuggestions = request.suggestions.isNotEmpty() && request.suggestions.all { it.label.isNotBlank() }
+
+        if (hasSuggestions) {
             request.suggestions.forEachIndexed { index, suggestion ->
+                val isAutoAccept = suggestion.mode == "acceptEdits" || suggestion.label.contains("accept", ignoreCase = true)
                 val isAllow = suggestion.behavior == "allow"
                 Button(
                     onClick = { onSuggestion(requestId, index) },
@@ -766,8 +762,16 @@ private fun ApprovalSheet(
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isAllow) ClawdGreenBright.copy(alpha = 0.15f) else ClawdError.copy(alpha = 0.15f),
-                        contentColor = if (isAllow) ClawdGreenBright else ClawdError
+                        containerColor = when {
+                            isAutoAccept -> Color(0xFF52525B).copy(alpha = 0.15f)
+                            isAllow -> ClawdGreenBright.copy(alpha = 0.15f)
+                            else -> ClawdError.copy(alpha = 0.15f)
+                        },
+                        contentColor = when {
+                            isAutoAccept -> Color(0xFF71717A)
+                            isAllow -> ClawdGreenBright
+                            else -> ClawdError
+                        }
                     ),
                     shape = RoundedCornerShape(10.dp)
                 ) {
@@ -856,7 +860,7 @@ private fun resolveSessionName(
     if (sessionId == null) return null
     prefsStore.getSessionName(sessionId)?.let { return it }
     sessionsMap[sessionId]?.let { data ->
-        data.sessionTitle?.let { return it }
+        data.displayTitle?.let { return it }
         data.agentId?.let { return it }
     }
     return sessionId
@@ -870,49 +874,5 @@ private fun formatAgo(ts: Long?): String {
         sec < 60 -> "${sec}秒前"
         sec < 3600 -> "${sec / 60}分钟前"
         else -> "${sec / 3600}小时前"
-    }
-}
-
-private data class ChipInfo(val label: String, val color: Color)
-
-private val ONESHOT_STATES = setOf("attention", "error", "sweeping", "notification", "carrying")
-
-/** Derive state chip matching PC HUD stateChipInfo():
- *  Uses displayState (server-resolved visual state) with fallback to state.
- *  Oneshot states in displayState are normalized to "idle" for chip logic.
- */
-private fun deriveChipInfo(data: SessionData): ChipInfo? {
-    val visual = data.displayState ?: data.state
-    val effectiveState = if (visual in ONESHOT_STATES) "idle" else visual
-    val lastEvent = data.recentEvents.lastOrNull()?.event
-
-    // Effective idle → check lastEvent for done/interrupted chip
-    if (effectiveState == "idle") {
-        return when (lastEvent) {
-            "StopFailure", "PostToolUseFailure", "ApiError" -> ChipInfo("出错", Color(0xFFEF4444))
-            "Stop", "PostCompact", "event_msg:task_complete" -> null // done = no chip
-            else -> null
-        }
-    }
-
-    // Active state → event-based chips take priority
-    if (lastEvent != null) {
-        when (lastEvent) {
-            "PreCompact", "PreCompress" -> return ChipInfo("清理中", ClawdMutedDark)
-            "PermissionRequest", "Elicitation", "Notification" -> return ChipInfo("等待中", ClawdAccent)
-            "WorktreeCreate" -> return ChipInfo("工作树", ClawdBlue)
-        }
-    }
-
-    // State-based chips (use visual state for correct label)
-    return when (visual) {
-        "working" -> ChipInfo("工作中", ClawdGreenBright)
-        "juggling" -> ChipInfo("多任务", ClawdAccent)
-        "thinking" -> ChipInfo("思考中", ClawdBlue)
-        "notification" -> ChipInfo("通知", ClawdAccent)
-        "attention" -> ChipInfo("需要关注", Color(0xFFB45309))
-        "error" -> ChipInfo("错误", Color(0xFFEF4444))
-        "sweeping" -> ChipInfo("清理中", ClawdMutedDark)
-        else -> null
     }
 }

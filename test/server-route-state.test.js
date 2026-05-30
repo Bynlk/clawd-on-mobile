@@ -178,6 +178,57 @@ describe("server-route-state POST", () => {
     assert.deepStrictEqual(res.calls.updateSession, []);
   });
 
+  it("uses hook state for mobile incremental badge when existing session is stored as idle", async () => {
+    const sessions = new Map([
+      ["sid", {
+        state: "idle",
+        agentId: "claude-code",
+        recentEvents: [{ event: "SessionStart", state: "idle", at: 1 }],
+        updatedAt: 1,
+      }],
+    ]);
+    const mobileStates = [];
+    const mobileHooks = [];
+
+    const res = await callStatePost(JSON.stringify({
+      state: "attention",
+      session_id: "sid",
+      event: "PermissionRequest",
+      agent_id: "claude-code",
+    }), {
+      ctx: {
+        sessions,
+        updateSession: (sid, state, event, opts) => {
+          const session = sessions.get(sid);
+          session.state = "idle";
+          session.agentId = opts.agentId;
+          session.recentEvents = [
+            ...session.recentEvents,
+            { event, state, at: 2 },
+          ];
+          session.updatedAt = 2;
+        },
+        resolveDisplayState: () => "attention",
+      },
+      options: {
+        mobileWS: {
+          broadcastState: (sid, payload) => mobileStates.push({ sid, payload }),
+        },
+        broadcastHookEvent: (payload) => mobileHooks.push(payload),
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(mobileStates.length, 1);
+    assert.strictEqual(mobileStates[0].payload.state, "idle");
+    assert.strictEqual(mobileStates[0].payload.badge, "done");
+    assert.strictEqual(mobileStates[0].payload.dotColor, "#71717a");
+    assert.strictEqual(mobileHooks.length, 1);
+    assert.strictEqual(mobileHooks[0].state, "idle");
+    assert.strictEqual(mobileHooks[0].badge, "done");
+    assert.strictEqual(mobileHooks[0].dotColor, "#71717a");
+  });
+
   it("returns 400 for mini states without an svg override", async () => {
     const res = await callStatePost(JSON.stringify({
       state: "mini-idle",

@@ -73,6 +73,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         eventSource = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _sessions.value = emptyMap()
+        _displayState.value = "idle"
     }
 
     private fun resetWatchdog() {
@@ -147,7 +148,10 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 }
                 val map = mutableMapOf<String, SessionData>()
                 for ((sid, el) in sessionsObj) {
-                    try { map[sid] = json.decodeFromJsonElement<SessionData>(el) } catch (_: Exception) {}
+                    try {
+                        val sd = json.decodeFromJsonElement<SessionData>(el)
+                        if (sd.isReal && sd.isVisible) map[sid] = sd
+                    } catch (_: Exception) {}
                 }
                 obj["displayState"]?.jsonPrimitive?.contentOrNull?.let {
                     _displayState.value = it
@@ -159,6 +163,8 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
 
             "state" -> {
                 val sid = obj["sessionId"]?.jsonPrimitive?.contentOrNull ?: return
+                val isReal = obj["isReal"]?.jsonPrimitive?.booleanOrNull ?: true
+                if (!isReal) return
                 val recentEvents = try {
                     obj["recentEvents"]?.jsonArray?.map { el ->
                         val o = el.jsonObject
@@ -182,19 +188,29 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                     _displayState.value = it
                 }
                 val data = SessionData(
+                    sessionId = sid,
                     state = obj["state"]?.jsonPrimitive?.contentOrNull ?: "idle",
                     event = obj["event"]?.jsonPrimitive?.contentOrNull,
                     agentId = obj["agentId"]?.jsonPrimitive?.contentOrNull,
                     toolName = obj["toolName"]?.jsonPrimitive?.contentOrNull,
                     sessionTitle = obj["sessionTitle"]?.jsonPrimitive?.contentOrNull,
+                    displayTitle = obj["displayTitle"]?.jsonPrimitive?.contentOrNull
+                        ?: obj["sessionTitle"]?.jsonPrimitive?.contentOrNull,
                     cwd = obj["cwd"]?.jsonPrimitive?.contentOrNull,
                     updatedAt = obj["timestamp"]?.jsonPrimitive?.longOrNull,
                     recentEvents = recentEvents,
                     lastOutput = lastOutput,
                     displayState = obj["displayState"]?.jsonPrimitive?.contentOrNull,
+                    badge = obj["badge"]?.jsonPrimitive?.contentOrNull ?: "idle",
+                    chipText = obj["chipText"]?.jsonPrimitive?.contentOrNull,
+                    chipColor = obj["chipColor"]?.jsonPrimitive?.contentOrNull,
+                    dotColor = obj["dotColor"]?.jsonPrimitive?.contentOrNull,
+                    isVisible = obj["isVisible"]?.jsonPrimitive?.booleanOrNull ?: true,
                 )
-                _sessions.value = _sessions.value.toMutableMap().apply { put(sid, data) }
-                Log.d("ClawdWebSocket", "state sid=$sid state=${data.state} displayState=${_displayState.value} lastEvent=${data.recentEvents.lastOrNull()?.event}")
+                _sessions.value = _sessions.value.toMutableMap().apply {
+                    if (data.isVisible) put(sid, data) else remove(sid)
+                }
+                Log.d("ClawdWebSocket", "state sid=$sid state=${data.state} displayState=${_displayState.value} badge=${data.badge} chip=${data.chipText}/${data.chipColor} dot=${data.dotColor} visible=${data.isVisible}")
             }
 
             "tool_output" -> {
@@ -350,6 +366,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         if (reconnectJob?.isActive == true) return
         _connectionState.value = ConnectionState.RECONNECTING
         _sessions.value = emptyMap()
+        _displayState.value = "idle"
         reconnectJob = scope.launch {
             delay(reconnectDelay)
             reconnectDelay = (reconnectDelay * 2).coerceAtMost(maxReconnectDelay)
