@@ -204,6 +204,9 @@ function handleStatePost(req, res, options) {
               ? session.recentEvents
               : [];
             const lastOutput = session && session.lastOutput ? session.lastOutput : null;
+            const displayState = typeof ctx.resolveDisplayState === "function"
+              ? ctx.resolveDisplayState()
+              : state;
             mobileWS.broadcastState(sid, {
               state,
               event: event,
@@ -213,9 +216,10 @@ function handleStatePost(req, res, options) {
               cwd: cwd || null,
               recentEvents,
               lastOutput,
+              displayState,
             });
             if (typeof broadcastHookEvent === "function") {
-              broadcastHookEvent({ type: "state", sessionId: sid, state, event, agentId, toolName: toolName || null, sessionTitle: sessionTitle || null, cwd: cwd || null, recentEvents, lastOutput, timestamp: Date.now() });
+              broadcastHookEvent({ type: "state", sessionId: sid, state, event, agentId, toolName: toolName || null, sessionTitle: sessionTitle || null, cwd: cwd || null, recentEvents, lastOutput, displayState, timestamp: Date.now() });
             }
 
             // Forward tool output to mobile clients

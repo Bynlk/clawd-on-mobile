@@ -1385,6 +1385,26 @@ _serverCtx.addPendingPermission = function(permEntry) {
     const id = "mobile_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
     permEntry._mobileApprovalId = id;
     console.log(`[mobile-bridge] broadcasting permission_request id=${id}`);
+    // Generate labels for mobile clients (desktop bubble-renderer does this client-side)
+    const mobileSuggestions = (permEntry.suggestions || []).map((s) => {
+      if (s.label) return s;
+      let label = "Always Allow";
+      if (s.type === "setMode") {
+        if (s.mode === "acceptEdits") label = "Auto-accept edits";
+        else if (s.mode === "plan") label = "Switch to plan mode";
+        else label = s.mode || label;
+      } else if (s.type === "addRules") {
+        const rule = Array.isArray(s.rules) && s.rules[0] ? s.rules[0] : s;
+        const rc = rule.ruleContent || s.ruleContent;
+        const tn = rule.toolName || s.toolName || "";
+        if (rc) {
+          label = rc.includes("**")
+            ? `Allow ${tn} in ${rc.split("**")[0].replace(/[\\/]$/, "").split(/[\\/]/).pop() || rc}`
+            : `Always allow: ${rc.length > 30 ? rc.slice(0, 29) + "…" : rc}`;
+        }
+      }
+      return { ...s, label };
+    });
     broadcastHookEvent({
       type: "permission_request",
       id,
@@ -1392,7 +1412,7 @@ _serverCtx.addPendingPermission = function(permEntry) {
       toolName: permEntry.toolName,
       agentId: permEntry.agentId,
       toolInput: permEntry.toolInput || null,
-      suggestions: permEntry.suggestions || [],
+      suggestions: mobileSuggestions,
       timestamp: Date.now(),
     });
     const pendingApprovals = getPendingMobileApprovals();

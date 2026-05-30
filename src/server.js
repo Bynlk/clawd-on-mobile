@@ -553,11 +553,14 @@ function startMobileServer() {
         mobileWS.registerExternalClient(sseClientId, { ip: sseClientIp, res });
         // Send current session cache to the new client so syncing state resolves
         const cache = mobileWS.getSessionCache ? mobileWS.getSessionCache() : new Map();
+        const displayState = typeof ctx.resolveDisplayState === "function"
+          ? ctx.resolveDisplayState()
+          : "idle";
         if (cache.size > 0) {
-          res.write(`data: ${JSON.stringify({ type: "snapshot", sessions: Object.fromEntries(cache), timestamp: Date.now() })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: "snapshot", sessions: Object.fromEntries(cache), displayState, timestamp: Date.now() })}\n\n`);
         } else {
           // No sessions — still resolve syncing state
-          res.write(`data: ${JSON.stringify({ type: "snapshot", sessions: {}, timestamp: Date.now() })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: "snapshot", sessions: {}, displayState, timestamp: Date.now() })}\n\n`);
         }
       }
       console.log(`[mobile-sse] Client connected (total: ${mobileSSEClients.size})`);
