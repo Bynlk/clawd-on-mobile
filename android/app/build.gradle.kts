@@ -24,7 +24,7 @@ android {
     signingConfigs {
         create("release") {
             val ks = System.getenv("KEYSTORE_FILE") ?: ""
-            storeFile = if (ks.isNotEmpty()) file(ks) else null
+            storeFile = if (ks.isNotEmpty()) rootProject.file(ks) else null
             storePassword = System.getenv("STORE_PASSWORD") ?: ""
             keyAlias = System.getenv("KEY_ALIAS") ?: ""
             keyPassword = System.getenv("KEY_PASSWORD") ?: ""
