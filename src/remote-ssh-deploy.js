@@ -49,6 +49,7 @@ const HOOK_FILES = [
   "clawd-hook.js",
   "install.js",
   "codex-hook.js",
+  "codex-assistant-output.js",
   "codex-install.js",
   "codex-install-utils.js",
   "codex-remote-monitor.js",

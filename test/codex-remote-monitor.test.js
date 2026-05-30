@@ -45,6 +45,59 @@ describe("Codex remote monitor", () => {
     assert.strictEqual(body.headless, false);
   });
 
+  it("builds state bodies with assistant output when provided", () => {
+    const body = JSON.parse(__test.buildPostStateBody(
+      "codex:s1",
+      "attention",
+      "event_msg:task_complete",
+      "/repo",
+      false,
+      "remote-box",
+      { assistantLastOutput: "Done from remote Codex.", assistantLastOutputTruncated: true }
+    ));
+
+    assert.strictEqual(body.assistant_last_output, "Done from remote Codex.");
+    assert.strictEqual(body.assistant_last_output_truncated, true);
+  });
+
+  it("carries assistant output on remote task_complete posts", () => {
+    const entry = {
+      sessionId: "codex:root",
+      cwd: "/repo",
+      isSubagent: false,
+      lastEventTime: 0,
+      lastState: null,
+    };
+    const posted = [];
+    const postState = (sessionId, state, event, cwd, isSubagent, extra) => {
+      posted.push(JSON.parse(__test.buildPostStateBody(
+        sessionId,
+        state,
+        event,
+        cwd,
+        isSubagent,
+        "remote-box",
+        extra
+      )));
+    };
+
+    __test.processLine(JSON.stringify({
+      type: "event_msg",
+      payload: { type: "task_started" },
+    }), entry, { postState });
+    __test.processLine(JSON.stringify({
+      type: "event_msg",
+      payload: { type: "agent_message", message: "Remote Codex answer" },
+    }), entry, { postState });
+    __test.processLine(JSON.stringify({
+      type: "event_msg",
+      payload: { type: "task_complete" },
+    }), entry, { postState });
+
+    const complete = posted.find((body) => body.event === "event_msg:task_complete");
+    assert.strictEqual(complete.assistant_last_output, "Remote Codex answer");
+  });
+
   it("marks subagent bodies headless and maps task_complete to idle", () => {
     const entry = {
       sessionId: "codex:sub",

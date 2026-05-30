@@ -19,6 +19,10 @@ const path = require("path");
 const os = require("os");
 const { postStateToRunningServer, readHostPrefix } = require("./server-config");
 const { classifySessionMeta } = require("./codex-subagent-fields");
+const {
+  clampAssistantOutputText,
+  extractAssistantTextFromRecord,
+} = require("./codex-assistant-output");
 
 // ── Inline config from agents/codex.js (zero-dependency requirement) ──
 
@@ -82,8 +86,8 @@ function extractSessionId(fileName) {
   return parts.slice(-5).join("-");
 }
 
-function buildPostStateBody(sessionId, state, event, cwd, isSubagent, host) {
-  return JSON.stringify({
+function buildPostStateBody(sessionId, state, event, cwd, isSubagent, host, extra = null) {
+  const body = {
     state,
     session_id: sessionId,
     event,
@@ -91,11 +95,16 @@ function buildPostStateBody(sessionId, state, event, cwd, isSubagent, host) {
     cwd: cwd || "",
     host: host || hostPrefix,
     headless: isSubagent === true,
-  });
+  };
+  if (extra && typeof extra.assistantLastOutput === "string" && extra.assistantLastOutput) {
+    body.assistant_last_output = extra.assistantLastOutput;
+    if (extra.assistantLastOutputTruncated === true) body.assistant_last_output_truncated = true;
+  }
+  return JSON.stringify(body);
 }
 
-function postState(sessionId, state, event, cwd, isSubagent) {
-  const body = buildPostStateBody(sessionId, state, event, cwd, isSubagent);
+function postState(sessionId, state, event, cwd, isSubagent, extra = null) {
+  const body = buildPostStateBody(sessionId, state, event, cwd, isSubagent, undefined, extra);
   postStateToRunningServer(
     body,
     { timeoutMs: 100, preferredPort, remote: true },
@@ -123,9 +132,20 @@ function processLine(line, entry, options = {}) {
     entry.isSubagent = classifySessionMeta(payload) === "subagent";
   }
 
+  const assistantText = extractAssistantTextFromRecord(obj);
+  if (assistantText) {
+    const assistantOutput = clampAssistantOutputText(assistantText);
+    entry.assistantLastOutput = assistantOutput ? assistantOutput.text : null;
+    entry.assistantLastOutputTruncated = !!(assistantOutput && assistantOutput.truncated);
+  }
+
   const state = LOG_EVENT_MAP[key];
   if (state === undefined || state === null) return;
   const finalState = entry.isSubagent && state === "attention" ? "idle" : state;
+  if (key === "event_msg:task_started") {
+    entry.assistantLastOutput = null;
+    entry.assistantLastOutputTruncated = false;
+  }
 
   // Avoid spamming same state — but never swallow the event when the session
   // is stale: after a "sleeping" post, the next working event must wake the pet
@@ -140,7 +160,13 @@ function processLine(line, entry, options = {}) {
   entry.stale = false;
 
   const postStateFn = typeof options.postState === "function" ? options.postState : postState;
-  postStateFn(entry.sessionId, finalState, key, entry.cwd, entry.isSubagent);
+  const extra = key === "event_msg:task_complete" && entry.assistantLastOutput
+    ? {
+      assistantLastOutput: entry.assistantLastOutput,
+      assistantLastOutputTruncated: entry.assistantLastOutputTruncated === true,
+    }
+    : null;
+  postStateFn(entry.sessionId, finalState, key, entry.cwd, entry.isSubagent, extra);
 }
 
 function pollFile(filePath, fileName, options = {}) {
@@ -162,6 +188,8 @@ function pollFile(filePath, fileName, options = {}) {
       isSubagent: false,
       lastEventTime: Date.now(),
       lastState: null,
+      assistantLastOutput: null,
+      assistantLastOutputTruncated: false,
       partial: "",
       stale: false,
     };

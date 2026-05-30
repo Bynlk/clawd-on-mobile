@@ -10,6 +10,7 @@ const {
   buildPermissionBody,
   buildStateBody,
   buildToolInputFingerprint,
+  extractLastAssistantTextFromTranscript,
   extractCodexSessionIdFromTranscriptPath,
   normalizeCodexSessionId,
   readFirstSessionMeta,
@@ -209,6 +210,71 @@ describe("Codex official hook", () => {
     assert.strictEqual(body.state, "idle");
     assert.strictEqual(body.event, "Stop");
     assert.strictEqual(body.stop_hook_active, false);
+  });
+
+  it("extracts the latest Codex assistant text without tool or reasoning records", () => {
+    withTempTranscript([
+      JSON.stringify({ type: "session_meta", payload: { cwd: "/repo" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_started" } }),
+      JSON.stringify({ type: "response_item", payload: { type: "reasoning", text: "hidden thoughts" } }),
+      JSON.stringify({
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [
+            { type: "output_text", text: "Implemented the fix." },
+            { type: "function_call", name: "shell_command", arguments: "{\"command\":\"npm test\"}" },
+            { type: "text", text: "Tests pass." },
+          ],
+        },
+      }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } }),
+    ], (transcriptPath) => {
+      const output = extractLastAssistantTextFromTranscript(transcriptPath);
+      assert.deepStrictEqual(output, {
+        text: "Implemented the fix.\n\nTests pass.",
+        truncated: false,
+      });
+    });
+  });
+
+  it("adds assistant_last_output on Codex Stop when the transcript has final assistant text", () => {
+    withTempTranscript([
+      JSON.stringify({ type: "session_meta", payload: { cwd: "/repo" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_started" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "agent_message", message: "All done.\nReady to ship." } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } }),
+    ], (transcriptPath) => {
+      const body = buildStateBody({
+        hook_event_name: "Stop",
+        session_id: "official-session",
+        transcript_path: transcriptPath,
+      }, mockResolve);
+
+      assert.strictEqual(body.assistant_last_output, "All done.\nReady to ship.");
+      assert.ok(!("assistant_last_output_truncated" in body));
+    });
+  });
+
+  it("does not carry a previous Codex turn output across a new task_started boundary", () => {
+    withTempTranscript([
+      JSON.stringify({ type: "session_meta", payload: { cwd: "/repo" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_started" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "agent_message", message: "Previous answer" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_started" } }),
+      JSON.stringify({ type: "response_item", payload: { type: "function_call", name: "shell_command" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } }),
+    ], (transcriptPath) => {
+      const body = buildStateBody({
+        hook_event_name: "Stop",
+        session_id: "official-session",
+        transcript_path: transcriptPath,
+      }, mockResolve);
+
+      assert.ok(!("assistant_last_output" in body));
+    });
   });
 
   it("reads long first-line session_meta and marks subagent state payloads", () => {
