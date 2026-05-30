@@ -68,6 +68,7 @@ fun SessionsScreen(
 
     val sessions = remember(sessionsMap) {
         sessionsMap.map { (id, data) -> Session(id, data) }
+            .filter { it.data.state !in listOf("sleeping", "sweeping") }
             .sortedWith(compareBy<Session> { it.stateConfig.priority.toLong() }
                 .thenByDescending { it.data.updatedAt ?: 0L })
     }
