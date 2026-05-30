@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.clawd.mobile.data.PermissionRequestData
+import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.data.RecentEvent
 import com.clawd.mobile.data.Session
 import com.clawd.mobile.ui.approval.ApprovalViewModel
@@ -54,7 +55,8 @@ private fun iconFor(key: String): ImageVector = when (key) {
 fun SessionsScreen(
     navController: NavController,
     webSocket: ClawdWebSocket,
-    approvalViewModel: ApprovalViewModel
+    approvalViewModel: ApprovalViewModel,
+    prefsStore: PrefsStore
 ) {
     val connectionState by webSocket.connectionState.collectAsState()
     val sessionsMap by webSocket.sessions.collectAsState()
@@ -118,6 +120,7 @@ fun SessionsScreen(
                         items(sessions, key = { it.id }) { session ->
                             SessionCard(
                                 session = session,
+                                prefsStore = prefsStore,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                             )
                         }
@@ -258,11 +261,21 @@ private fun SectionLabel(title: String, count: Int) {
 // ─── Session Card ─────────────────────────────────────────────────
 
 @Composable
-private fun SessionCard(session: Session, modifier: Modifier = Modifier) {
+private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modifier = Modifier) {
     val config = session.stateConfig
     val data = session.data
     var expanded by remember { mutableStateOf(false) }
     val hasEvents = data.recentEvents.isNotEmpty()
+
+    // Rename state
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var customName by remember { mutableStateOf(prefsStore.getSessionName(session.id) ?: "") }
+
+    // Resolve display name: custom > sessionTitle > agentId
+    val displayName = customName.ifBlank { null }
+        ?: data.sessionTitle
+        ?: data.agentId
+        ?: ""
 
     // Badge style based on state
     val badgeText = config.label
@@ -330,16 +343,74 @@ private fun SessionCard(session: Session, modifier: Modifier = Modifier) {
                 )
             }
 
-            // Card title
-            Text(
-                text = data.sessionTitle ?: data.agentId ?: "",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = ClawdTextDark,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-            )
+            // Card title + edit icon
+            Row(
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = displayName,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ClawdTextDark,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Icon(
+                    ClawdIcons.Pencil,
+                    "重命名",
+                    tint = ClawdFaintDark,
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .size(13.dp)
+                        .clickable { showRenameDialog = true }
+                )
+            }
+
+            // Rename dialog
+            if (showRenameDialog) {
+                var editName by remember { mutableStateOf(customName) }
+                AlertDialog(
+                    onDismissRequest = { showRenameDialog = false },
+                    containerColor = ClawdCardDark,
+                    title = { Text("重命名会话", color = ClawdTextDark) },
+                    text = {
+                        OutlinedTextField(
+                            value = editName,
+                            onValueChange = { editName = it },
+                            placeholder = { Text(data.sessionTitle ?: data.agentId ?: "", color = ClawdFaintDark) },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = ClawdTextDark,
+                                unfocusedTextColor = ClawdTextDark,
+                                focusedBorderColor = ClawdAccent,
+                                unfocusedBorderColor = ClawdBorderDark,
+                                cursorColor = ClawdAccent,
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            customName = editName.trim()
+                            if (customName.isBlank()) {
+                                prefsStore.clearSessionName(session.id)
+                            } else {
+                                prefsStore.saveSessionName(session.id, customName)
+                            }
+                            showRenameDialog = false
+                        }) {
+                            Text("保存", color = ClawdAccent)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showRenameDialog = false }) {
+                            Text("取消", color = ClawdMutedDark)
+                        }
+                    }
+                )
+            }
 
             // Meta row: agent icon + agentId divider folder + cwd
             Row(

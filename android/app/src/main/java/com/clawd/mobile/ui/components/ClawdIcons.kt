@@ -580,6 +580,21 @@ object ClawdIcons {
         }
     }
 
+    // Pencil — edit/rename
+    val Pencil: ImageVector = iconBuilder("pencil") {
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(17f, 3f)
+            lineTo(21f, 7f)
+            lineTo(8f, 20f)
+            lineTo(4f, 20f)
+            lineTo(4f, 16f)
+            close()
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(15f, 5f); lineTo(19f, 9f)
+        }
+    }
+
     // Settings — gear for settings button (simplified, no complex arcs)
     val Settings: ImageVector = iconBuilder("settings") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {

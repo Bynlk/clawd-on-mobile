@@ -50,7 +50,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = "${request.agentId ?: "Agent"} 请求 ${request.toolName ?: "权限"}"
+        val title = "🦀 ${request.agentId ?: "Agent"} 需要你来拍板！"
         val body = buildString {
             append(request.toolInputSummary ?: "需要您的确认")
             if (!request.sessionId.isNullOrBlank()) {

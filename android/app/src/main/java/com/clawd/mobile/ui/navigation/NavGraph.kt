@@ -21,7 +21,7 @@ fun ClawdNavGraph() {
     val navController = rememberNavController()
     val context = LocalContext.current
     val prefsStore = remember { PrefsStore(context) }
-    val statusNotifier = remember { StatusNotifier(context) }
+    val statusNotifier = remember { StatusNotifier(context, prefsStore) }
 
     // Start foreground service
     LaunchedEffect(Unit) {
@@ -72,7 +72,8 @@ fun ClawdNavGraph() {
             SessionsScreen(
                 navController = navController,
                 webSocket = ws,
-                approvalViewModel = approvalViewModel
+                approvalViewModel = approvalViewModel,
+                prefsStore = prefsStore
             )
         }
         composable("scan") {

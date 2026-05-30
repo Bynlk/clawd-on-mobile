@@ -70,4 +70,18 @@ class PrefsStore(context: Context) {
 
     fun isBgKeepalive(): Boolean = prefs.getBoolean(KEY_BG_KEEPALIVE, true)
     fun setBgKeepalive(v: Boolean) { prefs.edit().putBoolean(KEY_BG_KEEPALIVE, v).apply() }
+
+    // Session name overrides
+    fun saveSessionName(sessionId: String, name: String) {
+        prefs.edit().putString("session_name_$sessionId", name.trim()).apply()
+    }
+
+    fun getSessionName(sessionId: String): String? {
+        val name = prefs.getString("session_name_$sessionId", null)
+        return if (name.isNullOrBlank()) null else name
+    }
+
+    fun clearSessionName(sessionId: String) {
+        prefs.edit().remove("session_name_$sessionId").apply()
+    }
 }

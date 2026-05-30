@@ -14,6 +14,7 @@ import com.clawd.mobile.MainActivity
 import com.clawd.mobile.R
 import com.clawd.mobile.data.ConnectionConfig
 import com.clawd.mobile.data.PrefsStore
+import com.clawd.mobile.notification.NotificationHelper
 import com.clawd.mobile.ws.ClawdWebSocket
 import com.clawd.mobile.ws.ConnectionState
 import kotlinx.coroutines.*
@@ -101,6 +102,7 @@ class WebSocketService : Service() {
 
     private fun startStateCollector() {
         stateCollectorJob?.cancel()
+        var previousState: ConnectionState? = null
         stateCollectorJob = scope.launch {
             webSocket?.connectionState?.collect { state ->
                 val status = when (state) {
@@ -113,7 +115,30 @@ class WebSocketService : Service() {
                 try {
                     val nm = getSystemService(android.app.NotificationManager::class.java)
                     nm.notify(NOTIFICATION_ID, buildNotification(status))
+
+                    // Alert notifications for connection state changes
+                    if (previousState == ConnectionState.CONNECTED && state == ConnectionState.DISCONNECTED) {
+                        val alert = NotificationCompat.Builder(this@WebSocketService, NotificationHelper.CHANNEL_ALERT)
+                            .setSmallIcon(android.R.drawable.ic_dialog_info)
+                            .setContentTitle("😴 和桌面端失联了")
+                            .setContentText("检查一下网络？")
+                            .setPriority(NotificationCompat.PRIORITY_HIGH)
+                            .setAutoCancel(true)
+                            .build()
+                        nm.notify("conn:disconnect".hashCode(), alert)
+                    }
+                    if (previousState == ConnectionState.RECONNECTING && state == ConnectionState.CONNECTED) {
+                        val alert = NotificationCompat.Builder(this@WebSocketService, NotificationHelper.CHANNEL_ALERT)
+                            .setSmallIcon(android.R.drawable.ic_dialog_info)
+                            .setContentTitle("✅ 重新连上啦")
+                            .setContentText("继续摸鱼！")
+                            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                            .setAutoCancel(true)
+                            .build()
+                        nm.notify("conn:reconnect".hashCode(), alert)
+                    }
                 } catch (_: Exception) {}
+                previousState = state
             }
         }
     }
