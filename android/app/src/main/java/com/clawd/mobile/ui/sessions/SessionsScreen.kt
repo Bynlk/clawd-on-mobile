@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.util.Log
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.clawd.mobile.data.PermissionRequestData
@@ -73,25 +74,35 @@ fun SessionsScreen(
 
     val isConnected = connectionState == ConnectionState.CONNECTED
 
+    LaunchedEffect(syncing, sessionsMap.size) {
+        Log.d("SessionsScreen", "syncing=$syncing sessions=${sessionsMap.size} connected=$isConnected")
+    }
+
     val currentRequest = pendingRequests.firstOrNull()
     var showSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(pendingRequests.size) {
+        Log.d("SessionsScreen", "autoShowSheet pendingSize=${pendingRequests.size} currentRid=${pendingRequests.firstOrNull()?.requestId}")
         showSheet = pendingRequests.isNotEmpty()
     }
 
     // Auto-show sheet when user taps a notification
     // Trigger on both notificationRequestId and pendingRequests changes
+    // Only consume requestId when we actually show the sheet
     LaunchedEffect(notificationRequestId, pendingRequests.size) {
         val rid = notificationRequestId
+        Log.d("SessionsScreen", "notificationLaunchedEffect rid=$rid pendingSize=${pendingRequests.size}")
         if (rid != null && pendingRequests.any { it.requestId == rid }) {
+            Log.d("SessionsScreen", "Exact match found, showing sheet")
             showSheet = true
             approvalViewModel.consumeNotificationRequestId()
         } else if (rid != null && pendingRequests.isNotEmpty()) {
-            // Request ID set but no matching request — show first pending anyway
+            Log.d("SessionsScreen", "Fallback: showing first pending request")
             showSheet = true
             approvalViewModel.consumeNotificationRequestId()
         }
+        // If rid != null but pendingRequests is empty, don't consume —
+        // wait for SSE to deliver the permission request
     }
 
     // Bottom nav selected tab
@@ -760,7 +771,7 @@ private fun ApprovalSheet(
                     Text(option.label, modifier = Modifier.padding(vertical = 4.dp))
                 }
             }
-        } else if (request.suggestions.isNotEmpty()) {
+        } else if (request.suggestions.isNotEmpty() && request.suggestions.all { it.label.isNotBlank() }) {
             request.suggestions.forEachIndexed { index, suggestion ->
                 val isAllow = suggestion.behavior == "allow"
                 Button(

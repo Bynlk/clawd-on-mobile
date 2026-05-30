@@ -1,5 +1,6 @@
 package com.clawd.mobile.ui.navigation
 
+import android.util.Log
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -54,9 +55,23 @@ fun ClawdNavGraph() {
         factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
     )
 
-    // Forward notification tap request ID to ViewModel (consumed by SessionsScreen)
-    MainActivity.pendingApprovalRequestId?.let {
-        approvalViewModel.setNotificationRequestId(it)
+    // Register ViewModel ref for onNewIntent forwarding
+    MainActivity.approvalViewModelRef = approvalViewModel
+
+    // Wire up pending approval check for StatusNotifier
+    statusNotifier.hasPendingApprovals = { approvalViewModel.pendingRequests.value.isNotEmpty() }
+
+    // Forward notification tap request to ViewModel (consumed by SessionsScreen)
+    val pendingRequest = MainActivity.pendingApprovalRequest
+    val pendingId = MainActivity.pendingApprovalRequestId
+    if (pendingRequest != null) {
+        Log.d("NavGraph", "Forwarding full pendingApprovalRequest id=${pendingRequest.requestId} to ViewModel")
+        approvalViewModel.restoreRequestFromNotification(pendingRequest)
+        MainActivity.pendingApprovalRequest = null
+        MainActivity.pendingApprovalRequestId = null
+    } else if (pendingId != null) {
+        Log.d("NavGraph", "Forwarding pendingApprovalRequestId=$pendingId to ViewModel")
+        approvalViewModel.setNotificationRequestId(pendingId)
         MainActivity.pendingApprovalRequestId = null
     }
 
@@ -65,13 +80,11 @@ fun ClawdNavGraph() {
         ws.reconnect()
     }
 
-    // Monitor session changes for notifications
-    LaunchedEffect(ws) {
-        ws.sessions.collect { sessionsMap ->
-            sessionsMap.forEach { (id, data) ->
-                statusNotifier.onSessionUpdate(id, data)
-            }
-        }
+    // Monitor displayState changes for notifications (server-computed, no local logic)
+    val displayState by ws.displayState.collectAsState()
+    val sessionsMap by ws.sessions.collectAsState()
+    LaunchedEffect(displayState) {
+        statusNotifier.onDisplayStateChanged(displayState, sessionsMap)
     }
 
     NavHost(navController = navController, startDestination = "sessions") {
