@@ -109,7 +109,7 @@ fun SessionsScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 100.dp),
+                        contentPadding = PaddingValues(bottom = 76.dp),
                         verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
                         // Section label
@@ -126,6 +126,20 @@ fun SessionsScreen(
                         }
                     }
                 }
+
+                // Fade gradient at bottom — cards visually cut off behind bottom bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 76.dp)
+                        .background(
+                            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, ClawdBgDark)
+                            )
+                        )
+                )
 
                 // Bottom navigation
                 BottomNav(
@@ -485,7 +499,7 @@ private fun BottomNav(selectedTab: Int, onTabSelected: (Int) -> Unit, modifier: 
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 16.dp)
             .border(0.5.dp, ClawdCardBorderDark, RoundedCornerShape(14.dp))
-            .background(ClawdCardDark, RoundedCornerShape(14.dp))
+            .background(ClawdCardDark.copy(alpha = 0.95f), RoundedCornerShape(14.dp))
             .padding(vertical = 10.dp, horizontal = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
