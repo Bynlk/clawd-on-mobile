@@ -6,4 +6,6 @@
     <string name="channel_status_desc">显示各会话当前状态的低优先级通知</string>
     <string name="channel_alert">重要通知</string>
     <string name="channel_alert_desc">任务完成或需要关注时的通知</string>
+    <string name="channel_service">后台连接</string>
+    <string name="channel_service_desc">保持 WebSocket 连接的低优先级通知</string>
 </resources>
