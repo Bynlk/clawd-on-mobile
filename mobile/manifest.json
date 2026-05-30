@@ -4,8 +4,8 @@
   "description": "Monitor Claude Code sessions from your phone",
   "start_url": "/mobile/",
   "display": "standalone",
-  "background_color": "#0a0a0f",
-  "theme_color": "#6c5ce7",
+  "background_color": "#111318",
+  "theme_color": "#111318",
   "orientation": "portrait",
   "icons": []
 }

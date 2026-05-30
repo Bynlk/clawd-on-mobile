@@ -1,13 +1,13 @@
 (function() {
   "use strict";
 
-  // === 常量 ===
+  // === Constants ===
 
   var STATE_CONFIG = {
     error:        { icon: "error",        color: "#ef4444", priority: 0, label: "错误" },
     attention:    { icon: "attention",    color: "#b45309", priority: 1, label: "需要关注" },
-    working:      { icon: "working",      color: "#16803c", priority: 2, label: "工作中" },
-    juggling:     { icon: "juggling",     color: "#16803c", priority: 2, label: "多任务" },
+    working:      { icon: "working",      color: "#22c55e", priority: 2, label: "工作中" },
+    juggling:     { icon: "juggling",     color: "#22c55e", priority: 2, label: "多任务" },
     thinking:     { icon: "thinking",     color: "#3b82f6", priority: 3, label: "思考中" },
     notification: { icon: "notification", color: "#d97757", priority: 4, label: "通知" },
     sweeping:     { icon: "sweeping",     color: "#71717a", priority: 5, label: "清理中" },
@@ -17,17 +17,31 @@
   };
 
   var CONNECTION_STATES = {
-    connected:    { dot: "connected", text: "已连接", color: "#16803c" },
+    connected:    { dot: "connected", text: "已连接", color: "#22c55e" },
     connecting:   { dot: "connecting", text: "连接中...", color: "#b45309" },
     reconnecting: { dot: "reconnecting", text: "重连中...", color: "#ef4444" },
-    disconnected: { dot: "", text: "未连接", color: "#71717a" },
+    disconnected: { dot: "", text: "", color: "#52525b" },
     auth_failed:  { dot: "", text: "认证失败", color: "#ef4444" },
+  };
+
+  var EVENT_LABELS_CN = {
+    UserPromptSubmit: "用户输入",
+    PreToolUse: "工具启动",
+    PostToolUse: "工具完成",
+    PostToolUseFailure: "工具失败",
+    Stop: "已完成",
+    SessionStart: "会话开始",
+    SessionEnd: "会话结束",
+    PermissionRequest: "需要权限",
+    Notification: "通知",
+    SubagentStart: "子代理启动",
+    SubagentStop: "子代理停止",
   };
 
   var STALE_TIMEOUT_MS = 5 * 60 * 1000;
   var MAX_HISTORY = 5;
 
-  // === 工具函数 ===
+  // === Utilities ===
 
   function esc(str) {
     var d = document.createElement("div");
@@ -55,7 +69,7 @@
   }
 
   function eventLabel(eventName) {
-    return (typeof EVENT_LABELS !== "undefined" && EVENT_LABELS[eventName]) || eventName || "";
+    return EVENT_LABELS_CN[eventName] || (typeof EVENT_LABELS !== "undefined" && EVENT_LABELS[eventName]) || eventName || "";
   }
 
   function log(msg) {
@@ -69,8 +83,6 @@
     el.appendChild(line);
     el.scrollTop = el.scrollHeight;
   }
-
-  // === Toast ===
 
   function showToast(message, type) {
     type = type || "info";
@@ -96,29 +108,21 @@
 
     requestPermission() {
       if (!("Notification" in window)) return;
-      if (Notification.permission === "granted") {
-        this.permission = "granted";
-        return;
-      }
+      if (Notification.permission === "granted") { this.permission = "granted"; return; }
       if (Notification.permission !== "denied") {
         var self = this;
-        Notification.requestPermission().then(function(p) {
-          self.permission = p;
-        });
+        Notification.requestPermission().then(function(p) { self.permission = p; });
       }
     }
 
     onStateChange(sessionId, data) {
       if (this.permission !== "granted") return;
       if (document.visibilityState === "visible") return;
-
       var prev = this.lastStates.get(sessionId);
       this.lastStates.set(sessionId, data.state);
-
       var s = data.state;
       var config = STATE_CONFIG[s];
       if (!config) return;
-
       if (s === "error" || s === "attention") {
         this._notify(config.label, (data.agentId || "Agent") + " - " + config.label, s);
       } else if ((prev === "working" || prev === "thinking") && s === "idle") {
@@ -157,10 +161,8 @@
     showRequest(msg) {
       var requestId = msg.requestId;
       if (!requestId) return;
-
       this.pending.set(requestId, msg);
       this._render();
-
       log("Approval request: " + (msg.data ? msg.data.toolName || msg.data.prompt || "unknown" : "unknown"));
     }
 
@@ -191,12 +193,8 @@
         html += '</div>';
 
         if (isPermission) {
-          if (data.toolName) {
-            html += '<div class="approval-tool">' + icon("tool") + ' ' + esc(data.toolName) + '</div>';
-          }
-          if (data.toolInputSummary) {
-            html += '<div class="approval-summary">' + esc(data.toolInputSummary) + '</div>';
-          }
+          if (data.toolName) html += '<div class="approval-tool">' + icon("tool") + ' ' + esc(data.toolName) + '</div>';
+          if (data.toolInputSummary) html += '<div class="approval-summary">' + esc(data.toolInputSummary) + '</div>';
           html += '<div class="approval-actions">';
           if (data.suggestions && data.suggestions.length > 0) {
             for (var i = 0; i < data.suggestions.length; i++) {
@@ -210,10 +208,7 @@
           }
           html += '</div>';
         } else {
-          // elicitation
-          if (data.prompt) {
-            html += '<div class="approval-summary">' + esc(data.prompt) + '</div>';
-          }
+          if (data.prompt) html += '<div class="approval-summary">' + esc(data.prompt) + '</div>';
           html += '<div class="approval-actions">';
           if (data.options && data.options.length > 0) {
             for (var j = 0; j < data.options.length; j++) {
@@ -224,7 +219,6 @@
           html += '</div>';
         }
 
-        // timeout bar
         var timeout = data.timeout || 90000;
         html += '<div class="approval-timer"><div class="approval-timer-bar" style="animation-duration:' + timeout + 'ms"></div></div>';
         html += '</div>';
@@ -234,7 +228,6 @@
       this.overlay.innerHTML = html;
       this.overlay.classList.remove("hidden");
 
-      // bind buttons
       this.overlay.querySelectorAll(".approval-btn").forEach(function(btn) {
         btn.addEventListener("click", function() {
           var rid = this.getAttribute("data-request");
@@ -243,23 +236,11 @@
           var value = this.getAttribute("data-value");
 
           if (isElicitation) {
-            if (self.onSend) {
-              self.onSend({
-                type: "elicitation_response",
-                requestId: rid,
-                answers: { value: value },
-              });
-            }
+            if (self.onSend) self.onSend({ type: "elicitation_response", requestId: rid, answers: { value: value } });
           } else {
             var suggestionIndex = this.getAttribute("data-index");
-            var payload = {
-              type: "permission_response",
-              requestId: rid,
-              behavior: behavior,
-            };
-            if (suggestionIndex !== null && suggestionIndex !== "") {
-              payload.suggestionIndex = parseInt(suggestionIndex, 10);
-            }
+            var payload = { type: "permission_response", requestId: rid, behavior: behavior };
+            if (suggestionIndex !== null && suggestionIndex !== "") payload.suggestionIndex = parseInt(suggestionIndex, 10);
             if (self.onSend) self.onSend(payload);
           }
           self.dismiss(rid);
@@ -289,10 +270,7 @@
     }
 
     _doConnect() {
-      if (this.ws) {
-        try { this.ws.close(); } catch {}
-      }
-
+      if (this.ws) { try { this.ws.close(); } catch {} }
       var host = this.config.host;
       var port = this.config.port;
       var token = this.config.token;
@@ -332,9 +310,7 @@
           showToast("认证失败，请重新扫码", "error");
           return;
         }
-        if (self.state === "connected") {
-          log("Disconnected (code: " + event.code + ")");
-        }
+        if (self.state === "connected") log("Disconnected (code: " + event.code + ")");
         self._scheduleReconnect();
       };
 
@@ -358,9 +334,7 @@
 
     disconnect() {
       clearTimeout(this.reconnectTimer);
-      if (this.ws) {
-        try { this.ws.close(1000, "User disconnect"); } catch {}
-      }
+      if (this.ws) { try { this.ws.close(1000, "User disconnect"); } catch {} }
       this.ws = null;
       this._setState("disconnected");
       log("Disconnected by user");
@@ -375,9 +349,7 @@
       var history = [];
       try { history = JSON.parse(localStorage.getItem("clawd-history") || "[]"); } catch {}
       var entry = { host: config.host, port: config.port, token: config.token, timestamp: Date.now() };
-      var filtered = history.filter(function(h) {
-        return h.host !== config.host || h.port !== config.port;
-      });
+      var filtered = history.filter(function(h) { return h.host !== config.host || h.port !== config.port; });
       filtered.unshift(entry);
       localStorage.setItem("clawd-history", JSON.stringify(filtered.slice(0, MAX_HISTORY)));
     }
@@ -407,9 +379,7 @@
     updateFromSnapshot(sessions) {
       this.sessions.clear();
       for (var sid in sessions) {
-        if (sessions.hasOwnProperty(sid)) {
-          this.sessions.set(sid, sessions[sid]);
-        }
+        if (sessions.hasOwnProperty(sid)) this.sessions.set(sid, sessions[sid]);
       }
       this.render();
     }
@@ -421,6 +391,12 @@
       for (var k2 in data) { if (data.hasOwnProperty(k2)) merged[k2] = data[k2]; }
       merged.updatedAt = Date.now();
       this.sessions.set(sessionId, merged);
+      this.render();
+    }
+
+    removeSession(sessionId) {
+      this.sessions.delete(sessionId);
+      this.expandedSet.delete(sessionId);
       this.render();
     }
 
@@ -459,14 +435,14 @@
         return;
       }
 
-      var html = "";
+      var html = '<div class="section-label">活跃会话 &middot; ' + entries.length + '</div>';
       for (var i = 0; i < entries.length; i++) {
         html += this._renderCard(entries[i][0], entries[i][1]);
       }
       this.container.innerHTML = html;
 
       // bind expand toggles
-      this.container.querySelectorAll(".expand-trigger").forEach(function(el) {
+      this.container.querySelectorAll(".card-footer").forEach(function(el) {
         el.addEventListener("click", function() {
           var sid = this.getAttribute("data-sid");
           self.toggleExpand(sid);
@@ -476,77 +452,63 @@
 
     _renderCard(sid, s) {
       var config = STATE_CONFIG[s.state] || STATE_CONFIG.idle;
-      var ago = formatAgo(s.updatedAt);
       var isExpanded = this.expandedSet.has(sid);
       var events = (s.recentEvents || []);
       var hasEvents = events.length > 0;
-      var isActive = s.state === "working" || s.state === "thinking" || s.state === "juggling";
+      var stateKey = s.state || "idle";
 
       var html = '<div class="session-card" data-sid="' + sid + '">';
 
-      // state dot (7px)
-      html += '<div class="state-dot" style="background:' + config.color +
-        (isActive ? ';animation:pulse 2s infinite' : '') + '"></div>';
-
-      // main content
-      html += '<div class="main">';
-
-      // title
-      html += '<div class="session-title">' + esc(s.sessionTitle || s.agentId || sid) + '</div>';
-
-      // meta row
-      html += '<div class="meta">';
-      if (s.agentId) {
-        html += '<span class="agent-id">' + esc(s.agentId) + '</span>';
-      }
-      html += '<span class="state-label" style="color:' + config.color + '">' + config.label + '</span>';
+      // Header: agent dot + agent name + badge
+      html += '<div class="card-header">';
+      html += '<div class="card-agent">';
+      html += '<div class="agent-dot"></div>';
+      html += '<span class="agent-name">' + esc((s.agentId || "agent").toUpperCase()) + '</span>';
+      html += '</div>';
+      html += '<span class="state-badge ' + stateKey + '">' + config.label + '</span>';
       html += '</div>';
 
-      // tool info
-      if (s.toolName) {
-        html += '<div class="tool-info">' + icon("tool") + '<span>' + esc(s.toolName) + '</span></div>';
-      }
+      // Title
+      html += '<div class="card-title">' + esc(s.sessionTitle || s.agentId || "") + '</div>';
 
-      // cwd
+      // Meta row
+      html += '<div class="card-meta">';
+      if (s.agentId) {
+        html += '<span class="meta-item">' + icon("tool") + '<span>Agent</span></span>';
+      }
       if (s.cwd) {
-        html += '<div class="cwd">' + icon("folder") + '<span>' + esc(shortPath(s.cwd)) + '</span></div>';
+        html += '<div class="meta-divider"></div>';
+        html += '<span class="meta-item mono">' + icon("folder") + '<span>' + esc(shortPath(s.cwd)) + '</span></span>';
+      }
+      html += '</div>';
+
+      // Last output preview
+      if (s.lastOutput && s.lastOutput.output) {
+        html += '<div class="card-output">' + esc(s.lastOutput.output) + '</div>';
       }
 
-      // expand trigger
+      // Divider
+      html += '<div class="card-divider"></div>';
+
+      // Footer: events + chevron
+      html += '<div class="card-footer" data-sid="' + sid + '">';
+      html += '<div class="footer-events">';
+      html += icon("activity");
+      html += '<span>最近事件</span>';
       if (hasEvents) {
-        var chevronIcon = isExpanded ? icon("collapse") : icon("expand");
-        html += '<div class="expand-trigger" data-sid="' + sid + '">';
-        html += '<span class="expand-chevron">' + chevronIcon + '</span>';
-        html += '<span class="expand-label">最近事件 (' + events.length + ')</span>';
-        html += '</div>';
+        html += '<span class="event-count">' + events.length + '</span>';
+      }
+      html += '</div>';
+      html += '<span class="footer-chevron">' + (isExpanded ? icon("collapse") : icon("expand")) + '</span>';
+      html += '</div>';
 
-        if (isExpanded) {
-          html += this._renderEventHistory(events);
-        }
+      // Expanded events
+      if (isExpanded && hasEvents) {
+        html += this._renderEventHistory(events);
       }
 
-      // output panel
-      html += this._renderOutputPanel(sid);
-
-      // footer
-      html += '<div class="session-footer">' + icon("clock") + ' ' + ago + '</div>';
-      html += '</div>'; // .main
       html += '</div>'; // .session-card
       return html;
-    }
-
-    _renderOutputPanel(sid) {
-      var outputs = window._clawdApp ? window._clawdApp._outputs[sid] : null;
-      if (!outputs || outputs.length === 0) return '';
-      var html = '<div class="output-panel">';
-      outputs.forEach(function(o) {
-        html += '<div class="output-entry">' +
-          '<span class="output-time">' + formatAgo(o.at) + '</span>' +
-          '<span class="tool-name">' + esc(o.toolName || '') + '</span>: ' +
-          '<span>' + esc((o.output || '').substring(0, 200)) + '</span>' +
-        '</div>';
-      });
-      return html + '</div>';
     }
 
     _renderEventHistory(events) {
@@ -640,9 +602,7 @@
         var imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
         if (typeof jsQR !== "undefined") {
-          var code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert",
-          });
+          var code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
           if (code && code.data) {
             var parsed = this._parseClawdUrl(code.data);
             if (parsed) {
@@ -663,16 +623,12 @@
 
       try {
         var obj = JSON.parse(data);
-        if (obj.host && obj.port && obj.token) {
-          return { host: obj.host, port: parseInt(obj.port, 10), token: obj.token };
-        }
+        if (obj.host && obj.port && obj.token) return { host: obj.host, port: parseInt(obj.port, 10), token: obj.token };
       } catch {}
 
       try {
         var url = new URL(data);
-        if (url.protocol === "clawd:") {
-          return { host: url.hostname, port: parseInt(url.port, 10), token: url.pathname.slice(1) };
-        }
+        if (url.protocol === "clawd:") return { host: url.hostname, port: parseInt(url.port, 10), token: url.pathname.slice(1) };
       } catch {}
 
       return null;
@@ -707,12 +663,11 @@
     }
 
     _initThemeColor() {
-      // Set theme-color based on color scheme
       var meta = document.querySelector('meta[name="theme-color"]');
       if (!meta) return;
       var darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
       function update() {
-        meta.setAttribute("content", darkQuery.matches ? "#1c1c1f" : "#f5f5f7");
+        meta.setAttribute("content", darkQuery.matches ? "#111318" : "#f5f5f7");
       }
       update();
       darkQuery.addEventListener("change", update);
@@ -721,19 +676,34 @@
     _bindEvents() {
       var self = this;
 
-      document.getElementById("btn-scan").addEventListener("click", function() { self._openScanner(); });
+      // QR scan buttons
       document.getElementById("btn-cancel-scan").addEventListener("click", function() { self._closeScanner(); });
+      document.getElementById("btn-scan-empty")?.addEventListener("click", function() { self._openScanner(); });
 
-      document.getElementById("btn-settings").addEventListener("click", function() { self._openSettings(); });
+      // Settings
       document.getElementById("btn-close-settings").addEventListener("click", function() { self._closeSettings(); });
       document.getElementById("btn-connect").addEventListener("click", function() { self._manualConnect(); });
       document.getElementById("btn-disconnect").addEventListener("click", function() { self.connection.disconnect(); });
 
+      // Devices
+      document.getElementById("btn-close-devices").addEventListener("click", function() {
+        document.getElementById("devices-panel").classList.add("hidden");
+      });
+
+      // Bottom nav tabs
+      document.querySelectorAll(".nav-tab").forEach(function(tab) {
+        tab.addEventListener("click", function() {
+          var tabIndex = parseInt(this.getAttribute("data-tab"), 10);
+          self._onNavTab(tabIndex);
+        });
+      });
+
+      // Log toggle
       document.getElementById("btn-toggle-log").addEventListener("click", function() {
         document.getElementById("log-panel").classList.toggle("collapsed");
       });
 
-      // Copy buttons in settings
+      // Copy buttons
       document.querySelectorAll(".copy-btn").forEach(function(btn) {
         btn.addEventListener("click", function() {
           var field = btn.getAttribute("data-copy");
@@ -749,21 +719,33 @@
         self._closeScanner();
         self.connection.connect(info);
       };
-
       this.scanner.onError = function(err) {
         showToast(err.message, "error");
         self._closeScanner();
       };
     }
 
+    _onNavTab(index) {
+      // Update active state
+      document.querySelectorAll(".nav-tab").forEach(function(t, i) {
+        t.classList.toggle("active", i === index);
+      });
+
+      if (index === 0) {
+        // Sessions - already visible
+      } else if (index === 1) {
+        document.getElementById("devices-panel").classList.remove("hidden");
+      } else if (index === 2) {
+        this._openSettings();
+      }
+    }
+
     _bindConnection() {
       var self = this;
 
       this.connection.onStateChange = function(state) {
-        self._updateFloatingHeader(state);
-        if (state === "connected") {
-          self.notifier.requestPermission();
-        }
+        self._updateConnectionStatus(state);
+        if (state === "connected") self.notifier.requestPermission();
       };
 
       this.connection.onMessage = function(msg) {
@@ -773,16 +755,17 @@
         } else if (msg.type === "state") {
           self.renderer.updateState(msg.sessionId, msg.data);
           self.notifier.onStateChange(msg.sessionId, msg.data);
+        } else if (msg.type === "session_deleted") {
+          self.renderer.removeSession(msg.sessionId);
+          log("Session deleted: " + msg.sessionId);
         } else if (msg.type === "tool_output") {
+          // Store last output on session data for display
           var sid = msg.sessionId;
-          if (!self._outputs[sid]) self._outputs[sid] = [];
-          self._outputs[sid].unshift({
-            at: msg.timestamp || Date.now(),
-            toolName: msg.data.toolName,
-            output: msg.data.output
-          });
-          if (self._outputs[sid].length > 20) self._outputs[sid].pop();
-          self.renderer.render();
+          var session = self.renderer.sessions.get(sid);
+          if (session) {
+            session.lastOutput = { toolName: msg.data.toolName, output: (msg.data.output || "").substring(0, 200), at: msg.timestamp || Date.now() };
+            self.renderer.render();
+          }
         } else if (msg.type === "permission_request") {
           self.approval.showRequest({ type: "permission_request", requestId: msg.requestId, data: msg.data || msg });
           self.notifier.onApprovalNeeded(msg.data || msg);
@@ -793,17 +776,22 @@
       };
     }
 
-    _updateFloatingHeader(state) {
+    _updateConnectionStatus(state) {
       var config = CONNECTION_STATES[state] || CONNECTION_STATES.disconnected;
-      var dot = document.getElementById("status-dot");
-      var label = document.getElementById("host-label");
+      var dot = document.getElementById("connection-dot");
+      var text = document.getElementById("connection-text");
 
-      dot.className = "status-dot " + config.dot;
+      dot.className = "connection-dot " + config.dot;
 
-      if (state === "connected" && this.connection.config) {
-        label.textContent = this.connection.config.host + ":" + this.connection.config.port;
+      if (state === "connected") {
+        text.textContent = config.text;
+        text.className = "connection-text connected";
+      } else if (state === "disconnected") {
+        text.textContent = "";
+        text.className = "connection-text";
       } else {
-        label.textContent = "";
+        text.textContent = config.text;
+        text.className = "connection-text";
       }
     }
 
@@ -840,7 +828,6 @@
         document.getElementById("input-token").value = this.connection.config.token || "";
       }
 
-      // Show connection info whenever config exists
       var info = document.getElementById("current-info");
       if (this.connection.config) {
         info.style.display = "block";
@@ -873,10 +860,7 @@
     _renderHistory() {
       var history = this.connection.getHistory();
       var container = document.getElementById("connection-history");
-      if (history.length === 0) {
-        container.innerHTML = "";
-        return;
-      }
+      if (history.length === 0) { container.innerHTML = ""; return; }
 
       var self = this;
       var html = '<h4 style="margin:16px 0 8px;font-size:14px;color:var(--muted)">连接历史</h4>';
@@ -895,10 +879,7 @@
         btn.addEventListener("click", function() {
           var idx = parseInt(this.getAttribute("data-index"), 10);
           var entry = self.connection.getHistory()[idx];
-          if (entry) {
-            self.connection.connect(entry);
-            self._closeSettings();
-          }
+          if (entry) { self.connection.connect(entry); self._closeSettings(); }
         });
       });
 
@@ -912,7 +893,7 @@
     }
   }
 
-  // === 初始化 ===
+  // === Init ===
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function() { new App(); });

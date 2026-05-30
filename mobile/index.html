@@ -3,27 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#f5f5f7">
+  <meta name="theme-color" content="#111318">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/mobile/manifest.json">
   <link rel="stylesheet" href="/mobile/style.css">
   <title>Clawd Mobile</title>
 </head>
 <body>
-  <!-- 浮动头部 -->
-  <div id="floating-header">
-    <span class="status-dot" id="status-dot"></span>
-    <span class="host-label" id="host-label"></span>
-    <button id="btn-scan" class="icon-btn" title="扫码配对">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
-    </button>
-    <button id="btn-settings" class="icon-btn" title="设置">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </button>
+  <!-- Top Bar -->
+  <div id="top-bar">
+    <span class="brand-prefix">CLAWD</span><span class="brand-suffix"> Mobile</span>
+    <span class="top-bar-spacer"></span>
+    <span class="connection-dot" id="connection-dot"></span>
+    <span class="connection-text" id="connection-text"></span>
   </div>
 
-  <!-- 扫码全屏覆盖层 -->
+  <!-- Session List -->
+  <main id="session-list">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon"></div>
+      <div class="empty-text">扫码配对开始监控</div>
+      <button id="btn-scan-empty" class="primary-btn">扫码配对</button>
+    </div>
+  </main>
+
+  <!-- Bottom Navigation -->
+  <div id="bottom-nav">
+    <div class="nav-tab active" data-tab="0">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      <span>会话</span>
+    </div>
+    <div class="nav-tab" data-tab="1">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span>设备</span>
+    </div>
+    <div class="nav-tab" data-tab="2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>设置</span>
+    </div>
+  </div>
+
+  <!-- QR Scanner Overlay -->
   <div id="qr-overlay" class="overlay hidden">
     <video id="qr-video" autoplay playsinline></video>
     <canvas id="qr-canvas" class="hidden"></canvas>
@@ -32,7 +53,7 @@
     <div class="scan-hint">将 QR 码放入框内</div>
   </div>
 
-  <!-- 连接设置面板 -->
+  <!-- Settings Panel -->
   <div id="settings-panel" class="overlay hidden">
     <div class="settings-content">
       <div class="settings-header">
@@ -66,19 +87,26 @@
     </div>
   </div>
 
-  <!-- 会话列表 -->
-  <main id="session-list">
-    <div class="empty-state" id="empty-state">
-      <div class="empty-icon"></div>
-      <div class="empty-text">扫码配对开始监控</div>
-      <button id="btn-scan-empty" class="primary-btn">扫码配对</button>
+  <!-- Devices Placeholder -->
+  <div id="devices-panel" class="overlay hidden">
+    <div class="settings-content">
+      <div class="settings-header">
+        <h3>设备</h3>
+        <button id="btn-close-devices" class="close-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="empty-state" style="padding:40px 0">
+        <div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+        <div class="empty-text">即将推出</div>
+      </div>
     </div>
-  </main>
+  </div>
 
-  <!-- 审批覆盖层 -->
+  <!-- Approval Overlay -->
   <div id="approval-overlay" class="approval-overlay hidden"></div>
 
-  <!-- 日志面板 -->
+  <!-- Log Panel -->
   <div id="log-panel" class="collapsed">
     <button id="btn-toggle-log" class="log-toggle">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
@@ -87,7 +115,7 @@
     <div id="log-content"></div>
   </div>
 
-  <!-- Toast 通知 -->
+  <!-- Toast -->
   <div id="toast-container"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>

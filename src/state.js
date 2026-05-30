@@ -1066,6 +1066,7 @@ function updateSession(sessionId, state, event, opts = {}) {
     const endingSession = sessions.get(sessionId);
     cancelCodexExitProbe(sessionId, "SessionEnd");
     sessions.delete(sessionId);
+    if (typeof ctx.onSessionRemoved === "function") ctx.onSessionRemoved(sessionId);
     debugSession(`session-end delete ${describeSession(sessionId, endingSession)}`);
     cleanStaleSessions();
     if (srcAgentId === "kimi-cli") stopKimiPermissionPoll(sessionId);
@@ -1240,6 +1241,7 @@ function cleanStaleSessions() {
       if (s && s.agentId === "codex") cancelCodexExitProbe(id, `stale-delete-${decision.reason}`);
       if (s && s.agentId === "kimi-cli") disposeKimiSessionState(id, "kimi-session-disposed");
       sessions.delete(id); changed = true;
+      if (typeof ctx.onSessionRemoved === "function") ctx.onSessionRemoved(id);
       continue;
     }
 

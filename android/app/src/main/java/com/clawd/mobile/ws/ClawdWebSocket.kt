@@ -115,6 +115,10 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 val data = msg.data ?: return
                 _sessions.value = _sessions.value.toMutableMap().apply { put(sid, data) }
             }
+            "session_deleted" -> {
+                val sid = msg.sessionId ?: return
+                _sessions.value = _sessions.value.toMutableMap().apply { remove(sid) }
+            }
             "permission_request" -> {
                 scope.launch {
                     try {

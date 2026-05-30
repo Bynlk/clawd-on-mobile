@@ -1130,6 +1130,10 @@ const _stateCtx = {
     repositionFloatingBubbles();
     if (hardwareBuddyAdapter) hardwareBuddyAdapter.notifyStateChanged();
   },
+  onSessionRemoved: (sessionId) => {
+    const ws = getMobileWS();
+    if (ws) ws.removeSession(sessionId);
+  },
   // Phase 3b: 读 prefs.themeOverrides 判断某个 oneshot state 是否被用户禁用。
   // state.js gate 调这个做 early-return。不做白名单校验——settings-actions
   // 负责写入合法性，这里只读。

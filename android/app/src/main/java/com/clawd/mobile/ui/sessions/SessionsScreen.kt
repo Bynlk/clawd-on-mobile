@@ -100,46 +100,42 @@ fun SessionsScreen(
             FixedTopBar(isConnected = isConnected)
 
             // Main content
-            Box(modifier = Modifier.weight(1f)) {
-                if (connectionState == ConnectionState.DISCONNECTED && sessions.isEmpty()) {
+            if (connectionState == ConnectionState.DISCONNECTED && sessions.isEmpty()) {
+                Box(modifier = Modifier.weight(1f)) {
                     EmptyState(
                         onScan = { navController.navigate("settings") },
                         onManual = { navController.navigate("settings") }
                     )
-                } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // Fixed section label
-                        SectionLabel(title = "活跃会话", count = sessions.size)
+                }
+            } else {
+                Column(modifier = Modifier.weight(1f)) {
+                    SectionLabel(title = "活跃会话", count = sessions.size)
 
-                        // Scrollable session cards
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 90.dp),
-                            verticalArrangement = Arrangement.spacedBy(0.dp)
-                        ) {
-                            items(sessions, key = { it.id }) { session ->
-                                SessionCard(
-                                    session = session,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
-                                )
-                            }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        items(sessions, key = { it.id }) { session ->
+                            SessionCard(
+                                session = session,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                            )
                         }
                     }
                 }
-
-                // Bottom navigation
-                BottomNav(
-                    selectedTab = selectedTab,
-                    onTabSelected = { tab ->
-                        selectedTab = tab
-                        when (tab) {
-                            1 -> { showDevicesPlaceholder = true }
-                            2 -> navController.navigate("settings")
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
             }
+
+            // Bottom navigation
+            BottomNav(
+                selectedTab = selectedTab,
+                onTabSelected = { tab ->
+                    selectedTab = tab
+                    when (tab) {
+                        1 -> { showDevicesPlaceholder = true }
+                        2 -> navController.navigate("settings")
+                    }
+                }
+            )
         }
 
         // Devices placeholder dialog
@@ -375,6 +371,20 @@ private fun SessionCard(session: Session, modifier: Modifier = Modifier) {
                         )
                     }
                 }
+            }
+
+            // Last output preview
+            val lastOut = data.lastOutput
+            if (lastOut != null && lastOut.output.isNotBlank()) {
+                Text(
+                    text = lastOut.output,
+                    fontSize = 12.sp,
+                    color = ClawdMutedDark,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 16.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
 
             // Divider

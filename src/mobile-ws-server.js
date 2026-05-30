@@ -152,6 +152,17 @@ class MobileWSServer extends EventEmitter {
     this._broadcast(message);
   }
 
+  removeSession(sessionId) {
+    if (!this.sessionCache.has(sessionId)) return;
+    this.sessionCache.delete(sessionId);
+    const message = JSON.stringify({
+      type: "session_deleted",
+      sessionId,
+      timestamp: Date.now(),
+    });
+    this._broadcast(message);
+  }
+
   broadcastToolOutput(sessionId, toolData) {
     const message = JSON.stringify({
       type: "tool_output",

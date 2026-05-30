@@ -11,7 +11,15 @@ data class SessionData(
     val sessionTitle: String? = null,
     val cwd: String? = null,
     val updatedAt: Long? = null,
-    val recentEvents: List<RecentEvent> = emptyList()
+    val recentEvents: List<RecentEvent> = emptyList(),
+    val lastOutput: LastOutput? = null
+)
+
+@Serializable
+data class LastOutput(
+    val toolName: String = "",
+    val output: String = "",
+    val at: Long = 0
 )
 
 @Serializable
