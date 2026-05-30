@@ -1,9 +1,14 @@
 package com.clawd.mobile
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -43,6 +48,12 @@ class MainActivity : ComponentActivity() {
         showNextPermission()
     }
 
+    private val batteryOptLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        setupContent()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -73,7 +84,7 @@ class MainActivity : ComponentActivity() {
         if (permissions.isNotEmpty()) {
             permissionQueue.addAll(permissions)
             currentPermissionIndex = 0
-            onAllPermissionsDone = { setupContent() }
+            onAllPermissionsDone = { checkAndRequestBatteryOptimization() }
             setContent {
                 ClawdMobileTheme {
                     PermissionExplanationDialog(
@@ -89,7 +100,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         } else {
-            setupContent()
+            checkAndRequestBatteryOptimization()
         }
     }
 
@@ -119,6 +130,27 @@ class MainActivity : ComponentActivity() {
         setContent {
             ClawdMobileTheme {
                 ClawdNavGraph()
+            }
+        }
+    }
+
+    private fun checkAndRequestBatteryOptimization() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) {
+            setupContent()
+            return
+        }
+        setContent {
+            ClawdMobileTheme {
+                BatteryOptimizationDialog(
+                    onConfirm = {
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:$packageName")
+                        }
+                        batteryOptLauncher.launch(intent)
+                    },
+                    onSkip = { setupContent() }
+                )
             }
         }
     }
@@ -165,6 +197,78 @@ private fun PermissionExplanationDialog(
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     request.description,
+                    fontSize = 13.sp,
+                    color = ClawdFaintDark,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onSkip,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("跳过", color = ClawdMutedDark)
+                    }
+                    Button(
+                        onClick = onConfirm,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ClawdAccent,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("允许")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BatteryOptimizationDialog(
+    onConfirm: () -> Unit,
+    onSkip: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ClawdBgDark),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = ClawdCardDark)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    ClawdIcons.Bell,
+                    null,
+                    tint = ClawdAccent,
+                    modifier = Modifier.size(40.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "后台保活权限",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ClawdTextDark
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "为确保后台 SSE 连接不被系统杀死，请允许 Clawd Mobile 忽略电池优化。\n\n" +
+                        "国产手机（MIUI、ColorOS、EMUI 等）会强制关闭后台应用，此权限可避免 3 秒断连问题。",
                     fontSize = 13.sp,
                     color = ClawdFaintDark,
                     lineHeight = 20.sp

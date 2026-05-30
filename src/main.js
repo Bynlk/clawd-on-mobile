@@ -1381,9 +1381,11 @@ const { startHttpServer, getHookServerPort, getMobileWS, getMobileToken, getMobi
 const _origAddPendingPermission = _serverCtx.addPendingPermission;
 _serverCtx.addPendingPermission = function(permEntry) {
   _origAddPendingPermission(permEntry);
+  console.log(`[mobile-bridge] addPendingPermission called: agentId=${permEntry?.agentId} hasRes=${!!permEntry?.res} toolName=${permEntry?.toolName}`);
   if (permEntry && permEntry.res && permEntry.agentId !== "opencode") {
     const id = "mobile_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
     permEntry._mobileApprovalId = id;
+    console.log(`[mobile-bridge] broadcasting permission_request id=${id}`);
     broadcastHookEvent({
       type: "permission_request",
       id,

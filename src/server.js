@@ -521,8 +521,14 @@ function startHttpServer() {
 }
 
 function broadcastHookEvent(eventData) {
-  if (mobileSSEClients.size === 0) return;
+  if (mobileSSEClients.size === 0) {
+    if (eventData.type === "permission_request") {
+      console.log(`[mobile-sse] broadcastHookEvent type=${eventData.type} SKIPPED — no SSE clients connected`);
+    }
+    return;
+  }
   const data = `data: ${JSON.stringify(eventData)}\n\n`;
+  console.log(`[mobile-sse] broadcastHookEvent type=${eventData.type} clients=${mobileSSEClients.size}`);
   for (const client of mobileSSEClients) {
     try { client.write(data); } catch { mobileSSEClients.delete(client); }
   }
@@ -541,7 +547,13 @@ function startMobileServer() {
       res.write(`data: ${JSON.stringify({ type: "connected", timestamp: Date.now() })}\n\n`);
       mobileSSEClients.add(res);
       console.log(`[mobile-sse] Client connected (total: ${mobileSSEClients.size})`);
+      // SSE heartbeat: keep TCP alive and detect dead clients
+      const pingInterval = setInterval(() => {
+        try { res.write(`data: ${JSON.stringify({ type: "ping", timestamp: Date.now() })}\n\n`); }
+        catch { clearInterval(pingInterval); mobileSSEClients.delete(res); }
+      }, 15000);
       req.on("close", () => {
+        clearInterval(pingInterval);
         mobileSSEClients.delete(res);
         console.log(`[mobile-sse] Client disconnected (total: ${mobileSSEClients.size})`);
       });

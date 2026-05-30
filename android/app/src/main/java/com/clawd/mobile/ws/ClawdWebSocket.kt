@@ -23,7 +23,9 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     private var reconnectDelay = 1000L
     private val maxReconnectDelay = 30000L
     private var reconnectJob: Job? = null
+    private var watchdogJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val watchdogTimeoutMs = 30_000L
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val sseFactory: EventSource.Factory = EventSources.createFactory(client)
@@ -58,10 +60,20 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
 
     fun disconnect() {
         reconnectJob?.cancel()
+        watchdogJob?.cancel()
         eventSource?.cancel()
         eventSource = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _sessions.value = emptyMap()
+    }
+
+    private fun resetWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = scope.launch {
+            delay(watchdogTimeoutMs)
+            // No event received within timeout — connection is silently dead
+            scheduleReconnect()
+        }
     }
 
     private fun doConnect() {
@@ -79,9 +91,11 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
             override fun onOpen(eventSource: EventSource, response: Response) {
                 reconnectDelay = 1000L
                 _connectionState.value = ConnectionState.CONNECTED
+                resetWatchdog()
             }
 
             override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
+                resetWatchdog()
                 handleMessage(data)
             }
 
@@ -104,6 +118,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         val type = obj["type"]?.jsonPrimitive?.contentOrNull ?: return
 
         when (type) {
+            "ping" -> return  // server heartbeat, watchdog already reset in onEvent
             "connected" -> { /* SSE handshake confirmed */ }
 
             "snapshot" -> {
@@ -266,6 +281,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     }
 
     fun destroy() {
+        watchdogJob?.cancel()
         scope.cancel()
         eventSource?.cancel()
         eventSource = null
