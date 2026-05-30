@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.clawd.mobile.MainActivity
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.StatusNotifier
 import com.clawd.mobile.service.WebSocketService
@@ -52,6 +53,12 @@ fun ClawdNavGraph() {
     val approvalViewModel: ApprovalViewModel = viewModel(
         factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
     )
+
+    // Forward notification tap request ID to ViewModel (consumed by SessionsScreen)
+    MainActivity.pendingApprovalRequestId?.let {
+        approvalViewModel.setNotificationRequestId(it)
+        MainActivity.pendingApprovalRequestId = null
+    }
 
     // Try auto-reconnect to last connection
     LaunchedEffect(ws) {

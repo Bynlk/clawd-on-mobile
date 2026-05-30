@@ -60,7 +60,10 @@ fun SessionsScreen(
 ) {
     val connectionState by webSocket.connectionState.collectAsState()
     val sessionsMap by webSocket.sessions.collectAsState()
+    val syncing by webSocket.syncing.collectAsState()
     val pendingRequests by approvalViewModel.pendingRequests.collectAsState()
+    val countdowns by approvalViewModel.countdowns.collectAsState()
+    val notificationRequestId by approvalViewModel.notificationRequestId.collectAsState()
 
     val sessions = remember(sessionsMap) {
         sessionsMap.map { (id, data) -> Session(id, data) }
@@ -75,6 +78,20 @@ fun SessionsScreen(
 
     LaunchedEffect(pendingRequests.size) {
         showSheet = pendingRequests.isNotEmpty()
+    }
+
+    // Auto-show sheet when user taps a notification
+    // Trigger on both notificationRequestId and pendingRequests changes
+    LaunchedEffect(notificationRequestId, pendingRequests.size) {
+        val rid = notificationRequestId
+        if (rid != null && pendingRequests.any { it.requestId == rid }) {
+            showSheet = true
+            approvalViewModel.consumeNotificationRequestId()
+        } else if (rid != null && pendingRequests.isNotEmpty()) {
+            // Request ID set but no matching request — show first pending anyway
+            showSheet = true
+            approvalViewModel.consumeNotificationRequestId()
+        }
     }
 
     // Bottom nav selected tab
@@ -102,7 +119,19 @@ fun SessionsScreen(
             FixedTopBar(isConnected = isConnected)
 
             // Main content
-            if (connectionState == ConnectionState.DISCONNECTED && sessions.isEmpty()) {
+            if (syncing && sessions.isEmpty()) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            color = ClawdAccent,
+                            strokeWidth = 3.dp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("正在同步...", fontSize = 14.sp, color = ClawdFaintDark)
+                    }
+                }
+            } else if (connectionState == ConnectionState.DISCONNECTED && sessions.isEmpty()) {
                 Box(modifier = Modifier.weight(1f)) {
                     EmptyState(
                         onScan = { navController.navigate("settings") },
@@ -186,6 +215,8 @@ fun SessionsScreen(
             ) {
                 ApprovalSheet(
                     request = currentRequest,
+                    sessionName = resolveSessionName(currentRequest.sessionId, sessionsMap, prefsStore),
+                    remainingSeconds = countdowns[currentRequest.requestId] ?: 0,
                     onApprove = { requestId -> approvalViewModel.approve(requestId) },
                     onDeny = { requestId -> approvalViewModel.deny(requestId) },
                     onSuggestion = { requestId, index -> approvalViewModel.approveWithSuggestion(requestId, index) },
@@ -603,6 +634,8 @@ private fun BottomNav(selectedTab: Int, onTabSelected: (Int) -> Unit, modifier: 
 @Composable
 private fun ApprovalSheet(
     request: PermissionRequestData,
+    sessionName: String?,
+    remainingSeconds: Int,
     onApprove: (String) -> Unit,
     onDeny: (String) -> Unit,
     onSuggestion: (String, Int) -> Unit,
@@ -611,16 +644,32 @@ private fun ApprovalSheet(
     val isElicitation = request.toolName == "elicitation"
     val requestId = request.requestId ?: return
 
+    // Timeout for progress bar
+    val timeoutMs = request.timeout.coerceIn(10_000, 300_000)
+    val totalSec = (timeoutMs / 1000).toInt()
+    val progress = if (totalSec > 0) remainingSeconds.toFloat() / totalSec else 0f
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
             .padding(bottom = 24.dp)
     ) {
+        // Session name
+        if (!sessionName.isNullOrBlank()) {
+            Text(
+                sessionName,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = ClawdTextDark,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 12.dp)
         ) {
             Icon(
                 ClawdIcons.Shield, null,
@@ -645,6 +694,26 @@ private fun ApprovalSheet(
             )
         }
 
+        // Countdown progress bar
+        if (remainingSeconds > 0) {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .padding(bottom = 8.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = if (remainingSeconds <= 10) ClawdError else ClawdAccent,
+                trackColor = ClawdSurfaceAltDark,
+            )
+            Text(
+                "${remainingSeconds}s",
+                fontSize = 11.sp,
+                color = if (remainingSeconds <= 10) ClawdError else ClawdFaintDark,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
         if (!isElicitation && !request.toolName.isNullOrBlank()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -659,9 +728,19 @@ private fun ApprovalSheet(
         if (!request.toolInputSummary.isNullOrBlank()) {
             Text(
                 request.toolInputSummary,
-                fontSize = 13.sp,
-                color = ClawdMutedDark,
-                modifier = Modifier.padding(bottom = 16.dp)
+                fontSize = 12.sp,
+                color = ClawdTextDark,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = ClawdSurfaceAltDark,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(8.dp)
+                    .padding(bottom = 8.dp)
             )
         }
 
@@ -770,6 +849,20 @@ private fun EmptyState(onScan: () -> Unit, onManual: () -> Unit) {
 private fun shortPath(p: String): String {
     val parts = p.split("/", "\\")
     return if (parts.size > 3) ".../${parts.takeLast(2).joinToString("/")}" else p
+}
+
+private fun resolveSessionName(
+    sessionId: String?,
+    sessionsMap: Map<String, com.clawd.mobile.data.SessionData>,
+    prefsStore: PrefsStore
+): String? {
+    if (sessionId == null) return null
+    prefsStore.getSessionName(sessionId)?.let { return it }
+    sessionsMap[sessionId]?.let { data ->
+        data.sessionTitle?.let { return it }
+        data.agentId?.let { return it }
+    }
+    return sessionId
 }
 
 private fun formatAgo(ts: Long?): String {

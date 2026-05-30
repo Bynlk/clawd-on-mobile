@@ -46,7 +46,6 @@ const {
   findPendingPermissionForStateEvent,
 } = require("./server-permission-utils");
 const { MobileWSServer } = require("./mobile-ws-server");
-const { MobileApprovalClient } = require("./mobile-approval-client");
 const crypto = require("crypto");
 const os = require("os");
 const fs = require("fs");
@@ -93,7 +92,6 @@ const MOBILE_TOKEN = savedState.token || crypto.randomBytes(16).toString("hex");
 if (!savedState.token) saveMobileState({ token: MOBILE_TOKEN });
 
 let mobileWS = null;
-const mobileApprovalClient = new MobileApprovalClient(() => mobileWS);
 let activeServerPort = null;
 let mobileHttpServer = null;
 let mobileServerPort = null;
@@ -545,16 +543,33 @@ function startMobileServer() {
         "Access-Control-Allow-Origin": "*",
       });
       res.write(`data: ${JSON.stringify({ type: "connected", timestamp: Date.now() })}\n\n`);
+      // Tell client to flush stale sessions before snapshot arrives
+      res.write(`data: ${JSON.stringify({ type: "clear_sessions", timestamp: Date.now() })}\n\n`);
       mobileSSEClients.add(res);
+      const sseClientId = "sse_" + crypto.randomBytes(8).toString("hex");
+      const sseClientIp = (req.socket.remoteAddress || "unknown").replace(/^::ffff:/, "");
+      res._sseClientId = sseClientId;
+      if (mobileWS) {
+        mobileWS.registerExternalClient(sseClientId, { ip: sseClientIp, res });
+        // Send current session cache to the new client so syncing state resolves
+        const cache = mobileWS.getSessionCache ? mobileWS.getSessionCache() : new Map();
+        if (cache.size > 0) {
+          res.write(`data: ${JSON.stringify({ type: "snapshot", sessions: Object.fromEntries(cache), timestamp: Date.now() })}\n\n`);
+        } else {
+          // No sessions — still resolve syncing state
+          res.write(`data: ${JSON.stringify({ type: "snapshot", sessions: {}, timestamp: Date.now() })}\n\n`);
+        }
+      }
       console.log(`[mobile-sse] Client connected (total: ${mobileSSEClients.size})`);
       // SSE heartbeat: keep TCP alive and detect dead clients
       const pingInterval = setInterval(() => {
         try { res.write(`data: ${JSON.stringify({ type: "ping", timestamp: Date.now() })}\n\n`); }
-        catch { clearInterval(pingInterval); mobileSSEClients.delete(res); }
+        catch { clearInterval(pingInterval); mobileSSEClients.delete(res); if (mobileWS && res._sseClientId) mobileWS.unregisterExternalClient(res._sseClientId); }
       }, 15000);
       req.on("close", () => {
         clearInterval(pingInterval);
         mobileSSEClients.delete(res);
+        if (mobileWS && res._sseClientId) mobileWS.unregisterExternalClient(res._sseClientId);
         console.log(`[mobile-sse] Client disconnected (total: ${mobileSSEClients.size})`);
       });
       return;
@@ -673,7 +688,6 @@ return {
   cleanup,
   getMobileWS: () => mobileWS,
   getMobileToken: () => MOBILE_TOKEN,
-  getMobileApprovalClient: () => mobileApprovalClient,
   getHookServerPort: () => activeServerPort,
   saveMobileState,
   broadcastHookEvent,

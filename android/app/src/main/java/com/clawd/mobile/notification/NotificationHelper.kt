@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.clawd.mobile.ClawdApp
+import com.clawd.mobile.MainActivity
 import com.clawd.mobile.data.PermissionRequestData
 
 object NotificationHelper {
@@ -15,13 +16,13 @@ object NotificationHelper {
 
     private var notificationId = 1000
 
-    fun showApprovalNotification(context: Context, request: PermissionRequestData) {
+    fun showApprovalNotification(context: Context, request: PermissionRequestData, sessionName: String? = null) {
         val id = notificationId++
         val requestId = request.requestId ?: return
 
         // Allow intent
         val allowIntent = Intent(context, ApprovalReceiver::class.java).apply {
-            action = "ACTION_APPROVE"
+            action = ApprovalReceiver.ACTION_APPROVE
             putExtra("request_id", requestId)
             putExtra("notification_id", id)
         }
@@ -32,7 +33,7 @@ object NotificationHelper {
 
         // Deny intent
         val denyIntent = Intent(context, ApprovalReceiver::class.java).apply {
-            action = "ACTION_DENY"
+            action = ApprovalReceiver.ACTION_DENY
             putExtra("request_id", requestId)
             putExtra("notification_id", id)
         }
@@ -42,21 +43,18 @@ object NotificationHelper {
         )
 
         // Open app intent
-        val openIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+        val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("request_id", requestId)
         }
         val openPending = PendingIntent.getActivity(
             context, id, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = "🦀 ${request.agentId ?: "Agent"} 需要你来拍板！"
-        val body = buildString {
-            append(request.toolInputSummary ?: "需要您的确认")
-            if (!request.sessionId.isNullOrBlank()) {
-                append("\n会话: ${request.sessionId}")
-            }
-        }
+        val name = sessionName ?: request.agentId ?: "Agent"
+        val title = "🦀 $name 需要你来拍板！"
+        val body = request.toolInputSummary ?: "需要您的确认"
 
         val notification = NotificationCompat.Builder(context, ClawdApp.CHANNEL_APPROVAL)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
@@ -68,6 +66,39 @@ object NotificationHelper {
             .setContentIntent(openPending)
             .addAction(android.R.drawable.ic_menu_save, "允许", allowPending)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "拒绝", denyPending)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .build()
+
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(id, notification)
+    }
+
+    fun showElicitationNotification(context: Context, request: PermissionRequestData, sessionName: String? = null) {
+        val id = notificationId++
+        val requestId = request.requestId ?: return
+
+        // Open app intent (elicitation requires choosing an option, open the app)
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("request_id", requestId)
+        }
+        val openPending = PendingIntent.getActivity(
+            context, id, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val name = sessionName ?: request.agentId ?: "Agent"
+        val title = "🦀 $name 需要你做选择"
+        val body = request.toolInputSummary ?: "请选择一个选项"
+
+        val notification = NotificationCompat.Builder(context, ClawdApp.CHANNEL_APPROVAL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(openPending)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .build()
 

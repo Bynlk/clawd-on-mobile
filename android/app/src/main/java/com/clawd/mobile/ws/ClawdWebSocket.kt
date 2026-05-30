@@ -42,6 +42,9 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     private val _permissionRequests = MutableSharedFlow<PermissionRequestData>(extraBufferCapacity = 16)
     val permissionRequests: SharedFlow<PermissionRequestData> = _permissionRequests
 
+    private val _syncing = MutableStateFlow(false)
+    val syncing: StateFlow<Boolean> = _syncing
+
     val currentHost: String? get() = config?.host
     val currentPort: Int? get() = config?.port
 
@@ -53,6 +56,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     }
 
     fun reconnect() {
+        if (_connectionState.value == ConnectionState.CONNECTED) return
         val saved = config ?: prefsStore.loadConfig() ?: return
         config = saved
         doConnect()
@@ -121,6 +125,10 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         when (type) {
             "ping" -> return  // server heartbeat, watchdog already reset in onEvent
             "connected" -> { /* SSE handshake confirmed */ }
+            "clear_sessions" -> {
+                _sessions.value = emptyMap()
+                _syncing.value = true
+            }
 
             "snapshot" -> {
                 val sessionsObj = obj["sessions"]?.jsonObject ?: return
@@ -129,6 +137,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                     try { map[sid] = json.decodeFromJsonElement<SessionData>(el) } catch (_: Exception) {}
                 }
                 _sessions.value = map
+                _syncing.value = false
             }
 
             "state" -> {
@@ -187,12 +196,26 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
             "permission_request" -> {
                 scope.launch {
                     try {
+                        val toolNameStr = obj["toolName"]?.jsonPrimitive?.contentOrNull
+                        val toolInputObj = obj["toolInput"]?.jsonObject
+                        val suggestions = try {
+                            obj["suggestions"]?.jsonArray?.map { s ->
+                                val so = s.jsonObject
+                                PermissionSuggestion(
+                                    label = so["label"]?.jsonPrimitive?.content ?: "",
+                                    behavior = so["behavior"]?.jsonPrimitive?.content ?: "deny",
+                                    rule = so["rule"]?.jsonPrimitive?.contentOrNull,
+                                )
+                            } ?: emptyList()
+                        } catch (_: Exception) { emptyList() }
                         val data = PermissionRequestData(
                             agentId = obj["agentId"]?.jsonPrimitive?.contentOrNull,
-                            toolName = obj["toolName"]?.jsonPrimitive?.contentOrNull,
+                            toolName = toolNameStr,
+                            toolInputSummary = buildToolInputSummary(toolNameStr, toolInputObj),
                             sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull,
                             requestId = obj["id"]?.jsonPrimitive?.contentOrNull,
                             timeout = obj["timeout"]?.jsonPrimitive?.longOrNull ?: 60000,
+                            suggestions = suggestions,
                         )
                         _permissionRequests.emit(data)
                     } catch (_: Exception) {}
@@ -269,6 +292,34 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 client.newCall(request).execute().close()
             } catch (_: Exception) {}
         }
+    }
+
+    private fun buildToolInputSummary(toolName: String?, toolInput: JsonObject?): String? {
+        if (toolInput == null) return null
+        val key = toolName ?: ""
+        val summary = when (key) {
+            "Write", "Edit", "Delete", "Read" ->
+                toolInput["file_path"]?.jsonPrimitive?.contentOrNull
+            "Bash" ->
+                toolInput["command"]?.jsonPrimitive?.contentOrNull
+            "NotebookEdit" ->
+                toolInput["notebook_path"]?.jsonPrimitive?.contentOrNull
+            "WebFetch" ->
+                toolInput["url"]?.jsonPrimitive?.contentOrNull
+            "WebSearch" ->
+                toolInput["query"]?.jsonPrimitive?.contentOrNull
+            else -> {
+                toolInput["description"]?.jsonPrimitive?.contentOrNull
+                    ?: toolInput["summary"]?.jsonPrimitive?.contentOrNull
+                    ?: toolInput["reason"]?.jsonPrimitive?.contentOrNull
+            }
+        }
+        val text = summary?.take(60)?.trim()
+        if (text.isNullOrBlank()) {
+            val fallback = toolInput.toString().take(80)
+            return if (fallback.length > 2) "$key → $fallback…" else null
+        }
+        return "$key → $text" + if (summary.length > 60) "…" else ""
     }
 
     private fun scheduleReconnect() {

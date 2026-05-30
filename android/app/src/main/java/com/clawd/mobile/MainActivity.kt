@@ -31,6 +31,11 @@ import com.clawd.mobile.ui.navigation.ClawdNavGraph
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        /** Set by notification tap, consumed by NavGraph */
+        var pendingApprovalRequestId: String? = null
+    }
+
     private val permissionQueue = mutableListOf<PermissionRequest>()
     private var currentPermissionIndex = 0
     private var onAllPermissionsDone: (() -> Unit)? = null
@@ -57,6 +62,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleApprovalIntent(intent)
 
         // Build permission queue
         val permissions = buildList {
@@ -101,6 +107,17 @@ class MainActivity : ComponentActivity() {
             }
         } else {
             checkAndRequestBatteryOptimization()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleApprovalIntent(intent)
+    }
+
+    private fun handleApprovalIntent(intent: Intent?) {
+        intent?.getStringExtra("request_id")?.let {
+            pendingApprovalRequestId = it
         }
     }
 

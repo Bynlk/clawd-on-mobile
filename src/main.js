@@ -986,7 +986,6 @@ const _permCtx = {
   clearShortcutFailure: (actionId) => shortcutRuntime.clearFailure(actionId),
   repositionUpdateBubble: () => repositionUpdateBubble(),
   getTelegramApprovalClient: () => getTelegramApprovalClient(),
-  getMobileApprovalClient: () => _server && typeof _server.getMobileApprovalClient === "function" ? _server.getMobileApprovalClient() : null,
   onPermissionsChanged: () => {
     if (hardwareBuddyAdapter) hardwareBuddyAdapter.notifyPermissionsChanged();
   },
@@ -1374,7 +1373,7 @@ const _serverCtx = {
   permLog,
 };
 const _server = require("./server")(_serverCtx);
-const { startHttpServer, getHookServerPort, getMobileWS, getMobileToken, getMobileApprovalClient, saveMobileState, broadcastHookEvent, startMobileServer, getPendingMobileApprovals } = _server;
+const { startHttpServer, getHookServerPort, getMobileWS, getMobileToken, saveMobileState, broadcastHookEvent, startMobileServer, getPendingMobileApprovals } = _server;
 
 // 移动端 SSE 权限审批桥接：覆盖 _serverCtx.addPendingPermission（server-route-permission.js
 // 实际调用的路径），将权限请求广播到 SSE，并存储到 pendingMobileApprovals 供 /mobile/approve 回调。
@@ -1392,6 +1391,8 @@ _serverCtx.addPendingPermission = function(permEntry) {
       sessionId: permEntry.sessionId,
       toolName: permEntry.toolName,
       agentId: permEntry.agentId,
+      toolInput: permEntry.toolInput || null,
+      suggestions: permEntry.suggestions || [],
       timestamp: Date.now(),
     });
     const pendingApprovals = getPendingMobileApprovals();
