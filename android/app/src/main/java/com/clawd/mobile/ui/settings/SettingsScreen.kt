@@ -393,6 +393,8 @@ private fun NotifyToggle(
 
 @Composable
 private fun AboutSection() {
+    val clipboard = LocalClipboardManager.current
+
     Text(
         "Clawd Mobile 是 Clawd 桌面宠物的移动端伴侣 App，用于实时监控 PC 端 Claude 会话状态、审批权限请求。",
         fontSize = 12.sp,
@@ -400,12 +402,26 @@ private fun AboutSection() {
         modifier = Modifier.padding(bottom = 12.dp)
     )
 
-    AboutRow("版本", "1.1.5")
-    AboutRow("平台", "Android (Jetpack Compose)")
-    AboutRow("协议", "MIT License")
-    AboutRow("项目地址", "github.com/Bynlk/clawd-on-desk")
+    AboutRow("版本", "v1.2.1（对应 PC 端 v1.x）")
+    AboutRow("原作者代码仓库", "github.com/clawd-on-desk/clawd-on-desk")
+    AboutRow("手机端代码仓库", "github.com/Bynlk/clawd-on-desk")
+    AboutRow("开源协议", "AGPL-3.0")
+    AboutRow("原作者", "Clawd Team")
+    AboutRow("维护者", "Bynlk")
 
     Spacer(modifier = Modifier.height(12.dp))
+    OutlinedButton(
+        onClick = { /* TODO: open GitHub releases page */ },
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdCardBorderDark),
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Icon(ClawdIcons.Refresh, null, modifier = Modifier.size(16.dp), tint = ClawdMutedDark)
+        Spacer(modifier = Modifier.width(6.dp))
+        Text("检查更新", color = ClawdMutedDark)
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
     Text(
         "Clawd Mobile 通过 WebSocket 与 PC 端通信，支持实时会话监控、权限审批、状态通知等功能。",
         fontSize = 11.sp,
@@ -415,12 +431,16 @@ private fun AboutSection() {
 
 @Composable
 private fun AboutRow(label: String, value: String) {
+    val clipboard = LocalClipboardManager.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .clickable { clipboard.setText(AnnotatedString(value)) }
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = 12.sp, color = ClawdFaintDark, modifier = Modifier.width(70.dp))
-        Text(value, fontSize = 12.sp, color = ClawdTextDark, fontFamily = FontFamily.Monospace)
+        Text(label, fontSize = 12.sp, color = ClawdFaintDark, modifier = Modifier.width(100.dp))
+        Text(value, fontSize = 12.sp, color = ClawdTextDark, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+        Icon(ClawdIcons.Checks, null, tint = ClawdFaintDark.copy(alpha = 0.5f), modifier = Modifier.size(12.dp))
     }
 }
