@@ -311,8 +311,6 @@ private fun NotificationSection(prefsStore: PrefsStore) {
     var approval by remember { mutableStateOf(prefsStore.isNotifyApproval()) }
     var status by remember { mutableStateOf(prefsStore.isNotifyStatus()) }
     var alert by remember { mutableStateOf(prefsStore.isNotifyAlert()) }
-    var bgKeepalive by remember { mutableStateOf(prefsStore.isBgKeepalive()) }
-
     Text(
         "控制 App 各类通知的开关。关闭后将不再收到对应类型的通知推送。",
         fontSize = 12.sp,
@@ -333,31 +331,6 @@ private fun NotificationSection(prefsStore: PrefsStore) {
         alert = it; prefsStore.setNotifyAlert(it)
     }
 
-    Spacer(modifier = Modifier.height(12.dp))
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(0.5.dp)
-            .background(ClawdCardBorderDark)
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-
-    Text(
-        "后台保活",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = ClawdTextDark,
-        modifier = Modifier.padding(bottom = 4.dp)
-    )
-    Text(
-        "App 进入后台时保持连接，确保实时接收会话更新和通知。",
-        fontSize = 12.sp,
-        color = ClawdFaintDark,
-        modifier = Modifier.padding(bottom = 8.dp)
-    )
-    NotifyToggle("后台保活", "后台运行时保持连接", bgKeepalive) {
-        bgKeepalive = it; prefsStore.setBgKeepalive(it)
-    }
 }
 
 @Composable
@@ -400,18 +373,31 @@ private fun AboutSection() {
     val context = LocalContext.current
 
     Text(
-        "Clawd Mobile 是 Clawd 桌面宠物的移动端伴侣 App，用于实时监控 PC 端 Claude 会话状态、审批权限请求。",
+        "陪你 AI 编码的移动端伙伴。",
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
+        color = ClawdTextDark,
+        modifier = Modifier.padding(bottom = 4.dp)
+    )
+    Text(
+        "A desktop companion for your AI coding journey.",
         fontSize = 12.sp,
         color = ClawdFaintDark,
         modifier = Modifier.padding(bottom = 12.dp)
     )
 
-    AboutRow("版本", "v1.2.3（对应 PC 端 v0.8.1）")
-    AboutRow("原作者代码仓库", "github.com/rullerzhou-afk/clawd-on-desk")
-    AboutRow("手机端代码仓库", "github.com/Bynlk/clawd-on-desk")
-    AboutRow("开源协议", "AGPL-3.0")
-    AboutRow("原作者", "rullerzhou-afk")
-    AboutRow("维护者", "Bynlk")
+    val versionName = try {
+        com.clawd.mobile.BuildConfig.VERSION_NAME
+    } catch (_: Exception) {
+        "?"
+    }
+    AboutRow("版本", "v$versionName")
+    AboutRow("代码仓库", "https://github.com/rullerzhou-afk/clawd-on-desk")
+    AboutRow("Fork 仓库", "https://github.com/Bynlk/clawd-on-desk")
+    AboutRow("开源协议", "AGPL-3.0 · © 2026 Ruller_Lulu")
+    AboutRow("原作者", "Ruller_Lulu / 鹿鹿")
+    AboutRow("维护者", "@rullerzhou-afk, @YOIMIYA66")
+    AboutRow("移动端维护者", "@Bynlk")
 
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedButton(
@@ -427,13 +413,6 @@ private fun AboutSection() {
         Spacer(modifier = Modifier.width(6.dp))
         Text("检查更新", color = ClawdMutedDark)
     }
-
-    Spacer(modifier = Modifier.height(8.dp))
-    Text(
-        "Clawd Mobile 通过 SSE 与 PC 端通信，支持实时会话监控、权限审批、状态通知等功能。",
-        fontSize = 11.sp,
-        color = ClawdFaintDark
-    )
 }
 
 @Composable

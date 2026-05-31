@@ -50,18 +50,22 @@ class StatusNotifier(private val context: Context, private val prefsStore: Prefs
         }
 
         // --- Per-session badge tracking: running → done/interrupted triggers alert ---
-        for ((id, data) in sessions) {
-            val prev = lastBadge[id]
-            if (prev == "running" && data.badge == "done") {
-                val name = resolveName(id, data)
-                Log.d("StatusNotifier", "DONE: session=$id name=$name badge=$prev->${data.badge}")
-                showCompletionNotification(id, name)
-            } else if (prev == "running" && data.badge == "interrupted") {
-                val name = resolveName(id, data)
-                Log.d("StatusNotifier", "INTERRUPTED: session=$id name=$name badge=$prev->${data.badge}")
-                showFailureNotification(id, name)
+        if (prefsStore.isNotifyStatus()) {
+            for ((id, data) in sessions) {
+                val prev = lastBadge[id]
+                if (prev == "running" && data.badge == "done") {
+                    val name = resolveName(id, data)
+                    Log.d("StatusNotifier", "DONE: session=$id name=$name badge=$prev->${data.badge}")
+                    showCompletionNotification(id, name)
+                } else if (prev == "running" && data.badge == "interrupted") {
+                    val name = resolveName(id, data)
+                    Log.d("StatusNotifier", "INTERRUPTED: session=$id name=$name badge=$prev->${data.badge}")
+                    showFailureNotification(id, name)
+                }
+                lastBadge[id] = data.badge
             }
-            lastBadge[id] = data.badge
+        } else {
+            for ((id, data) in sessions) lastBadge[id] = data.badge
         }
         // Clean up removed sessions
         lastBadge.keys.retainAll(sessions.keys)
@@ -80,6 +84,7 @@ class StatusNotifier(private val context: Context, private val prefsStore: Prefs
 
         val shouldAlert = when (displayState) {
             "attention", "error" -> prefsStore.isNotifyAlert() && hasPendingApprovals()
+            "notification" -> prefsStore.isNotifyApproval() && hasPendingApprovals()
             else -> false
         }
 
@@ -102,6 +107,7 @@ class StatusNotifier(private val context: Context, private val prefsStore: Prefs
         val (alertTitle, alertText) = when (displayState) {
             "attention" -> "$name 遇到麻烦了" to "来看看？"
             "error" -> "$name 出错了" to "需要你关注一下"
+            "notification" -> "$name 需要你的审批" to "Claude 请求执行权限"
             else -> return
         }
         Log.d("StatusNotifier", "NOTIFY alert: $alertTitle | $alertText")

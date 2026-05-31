@@ -17,7 +17,6 @@ class PrefsStore(context: Context) {
         private const val KEY_NOTIFY_STATUS = "notify_status"
         private const val KEY_NOTIFY_ALERT = "notify_alert"
         private const val KEY_NOTIFY_ENABLED = "notify_enabled"
-        private const val KEY_BG_KEEPALIVE = "bg_keepalive"
     }
 
     fun saveConfig(config: ConnectionConfig) {
@@ -68,8 +67,6 @@ class PrefsStore(context: Context) {
     fun isNotifyAlert(): Boolean = prefs.getBoolean(KEY_NOTIFY_ALERT, true)
     fun setNotifyAlert(v: Boolean) { prefs.edit().putBoolean(KEY_NOTIFY_ALERT, v).apply() }
 
-    fun isBgKeepalive(): Boolean = prefs.getBoolean(KEY_BG_KEEPALIVE, true)
-    fun setBgKeepalive(v: Boolean) { prefs.edit().putBoolean(KEY_BG_KEEPALIVE, v).apply() }
 
     // Session name overrides
     fun saveSessionName(sessionId: String, name: String) {
