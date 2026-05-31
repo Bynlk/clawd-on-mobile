@@ -8,6 +8,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -18,8 +22,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
+import com.clawd.mobile.overlay.FloatingPetService
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -83,6 +90,14 @@ fun SettingsScreen(
                 defaultExpanded = false
             ) {
                 NotificationSection(prefsStore = prefsStore)
+            }
+
+            AccordionSection(
+                title = "桌宠",
+                icon = ClawdIcons.Pet,
+                defaultExpanded = false
+            ) {
+                FloatingPetSection(prefsStore = prefsStore)
             }
 
             AccordionSection(
@@ -331,6 +346,197 @@ private fun NotificationSection(prefsStore: PrefsStore) {
         alert = it; prefsStore.setNotifyAlert(it)
     }
 
+}
+
+// ─── Floating Pet Section ─────────────────────────────────────────
+
+@Composable
+private fun FloatingPetSection(prefsStore: PrefsStore) {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(prefsStore.isFloatingPetEnabled()) }
+    var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+
+    val petPrefs = remember { context.getSharedPreferences("clawd_prefs", Context.MODE_PRIVATE) }
+    var sizeDp by remember { mutableIntStateOf(petPrefs.getInt("pet_size_dp", 96)) }
+    var character by remember { mutableStateOf(petPrefs.getString("pet_character", "clawd") ?: "clawd") }
+
+    Text(
+        "在屏幕上显示一个可爱的桌宠小螃蟹。",
+        fontSize = 12.sp,
+        color = ClawdFaintDark,
+        modifier = Modifier.padding(bottom = 12.dp)
+    )
+
+    // Enable toggle
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("启用桌宠", fontSize = 13.sp, color = ClawdTextDark)
+            Text(
+                if (hasOverlayPermission) "需要悬浮窗权限（已授予）" else "需要悬浮窗权限（未授予）",
+                fontSize = 11.sp,
+                color = if (hasOverlayPermission) ClawdGreenBright else ClawdFaintDark
+            )
+        }
+        Switch(
+            checked = enabled,
+            onCheckedChange = { newValue ->
+                if (newValue) {
+                    if (Settings.canDrawOverlays(context)) {
+                        enabled = true
+                        prefsStore.setFloatingPetEnabled(true)
+                        val intent = Intent(context, FloatingPetService::class.java)
+                        context.startForegroundService(intent)
+                    } else {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}")
+                        )
+                        context.startActivity(intent)
+                    }
+                } else {
+                    enabled = false
+                    prefsStore.setFloatingPetEnabled(false)
+                    val intent = Intent(context, FloatingPetService::class.java)
+                    context.stopService(intent)
+                }
+            },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = ClawdAccent,
+                uncheckedThumbColor = ClawdFaintDark,
+                uncheckedTrackColor = ClawdSurfaceAltDark
+            )
+        )
+    }
+
+    // Disconnect button
+    if (enabled) {
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = {
+                enabled = false
+                prefsStore.setFloatingPetEnabled(false)
+                context.startService(
+                    Intent(context, FloatingPetService::class.java)
+                        .setAction(FloatingPetService.ACTION_DISCONNECT)
+                )
+            },
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdCardBorderDark),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("断开连接并关闭桌宠", color = ClawdFaintDark, fontSize = 13.sp)
+        }
+    }
+
+    // Size slider
+    if (enabled) {
+        Spacer(modifier = Modifier.height(12.dp))
+        var sizeText by remember { mutableStateOf(sizeDp.toString()) }
+
+        // Size slider + input field
+        Text("大小", fontSize = 13.sp, color = ClawdTextDark)
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Slider(
+                value = sizeDp.toFloat(),
+                onValueChange = { sizeDp = it.toInt() },
+                onValueChangeFinished = {
+                    sizeText = sizeDp.toString()
+                    petPrefs.edit().putInt("pet_size_dp", sizeDp).apply()
+                    context.sendBroadcast(
+                        Intent(FloatingPetService.ACTION_PET_SIZE)
+                            .putExtra(FloatingPetService.EXTRA_SIZE_DP, sizeDp)
+                    )
+                },
+                valueRange = 32f..128f,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(
+                    thumbColor = ClawdAccent,
+                    activeTrackColor = ClawdAccent
+                )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .width(60.dp)
+                    .height(36.dp)
+                    .border(0.5.dp, ClawdCardBorderDark, RoundedCornerShape(8.dp))
+                    .background(ClawdSurfaceAltDark, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                BasicTextField(
+                    value = sizeText,
+                    onValueChange = { newValue ->
+                        sizeText = newValue.filter { it.isDigit() }
+                        val parsed = sizeText.toIntOrNull()
+                        if (parsed != null) {
+                            val clamped = parsed.coerceIn(32, 128)
+                            sizeDp = clamped
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = LocalTextStyle.current.copy(
+                        fontSize = 13.sp,
+                        color = ClawdTextDark,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    ),
+                    singleLine = true
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("dp", fontSize = 12.sp, color = ClawdFaintDark)
+        }
+
+        // Sync slider → text field
+        LaunchedEffect(sizeDp) {
+            sizeText = sizeDp.toString()
+        }
+
+        // Character selector
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("角色", fontSize = 13.sp, color = ClawdTextDark)
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("clawd" to "Clawd", "calico" to "Calico", "cloudling" to "Cloudling").forEach { (key, label) ->
+                FilterChip(
+                    selected = character == key,
+                    onClick = {
+                        character = key
+                        petPrefs.edit().putString("pet_character", key).apply()
+                        context.sendBroadcast(
+                            Intent(FloatingPetService.ACTION_PET_CHARACTER)
+                                .putExtra(FloatingPetService.EXTRA_CHARACTER, key)
+                                .setPackage(context.packageName)
+                        )
+                    },
+                    label = { Text(label, fontSize = 12.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = ClawdAccent,
+                        selectedLabelColor = Color.White
+                    )
+                )
+            }
+        }
+    }
+
+    // Re-check permission when section is recomposed
+    LaunchedEffect(Unit) {
+        hasOverlayPermission = Settings.canDrawOverlays(context)
+    }
 }
 
 @Composable

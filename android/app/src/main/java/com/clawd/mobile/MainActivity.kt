@@ -63,6 +63,12 @@ class MainActivity : ComponentActivity() {
     private val batteryOptLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
+        checkOverlayPermission()
+    }
+
+    private val overlayPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
         setupContent()
     }
 
@@ -181,7 +187,7 @@ class MainActivity : ComponentActivity() {
     private fun checkAndRequestBatteryOptimization() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (pm.isIgnoringBatteryOptimizations(packageName)) {
-            setupContent()
+            checkOverlayPermission()
             return
         }
         setContent {
@@ -192,6 +198,27 @@ class MainActivity : ComponentActivity() {
                             data = Uri.parse("package:$packageName")
                         }
                         batteryOptLauncher.launch(intent)
+                    },
+                    onSkip = { checkOverlayPermission() }
+                )
+            }
+        }
+    }
+
+    private fun checkOverlayPermission() {
+        if (Settings.canDrawOverlays(this)) {
+            setupContent()
+            return
+        }
+        setContent {
+            ClawdMobileTheme {
+                OverlayPermissionDialog(
+                    onConfirm = {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        )
+                        overlayPermissionLauncher.launch(intent)
                     },
                     onSkip = { setupContent() }
                 )
@@ -241,6 +268,77 @@ private fun PermissionExplanationDialog(
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     request.description,
+                    fontSize = 13.sp,
+                    color = ClawdFaintDark,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onSkip,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("跳过", color = ClawdMutedDark)
+                    }
+                    Button(
+                        onClick = onConfirm,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ClawdAccent,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("允许")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverlayPermissionDialog(
+    onConfirm: () -> Unit,
+    onSkip: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ClawdBgDark),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = ClawdCardDark)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    ClawdIcons.Bell,
+                    null,
+                    tint = ClawdAccent,
+                    modifier = Modifier.size(40.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "悬浮窗权限",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ClawdTextDark
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "用于显示桌宠悬浮窗，需要在系统设置中手动开启。",
                     fontSize = 13.sp,
                     color = ClawdFaintDark,
                     lineHeight = 20.sp

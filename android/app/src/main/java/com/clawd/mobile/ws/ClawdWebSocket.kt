@@ -210,7 +210,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 _sessions.value = _sessions.value.toMutableMap().apply {
                     if (data.isVisible) put(sid, data) else remove(sid)
                 }
-                Log.d("ClawdWebSocket", "state sid=$sid state=${data.state} displayState=${_displayState.value} badge=${data.badge} chip=${data.chipText}/${data.chipColor} dot=${data.dotColor} visible=${data.isVisible}")
+                Log.d("ClawdWebSocket", "state sid=$sid state=${data.state} displayState=${data.displayState} globalDisplayState=${_displayState.value} badge=${data.badge} chip=${data.chipText}/${data.chipColor} dot=${data.dotColor} visible=${data.isVisible}")
             }
 
             "tool_output" -> {

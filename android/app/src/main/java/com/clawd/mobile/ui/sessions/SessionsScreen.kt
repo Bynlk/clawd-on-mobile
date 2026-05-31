@@ -305,10 +305,30 @@ private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modi
         ?: data.agentId
         ?: ""
 
-    // All visual state from desktop — zero inference
+    // All visual state from desktop — mobile overrides for better labels
     val chipText = data.chipText
     val chipColor = parseHexColor(data.chipColor) ?: ClawdMutedDark
     val dotColor = parseHexColor(data.dotColor) ?: ClawdSubtleDark
+
+    // Mobile override: dotColor
+    val mappedDotColor = when {
+        data.dotColor == "#52525b" -> parseHexColor("#71717a") ?: dotColor  // idle 深灰 → done 灰色
+        data.event == "Notification" -> parseHexColor("#71717a") ?: dotColor  // Notification → 灰色
+        else -> dotColor
+    }
+
+    // Mobile override: chip text (more descriptive labels)
+    val mappedChipText = when (data.chipText) {
+        "等待中" -> when (data.event) {
+            "PermissionRequest" -> "等待授权"
+            "Elicitation" -> "等待选择"
+            else -> chipText
+        }
+        else -> chipText
+    }
+
+    // Mobile override: chip color (keep original)
+    val mappedChipColor = chipColor
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -327,7 +347,7 @@ private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modi
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(dotColor)
+                        .background(mappedDotColor)
                 )
                 // Title
                 Text(
@@ -342,16 +362,16 @@ private fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Modi
                         .weight(1f, fill = false)
                 )
                 // State chip — from desktop, direct mapping
-                if (chipText != null) {
+                if (mappedChipText != null) {
                     Text(
-                        text = chipText,
+                        text = mappedChipText,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        color = chipColor,
+                        color = mappedChipColor,
                         modifier = Modifier
                             .padding(start = 6.dp)
-                            .border(0.5.dp, chipColor.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-                            .background(chipColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, mappedChipColor.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                            .background(mappedChipColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }

@@ -17,6 +17,7 @@ class PrefsStore(context: Context) {
         private const val KEY_NOTIFY_STATUS = "notify_status"
         private const val KEY_NOTIFY_ALERT = "notify_alert"
         private const val KEY_NOTIFY_ENABLED = "notify_enabled"
+        private const val KEY_FLOATING_PET = "floating_pet_enabled"
     }
 
     fun saveConfig(config: ConnectionConfig) {
@@ -66,6 +67,10 @@ class PrefsStore(context: Context) {
 
     fun isNotifyAlert(): Boolean = prefs.getBoolean(KEY_NOTIFY_ALERT, true)
     fun setNotifyAlert(v: Boolean) { prefs.edit().putBoolean(KEY_NOTIFY_ALERT, v).apply() }
+
+    // Floating pet
+    fun isFloatingPetEnabled(): Boolean = prefs.getBoolean(KEY_FLOATING_PET, false)
+    fun setFloatingPetEnabled(v: Boolean) { prefs.edit().putBoolean(KEY_FLOATING_PET, v).apply() }
 
 
     // Session name overrides

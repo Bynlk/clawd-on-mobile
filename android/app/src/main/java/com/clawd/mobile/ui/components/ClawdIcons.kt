@@ -580,6 +580,36 @@ object ClawdIcons {
         }
     }
 
+    // Pet — crab icon for floating pet
+    val Pet: ImageVector = iconBuilder("pet") {
+        // body (round)
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(12f, 8f)
+            arcTo(5f, 5f, 0f, true, true, 12f, 18f)
+            arcTo(5f, 5f, 0f, true, true, 12f, 8f)
+            close()
+        }
+        // eyes
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(9.5f, 11.5f); lineTo(9.51f, 11.5f)
+        }
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(14.5f, 11.5f); lineTo(14.51f, 11.5f)
+        }
+        // left claw
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(7.8f, 11.2f)
+            lineTo(5f, 5f)
+            arcTo(3f, 3f, 0f, false, true, 8f, 4.5f)
+        }
+        // right claw
+        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(16.2f, 11.2f)
+            lineTo(19f, 5f)
+            arcTo(3f, 3f, 0f, false, false, 16f, 4.5f)
+        }
+    }
+
     // Pencil — edit/rename
     val Pencil: ImageVector = iconBuilder("pencil") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
