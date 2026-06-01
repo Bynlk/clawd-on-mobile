@@ -2871,12 +2871,6 @@ if (!gotTheLock) {
       return;
     }
 
-    // macOS: override dock icon with transparent crab face
-    if (process.platform === "darwin" && app.dock) {
-      const dockIconPath = path.join(__dirname, "..", "assets", "dock-icon.png");
-      try { app.dock.setIcon(dockIconPath); } catch {}
-    }
-
     // Import system-backed settings (openAtLogin) into prefs on first run.
     // Must run before createWindow() so the first menu draw sees the
     // hydrated value rather than the schema default.
