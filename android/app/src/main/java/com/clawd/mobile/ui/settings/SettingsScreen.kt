@@ -603,7 +603,8 @@ private fun AboutSection() {
 
     val versionName = try {
         com.clawd.mobile.BuildConfig.VERSION_NAME
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        android.util.Log.w("Settings", "BuildConfig access failed", e)
         "?"
     }
     AboutRow(stringResource(R.string.about_version), "v$versionName")

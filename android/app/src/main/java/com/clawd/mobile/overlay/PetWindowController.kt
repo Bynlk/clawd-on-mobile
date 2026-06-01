@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import android.graphics.PixelFormat
+import com.clawd.mobile.util.SafeExecutor
 
 /**
  * Manages the floating pet window: creation, sizing, edge-snap, position persistence.
@@ -115,7 +116,7 @@ class PetWindowController(
             if (lp.y + topPx < marginPx) lp.y = marginPx - topPx
             if (lp.y + lp.height - bottomPx > screenH - marginPx) lp.y = screenH - marginPx - lp.height + bottomPx
 
-            try { windowManager.updateViewLayout(petView, lp) } catch (_: Exception) {}
+            SafeExecutor.tryOrNull(TAG) { windowManager.updateViewLayout(petView, lp) }
         }
     }
 

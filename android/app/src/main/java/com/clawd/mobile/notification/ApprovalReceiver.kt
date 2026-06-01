@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.clawd.mobile.data.PrefsStore
+import com.clawd.mobile.util.SafeExecutor
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
@@ -52,7 +53,9 @@ class ApprovalReceiver : BroadcastReceiver() {
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
                 client.newCall(request).execute().close()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                android.util.Log.e("ApprovalReceiver", "Failed to send approval response", e)
+            }
         }.start()
 
         // Dismiss notification

@@ -403,7 +403,7 @@ object SvgLoader {
                 val w = clean[0].toIntOrNull() ?: 0
                 val h = clean[1].toIntOrNull() ?: 0
                 if (w > 0 && h > 0) onResult(w, h)
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Log.w(TAG, "hitTest JS eval failed", e) }
         }
     }
 

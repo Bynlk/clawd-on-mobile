@@ -17,6 +17,7 @@ import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
 import com.clawd.mobile.ws.ClawdWebSocket
 import com.clawd.mobile.ws.ConnectionState
+import com.clawd.mobile.util.SafeExecutor
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -112,7 +113,7 @@ class WebSocketService : Service() {
                     ConnectionState.AUTH_FAILED -> getString(R.string.status_auth_failed)
                     ConnectionState.DISCONNECTED -> getString(R.string.status_disconnected)
                 }
-                try {
+                SafeExecutor.tryOrNull("WS") {
                     val nm = getSystemService(android.app.NotificationManager::class.java)
                     nm.notify(NOTIFICATION_ID, buildNotification(status))
 
@@ -150,7 +151,7 @@ class WebSocketService : Service() {
                             .build()
                         nm.notify("conn:reconnect".hashCode(), alert)
                     }
-                } catch (_: Exception) {}
+                }
                 previousState = state
             }
         }
@@ -190,9 +191,9 @@ class WebSocketService : Service() {
     }
 
     private fun releaseLocks() {
-        try { wifiLock?.release() } catch (_: Exception) {}
+        SafeExecutor.tryOrNull("WS") { wifiLock?.release() }
         wifiLock = null
-        try { wakeLock?.release() } catch (_: Exception) {}
+        SafeExecutor.tryOrNull("WS") { wakeLock?.release() }
         wakeLock = null
     }
 

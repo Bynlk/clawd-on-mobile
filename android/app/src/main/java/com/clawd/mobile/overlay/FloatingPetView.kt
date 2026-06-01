@@ -141,7 +141,8 @@ class FloatingPetView @JvmOverloads constructor(
                             } else if (attempt < 5) {
                                 postDelayed({ tryQuery(attempt + 1) }, 100)
                             }
-                        } catch (_: Exception) {
+                        } catch (e: Exception) {
+                            Log.w(TAG, "SVG dimension query failed (attempt $attempt)", e)
                             if (attempt < 5) {
                                 postDelayed({ tryQuery(attempt + 1) }, 100)
                             }
@@ -238,7 +239,7 @@ class FloatingPetView @JvmOverloads constructor(
                     viewBoxSize = parts[4]
                     Log.d(TAG, "Visual insets: L=${parts[0]} T=${parts[1]} R=${parts[2]} B=${parts[3]} vbW=${parts[4]}")
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Log.w(TAG, "readVisualInsets failed", e) }
         }
     }
 

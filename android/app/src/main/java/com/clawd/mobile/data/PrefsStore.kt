@@ -79,7 +79,7 @@ class PrefsStore(context: Context) {
 
     fun loadConfig(): ConnectionConfig? {
         val str = prefs.getString(KEY_CONFIG, null) ?: return null
-        return try { json.decodeFromString(str) } catch (_: Exception) { null }
+        return try { json.decodeFromString(str) } catch (e: Exception) { Log.w(TAG, "loadConfig decode failed", e); null }
     }
 
     fun clearConfig() {
@@ -88,7 +88,7 @@ class PrefsStore(context: Context) {
 
     fun getHistory(): List<ConnectionConfig> {
         val str = prefs.getString(KEY_HISTORY, null) ?: return emptyList()
-        return try { json.decodeFromString(str) } catch (_: Exception) { emptyList() }
+        return try { json.decodeFromString(str) } catch (e: Exception) { Log.w(TAG, "getHistory decode failed", e); emptyList() }
     }
 
     private fun addToHistory(config: ConnectionConfig) {

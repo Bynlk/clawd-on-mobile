@@ -30,6 +30,7 @@ import com.clawd.mobile.data.ConnectionConfig
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
+import com.clawd.mobile.util.SafeExecutor
 
 import java.util.concurrent.Executors
 
@@ -143,15 +144,15 @@ private fun CameraPreview(onScanned: (ConnectionConfig) -> Unit) {
                         }
                     }
 
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        imageAnalysis
-                    )
-                } catch (_: Exception) {}
+                cameraProvider.unbindAll()
+                    SafeExecutor.tryOrReport("Scan") {
+                        cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            CameraSelector.DEFAULT_BACK_CAMERA,
+                            preview,
+                            imageAnalysis
+                        )
+                    }
             }, ContextCompat.getMainExecutor(ctx))
 
             previewView
@@ -182,7 +183,9 @@ private fun processImage(imageProxy: ImageProxy, onResult: (ConnectionConfig?) -
 
         val config = ConnectionConfig.fromClawdUrl(raw)
         onResult(config)
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        // QR decode failures are expected (no QR in frame) — debug level only
+        android.util.Log.d("Scan", "QR decode failed: ${e.message}")
         onResult(null)
     } finally {
         imageProxy.close()

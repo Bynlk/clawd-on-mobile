@@ -145,7 +145,8 @@ class PetBubbleView(context: Context) : LinearLayout(context) {
         if (hex == null || !hex.startsWith("#") || hex.length != 7) return fallback
         return try {
             Color.parseColor(hex)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("PetBubbleView", "parseColorSafe failed for $hex", e)
             fallback
         }
     }

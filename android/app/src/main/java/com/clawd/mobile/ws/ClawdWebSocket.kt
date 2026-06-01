@@ -12,6 +12,7 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import android.util.Log
+import com.clawd.mobile.util.SafeExecutor
 import java.util.concurrent.TimeUnit
 
 class ClawdWebSocket(private val prefsStore: PrefsStore) {
@@ -172,10 +173,10 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 }
                 val map = mutableMapOf<String, SessionData>()
                 for ((sid, el) in sessionsObj) {
-                    try {
+                    SafeExecutor.tryOrNull("WS") {
                         val sd = json.decodeFromJsonElement<SessionData>(el)
                         if (sd.isReal && sd.isVisible) map[sid] = sd
-                    } catch (_: Exception) {}
+                    }
                 }
                 obj["displayState"]?.jsonPrimitive?.contentOrNull?.let {
                     _displayState.value = it
@@ -257,12 +258,12 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
 
             "permission_request" -> {
                 scope.launch {
-                    try {
+                    SafeExecutor.tryOrReport("WS") {
                         val reqId = obj["id"]?.jsonPrimitive?.contentOrNull
                         Log.d("ClawdWebSocket", "permission_request id=$reqId")
                         val toolNameStr = obj["toolName"]?.jsonPrimitive?.contentOrNull
                         val toolInputObj = obj["toolInput"]?.jsonObject
-                        val suggestions = try {
+                        val suggestions = SafeExecutor.tryOrNull("WS") {
                             obj["suggestions"]?.jsonArray?.map { s ->
                                 val so = s.jsonObject
                                 PermissionSuggestion(
@@ -270,8 +271,8 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                                     behavior = so["behavior"]?.jsonPrimitive?.content ?: "deny",
                                     rule = so["rule"]?.jsonPrimitive?.contentOrNull,
                                 )
-                            } ?: emptyList()
-                        } catch (_: Exception) { emptyList() }
+                            }
+                        } ?: emptyList()
                         val data = PermissionRequestData(
                             agentId = obj["agentId"]?.jsonPrimitive?.contentOrNull,
                             toolName = toolNameStr,
@@ -282,13 +283,13 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                             suggestions = suggestions,
                         )
                         _permissionRequests.emit(data)
-                    } catch (_: Exception) {}
+                    }
                 }
             }
 
             "elicitation_request" -> {
                 scope.launch {
-                    try {
+                    SafeExecutor.tryOrReport("WS") {
                         val dataObj = obj["data"]?.jsonObject ?: obj
                         _permissionRequests.emit(
                             PermissionRequestData(
@@ -297,18 +298,18 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                                 toolInputSummary = dataObj["prompt"]?.jsonPrimitive?.contentOrNull,
                                 sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull,
                                 requestId = obj["id"]?.jsonPrimitive?.contentOrNull ?: obj["requestId"]?.jsonPrimitive?.contentOrNull,
-                                elicitationOptions = try {
+                                elicitationOptions = SafeExecutor.tryOrNull("WS") {
                                     dataObj["options"]?.jsonArray?.map { o ->
                                         val oo = o.jsonObject
                                         ElicitationOption(
                                             label = oo["label"]?.jsonPrimitive?.content ?: "",
                                             value = oo["value"]?.jsonPrimitive?.content ?: ""
                                         )
-                                    } ?: emptyList()
-                                } catch (_: Exception) { emptyList() },
+                                    }
+                                } ?: emptyList(),
                             )
                         )
-                    } catch (_: Exception) {}
+                    }
                 }
             }
         }
@@ -326,7 +327,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     fun sendPermissionResponse(requestId: String, behavior: String, suggestionIndex: Int? = null) {
         val cfg = config ?: return
         scope.launch(Dispatchers.IO) {
-            try {
+            SafeExecutor.tryOrLog("WS") {
                 val body = buildJsonObject {
                     put("id", requestId)
                     put("decision", behavior)
@@ -337,14 +338,14 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
                 client.newCall(request).execute().close()
-            } catch (_: Exception) {}
+            }
         }
     }
 
     fun sendElicitationResponse(requestId: String, answers: Map<String, String>) {
         val cfg = config ?: return
         scope.launch(Dispatchers.IO) {
-            try {
+            SafeExecutor.tryOrLog("WS") {
                 val body = buildJsonObject {
                     put("id", requestId)
                     put("decision", answers["choice"] ?: "allow")
@@ -354,7 +355,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
                 client.newCall(request).execute().close()
-            } catch (_: Exception) {}
+            }
         }
     }
 
