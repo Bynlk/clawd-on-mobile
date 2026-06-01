@@ -328,7 +328,7 @@ function broadcastHookEvent(eventData) {
 function startMobileServer() {
   const MOBILE_PORT = 23334;
   mobileHttpServer = createHttpServer((req, res) => {
-    if (req.method === "GET" && req.url === "/mobile/stream") {
+    if (req.method === "GET" && req.url.startsWith("/mobile/stream")) {
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -371,7 +371,7 @@ function startMobileServer() {
       return;
     }
 
-    if (req.method === "POST" && req.url === "/mobile/approve") {
+    if (req.method === "POST" && req.url.startsWith("/mobile/approve")) {
       let body = "";
       req.on("data", (chunk) => { body += chunk; });
       req.on("end", () => {
@@ -398,6 +398,10 @@ function startMobileServer() {
         const resolvedDecision = (decision === "allow" && Number.isFinite(data.suggestionIndex))
           ? `suggestion:${data.suggestionIndex}`
           : decision;
+        // Elicitation: forward updatedInput (answers) to resolvePermissionEntry
+        if (decision === "allow" && data.updatedInput && pending.entry) {
+          pending.entry.resolvedUpdatedInput = data.updatedInput;
+        }
         try { pending.resolve(resolvedDecision); } catch {}
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
