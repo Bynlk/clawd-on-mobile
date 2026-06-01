@@ -221,7 +221,6 @@ function handleStatePost(req, res, options) {
             // Badge: ONESHOT states force "running" so mobile doesn't see grey during attention/error/etc.
             const ONESHOT_STATES = new Set(["attention","error","sweeping","notification","carrying"]);
             const effectiveBadge =
-              sessionState === "idle" ? (session ? deriveSessionBadge(session) : "idle") :
               hookState === "attention" ? "done" :
               hookState === "notification" ? "interrupted" :
               hookState === "error" ? "interrupted" :
@@ -252,7 +251,7 @@ function handleStatePost(req, res, options) {
               chipColor: chip ? chip.color : null,
               dotColor: BADGE_DOT_COLORS[badge] || BADGE_DOT_COLORS.idle,
               // session null → not yet created → hide from mobile
-              isVisible: session !== null && sessionState !== "sleeping" && !session.headless,
+              isVisible: session != null && sessionState !== "sleeping" && !session.headless,
             };
             mobileWS.broadcastState(sid, mobilePayload);
             if (typeof broadcastHookEvent === "function") {
