@@ -16,20 +16,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.clawd.mobile.ui.components.ClawdIcons
+import com.clawd.mobile.ui.components.PermissionDialog
 import com.clawd.mobile.R
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ui.navigation.ClawdNavGraph
@@ -107,20 +98,7 @@ class MainActivity : ComponentActivity() {
             permissionQueue.addAll(permissions)
             currentPermissionIndex = 0
             onAllPermissionsDone = { checkAndRequestBatteryOptimization() }
-            setContent {
-                ClawdMobileTheme {
-                    PermissionExplanationDialog(
-                        request = permissionQueue.getOrNull(currentPermissionIndex),
-                        onConfirm = {
-                            permissionLauncher.launch(permissionQueue[currentPermissionIndex].permission)
-                        },
-                        onSkip = {
-                            currentPermissionIndex++
-                            showNextPermission()
-                        }
-                    )
-                }
-            }
+            showCurrentPermission()
         } else {
             checkAndRequestBatteryOptimization()
         }
@@ -156,26 +134,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun showCurrentPermission() {
+        val request = permissionQueue.getOrNull(currentPermissionIndex) ?: return
+        setContent {
+            ClawdMobileTheme {
+                PermissionDialog(
+                    icon = ClawdIcons.Bell,
+                    title = request.title,
+                    description = request.description,
+                    onConfirm = { permissionLauncher.launch(request.permission) },
+                    onSkip = { currentPermissionIndex++; showNextPermission() }
+                )
+            }
+        }
+    }
+
     private fun showNextPermission() {
         if (currentPermissionIndex >= permissionQueue.size) {
             onAllPermissionsDone?.invoke()
             return
         }
-        // Recompose with new permission
-        setContent {
-            ClawdMobileTheme {
-                PermissionExplanationDialog(
-                    request = permissionQueue.getOrNull(currentPermissionIndex),
-                    onConfirm = {
-                        permissionLauncher.launch(permissionQueue[currentPermissionIndex].permission)
-                    },
-                    onSkip = {
-                        currentPermissionIndex++
-                        showNextPermission()
-                    }
-                )
-            }
-        }
+        showCurrentPermission()
     }
 
     private fun setupContent() {
@@ -194,7 +173,10 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             ClawdMobileTheme {
-                BatteryOptimizationDialog(
+                PermissionDialog(
+                    icon = ClawdIcons.Bell,
+                    title = stringResource(R.string.perm_battery_title),
+                    description = stringResource(R.string.perm_battery_desc),
                     onConfirm = {
                         val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                             data = Uri.parse("package:$packageName")
@@ -214,7 +196,10 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             ClawdMobileTheme {
-                OverlayPermissionDialog(
+                PermissionDialog(
+                    icon = ClawdIcons.Bell,
+                    title = stringResource(R.string.perm_overlay_title),
+                    description = stringResource(R.string.perm_overlay_desc),
                     onConfirm = {
                         val intent = Intent(
                             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -224,222 +209,6 @@ class MainActivity : ComponentActivity() {
                     },
                     onSkip = { setupContent() }
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PermissionExplanationDialog(
-    request: MainActivity.PermissionRequest?,
-    onConfirm: () -> Unit,
-    onSkip: () -> Unit
-) {
-    if (request == null) return
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ClawdBgDark),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = ClawdCardDark)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    ClawdIcons.Bell,
-                    null,
-                    tint = ClawdAccent,
-                    modifier = Modifier.size(40.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    request.title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = ClawdTextDark
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    request.description,
-                    fontSize = 13.sp,
-                    color = ClawdFaintDark,
-                    lineHeight = 20.sp
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onSkip,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(stringResource(R.string.action_skip), color = ClawdMutedDark)
-                    }
-                    Button(
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ClawdAccent,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(stringResource(R.string.action_allow))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OverlayPermissionDialog(
-    onConfirm: () -> Unit,
-    onSkip: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ClawdBgDark),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = ClawdCardDark)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    ClawdIcons.Bell,
-                    null,
-                    tint = ClawdAccent,
-                    modifier = Modifier.size(40.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    stringResource(R.string.perm_overlay_title),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = ClawdTextDark
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    stringResource(R.string.perm_overlay_desc),
-                    fontSize = 13.sp,
-                    color = ClawdFaintDark,
-                    lineHeight = 20.sp
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onSkip,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(stringResource(R.string.action_skip), color = ClawdMutedDark)
-                    }
-                    Button(
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ClawdAccent,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(stringResource(R.string.action_allow))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BatteryOptimizationDialog(
-    onConfirm: () -> Unit,
-    onSkip: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ClawdBgDark),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = ClawdCardDark)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    ClawdIcons.Bell,
-                    null,
-                    tint = ClawdAccent,
-                    modifier = Modifier.size(40.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    stringResource(R.string.perm_battery_title),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = ClawdTextDark
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    stringResource(R.string.perm_battery_desc),
-                    fontSize = 13.sp,
-                    color = ClawdFaintDark,
-                    lineHeight = 20.sp
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onSkip,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(stringResource(R.string.action_skip), color = ClawdMutedDark)
-                    }
-                    Button(
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ClawdAccent,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(stringResource(R.string.action_allow))
-                    }
-                }
             }
         }
     }
