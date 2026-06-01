@@ -282,6 +282,23 @@ object SvgLoader {
         val loopStyle = if (loop) "" else "animation-iteration-count: 1;"
         val isApng = assetPath.endsWith(".apng")
 
+        // JS snippet to detect CSS animation end (injected for non-looping SVGs)
+        val animEndScript = if (!isApng && !loop && onFinished != null) """
+            |<script>
+            |  document.addEventListener('animationend', function(e) {
+            |    if (e.target.tagName === 'svg' || e.target.closest('svg')) {
+            |      window._clawdAnimFinished = true;
+            |    }
+            |  });
+            |  var svg = document.querySelector('.container svg');
+            |  if (svg) {
+            |    svg.addEventListener('endEvent', function() {
+            |      window._clawdAnimFinished = true;
+            |    });
+            |  }
+            |</script>
+        """.trimMargin() else ""
+
         val html = if (isApng) {
             // APNG: use <img> tag — fetch+innerHTML would strip animation frames
             """
@@ -354,6 +371,7 @@ object SvgLoader {
             |    };
             |    xhr.send();
             |  </script>
+            |  $animEndScript
             |</body>
             |</html>
             """.trimMargin()
@@ -367,11 +385,15 @@ object SvgLoader {
             null
         )
 
-        // For non-looping animations, detect end via JS
+        // For non-looping animations, detect end via JS animationend or timeout
         if (!loop && onFinished != null) {
-            webView.postDelayed({
-                onFinished()
-            }, 3000) // Fallback timeout; precise timing requires SVG animation-duration parsing
+            if (isApng) {
+                // APNG: no CSS animationend available, use fixed timeout
+                webView.postDelayed({ onFinished() }, 3000)
+            } else {
+                // SVG: poll for CSS animationend event, 10s timeout fallback
+                pollAnimationEnd(webView, onFinished)
+            }
         }
 
         Log.d(TAG, "loadSvg: $assetPath (loop=$loop, isApng=$isApng)")
@@ -441,6 +463,31 @@ object SvgLoader {
     // ======================================================================
     //  Internal helpers
     // ======================================================================
+
+    private const val POLL_INTERVAL_MS = 200L
+    private const val POLL_MAX_ATTEMPTS = 50  // 50 × 200ms = 10s timeout
+
+    /**
+     * Poll [webView] every 200ms for `window._clawdAnimFinished` set by the
+     * injected CSS animationend listener. Calls [onFinished] when detected
+     * or after 10s timeout (whichever comes first).
+     */
+    private fun pollAnimationEnd(webView: WebView, onFinished: () -> Unit, attempt: Int = 0) {
+        if (attempt >= POLL_MAX_ATTEMPTS) {
+            Log.w(TAG, "animationend poll timeout after ${attempt * POLL_INTERVAL_MS}ms")
+            onFinished()
+            return
+        }
+        webView.postDelayed({
+            webView.evaluateJavascript("window._clawdAnimFinished ? '1' : '0'") { result ->
+                if (result?.trim('"') == "1") {
+                    onFinished()
+                } else {
+                    pollAnimationEnd(webView, onFinished, attempt + 1)
+                }
+            }
+        }, POLL_INTERVAL_MS)
+    }
 
     /**
      * Build candidate filename list for fallback resolution.
