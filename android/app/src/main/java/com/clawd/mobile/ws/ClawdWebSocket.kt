@@ -5,17 +5,21 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import okhttp3.*
-import okhttp3.CertificatePinner
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import android.util.Log
+import com.clawd.mobile.util.HttpClientProvider
 import com.clawd.mobile.util.SafeExecutor
 import java.util.concurrent.TimeUnit
 
 class ClawdWebSocket(private val prefsStore: PrefsStore) {
+
+    companion object {
+        private const val TAG = "ClawdWebSocket"
+    }
 
     private var eventSource: EventSource? = null
     private var config: ConnectionConfig? = null
@@ -37,13 +41,9 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
             if (_client == null || cfg != _clientConfig) {
                 val builder = OkHttpClient.Builder()
                     .readTimeout(0, TimeUnit.MILLISECONDS)
-                // 非局域网连接：启用证书锁定
+                // 非局域网连接：日志提醒（证书指纹需从实际服务器获取，不硬编码占位符）
                 if (cfg != null && !cfg.isLan) {
-                    builder.certificatePinner(
-                        CertificatePinner.Builder()
-                            .add(cfg.host, "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=") // TODO: 替换为实际证书指纹
-                            .build()
-                    )
+                    Log.w(TAG, "Non-LAN connection to ${cfg.host} without certificate pinning. Consider adding cert fingerprint for production.")
                 }
                 _client = builder.build()
                 _clientConfig = cfg
@@ -76,6 +76,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     val currentPort: Int? get() = config?.port
 
     fun connect(config: ConnectionConfig) {
+        Log.d("ClawdWebSocket", "connect(${config.host}:${config.port})")
         this.config = config
         prefsStore.saveConfig(config)
         reconnectDelay = 1000L
@@ -96,6 +97,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         eventSource = null
         _client = null       // Reset client so next connect uses fresh config
         _clientConfig = null
+        HttpClientProvider.reset()
         _connectionState.value = ConnectionState.DISCONNECTED
         _sessions.value = emptyMap()
         _displayState.value = "idle"
@@ -117,13 +119,16 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
 
         _connectionState.value = if (reconnectDelay > 1000) ConnectionState.RECONNECTING else ConnectionState.CONNECTING
 
+        val url = cfg.streamUrl()
+        Log.d("ClawdWebSocket", "doConnect → ${cfg.streamUrlMasked()}")
+
         val request = Request.Builder()
-            .url(cfg.streamUrl())
+            .url(url)
             .build()
 
         eventSource = sseFactory.newEventSource(request, object : EventSourceListener() {
             override fun onOpen(eventSource: EventSource, response: Response) {
-                Log.d("ClawdWebSocket", "SSE connected")
+                Log.d("ClawdWebSocket", "SSE onOpen code=${response.code}")
                 reconnectJob?.cancel()
                 reconnectDelay = 1000L
                 _connectionState.value = ConnectionState.CONNECTED
@@ -136,10 +141,12 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
             }
 
             override fun onClosed(eventSource: EventSource) {
+                Log.d("ClawdWebSocket", "SSE onClosed")
                 scheduleReconnect()
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
+                Log.e("ClawdWebSocket", "SSE onFailure url=$url code=${response?.code} error=${t?.javaClass?.simpleName}: ${t?.message}")
                 if (response?.code == 401) {
                     _connectionState.value = ConnectionState.AUTH_FAILED
                     return
@@ -273,6 +280,27 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                                 )
                             }
                         } ?: emptyList()
+                        // AskUserQuestion (elicitation): parse questions hierarchy
+                        val elicitationQuestions = if (toolNameStr == "AskUserQuestion") {
+                            SafeExecutor.tryOrNull("WS") {
+                                toolInputObj?.get("questions")?.jsonArray?.map { q ->
+                                    val qo = q.jsonObject
+                                    ElicitationQuestion(
+                                        question = qo["question"]?.jsonPrimitive?.content ?: "",
+                                        header = qo["header"]?.jsonPrimitive?.contentOrNull,
+                                        multiSelect = qo["multiSelect"]?.jsonPrimitive?.booleanOrNull ?: false,
+                                        options = qo["options"]?.jsonArray?.map { o ->
+                                            val oo = o.jsonObject
+                                            ElicitationOption(
+                                                label = oo["label"]?.jsonPrimitive?.content ?: "",
+                                                description = oo["description"]?.jsonPrimitive?.contentOrNull,
+                                            )
+                                        } ?: emptyList(),
+                                    )
+                                }
+                            } ?: emptyList()
+                        } else emptyList()
+
                         val data = PermissionRequestData(
                             agentId = obj["agentId"]?.jsonPrimitive?.contentOrNull,
                             toolName = toolNameStr,
@@ -281,37 +309,14 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                             requestId = obj["id"]?.jsonPrimitive?.contentOrNull,
                             timeout = obj["timeout"]?.jsonPrimitive?.longOrNull ?: 60000,
                             suggestions = suggestions,
+                            elicitationQuestions = elicitationQuestions,
+                            toolInputRaw = obj["toolInput"],
                         )
                         _permissionRequests.emit(data)
                     }
                 }
             }
 
-            "elicitation_request" -> {
-                scope.launch {
-                    SafeExecutor.tryOrReport("WS") {
-                        val dataObj = obj["data"]?.jsonObject ?: obj
-                        _permissionRequests.emit(
-                            PermissionRequestData(
-                                agentId = dataObj["agentId"]?.jsonPrimitive?.contentOrNull,
-                                toolName = "elicitation",
-                                toolInputSummary = dataObj["prompt"]?.jsonPrimitive?.contentOrNull,
-                                sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull,
-                                requestId = obj["id"]?.jsonPrimitive?.contentOrNull ?: obj["requestId"]?.jsonPrimitive?.contentOrNull,
-                                elicitationOptions = SafeExecutor.tryOrNull("WS") {
-                                    dataObj["options"]?.jsonArray?.map { o ->
-                                        val oo = o.jsonObject
-                                        ElicitationOption(
-                                            label = oo["label"]?.jsonPrimitive?.content ?: "",
-                                            value = oo["value"]?.jsonPrimitive?.content ?: ""
-                                        )
-                                    }
-                                } ?: emptyList(),
-                            )
-                        )
-                    }
-                }
-            }
         }
 
         scope.launch {
@@ -342,13 +347,23 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         }
     }
 
-    fun sendElicitationResponse(requestId: String, answers: Map<String, String>) {
+    fun sendElicitationResponse(requestId: String, toolInput: JsonElement?, answers: Map<String, String>) {
         val cfg = config ?: return
         scope.launch(Dispatchers.IO) {
             SafeExecutor.tryOrLog("WS") {
+                // Build updatedInput: { ...toolInput, answers: { "question": "answer" } }
+                val inputObj = toolInput?.jsonObject ?: buildJsonObject {}
+                val answersObj = buildJsonObject {
+                    for ((k, v) in answers) put(k, v)
+                }
+                val updatedInput = buildJsonObject {
+                    for ((k, v) in inputObj) if (k != "answers") put(k, v)
+                    put("answers", answersObj)
+                }
                 val body = buildJsonObject {
                     put("id", requestId)
-                    put("decision", answers["choice"] ?: "allow")
+                    put("decision", "allow")
+                    put("updatedInput", updatedInput)
                 }.toString()
                 val request = Request.Builder()
                     .url(cfg.approveUrl())
@@ -373,6 +388,12 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 toolInput["url"]?.jsonPrimitive?.contentOrNull
             "WebSearch" ->
                 toolInput["query"]?.jsonPrimitive?.contentOrNull
+            "AskUserQuestion" ->
+                SafeExecutor.tryOrNull("WS") {
+                    val questions = toolInput["questions"]?.jsonArray
+                    val first = questions?.firstOrNull()?.jsonObject
+                    first?.get("question")?.jsonPrimitive?.contentOrNull
+                }
             else -> {
                 toolInput["description"]?.jsonPrimitive?.contentOrNull
                     ?: toolInput["summary"]?.jsonPrimitive?.contentOrNull
