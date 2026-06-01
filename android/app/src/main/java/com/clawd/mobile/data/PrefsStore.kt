@@ -31,6 +31,11 @@ class PrefsStore private constructor(context: Context) {
         @Volatile
         private var instance: PrefsStore? = null
 
+        /** Reset singleton for testing — creates fresh instance on next getInstance(). */
+        fun resetForTesting() {
+            synchronized(this) { instance = null }
+        }
+
         fun getInstance(context: Context): PrefsStore {
             return instance ?: synchronized(this) {
                 instance ?: PrefsStore(context.applicationContext).also { instance = it }

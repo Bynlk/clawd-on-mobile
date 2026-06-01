@@ -11,6 +11,8 @@ kotlinxSerialization = "1.7.3"
 cameraX = "1.4.1"
 zxing = "3.5.3"
 junit = "4.13.2"
+robolectric = "4.14.1"
+coroutinesTest = "1.9.0"
 
 [libraries]
 # Compose
@@ -41,6 +43,8 @@ camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", versi
 camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraX" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

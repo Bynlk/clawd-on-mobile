@@ -41,24 +41,24 @@ sealed class PetState(val priority: Int, val themeKey: String) {
 
     companion object {
 
-        /** All known states, ordered by descending priority. */
-        val ALL: List<PetState> = listOf(
+        /** All known states, ordered by descending priority. Lazy to avoid data object init race. */
+        val ALL: List<PetState> by lazy { listOf(
             Error, Notification, Sweeping, Attention,
             Conducting, Juggling, Carrying, Debugger,
             Working, Thinking,
             Idle, Yawning, Dozing, Collapsing, Waking,
             Sleeping
-        )
+        ) }
 
         /** States that form the sleep animation sequence. */
-        val SLEEP_SEQUENCE: Set<PetState> = setOf(
+        val SLEEP_SEQUENCE: Set<PetState> by lazy { setOf(
             Yawning, Dozing, Collapsing, Sleeping, Waking
-        )
+        ) }
 
         /** States that fire once then auto-return to previous state. */
-        val ONESHOT_STATES: Set<PetState> = setOf(
+        val ONESHOT_STATES: Set<PetState> by lazy { setOf(
             Attention, Error, Sweeping, Notification, Carrying
-        )
+        ) }
 
         /** Badge strings considered "running" (task in progress). */
         val RUNNING_BADGES: Set<String> = setOf(
