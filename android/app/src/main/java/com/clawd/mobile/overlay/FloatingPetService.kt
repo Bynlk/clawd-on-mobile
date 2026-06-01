@@ -152,7 +152,7 @@ class FloatingPetService : Service() {
                     ?.sessions?.value?.values?.count { it.isVisible } ?: 0
                 val assetPath = SvgLoader.resolveSvgAsset(state, sessionCount, character)
                 val isOneshot = state in PetState.ONESHOT_STATES
-                Log.w("PetState", "handleCommand state=${state.themeKey} sessionCount=$sessionCount assetPath=$assetPath isOneshot=$isOneshot")
+                Log.d("PetState", "handleCommand state=${state.themeKey} sessionCount=$sessionCount assetPath=$assetPath isOneshot=$isOneshot")
                 if (assetPath != null) {
                     SvgLoader.loadSvg(
                         petView ?: return, assetPath,

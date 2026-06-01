@@ -19,6 +19,7 @@ import com.clawd.mobile.ws.ClawdWebSocket
 import com.clawd.mobile.ws.ConnectionState
 import com.clawd.mobile.util.SafeExecutor
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
 class WebSocketService : Service() {
@@ -31,6 +32,11 @@ class WebSocketService : Service() {
 
         @Volatile
         private var instance: WebSocketService? = null
+
+        private val _webSocketReady = Channel<ClawdWebSocket>(Channel.CONFLATED)
+
+        /** Emits when a new WebSocket instance is created and ready. */
+        val webSocketReady: Flow<ClawdWebSocket> = _webSocketReady.receiveAsFlow()
 
         fun getWebSocket(): ClawdWebSocket? = instance?.webSocket
 
@@ -67,6 +73,7 @@ class WebSocketService : Service() {
         super.onCreate()
         instance = this
         webSocket = ClawdWebSocket(prefsStore)
+        _webSocketReady.trySend(webSocket!!)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

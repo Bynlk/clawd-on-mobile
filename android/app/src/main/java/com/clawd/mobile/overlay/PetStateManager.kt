@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -109,7 +110,7 @@ class PetStateManager(var character: String) {
 
     private var lastNonIdleState: PetState = PetState.Idle
     private var prevBadge: MutableMap<String, String> = mutableMapOf()
-    private val consumedDoneSessions = mutableSetOf<String>()
+    private val consumedDoneSessions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val gifGeneration = AtomicInteger(0)
     private var idleSince: Long = 0L  // idle 状态开始时间，用于 60s 超时对齐 PC 端
     private var sleepSequenceJob: Job? = null
@@ -200,7 +201,7 @@ class PetStateManager(var character: String) {
                 playWakingAndRestore(bestState, scope)
             } else {
                 lastNonIdleState = bestState
-                Log.w("PetState", "emitState: ${bestState.themeKey}")
+                Log.d("PetState", "emitState: ${bestState.themeKey}")
                 Log.d(TAG, "State update: resolved=${bestState.themeKey}, activeCount=${visible.size}")
                 emitState(bestState)
             }
@@ -242,7 +243,7 @@ class PetStateManager(var character: String) {
      * Local applyConductingMapping was removed as dead code (2026-06-01 audit).
      */
     private fun resolveDisplayState(visible: List<SessionData>): PetState {
-        Log.w("PetState", "resolveDisplayState input sessions: ${visible.map { "${it.sessionId}:state=${it.state}:displayState=${it.displayState}:badge=${it.badge}:isVisible=${it.isVisible}" }}")
+        Log.d("PetState", "resolveDisplayState input sessions: ${visible.map { "${it.sessionId}:state=${it.state}:displayState=${it.displayState}:badge=${it.badge}:isVisible=${it.isVisible}" }}")
         var best: PetState = PetState.Idle
         for (session in visible) {
             val state = when {
@@ -267,7 +268,7 @@ class PetStateManager(var character: String) {
             if (state.isSleepSequence) continue
             if (state.priority > best.priority) best = state
         }
-        Log.w("PetState", "resolveDisplayState result: ${best.themeKey}")
+        Log.d("PetState", "resolveDisplayState result: ${best.themeKey}")
         return best
     }
 
@@ -425,7 +426,7 @@ class PetStateManager(var character: String) {
                     val ws = WebSocketService.getWebSocket()
                     val hasActiveSessions = ws?.sessions?.value?.values?.any { it.isVisible } ?: false
                     if (!hasActiveSessions) {
-                        Log.w(TAG, "Watchdog: state=${currentState.themeKey} but no visible sessions, forcing idle")
+                        Log.d(TAG, "Watchdog: state=${currentState.themeKey} but no visible sessions, forcing idle")
                         emitState(PetState.Idle)
                     }
                 }
@@ -442,10 +443,10 @@ class PetStateManager(var character: String) {
     }
 
     private suspend fun waitForWebSocket(): ClawdWebSocket {
-        while (true) {
-            WebSocketService.getWebSocket()?.let { return it }
-            delay(WS_POLL_INTERVAL_MS)
-        }
+        // Fast path: already available
+        WebSocketService.getWebSocket()?.let { return it }
+        // Wait for the ready event
+        return WebSocketService.webSocketReady.first()
     }
 
     // ======================================================================

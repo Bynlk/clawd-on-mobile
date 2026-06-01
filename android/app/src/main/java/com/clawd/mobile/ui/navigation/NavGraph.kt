@@ -16,6 +16,8 @@ import com.clawd.mobile.ui.scan.ScanScreen
 import com.clawd.mobile.ui.manual.ManualScreen
 import com.clawd.mobile.ui.settings.SettingsScreen
 import com.clawd.mobile.ws.ClawdWebSocket
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun ClawdNavGraph() {
@@ -34,16 +36,19 @@ fun ClawdNavGraph() {
     var wsRefreshKey by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(wsRefreshKey) {
-        // Poll for service WebSocket
-        repeat(50) { // 5 seconds max
-            WebSocketService.getWebSocket()?.let {
-                webSocket = it
-                return@LaunchedEffect
-            }
-            kotlinx.coroutines.delay(100)
+        // Fast path: already available
+        WebSocketService.getWebSocket()?.let {
+            webSocket = it
+            return@LaunchedEffect
         }
-        // Fallback if service didn't start
-        if (webSocket == null) {
+        // Wait for service to create WebSocket (event-driven, no polling)
+        val ws = withTimeoutOrNull(5_000L) {
+            WebSocketService.webSocketReady.first()
+        }
+        if (ws != null) {
+            webSocket = ws
+        } else if (webSocket == null) {
+            // Fallback if service didn't start
             webSocket = ClawdWebSocket(prefsStore)
         }
     }

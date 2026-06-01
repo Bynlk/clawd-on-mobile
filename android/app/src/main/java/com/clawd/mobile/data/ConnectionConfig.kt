@@ -10,7 +10,15 @@ data class ConnectionConfig(
     val token: String
 ) {
     /** Whether the host is on a local network (no TLS required). */
-    val isLan: Boolean get() = host.matches(Regex("^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.|localhost|127\\.).*"))
+    val isLan: Boolean get() {
+        if (host == "localhost") return true
+        return try {
+            val addr = java.net.InetAddress.getByName(host)
+            addr.isLoopbackAddress || addr.isSiteLocalAddress || addr.isLinkLocalAddress
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     fun streamUrl(): String {
         val scheme = if (isLan) "http" else "https"

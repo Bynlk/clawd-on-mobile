@@ -74,6 +74,9 @@ class ApprovalViewModel(
     }
 
     // Save recently dismissed requests so notification tap can restore them
+    private companion object {
+        const val MAX_DISMISSED = 20
+    }
     private val recentlyDismissed = ConcurrentHashMap<String, PermissionRequestData>()
 
     private val timeoutJobs = ConcurrentHashMap<String, Job>()
@@ -147,6 +150,10 @@ class ApprovalViewModel(
         val request = _pendingRequests.value.find { it.requestId == requestId }
         if (saveForRestore && request != null) {
             recentlyDismissed[requestId] = request
+            // Evict oldest entries if over limit
+            while (recentlyDismissed.size > MAX_DISMISSED) {
+                recentlyDismissed.keys.firstOrNull()?.let { recentlyDismissed.remove(it) }
+            }
         }
         _pendingRequests.value = _pendingRequests.value.filter { it.requestId != requestId }
         _countdowns.value = _countdowns.value - requestId

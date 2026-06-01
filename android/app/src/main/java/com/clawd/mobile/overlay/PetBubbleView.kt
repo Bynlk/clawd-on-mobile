@@ -32,7 +32,7 @@ class PetBubbleView(context: Context) : LinearLayout(context) {
 
         // Rounded dark card background
         val bg = GradientDrawable().apply {
-            setColor(Color.parseColor("#FF1E1E2E"))
+            setColor(com.clawd.mobile.ui.theme.BUBBLE_BG)
             cornerRadius = 14 * dp
         }
         background = bg
@@ -49,7 +49,7 @@ class PetBubbleView(context: Context) : LinearLayout(context) {
 
         // Divider
         val divider = View(context).apply {
-            setBackgroundColor(Color.parseColor("#33FFFFFF"))
+            setBackgroundColor(com.clawd.mobile.ui.theme.BUBBLE_DIVIDER)
         }
         addView(divider, LayoutParams(LayoutParams.MATCH_PARENT, (0.5 * dp).toInt()).apply {
             topMargin = (8 * dp).toInt()
@@ -59,14 +59,14 @@ class PetBubbleView(context: Context) : LinearLayout(context) {
         // "进入 App" button
         val btn = TextView(context).apply {
             text = context.getString(R.string.pet_bubble_enter_app)
-            setTextColor(Color.parseColor("#FFE0E0E0"))
+            setTextColor(com.clawd.mobile.ui.theme.BUBBLE_TEXT)
             textSize = 14f
             gravity = Gravity.CENTER
             val hPad = (16 * dp).toInt()
             val vPad = (6 * dp).toInt()
             setPadding(hPad, vPad, hPad, vPad)
             val btnBg = GradientDrawable().apply {
-                setColor(Color.parseColor("#FF2A2A3E"))
+                setColor(com.clawd.mobile.ui.theme.BUBBLE_BUTTON_BG)
                 cornerRadius = 8 * dp
             }
             background = btnBg
@@ -98,7 +98,7 @@ class PetBubbleView(context: Context) : LinearLayout(context) {
     private fun buildSingleLine(text: String): TextView {
         return TextView(context).apply {
             this.text = text
-            setTextColor(Color.parseColor("#FF888888"))
+            setTextColor(com.clawd.mobile.ui.theme.BUBBLE_MUTED)
             textSize = 13f
             setPadding(0, (4 * dp).toInt(), 0, (4 * dp).toInt())
         }
@@ -115,7 +115,7 @@ class PetBubbleView(context: Context) : LinearLayout(context) {
         val dot = View(context).apply {
             val dotBg = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(parseColorSafe(session.dotColor, 0xFF888888.toInt()))
+                setColor(parseColorSafe(session.dotColor, com.clawd.mobile.ui.theme.BUBBLE_MUTED))
             }
             background = dotBg
         }
@@ -128,7 +128,7 @@ class PetBubbleView(context: Context) : LinearLayout(context) {
         val titleText = session.displayTitle ?: session.chipText ?: session.sessionTitle ?: ""
         val title = TextView(context).apply {
             text = titleText
-            setTextColor(Color.parseColor("#FFE0E0E0"))
+            setTextColor(com.clawd.mobile.ui.theme.BUBBLE_TEXT)
             textSize = 13f
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END

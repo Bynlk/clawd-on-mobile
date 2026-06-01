@@ -3,6 +3,7 @@ package com.clawd.mobile.data
 import android.content.Context
 import androidx.compose.ui.graphics.Color
 import com.clawd.mobile.R
+import com.clawd.mobile.overlay.PetState
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -47,14 +48,8 @@ data class Session(
     val data: SessionData
 ) {
     companion object {
-        /** Priority for sorting — lower number = higher priority */
-        val STATE_PRIORITY = mapOf(
-            "working" to 2, "juggling" to 2,
-            "thinking" to 3,
-            "notification" to 4, "attention" to 4, "error" to 4,
-            "sweeping" to 5, "carrying" to 5,
-            "idle" to 6, "sleeping" to 7
-        )
+        /** Priority for sorting — higher number = higher priority (via PetState). */
+        fun statePriority(state: String): Int = PetState.fromString(state).priority
 
         /** Map event names to user-visible labels via string resources. */
         fun eventLabel(eventName: String?, context: Context): String = when (eventName) {

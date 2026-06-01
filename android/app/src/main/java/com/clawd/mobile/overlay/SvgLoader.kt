@@ -23,6 +23,7 @@ object SvgLoader {
 
     private const val TAG = "SvgLoader"
     private const val SVG_BASE = "https://appassets.androidplatform.net/svg"
+    private const val MAX_CACHE_SIZE = 128
 
     private var appContext: Context? = null
 
@@ -299,83 +300,11 @@ object SvgLoader {
             |</script>
         """.trimMargin() else ""
 
-        val html = if (isApng) {
-            // APNG: use <img> tag — fetch+innerHTML would strip animation frames
-            """
-            |<!DOCTYPE html>
-            |<html>
-            |<head>
-            |<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-            |<style>
-            |  * { margin: 0; padding: 0; }
-            |  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
-            |  .container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-            |  .container img { max-width: 100%; max-height: 100%; object-fit: contain; $loopStyle }
-            |</style>
-            |</head>
-            |<body>
-            |  <div class="container">
-            |    <img src="$url" onload="window._svgWidth=this.naturalWidth;window._svgHeight=this.naturalHeight;" />
-            |  </div>
-            |</body>
-            |</html>
-            """.trimMargin()
-        } else {
-            // SVG: fetch as text and inline so CSS animations (breathe, blink, tail-sway) work
-            """
-            |<!DOCTYPE html>
-            |<html>
-            |<head>
-            |<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-            |<style>
-            |  * { margin: 0; padding: 0; }
-            |  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
-            |  .container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-            |  .container svg { max-width: 100%; max-height: 100%; $loopStyle }
-            |</style>
-            |</head>
-            |<body>
-            |  <div class="container"></div>
-            |  <script>
-            |    var xhr = new XMLHttpRequest();
-            |    xhr.open('GET', '$url', true);
-            |    xhr.onload = function() {
-            |      if (xhr.responseText.length > 0) {
-            |        document.querySelector('.container').innerHTML = xhr.responseText;
-            |        var svgEl = document.querySelector('.container svg');
-            |        if (svgEl) {
-            |          var vb = svgEl.viewBox.baseVal;
-            |          if (vb && vb.width > 0 && vb.height > 0) {
-            |            window._svgWidth = vb.width;
-            |            window._svgHeight = vb.height;
-            |          } else {
-            |            window._svgWidth = parseFloat(svgEl.getAttribute('width')) || 0;
-            |            window._svgHeight = parseFloat(svgEl.getAttribute('height')) || 0;
-            |          }
-            |          // Visual insets: getBBox vs viewBox for edge-snap correction
-            |          try {
-            |            var bbox = svgEl.getBBox();
-            |            var vb2 = svgEl.viewBox.baseVal;
-            |            if (vb2 && vb2.width > 0 && vb2.height > 0) {
-            |              window._visualInsets = {
-            |                left: bbox.x - vb2.x,
-            |                top: bbox.y - vb2.y,
-            |                right: (vb2.x + vb2.width) - (bbox.x + bbox.width),
-            |                bottom: (vb2.y + vb2.height) - (bbox.y + bbox.height)
-            |              };
-            |              window._viewBox = { x: vb2.x, y: vb2.y, width: vb2.width, height: vb2.height };
-            |            }
-            |          } catch(e) {}
-            |        }
-            |      }
-            |    };
-            |    xhr.send();
-            |  </script>
-            |  $animEndScript
-            |</body>
-            |</html>
-            """.trimMargin()
-        }
+        val templateName = if (isApng) "apng_template.html" else "svg_template.html"
+        val html = loadTemplate(webView.context, templateName)
+            .replace("{{URL}}", url)
+            .replace("{{LOOP_STYLE}}", loopStyle)
+            .replace("{{ANIM_END_SCRIPT}}", animEndScript)
 
         webView.loadDataWithBaseURL(
             "https://appassets.androidplatform.net/",
@@ -510,9 +439,14 @@ object SvgLoader {
         }
     }
 
+    /** Load an HTML template from assets/html/ directory. */
+    private fun loadTemplate(context: Context, name: String): String {
+        return context.assets.open("html/$name").bufferedReader().readText()
+    }
+
     /** Check if an asset file exists in the assets directory. */
-    private val assetCache = mutableSetOf<String>()
-    private val missingCache = mutableSetOf<String>()
+    private val assetCache = LinkedHashSet<String>(MAX_CACHE_SIZE, 0.75f)
+    private val missingCache = LinkedHashSet<String>(MAX_CACHE_SIZE, 0.75f)
 
     private fun assetExists(path: String): Boolean {
         if (path in assetCache) return true
@@ -524,9 +458,11 @@ object SvgLoader {
         }
         return try {
             ctx.assets.open(path).use { /* open succeeded → file exists */ }
+            if (assetCache.size >= MAX_CACHE_SIZE) assetCache.iterator().let { it.next(); it.remove() }
             assetCache.add(path)
             true
         } catch (_: IOException) {
+            if (missingCache.size >= MAX_CACHE_SIZE) missingCache.iterator().let { it.next(); it.remove() }
             missingCache.add(path)
             false
         }

@@ -41,3 +41,10 @@ val ClawdDividerDark = Color(0xFF2E2E35)      // divider
 val ClawdFaintDark = Color(0xFF52525B)        // meta text, event label
 val ClawdGreenBright = Color(0xFF16A34A)      // connected dot, working badge
 val ClawdGreenBorder = Color(0x4D168060)      // rgba(22,128,60,0.3) connection badge border
+
+// Floating pet bubble colors (android.graphics.Color int values for traditional View usage)
+val BUBBLE_BG = 0xFF1E1E2E.toInt()            // card background
+val BUBBLE_TEXT = 0xFFE0E0E0.toInt()          // primary text
+val BUBBLE_MUTED = 0xFF888888.toInt()         // secondary/muted text
+val BUBBLE_BUTTON_BG = 0xFF2A2A3E.toInt()     // button background
+val BUBBLE_DIVIDER = 0x33FFFFFF.toInt()       // 20% white divider

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  * { margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  .container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  .container svg { max-width: 100%; max-height: 100%; {{LOOP_STYLE}} }
+</style>
+</head>
+<body>
+  <div class="container"></div>
+  <script>
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '{{URL}}', true);
+    xhr.onload = function() {
+      if (xhr.responseText.length > 0) {
+        document.querySelector('.container').innerHTML = xhr.responseText;
+        var svgEl = document.querySelector('.container svg');
+        if (svgEl) {
+          var vb = svgEl.viewBox.baseVal;
+          if (vb && vb.width > 0 && vb.height > 0) {
+            window._svgWidth = vb.width;
+            window._svgHeight = vb.height;
+          } else {
+            window._svgWidth = parseFloat(svgEl.getAttribute('width')) || 0;
+            window._svgHeight = parseFloat(svgEl.getAttribute('height')) || 0;
+          }
+          // Visual insets: getBBox vs viewBox for edge-snap correction
+          try {
+            var bbox = svgEl.getBBox();
+            var vb2 = svgEl.viewBox.baseVal;
+            if (vb2 && vb2.width > 0 && vb2.height > 0) {
+              window._visualInsets = {
+                left: bbox.x - vb2.x,
+                top: bbox.y - vb2.y,
+                right: (vb2.x + vb2.width) - (bbox.x + bbox.width),
+                bottom: (vb2.y + vb2.height) - (bbox.y + bbox.height)
+              };
+              window._viewBox = { x: vb2.x, y: vb2.y, width: vb2.width, height: vb2.height };
+            }
+          } catch(e) {}
+        }
+      }
+    };
+    xhr.send();
+  </script>
+  {{ANIM_END_SCRIPT}}
+</body>
+</html>

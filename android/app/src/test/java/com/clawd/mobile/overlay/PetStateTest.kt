@@ -1,0 +1,89 @@
+package com.clawd.mobile.overlay
+
+import org.junit.Test
+import org.junit.Assert.*
+
+class PetStateTest {
+
+    @Test
+    fun `fromString maps known states`() {
+        assertEquals(PetState.Error, PetState.fromString("error"))
+        assertEquals(PetState.Notification, PetState.fromString("notification"))
+        assertEquals(PetState.Sweeping, PetState.fromString("sweeping"))
+        assertEquals(PetState.Attention, PetState.fromString("attention"))
+        assertEquals(PetState.Conducting, PetState.fromString("conducting"))
+        assertEquals(PetState.Juggling, PetState.fromString("juggling"))
+        assertEquals(PetState.Carrying, PetState.fromString("carrying"))
+        assertEquals(PetState.Debugger, PetState.fromString("debugger"))
+        assertEquals(PetState.Working, PetState.fromString("working"))
+        assertEquals(PetState.Thinking, PetState.fromString("thinking"))
+        assertEquals(PetState.Idle, PetState.fromString("idle"))
+        assertEquals(PetState.Sleeping, PetState.fromString("sleeping"))
+    }
+
+    @Test
+    fun `fromString returns Idle for unknown`() {
+        assertEquals(PetState.Idle, PetState.fromString("unknown"))
+        assertEquals(PetState.Idle, PetState.fromString(null))
+        assertEquals(PetState.Idle, PetState.fromString(""))
+    }
+
+    @Test
+    fun `priority ordering is correct`() {
+        assertTrue(PetState.Error.priority > PetState.Notification.priority)
+        assertTrue(PetState.Notification.priority > PetState.Sweeping.priority)
+        assertTrue(PetState.Sweeping.priority > PetState.Attention.priority)
+        assertTrue(PetState.Attention.priority > PetState.Working.priority)
+        assertTrue(PetState.Working.priority > PetState.Thinking.priority)
+        assertTrue(PetState.Thinking.priority > PetState.Idle.priority)
+        assertTrue(PetState.Idle.priority > PetState.Sleeping.priority)
+    }
+
+    @Test
+    fun `equal priority states exist`() {
+        assertEquals(PetState.Conducting.priority, PetState.Juggling.priority)
+        assertEquals(PetState.Juggling.priority, PetState.Carrying.priority)
+        assertEquals(PetState.Carrying.priority, PetState.Debugger.priority)
+    }
+
+    @Test
+    fun `isIdleLike classification`() {
+        assertTrue(PetState.Idle.isIdleLike)
+        assertTrue(PetState.Sleeping.isIdleLike)
+        assertTrue(PetState.Yawning.isIdleLike)
+        assertTrue(PetState.Dozing.isIdleLike)
+        assertTrue(PetState.Collapsing.isIdleLike)
+        assertFalse(PetState.Working.isIdleLike)
+        assertFalse(PetState.Error.isIdleLike)
+        assertFalse(PetState.Attention.isIdleLike)
+    }
+
+    @Test
+    fun `isActive classification`() {
+        assertTrue(PetState.Working.isActive)
+        assertTrue(PetState.Error.isActive)
+        assertTrue(PetState.Attention.isActive)
+        assertFalse(PetState.Idle.isActive)
+        assertFalse(PetState.Sleeping.isActive)
+        assertFalse(PetState.Waking.isActive)
+    }
+
+    @Test
+    fun `isSleepSequence classification`() {
+        assertTrue(PetState.Yawning.isSleepSequence)
+        assertTrue(PetState.Dozing.isSleepSequence)
+        assertTrue(PetState.Collapsing.isSleepSequence)
+        assertTrue(PetState.Sleeping.isSleepSequence)
+        assertTrue(PetState.Waking.isSleepSequence)
+        assertFalse(PetState.Idle.isSleepSequence)
+        assertFalse(PetState.Working.isSleepSequence)
+    }
+
+    @Test
+    fun `themeKey matches state name`() {
+        assertEquals("error", PetState.Error.themeKey)
+        assertEquals("working", PetState.Working.themeKey)
+        assertEquals("idle", PetState.Idle.themeKey)
+        assertEquals("sleeping", PetState.Sleeping.themeKey)
+    }
+}

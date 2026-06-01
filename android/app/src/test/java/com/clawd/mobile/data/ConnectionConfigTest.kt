@@ -83,6 +83,7 @@ class ConnectionConfigTest {
         assertTrue(ConnectionConfig("10.0.0.1", 8080, "tok").isLan)
         assertTrue(ConnectionConfig("172.16.0.1", 8080, "tok").isLan)
         assertTrue(ConnectionConfig("172.31.255.255", 8080, "tok").isLan)
+        assertTrue(ConnectionConfig("172.20.0.1", 8080, "tok").isLan)
         assertTrue(ConnectionConfig("192.168.1.1", 8080, "tok").isLan)
         assertTrue(ConnectionConfig("localhost", 8080, "tok").isLan)
         assertTrue(ConnectionConfig("127.0.0.1", 8080, "tok").isLan)
