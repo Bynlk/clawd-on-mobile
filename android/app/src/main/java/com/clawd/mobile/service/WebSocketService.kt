@@ -185,7 +185,7 @@ class WebSocketService : Service() {
             val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:sse").apply {
                 setReferenceCounted(false)
-                acquire()
+                acquire(60 * 60 * 1000L) // 1 hour timeout safety net
             }
         }
     }

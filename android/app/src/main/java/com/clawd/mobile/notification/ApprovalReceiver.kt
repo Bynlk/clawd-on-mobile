@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.util.HttpClientProvider
-import com.clawd.mobile.util.SafeExecutor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import android.util.Log
@@ -30,13 +32,12 @@ class ApprovalReceiver : BroadcastReceiver() {
             else -> return
         }
 
-        // Load saved connection config
-        val prefsStore = PrefsStore(context)
-        val config = prefsStore.loadConfig() ?: return
+        val pendingResult = goAsync()
 
-        // POST directly to server — no Activity launch, no SSE disruption
-        Thread {
-            SafeExecutor.tryOrLog("ApprovalReceiver") {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val prefsStore = PrefsStore(context)
+                val config = prefsStore.loadConfig() ?: return@launch
                 val body = buildJsonObject {
                     put("id", requestId)
                     put("decision", decision)
@@ -51,12 +52,14 @@ class ApprovalReceiver : BroadcastReceiver() {
                     Log.w("ApprovalReceiver", "Approval response: HTTP ${response.code}")
                 }
                 response.close()
+            } catch (e: Exception) {
+                Log.e("ApprovalReceiver", "Approval failed", e)
+            } finally {
+                if (notificationId >= 0) {
+                    NotificationHelper.cancelNotification(context, notificationId)
+                }
+                pendingResult.finish()
             }
-        }.start()
-
-        // Dismiss notification
-        if (notificationId >= 0) {
-            NotificationHelper.cancelNotification(context, notificationId)
         }
     }
 }

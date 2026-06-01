@@ -25,18 +25,20 @@ object HttpClientProvider {
      * Reuses the existing client if the config hasn't changed.
      */
     fun getClient(config: ConnectionConfig): OkHttpClient {
-        if (_client == null || config != _config) {
-            Log.d(TAG, "Building new OkHttpClient for ${config.host}:${config.port} (isLan=${config.isLan})")
-            val builder = OkHttpClient.Builder()
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .writeTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-            // 非局域网连接可在此添加 CertificatePinner（需要实际指纹）
-            // if (!config.isLan) { builder.certificatePinner(...) }
-            _client = builder.build()
-            _config = config
+        return synchronized(this) {
+            if (_client == null || config != _config) {
+                Log.d(TAG, "Building new OkHttpClient for ${config.host}:${config.port} (isLan=${config.isLan})")
+                val builder = OkHttpClient.Builder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .writeTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                // 非局域网连接可在此添加 CertificatePinner（需要实际指纹）
+                // if (!config.isLan) { builder.certificatePinner(...) }
+                _client = builder.build()
+                _config = config
+            }
+            _client!!
         }
-        return _client!!
     }
 
     /** Reset client — call when connection config changes or app disconnects. */

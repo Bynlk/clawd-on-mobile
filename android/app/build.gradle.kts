@@ -14,8 +14,8 @@ android {
         applicationId = "com.clawd.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.1.18"
+        versionCode = 20
+        versionName = "0.1.19"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -55,6 +55,10 @@ android {
     lint {
         disable += "UnsafeImplicitIntentLaunch"  // ApprovalReceiver exported=false, intent is safe
         abortOnError = true
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     buildFeatures {
