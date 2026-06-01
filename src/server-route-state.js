@@ -210,11 +210,9 @@ function handleStatePost(req, res, options) {
               ? session.recentEvents
               : [];
             const lastOutput = session && session.lastOutput ? session.lastOutput : null;
-            const displayState = typeof ctx.resolveDisplayState === "function"
-              ? ctx.resolveDisplayState()
-              : state;
             // sessionState: what updateSession actually stored (ONESHOT → "idle")
             const sessionState = (session && session.state) || state;
+            const displayState = sessionState; // 用折叠后的 per-session 状态
             // hookState: the original state from the hook, before ONESHOT collapse.
             // Use this for badge/chip so mobile sees the real activity, not "idle".
             const hookState = state;
@@ -223,6 +221,7 @@ function handleStatePost(req, res, options) {
             // Badge: ONESHOT states force "running" so mobile doesn't see grey during attention/error/etc.
             const ONESHOT_STATES = new Set(["attention","error","sweeping","notification","carrying"]);
             const effectiveBadge =
+              sessionState === "idle" ? (session ? deriveSessionBadge(session) : "idle") :
               hookState === "attention" ? "done" :
               hookState === "notification" ? "interrupted" :
               hookState === "error" ? "interrupted" :

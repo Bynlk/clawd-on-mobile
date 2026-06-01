@@ -13,11 +13,16 @@ function getLanIP() {
       if (addr.family === "IPv4" && !addr.internal) candidates.push({ name, address: addr.address });
     }
   }
-  const lan = candidates.find(c =>
+  const isLan = c =>
     /^192\.168\./.test(c.address) ||
     /^10\./.test(c.address) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(c.address)
-  );
+    /^172\.(1[6-9]|2\d|3[01])\./.test(c.address);
+  const isVirtual = c =>
+    /vmware|vmnet|vethernet|wsl|docker|loopback/i.test(c.name);
+  // Prefer physical LAN interfaces over virtual ones (VMware, Hyper-V, etc.)
+  const physical = candidates.filter(c => !isVirtual(c) && isLan(c));
+  if (physical.length > 0) return physical[0].address;
+  const lan = candidates.find(c => isLan(c));
   return lan ? lan.address : (candidates[0] ? candidates[0].address : "127.0.0.1");
 }
 

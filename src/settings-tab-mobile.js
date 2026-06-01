@@ -3,6 +3,7 @@
 
   var helpers, state, runtime, ops;
   var qrDataUrl = null;
+  var lastKnownIp = null;
 
   function t(key) { return helpers.t(key); }
 
@@ -131,6 +132,12 @@
     if (!window.settingsAPI || !window.settingsAPI.mobileGetStatus) return;
     window.settingsAPI.mobileGetStatus().then(function(status) {
       if (!status) return;
+
+      // IP 变化时刷新 QR 码
+      if (status.ip && status.ip !== lastKnownIp) {
+        lastKnownIp = status.ip;
+        loadQrCode();
+      }
 
       // 更新连接信息
       var info = document.getElementById("mobile-connection-info");
