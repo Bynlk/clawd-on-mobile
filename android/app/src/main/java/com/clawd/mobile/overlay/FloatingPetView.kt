@@ -189,6 +189,12 @@ class FloatingPetView @JvmOverloads constructor(
         SvgLoader.clearSvg(this)
     }
 
+    override fun onDetachedFromWindow() {
+        hitTestBitmap?.recycle()
+        hitTestBitmap = null
+        super.onDetachedFromWindow()
+    }
+
     // ======================================================================
     //  Hit-test bitmap for transparent click-through
     // ======================================================================

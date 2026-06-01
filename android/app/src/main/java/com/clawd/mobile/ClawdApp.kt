@@ -4,7 +4,9 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.overlay.SvgLoader
+import kotlinx.coroutines.channels.Channel
 
 class ClawdApp : Application() {
 
@@ -13,6 +15,10 @@ class ClawdApp : Application() {
         const val CHANNEL_STATUS = "clawd_status"
         const val CHANNEL_ALERT = "clawd_alert"
         const val CHANNEL_SERVICE = "clawd_service"
+
+        /** Channel for notification → Activity approval request routing.
+         *  Replaces MainActivity companion object statics to avoid thread-safety issues and ViewModel leaks. */
+        val approvalChannel = Channel<PermissionRequestData>(Channel.BUFFERED)
     }
 
     override fun onCreate() {

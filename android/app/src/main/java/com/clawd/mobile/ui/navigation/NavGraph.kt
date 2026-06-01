@@ -7,7 +7,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.clawd.mobile.MainActivity
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.StatusNotifier
 import com.clawd.mobile.service.WebSocketService
@@ -55,24 +54,15 @@ fun ClawdNavGraph() {
         factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
     )
 
-    // Register ViewModel ref for onNewIntent forwarding
-    MainActivity.approvalViewModelRef = approvalViewModel
-
     // Wire up pending approval check for StatusNotifier
     statusNotifier.hasPendingApprovals = { approvalViewModel.pendingRequests.value.isNotEmpty() }
 
-    // Forward notification tap request to ViewModel (consumed by SessionsScreen)
-    val pendingRequest = MainActivity.pendingApprovalRequest
-    val pendingId = MainActivity.pendingApprovalRequestId
-    if (pendingRequest != null) {
-        Log.d("NavGraph", "Forwarding full pendingApprovalRequest id=${pendingRequest.requestId} to ViewModel")
-        approvalViewModel.restoreRequestFromNotification(pendingRequest)
-        MainActivity.pendingApprovalRequest = null
-        MainActivity.pendingApprovalRequestId = null
-    } else if (pendingId != null) {
-        Log.d("NavGraph", "Forwarding pendingApprovalRequestId=$pendingId to ViewModel")
-        approvalViewModel.setNotificationRequestId(pendingId)
-        MainActivity.pendingApprovalRequestId = null
+    // Collect approval requests from notification taps via ClawdApp Channel
+    LaunchedEffect(approvalViewModel) {
+        for (request in com.clawd.mobile.ClawdApp.approvalChannel) {
+            Log.d("NavGraph", "Received approval request from channel: id=${request.requestId}")
+            approvalViewModel.restoreRequestFromNotification(request)
+        }
     }
 
     // Try auto-reconnect to last connection

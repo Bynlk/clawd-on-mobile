@@ -18,11 +18,9 @@ object NotificationHelper {
     const val CHANNEL_STATUS = "clawd_status"
     const val CHANNEL_ALERT = "clawd_alert"
 
-    private var notificationId = 1000
-
     fun showApprovalNotification(context: Context, request: PermissionRequestData, sessionName: String? = null) {
-        val id = notificationId++
         val requestId = request.requestId ?: return
+        val id = requestId.hashCode() and 0x7FFFFFFF  // 确保非负，确定性 ID
         Log.d("NotificationHelper", "showApprovalNotification request_id=$requestId tool=${request.toolName}")
 
         // Allow intent
@@ -81,8 +79,8 @@ object NotificationHelper {
     }
 
     fun showElicitationNotification(context: Context, request: PermissionRequestData, sessionName: String? = null) {
-        val id = notificationId++
         val requestId = request.requestId ?: return
+        val id = (requestId.hashCode() and 0x7FFFFFFF) + 1  // 偏移 1 避免与 approval 冲突
         Log.d("NotificationHelper", "showElicitationNotification request_id=$requestId")
 
         // Open app intent (elicitation requires choosing an option, open the app)

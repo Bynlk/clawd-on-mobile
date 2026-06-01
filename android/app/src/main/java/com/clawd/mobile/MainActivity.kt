@@ -27,15 +27,6 @@ import com.clawd.mobile.ui.navigation.ClawdNavGraph
 
 class MainActivity : ComponentActivity() {
 
-    companion object {
-        /** Set by notification tap, consumed by NavGraph */
-        var pendingApprovalRequestId: String? = null
-        /** Full request data from notification intent, survives Activity recreation */
-        var pendingApprovalRequest: PermissionRequestData? = null
-        /** ViewModel reference for onNewIntent forwarding (set by NavGraph) */
-        var approvalViewModelRef: com.clawd.mobile.ui.approval.ApprovalViewModel? = null
-    }
-
     private val permissionQueue = mutableListOf<PermissionRequest>()
     private var currentPermissionIndex = 0
     private var onAllPermissionsDone: (() -> Unit)? = null
@@ -106,31 +97,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        Log.d("MainActivity", "onNewIntent action=${intent.action} request_id=${intent.getStringExtra("request_id")}")
+        Log.d("MainActivity", "onNewIntent action=${intent.action}")
         handleApprovalIntent(intent)
-        // Forward directly to ViewModel if available (Activity already composed)
-        pendingApprovalRequest?.let { request ->
-            approvalViewModelRef?.restoreRequestFromNotification(request)
-            pendingApprovalRequest = null
-            pendingApprovalRequestId = null
-        }
     }
 
     private fun handleApprovalIntent(intent: Intent?) {
-        val rid = intent?.getStringExtra("request_id")
-        val requestJson = intent?.getStringExtra("request_json")
-        Log.d("MainActivity", "handleApprovalIntent request_id=$rid hasJson=${requestJson != null}")
-        rid?.let {
-            pendingApprovalRequestId = it
-            Log.d("MainActivity", "pendingApprovalRequestId set to $it")
-        }
-        if (requestJson != null) {
-            try {
-                pendingApprovalRequest = Json.decodeFromString<PermissionRequestData>(requestJson)
-                Log.d("MainActivity", "pendingApprovalRequest restored from JSON")
-            } catch (e: Exception) {
-                Log.w("MainActivity", "Failed to deserialize request_json: ${e.message}")
-            }
+        val requestJson = intent?.getStringExtra("request_json") ?: return
+        Log.d("MainActivity", "handleApprovalIntent hasJson=true")
+        try {
+            val request = Json.decodeFromString<PermissionRequestData>(requestJson)
+            Log.d("MainActivity", "Sending approval request to channel: ${request.requestId}")
+            ClawdApp.approvalChannel.trySend(request)
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to deserialize request_json: ${e.message}")
         }
     }
 

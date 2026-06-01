@@ -12,7 +12,6 @@ data class WsMessage(
     val data: SessionData? = null,
     val requestId: String? = null,
     val permissionData: PermissionRequestData? = null,
-    val elicitationData: ElicitationRequestData? = null,
 )
 
 @Serializable
@@ -22,7 +21,8 @@ data class PermissionRequestData(
     val toolInputSummary: String? = null,
     val sessionId: String? = null,
     val suggestions: List<PermissionSuggestion> = emptyList(),
-    val elicitationOptions: List<ElicitationOption> = emptyList(),
+    val elicitationQuestions: List<ElicitationQuestion> = emptyList(),
+    val toolInputRaw: JsonElement? = null,
     val timeout: Long = 60000,
     val requestId: String? = null,
 )
@@ -37,15 +37,15 @@ data class PermissionSuggestion(
 )
 
 @Serializable
-data class ElicitationRequestData(
-    val agentId: String? = null,
-    val prompt: String? = null,
+data class ElicitationQuestion(
+    val question: String,
+    val header: String? = null,
+    val multiSelect: Boolean = false,
     val options: List<ElicitationOption> = emptyList(),
-    val sessionId: String? = null,
 )
 
 @Serializable
 data class ElicitationOption(
     val label: String,
-    val value: String,
+    val description: String? = null,
 )

@@ -594,7 +594,7 @@ private fun AboutSection() {
         modifier = Modifier.padding(bottom = 4.dp)
     )
     Text(
-        "A desktop companion for your AI coding journey.",
+        "A mobile companion for your AI coding journey.",
         fontSize = 12.sp,
         color = ClawdFaintDark,
         modifier = Modifier.padding(bottom = 12.dp)

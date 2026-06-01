@@ -14,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 class ApprovalViewModel(
     application: Application,
@@ -73,10 +74,10 @@ class ApprovalViewModel(
     }
 
     // Save recently dismissed requests so notification tap can restore them
-    private val recentlyDismissed = mutableMapOf<String, PermissionRequestData>()
+    private val recentlyDismissed = ConcurrentHashMap<String, PermissionRequestData>()
 
-    private val timeoutJobs = mutableMapOf<String, Job>()
-    private val countdownJobs = mutableMapOf<String, Job>()
+    private val timeoutJobs = ConcurrentHashMap<String, Job>()
+    private val countdownJobs = ConcurrentHashMap<String, Job>()
 
     init {
         viewModelScope.launch {
@@ -103,7 +104,7 @@ class ApprovalViewModel(
         val context = getApplication<Application>()
         val sessionName = resolveSessionName(request.sessionId)
 
-        if (request.toolName == "elicitation") {
+        if (request.toolName == "AskUserQuestion") {
             NotificationHelper.showElicitationNotification(context, request, sessionName)
         } else {
             NotificationHelper.showApprovalNotification(context, request, sessionName)
@@ -162,8 +163,9 @@ class ApprovalViewModel(
         removeRequest(requestId, saveForRestore = false)
     }
 
-    fun submitElicitation(requestId: String, value: String) {
-        webSocket.sendElicitationResponse(requestId, mapOf("choice" to value))
+    fun submitElicitation(requestId: String, answers: Map<String, String>) {
+        val request = _pendingRequests.value.find { it.requestId == requestId }
+        webSocket.sendElicitationResponse(requestId, request?.toolInputRaw, answers)
         removeRequest(requestId, saveForRestore = false)
     }
 

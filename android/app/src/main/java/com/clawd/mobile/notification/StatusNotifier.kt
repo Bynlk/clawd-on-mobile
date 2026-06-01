@@ -10,18 +10,21 @@ import com.clawd.mobile.MainActivity
 import com.clawd.mobile.R
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.data.SessionData
+import java.util.concurrent.ConcurrentHashMap
 
 class StatusNotifier(private val context: Context, private val prefsStore: PrefsStore) {
 
     companion object {
         /** Tracks last notified display state to dedup attention/error alerts */
+        @Volatile
         private var lastDisplayState: String? = null
         /** Skip notifications on the very first state snapshot */
+        @Volatile
         private var firstLoad = true
     }
 
     /** Per-session badge tracking for completion notifications */
-    private val lastBadge = mutableMapOf<String, String>()
+    private val lastBadge = ConcurrentHashMap<String, String>()
 
     /** Set by NavGraph to check if there are pending approval requests */
     var hasPendingApprovals: () -> Boolean = { false }

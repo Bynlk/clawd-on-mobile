@@ -97,6 +97,15 @@
     <string name="sessions_waiting_choice">等待选择</string>
     <string name="sessions_action_permission">权限</string>
     <string name="sessions_action_choice">选择</string>
+
+    <!-- Elicitation (AskUserQuestion) -->
+    <string name="elicitation_choose_one">请选择一个选项</string>
+    <string name="elicitation_choose_multiple">请选择一个或多个选项</string>
+    <string name="elicitation_other">其他</string>
+    <string name="elicitation_submit">提交</string>
+    <string name="elicitation_next">下一步</string>
+    <string name="elicitation_previous">上一步</string>
+    <string name="elicitation_question_of">第 %1$d 题，共 %2$d 题</string>
     <string name="sessions_device">设备</string>
     <string name="sessions_relay_title">未来中继服务，敬请期待。\n\n中继服务将支持通过云端中继连接 PC 端，无需处于同一局域网。</string>
     <string name="sessions_relay_ok">知道了</string>
@@ -156,6 +165,7 @@
     <string name="manual_host_label">桌面端地址</string>
     <string name="manual_port_label">端口</string>
     <string name="manual_token_placeholder">32位token</string>
+    <string name="manual_token_label">Token</string>
     <string name="manual_connect">连接</string>
     <string name="manual_history">连接历史</string>
     <string name="manual_delete">删除</string>
