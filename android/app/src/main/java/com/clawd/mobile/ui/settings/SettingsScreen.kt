@@ -358,9 +358,8 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
     var enabled by remember { mutableStateOf(prefsStore.isFloatingPetEnabled()) }
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
-    val petPrefs = remember { context.getSharedPreferences("clawd_prefs", Context.MODE_PRIVATE) }
-    var sizeDp by remember { mutableIntStateOf(petPrefs.getInt("pet_size_dp", 96)) }
-    var character by remember { mutableStateOf(petPrefs.getString("pet_character", "clawd") ?: "clawd") }
+    var sizeDp by remember { mutableIntStateOf(prefsStore.getPetSizeDp()) }
+    var character by remember { mutableStateOf(prefsStore.getPetCharacter()) }
 
     Text(
         stringResource(R.string.settings_pet_desc),
@@ -453,7 +452,7 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
                 onValueChange = { sizeDp = it.toInt() },
                 onValueChangeFinished = {
                     sizeText = sizeDp.toString()
-                    petPrefs.edit().putInt("pet_size_dp", sizeDp).apply()
+                    prefsStore.setPetSizeDp(sizeDp)
                     context.sendBroadcast(
                         Intent(FloatingPetService.ACTION_PET_SIZE)
                             .putExtra(FloatingPetService.EXTRA_SIZE_DP, sizeDp)
@@ -525,7 +524,7 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
                     selected = character == key,
                     onClick = {
                         character = key
-                        petPrefs.edit().putString("pet_character", key).apply()
+                        prefsStore.setPetCharacter(key)
                         context.sendBroadcast(
                             Intent(FloatingPetService.ACTION_PET_CHARACTER)
                                 .putExtra(FloatingPetService.EXTRA_CHARACTER, key)

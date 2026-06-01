@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import android.graphics.PixelFormat
+import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.util.SafeExecutor
 
 /**
@@ -121,16 +122,13 @@ class PetWindowController(
     }
 
     /**
-     * Save the pet's content center position to SharedPreferences.
+     * Save the pet's content center position to PrefsStore.
      */
-    fun savePosition(prefs: android.content.SharedPreferences) {
+    fun savePosition(prefsStore: PrefsStore) {
         layoutParams.let {
             val cx = it.x + it.width / 2f + contentOffsetDx
             val cy = it.y + it.height / 2f + contentOffsetDy
-            prefs.edit()
-                .putFloat("pet_content_cx", cx)
-                .putFloat("pet_content_cy", cy)
-                .apply()
+            prefsStore.setPetContentPosition(cx, cy)
         }
     }
 

@@ -20,6 +20,10 @@ class PrefsStore(context: Context) {
         private const val KEY_NOTIFY_ALERT = "notify_alert"
         private const val KEY_NOTIFY_ENABLED = "notify_enabled"
         private const val KEY_FLOATING_PET = "floating_pet_enabled"
+        private const val KEY_PET_SIZE_DP = "pet_size_dp"
+        private const val KEY_PET_CHARACTER = "pet_character"
+        private const val KEY_PET_CX = "pet_content_cx"
+        private const val KEY_PET_CY = "pet_content_cy"
         private const val PREFS_ENCRYPTED = "clawd_prefs_encrypted"
         private const val PREFS_LEGACY = "clawd_prefs"
         private const val KEY_MIGRATED = "_migrated_v1"
@@ -123,6 +127,23 @@ class PrefsStore(context: Context) {
     // Floating pet
     fun isFloatingPetEnabled(): Boolean = prefs.getBoolean(KEY_FLOATING_PET, false)
     fun setFloatingPetEnabled(v: Boolean) { prefs.edit().putBoolean(KEY_FLOATING_PET, v).apply() }
+
+    // ─── Floating Pet State ────────────────────────────────────────
+
+    fun getPetSizeDp(): Int = prefs.getInt(KEY_PET_SIZE_DP, 96)
+    fun setPetSizeDp(v: Int) { prefs.edit().putInt(KEY_PET_SIZE_DP, v).apply() }
+
+    fun getPetCharacter(): String = prefs.getString(KEY_PET_CHARACTER, "clawd") ?: "clawd"
+    fun setPetCharacter(v: String) { prefs.edit().putString(KEY_PET_CHARACTER, v).apply() }
+
+    fun getPetContentCx(defaultCx: Float): Float = prefs.getFloat(KEY_PET_CX, defaultCx)
+    fun getPetContentCy(defaultCy: Float): Float = prefs.getFloat(KEY_PET_CY, defaultCy)
+    fun setPetContentPosition(cx: Float, cy: Float) {
+        prefs.edit()
+            .putFloat(KEY_PET_CX, cx)
+            .putFloat(KEY_PET_CY, cy)
+            .apply()
+    }
 
     // Session name overrides
     fun saveSessionName(sessionId: String, name: String) {

@@ -16,6 +16,7 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.clawd.mobile.ClawdApp
 import com.clawd.mobile.R
+import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.service.WebSocketService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,9 @@ class FloatingPetService : Service() {
     // --- State management ---
     private lateinit var stateManager: PetStateManager
 
+    // --- Prefs ---
+    private lateinit var prefsStore: PrefsStore
+
     // --- Extracted helpers ---
     private var windowController: PetWindowController? = null
     private var gestureHandler: PetGestureHandler? = null
@@ -70,6 +74,7 @@ class FloatingPetService : Service() {
         super.onCreate()
         Log.d(TAG, "onCreate")
 
+        prefsStore = PrefsStore(this)
         stateManager = PetStateManager(character)
 
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -88,7 +93,7 @@ class FloatingPetService : Service() {
             stateManager.reset()
             commandCollectorJob?.cancel()
             unregisterBroadcastReceiver()
-            windowController?.savePosition(getSharedPreferences("clawd_prefs", MODE_PRIVATE))
+            windowController?.savePosition(prefsStore)
             windowController?.removeView()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -116,7 +121,7 @@ class FloatingPetService : Service() {
         commandCollectorJob?.cancel()
         scope.cancel()
         unregisterBroadcastReceiver()
-        windowController?.savePosition(getSharedPreferences("clawd_prefs", MODE_PRIVATE))
+        windowController?.savePosition(prefsStore)
         windowController?.removeView()
         super.onDestroy()
     }
@@ -193,9 +198,8 @@ class FloatingPetService : Service() {
     // ======================================================================
 
     private fun loadPrefs() {
-        val prefs = getSharedPreferences("clawd_prefs", MODE_PRIVATE)
-        sizeDp = prefs.getInt("pet_size_dp", DEFAULT_SIZE_DP)
-        character = prefs.getString("pet_character", "clawd") ?: "clawd"
+        sizeDp = prefsStore.getPetSizeDp()
+        character = prefsStore.getPetCharacter()
     }
 
     // ======================================================================
@@ -215,12 +219,11 @@ class FloatingPetService : Service() {
         val screenW = resources.displayMetrics.widthPixels
         val screenH = resources.displayMetrics.heightPixels
 
-        val prefs = getSharedPreferences("clawd_prefs", MODE_PRIVATE)
         val marginPx = (16 * density).toInt()
         val defaultCx = screenW - sizePx / 2f - marginPx
         val defaultCy = screenH - sizePx / 2f - marginPx
-        val savedCx = prefs.getFloat("pet_content_cx", defaultCx)
-        val savedCy = prefs.getFloat("pet_content_cy", defaultCy)
+        val savedCx = prefsStore.getPetContentCx(defaultCx)
+        val savedCy = prefsStore.getPetContentCy(defaultCy)
         val savedX = (savedCx - sizePx / 2f).toInt()
         val savedY = (savedCy - sizePx / 2f).toInt()
 
@@ -274,7 +277,7 @@ class FloatingPetService : Service() {
 
         petView!!.onDragEnd = {
             windowController?.snapToEdge()
-            windowController?.savePosition(getSharedPreferences("clawd_prefs", MODE_PRIVATE))
+            windowController?.savePosition(prefsStore)
         }
         petView!!.onContentReady = { offsetDx, offsetDy, fW, fH ->
             windowController?.let {
