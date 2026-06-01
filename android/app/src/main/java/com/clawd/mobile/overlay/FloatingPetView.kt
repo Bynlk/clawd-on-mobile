@@ -2,151 +2,234 @@ package com.clawd.mobile.overlay
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Matrix
-import android.graphics.RectF
+import android.graphics.Canvas
 import android.util.AttributeSet
 import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
-import android.widget.ImageView
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.load.resource.gif.GifDrawable
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.target.Target
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewAssetLoader.AssetsPathHandler
 
+/**
+ * Floating pet overlay view — now WebView-based for SVG rendering.
+ *
+ * Replaces the previous ImageView+Glide implementation to support CSS-animated
+ * SVGs from the PC-side theme system (breathe, blink, tail-sway, etc.).
+ *
+ * Touch transparent regions: caches a Bitmap snapshot after each SVG load and
+ * checks pixel alpha at the touch point. Transparent pixels pass through to
+ * windows below.
+ */
 class FloatingPetView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
-) : ImageView(context, attrs, defStyleAttr) {
+    defStyleAttr: Int = 0,
+    defStyleRes: Int = 0
+) : WebView(context, attrs, defStyleAttr, defStyleRes) {
 
-    internal var currentResId: Int = -1
+    companion object {
+        private const val TAG = "FloatingPetView"
+    }
 
-    /** 内容就绪回调: (offsetDx, offsetDy, frameW, frameH) */
+    /** Currently loaded asset path (e.g. "svg/clawd/clawd-idle-follow.svg"). */
+    var currentAssetPath: String? = null
+        internal set
+
+    /** Target content display size (px). Set by Service for window sizing. */
+    var targetContentPx: Int = 0
+
+    /** Content ready callback: (offsetDx, offsetDy, frameW, frameH). */
     var onContentReady: ((Float, Float, Int, Int) -> Unit)? = null
 
-    /** 手势检测器引用（由 Service 设置） */
+    /** Gesture detector reference (set by Service). */
     var gestureDetector: GestureDetector? = null
 
-    /** 拖拽结束回调（由 Service 设置，用于保存位置） */
+    /** Drag end callback (set by Service, used to save position). */
     var onDragEnd: (() -> Unit)? = null
 
+    /** Cached bitmap snapshot for transparent click-through hit testing. */
+    private var hitTestBitmap: Bitmap? = null
+
+    /** Asset loader: maps https://appassets.androidplatform.net/svg/ → assets/svg/ */
+    private val assetLoader = WebViewAssetLoader.Builder()
+        .addPathHandler("/", AssetsPathHandler(context.applicationContext))
+        .build()
+
     init {
-        // Use MATRIX so we can control scaling/translation manually
-        scaleType = ScaleType.MATRIX
+        // Transparent background — essential for overlay window
+        setBackgroundColor(0)
+
+        configureSettings()
+        setupWebViewClient()
     }
 
-    /**
-     * 加载 GIF 资源。force=true 时跳过 currentResId 检查。
-     */
-    fun loadGif(resId: Int, force: Boolean = false) {
-        if (!force && resId == currentResId) return
-        currentResId = resId
-
-        Glide.with(this.context)
-            .asGif()
-            .load(resId)
-            .listener(object : RequestListener<GifDrawable> {
-                override fun onLoadFailed(
-                    e: GlideException?, model: Any?,
-                    target: Target<GifDrawable>, isFirstResource: Boolean
-                ): Boolean {
-                    Log.w(TAG, "GIF load failed: resId=$resId", e)
-                    return false
-                }
-
-                override fun onResourceReady(
-                    resource: GifDrawable, model: Any, target: Target<GifDrawable>,
-                    dataSource: DataSource, isFirstResource: Boolean
-                ): Boolean {
-                    resource.setLoopCount(GifDrawable.LOOP_FOREVER)
-                    if (width > 0 && height > 0) {
-                        post { applyContentMatrix(resource.firstFrame) }
-                    }
-                    // else: onSizeChanged will handle it
-                    return false
-                }
-            })
-            .into(this)
-    }
-
-    fun clearGif() {
-        currentResId = -1
-        Glide.with(this.context).clear(this)
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        if (w > 0 && h > 0) {
-            val drawable = drawable
-            if (drawable is GifDrawable) {
-                post { applyContentMatrix(drawable.firstFrame) }
-            }
+    private fun configureSettings() {
+        settings.apply {
+            // SVG rendering — no JavaScript needed for Clawd/Calico
+            // (Cloudling scripted SVGs need JS; enable per-character if needed)
+            javaScriptEnabled = true
+           domStorageEnabled = true
+           allowFileAccessFromFileURLs = true
+           allowUniversalAccessFromFileURLs = true
+           allowContentAccess = true
+            // Disable zoom
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
+            // Disable scroll
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            // Performance
+            loadWithOverviewMode = true
+            useWideViewPort = false
+            // Cache
+            cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
         }
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
-    /**
-     * Detects the non-transparent bounding box of [bitmap] and applies a
-     * Matrix that translates so the visible content is centered in the view.
-     */
-    private fun applyContentMatrix(bitmap: Bitmap?) {
-        if (bitmap == null || bitmap.isRecycled || width == 0 || height == 0) return
-
-        try {
-            val contentRect = findContentBounds(bitmap)
-            if (contentRect.isEmpty) {
-                Log.w(TAG, "Bitmap is entirely transparent, using FIT_CENTER fallback")
-                scaleType = ScaleType.FIT_CENTER
-                return
+    private fun setupWebViewClient() {
+        webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                return assetLoader.shouldInterceptRequest(request?.url ?: return null)
             }
 
-            val matrix = Matrix()
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (view == null) return
 
-            // 不缩放 (scale=1.0)，只平移让内容中心 = 视图中心
-            val contentCenterX = contentRect.centerX()
-            val contentCenterY = contentRect.centerY()
-            matrix.postTranslate(width / 2f - contentCenterX, height / 2f - contentCenterY)
-            imageMatrix = matrix
+                // Poll until async XHR injects SVG into DOM
+                fun tryQuery(attempt: Int) {
+                    val js = """
+                        (function() {
+                            if (window._svgWidth > 0 && window._svgHeight > 0)
+                                return window._svgWidth + ',' + window._svgHeight;
+                            var svg = document.querySelector('.container svg');
+                            if (!svg) return '0,0';
+                            var vb = svg.viewBox.baseVal;
+                            if (vb && vb.width > 0 && vb.height > 0) return vb.width + ',' + vb.height;
+                            return (svg.getAttribute('width') || '0') + ',' + (svg.getAttribute('height') || '0');
+                        })();
+                    """.trimIndent()
 
-            // 回调通知 Service 内容偏移量
-            val offsetDx = contentCenterX - bitmap.width / 2f
-            val offsetDy = contentCenterY - bitmap.height / 2f
-            onContentReady?.invoke(offsetDx, offsetDy, bitmap.width, bitmap.height)
-
-            Log.d(TAG, "Content matrix applied: contentRect=$contentRect, offset=($offsetDx,$offsetDy), view=${width}x${height}")
-        } catch (e: Exception) {
-            Log.w(TAG, "applyContentMatrix error", e)
-        }
-    }
-
-    /**
-     * 透明区域点击穿透：ACTION_DOWN 时反变换坐标到 bitmap 空间检查 alpha，
-     * 透明 return false（穿透到下方窗口），非透明交给 gestureDetector。
-     */
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        try {
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val curDrawable = drawable
-                if (curDrawable is GifDrawable && imageMatrix.isIdentity.not()) {
-                    val inv = Matrix()
-                    if (imageMatrix.invert(inv)) {
-                        val pts = floatArrayOf(event.x, event.y)
-                        inv.mapPoints(pts)
-                        val bx = pts[0].toInt()
-                        val by = pts[1].toInt()
-                        val bmp = curDrawable.firstFrame
-                        if (bmp != null && !bmp.isRecycled && bx in 0 until bmp.width && by in 0 until bmp.height) {
-                            if (bmp.getPixel(bx, by) ushr 24 == 0) {
-                                // 透明区域：点击穿透
-                                return false
+                    view.evaluateJavascript(js) { result ->
+                        try {
+                            val clean = result.trim('"').split(",")
+                            val w = clean[0].toIntOrNull() ?: 0
+                            val h = clean[1].toIntOrNull() ?: 0
+                            if (w > 0 && h > 0) {
+                                Log.d(TAG, "SVG dimensions: ${w}x${h}")
+                                onContentReady?.invoke(0f, 0f, w, h)
+                            } else if (attempt < 5) {
+                                postDelayed({ tryQuery(attempt + 1) }, 100)
+                            }
+                        } catch (_: Exception) {
+                            if (attempt < 5) {
+                                postDelayed({ tryQuery(attempt + 1) }, 100)
                             }
                         }
                     }
                 }
+
+                postDelayed({ tryQuery(0) }, 100)
+                postDelayed({ cacheHitTestBitmap() }, 500)
             }
-            // 非透明区域：正常处理手势
+        }
+    }
+
+    /**
+     * Force the view to match the WindowManager's EXACT size.
+     */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val h = MeasureSpec.getSize(heightMeasureSpec)
+        setMeasuredDimension(w, h)
+    }
+
+    // ======================================================================
+    //  SVG loading (called by FloatingPetService via SvgLoader)
+    // ======================================================================
+
+    /**
+     * Load an SVG/APNG from assets. Called by FloatingPetService.
+     * @param assetPath Path relative to assets/, e.g. "svg/clawd/clawd-idle-follow.svg"
+     */
+    fun loadSvg(assetPath: String) {
+        if (assetPath == currentAssetPath) return
+        currentAssetPath = assetPath
+        SvgLoader.loadSvg(this, assetPath, loop = true)
+    }
+
+    /**
+     * Clear the current SVG content.
+     */
+    fun clearSvg() {
+        currentAssetPath = null
+        hitTestBitmap?.recycle()
+        hitTestBitmap = null
+        SvgLoader.clearSvg(this)
+    }
+
+    // ======================================================================
+    //  Hit-test bitmap for transparent click-through
+    // ======================================================================
+
+    /**
+     * Cache a bitmap snapshot of the WebView content.
+     * Used for pixel-level transparent click-through detection.
+     */
+    private fun cacheHitTestBitmap() {
+        try {
+            val w = width
+            val h = height
+            if (w <= 0 || h <= 0) return
+
+            hitTestBitmap?.recycle()
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            draw(canvas)
+            hitTestBitmap = bmp
+            Log.d(TAG, "Hit-test bitmap cached: ${w}x${h}")
+        } catch (e: Exception) {
+            Log.w(TAG, "cacheHitTestBitmap failed", e)
+        }
+    }
+
+    /**
+     * Check if a touch point hits visible (non-transparent) content.
+     * Returns true if the point is on a visible pixel, false if transparent.
+     */
+    private fun isTouchOnContent(x: Float, y: Float): Boolean {
+        val bmp = hitTestBitmap ?: return true // No bitmap → allow all touches
+        val bx = x.toInt()
+        val by = y.toInt()
+        if (bx < 0 || by < 0 || bx >= bmp.width || by >= bmp.height) return false
+        return bmp.getPixel(bx, by) ushr 24 != 0
+    }
+
+    // ======================================================================
+    //  Touch handling
+    // ======================================================================
+
+    /**
+     * Transparent click-through: ACTION_DOWN checks pixel alpha.
+     * Transparent → return false (pass through to windows below).
+     * Opaque → delegate to gestureDetector.
+     */
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        try {
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                if (!isTouchOnContent(event.x, event.y)) {
+                    return false // Transparent region — click through
+                }
+            }
             val handled = gestureDetector?.onTouchEvent(event) ?: super.onTouchEvent(event)
             if (event.action == MotionEvent.ACTION_UP) {
                 onDragEnd?.invoke()
@@ -156,66 +239,5 @@ class FloatingPetView @JvmOverloads constructor(
             Log.w(TAG, "onTouchEvent error", e)
             return super.onTouchEvent(event)
         }
-    }
-
-    /**
-     * Scans the bitmap to find the tight bounding box of non-transparent pixels.
-     * Uses row/column scanning for efficiency (O(w+h) instead of O(w*h)).
-     */
-    private fun findContentBounds(bitmap: Bitmap): RectF {
-        val w = bitmap.width
-        val h = bitmap.height
-
-        // Scan rows to find top/bottom
-        var top = -1
-        var bottom = -1
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                if (bitmap.getPixel(x, y) ushr 24 != 0) {
-                    top = y
-                    break
-                }
-            }
-            if (top >= 0) break
-        }
-        if (top < 0) return RectF() // fully transparent
-
-        for (y in h - 1 downTo top) {
-            for (x in 0 until w) {
-                if (bitmap.getPixel(x, y) ushr 24 != 0) {
-                    bottom = y
-                    break
-                }
-            }
-            if (bottom >= 0) break
-        }
-
-        // Scan columns to find left/right
-        var left = -1
-        var right = -1
-        for (x in 0 until w) {
-            for (y in top..bottom) {
-                if (bitmap.getPixel(x, y) ushr 24 != 0) {
-                    left = x
-                    break
-                }
-            }
-            if (left >= 0) break
-        }
-        for (x in w - 1 downTo left) {
-            for (y in top..bottom) {
-                if (bitmap.getPixel(x, y) ushr 24 != 0) {
-                    right = x
-                    break
-                }
-            }
-            if (right >= 0) break
-        }
-
-        return RectF(left.toFloat(), top.toFloat(), (right + 1).toFloat(), (bottom + 1).toFloat())
-    }
-
-    companion object {
-        private const val TAG = "FloatingPetView"
     }
 }

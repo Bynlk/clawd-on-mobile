@@ -21,6 +21,7 @@ sealed class PetState(val priority: Int, val themeKey: String) {
 
     // --- Concrete states (PC-aligned priority) ---
 
+    // Priority table aligned with PC state-priority.js
     data object Error       : PetState(8, "error")
     data object Notification: PetState(7, "notification")
     data object Sweeping    : PetState(6, "sweeping")

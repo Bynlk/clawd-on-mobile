@@ -15,11 +15,9 @@ import android.view.Gravity
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.WindowManager
-import android.widget.ImageView
 import androidx.core.app.NotificationCompat
 import com.clawd.mobile.ClawdApp
 import com.clawd.mobile.R
-import com.clawd.mobile.data.SessionData
 import com.clawd.mobile.service.WebSocketService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +43,7 @@ class FloatingPetService : Service() {
         private const val BUBBLE_HEIGHT_SCREEN_RATIO = 0.4
         private const val BUBBLE_MARGIN_DP = 16
         private const val BUBBLE_GAP_DP = 8
+        private const val VIEWPORT_PADDING_RATIO = 0.15f   // 15% safety padding for asymmetric frames
     }
 
     // --- View & window ---
@@ -55,11 +54,15 @@ class FloatingPetService : Service() {
     private var character = "clawd"
     private var contentOffsetDx = 0f
     private var contentOffsetDy = 0f
+    private var svgFrameW: Int = 0
+    private var svgFrameH: Int = 0
+    private var lastSizeDp: Int = -1
 
     // --- Coroutine plumbing ---
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var started = false
-    private var stateCollectorJob: Job? = null   // collects stateFlow + gifLoadEvents
+    /** Collects unified StateCommand from PetStateManager — single pipe for all view mutations. */
+    private var commandCollectorJob: Job? = null
 
     // --- State management (extracted) ---
     private lateinit var stateManager: PetStateManager
@@ -91,18 +94,15 @@ class FloatingPetService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "onCreate")
-        PetGifLoader.init(this)
 
-        stateManager = PetStateManager(character) { resId ->
-            // Reaction GIF callback — load immediately on the pet view
-            petView?.let { PetGifLoader.loadGifWithReady(it, resId, force = true) }
-        }
+        // No callback needed — ReactionGif commands flow through the unified stateFlow
+        stateManager = PetStateManager(character)
 
         startForeground(NOTIFICATION_ID, buildNotification())
         loadPrefs()
         registerBroadcastReceiver()
         showFloatingWindow()
-        startStateCollection()
+        reloadGif()   // Single entry point: serial Job chain handles all initialization
         started = true
     }
 
@@ -112,7 +112,7 @@ class FloatingPetService : Service() {
             started = false
             dismissBubble()
             stateManager.reset()
-            stateCollectorJob?.cancel()
+            commandCollectorJob?.cancel()
             unregisterBroadcastReceiver()
             savePosition()
             removeFloatingWindow()
@@ -125,12 +125,12 @@ class FloatingPetService : Service() {
             Log.d(TAG, "onStartCommand: already started, cleaning up first")
             dismissBubble()
             stateManager.reset()
-            stateCollectorJob?.cancel()
+            commandCollectorJob?.cancel()
             removeFloatingWindow()
             contentOffsetDx = 0f
             contentOffsetDy = 0f
             showFloatingWindow()
-            startStateCollection()
+            reloadGif()
         }
         return START_STICKY
     }
@@ -140,7 +140,7 @@ class FloatingPetService : Service() {
         started = false
         dismissBubble()
         stateManager.reset()
-        stateCollectorJob?.cancel()
+        commandCollectorJob?.cancel()
         scope.cancel()
         unregisterBroadcastReceiver()
         savePosition()
@@ -149,38 +149,73 @@ class FloatingPetService : Service() {
     }
 
     // ======================================================================
-    //  State collection (view pipe — delegates all logic to PetStateManager)
+    //  Unified command collection (single pipe — no dual-pipeline race)
     // ======================================================================
 
     /**
-     * Launches two collectors:
-     * 1. [PetStateManager.stateFlow] → loads the GIF matching the current state.
-     * 2. [PetStateManager.consumeGifLoadEvents] → one-shot loads (reactions, idle cycle).
+     * Serial Job chain: reset → clear → start → collect.
+     * All SVG loads happen sequentially in the single [commandCollectorJob]
+     * on Main dispatcher — no concurrent loads possible.
      */
-    private fun startStateCollection() {
-        stateManager.start(scope)
+    private fun reloadGif() {
+        // 0. Sync character before reset (may have changed via broadcast)
+        stateManager.character = character
 
-        stateCollectorJob?.cancel()
-        stateCollectorJob = scope.launch {
-            // Collector 1: primary state → GIF
-            launch {
-                stateManager.stateFlow.collect { state ->
-                    val sessionCount = WebSocketService.getWebSocket()
-                        ?.sessions?.value?.values?.count { it.isVisible } ?: 0
-                    val resId = PetGifLoader.getGifResId(state, sessionCount, character)
-                    if (resId != null && resId != 0) {
-                        Log.d(TAG, "State → ${state.themeKey}, loading GIF resId=$resId")
-                        petView?.loadGif(resId)
-                    }
+        // 1. State machine full reset (cancels its internal wsCollectorJob + idle + sleep)
+        stateManager.reset()
+
+        // 2. Cancel Service-side collector — clean slate
+        commandCollectorJob?.cancel()
+
+        // 3. Clear view rendering tree residual
+        petView?.clearSvg()
+
+        // 4. Single serial Job chain: start() → collect, no vacuum gap
+        commandCollectorJob = scope.launch(Dispatchers.Main) {
+            stateManager.start(this)   // pass this coroutine scope for internal launches
+
+            // Collect the unified single pipe — every StateCommand handled sequentially
+            stateManager.stateFlow.collect { command ->
+                handleCommand(command)
+            }
+        }
+    }
+
+    /**
+     * Apply a single [PetStateManager.StateCommand] to the view.
+     * Runs on Main dispatcher inside the serial [commandCollectorJob] —
+     * no concurrent SVG loads possible.
+     */
+    private fun handleCommand(command: PetStateManager.StateCommand) {
+        when (command) {
+            is PetStateManager.StateCommand.StateChanged -> {
+                val state = command.state
+                val sessionCount = WebSocketService.getWebSocket()
+                    ?.sessions?.value?.values?.count { it.isVisible } ?: 0
+                val assetPath = SvgLoader.resolveSvgAsset(state, sessionCount, character)
+                val isOneshot = state in PetState.ONESHOT_STATES
+                Log.w("PetState", "handleCommand state=${state.themeKey} sessionCount=$sessionCount assetPath=$assetPath isOneshot=$isOneshot")
+                if (assetPath != null) {
+                    SvgLoader.loadSvg(
+                        petView ?: return, assetPath,
+                        loop = !isOneshot,
+                        onFinished = if (isOneshot) ({
+                            Log.w(TAG, "Oneshot ${state.themeKey} SVG finished → Idle")
+                            handleCommand(PetStateManager.StateCommand.StateChanged(PetState.Idle))
+                        }) else null
+                    )
                 }
             }
-            // Collector 2: one-shot GIF events (reactions, idle reading)
-            launch {
-                for (event in stateManager.consumeGifLoadEvents()) {
-                    val resId = event.resId
-                    if (resId != null && resId != 0) {
-                        petView?.let { PetGifLoader.loadGifWithReady(it, resId, force = event.force) }
-                    }
+            is PetStateManager.StateCommand.SvgLoad -> {
+                val path = command.assetPath
+                if (path != null) {
+                    petView?.let { SvgLoader.loadSvg(it, path, loop = true) }
+                }
+            }
+            is PetStateManager.StateCommand.ReactionSvg -> {
+                val path = command.assetPath
+                if (path != null) {
+                    petView?.let { SvgLoader.loadSvg(it, path, loop = false) }
                 }
             }
         }
@@ -249,6 +284,7 @@ class FloatingPetService : Service() {
 
         petView = FloatingPetView(this).apply {
             setBackgroundColor(0)
+            targetContentPx = sizePx
         }
 
         layoutParams = WindowManager.LayoutParams(
@@ -263,15 +299,13 @@ class FloatingPetService : Service() {
             y = savedY
         }
 
-        // Load initial GIF
-        val resId = PetGifLoader.getGifResId(PetState.Idle, 0, character) ?: 0
-        if (resId != 0) petView!!.loadGif(resId)
-
         setupGestureDetector()
         petView!!.onDragEnd = { savePosition() }
-        petView!!.onContentReady = callback@{ offsetDx, offsetDy, _, _ ->
+        petView!!.onContentReady = callback@{ offsetDx, offsetDy, fW, fH ->
             contentOffsetDx = offsetDx
             contentOffsetDy = offsetDy
+            svgFrameW = fW
+            svgFrameH = fH
             recalcWindowSize()
         }
 
@@ -279,27 +313,49 @@ class FloatingPetService : Service() {
         Log.d(TAG, "Pet view added at x=$savedX, y=$savedY, size=$sizePx")
     }
 
-    private fun recalcWindowSize() {
+    /**
+     * @param lockedCenterX optional pre-captured center X (avoids drift on rapid calls)
+     * @param lockedCenterY optional pre-captured center Y
+     */
+    private fun recalcWindowSize(
+        lockedCenterX: Float? = null,
+        lockedCenterY: Float? = null
+    ) {
         try {
             val lp = layoutParams ?: return
             val density = resources.displayMetrics.density
-            val frameW = petView?.drawable?.let {
-                (it as? com.bumptech.glide.load.resource.gif.GifDrawable)?.firstFrame?.width
-            } ?: return
-            val frameH = petView?.drawable?.let {
-                (it as? com.bumptech.glide.load.resource.gif.GifDrawable)?.firstFrame?.height
-            } ?: return
+
+            // Use cached SVG frame dimensions (set in onContentReady),
+            // NOT lp.width/lp.height which reflects the window size.
+            val frameW = svgFrameW.toFloat()
+            val frameH = svgFrameH.toFloat()
+            if (frameW <= 0f || frameH <= 0f) {
+                // GIF frame not ready yet — apply stable placeholder
+                val safePx = (sizeDp * density).toInt()
+                lp.width = safePx
+                lp.height = safePx
+                windowManager?.updateViewLayout(petView!!, lp)
+                return
+            }
 
             val contentW = (frameW - 2 * Math.abs(contentOffsetDx)).coerceAtLeast(1f)
             val contentH = (frameH - 2 * Math.abs(contentOffsetDy)).coerceAtLeast(1f)
             val contentScale = maxOf(contentW, contentH)
             if (contentScale <= 0f) return
 
-            val windowDp = (sizeDp * maxOf(frameW, frameH) / contentScale)
-            val windowPx = (windowDp * density).toInt()
+            // 15% safety viewport padding so asymmetric frames (tails, ears) aren't clipped
+            val paddedContentScale = contentScale * (1f - VIEWPORT_PADDING_RATIO)
+            val windowDp = (sizeDp * maxOf(frameW, frameH) / paddedContentScale)
+            val windowPx = (windowDp * density).toInt().coerceAtLeast((80 * density).toInt())
 
-            val oldCenterX = lp.x + lp.width / 2f
-            val oldCenterY = lp.y + lp.height / 2f
+            // Skip if neither window size nor sizeDp changed (avoids onContentReady → recalc loop)
+            val oldWindowPx = lp.width
+            if (windowPx == oldWindowPx && sizeDp == lastSizeDp) return
+            lastSizeDp = sizeDp
+
+            // Use locked center if provided; otherwise read from current layout params
+            val oldCenterX = lockedCenterX ?: (lp.x + lp.width / 2f)
+            val oldCenterY = lockedCenterY ?: (lp.y + lp.height / 2f)
 
             lp.width = windowPx
             lp.height = windowPx
@@ -310,15 +366,50 @@ class FloatingPetService : Service() {
             lp.y = targetY - windowPx / 2
 
             windowManager?.updateViewLayout(petView!!, lp)
-            Log.d(TAG, "recalcWindowSize: offset=($contentOffsetDx,$contentOffsetDy), frame=${frameW}x${frameH}, window=${windowPx}px")
+
+            // Sync targetContentPx for WebView content sizing
+            petView?.let { pv ->
+                pv.targetContentPx = windowPx
+                pv.requestLayout()
+                pv.invalidate()
+            }
+            Log.d(TAG, "recalcWindowSize: offset=($contentOffsetDx,$contentOffsetDy), frame=${frameW}x${frameH}, window=${windowPx}px, padding=${VIEWPORT_PADDING_RATIO}")
         } catch (e: Exception) {
             Log.e(TAG, "recalcWindowSize error", e)
         }
     }
 
+    /**
+     * Unified viewport readiness check.
+     * Returns (frameW, frameH) if the SVG frame dimensions are known, or null if not.
+     *
+     * When the frame isn't ready (SVG still loading, or between character
+     * switches), applies a stable [sizeDp]-based placeholder so the window
+     * doesn't collapse to a 1px slit.
+     */
+    private fun ensureViewportReady(
+        lp: WindowManager.LayoutParams,
+        density: Float
+    ): Pair<Float, Float>? {
+        val frameW = svgFrameW
+        val frameH = svgFrameH
+
+        if (frameW <= 0 || frameH <= 0) {
+            // Apply stable placeholder bounds
+            val safePx = (sizeDp * density).toInt()
+            lp.width = safePx
+            lp.height = safePx
+            windowManager?.updateViewLayout(petView!!, lp)
+            Log.d(TAG, "ensureViewportReady: SVG frame not ready, applied safe placeholder ${safePx}px")
+            return null
+        }
+
+        return Pair(frameW.toFloat(), frameH.toFloat())
+    }
+
     private fun removeFloatingWindow() {
         petView?.let {
-            it.clearGif()
+            it.clearSvg()
             try {
                 windowManager?.removeView(it)
             } catch (e: IllegalArgumentException) {
@@ -541,20 +632,23 @@ class FloatingPetService : Service() {
     }
 
     private fun updateSize() {
+        // Lock center point BEFORE any layout mutation to prevent drift on rapid slider events
+        val lp = layoutParams
+        val lockedCX = lp?.let { it.x + it.width / 2f }
+        val lockedCY = lp?.let { it.y + it.height / 2f }
+
         val density = resources.displayMetrics.density
         val sizePx = (sizeDp * density).toInt()
-        layoutParams?.width = sizePx
-        layoutParams?.height = sizePx
-        recalcWindowSize()
-    }
+        petView?.let { pv ->
+            pv.targetContentPx = sizePx
+        }
+        // Do NOT pre-set lp.width/height here — recalcWindowSize() owns that mutation
+        // only when the SVG frame is actually ready.
+        recalcWindowSize(lockedCX, lockedCY)
 
-    private fun reloadGif() {
-        stateManager.reset()
-        stateCollectorJob?.cancel()
-        petView?.clearGif()
-        val resId = PetGifLoader.getGifResId(PetState.Idle, 0, character)
-        Log.d(TAG, "reloadGif: character=$character, resId=$resId")
-        if (resId != null && resId != 0) petView?.loadGif(resId, force = true)
-        startStateCollection()
+        // Force the view to re-measure and re-draw with the new window dimensions.
+        // Safe no-op if recalcWindowSize returned early (frame not ready).
+        petView?.requestLayout()
+        petView?.invalidate()
     }
 }

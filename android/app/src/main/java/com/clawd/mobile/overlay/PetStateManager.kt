@@ -7,7 +7,6 @@ import com.clawd.mobile.ws.ClawdWebSocket
 import com.clawd.mobile.ws.ConnectionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,16 +19,39 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Centralised state decision engine extracted from [FloatingPetService].
  *
- * Owns all session-filtering, best-state selection, badge transition detection,
- * the 1.5 s happy interlude, the 3 s attention recheck, the sleep sequence
- * (yawning→dozing→collapsing→sleeping→waking), and the idle animation cycle.
- * The Service is reduced to a view/lifecycle pipe that collects [stateFlow]
- * and [gifLoadEvents].
+ * Owns all session-filtering, best-state selection (priority-based, PC-aligned),
+ * badge transition detection, the 1.5 s happy interlude, the 3 s attention recheck,
+ * the sleep sequence (yawning→dozing→collapsing→sleeping→waking), and random
+ * idle animation variants during deep sleep.
+ *
+ * **Single-pipe architecture**: All state transitions AND one-shot GIF load
+ * requests are unified into a single [stateFlow] of [StateCommand] objects.
+ * The Service collects this one flow to drive all view mutations — no separate
+ * Channel, no dual-pipeline race window.
+ *
+ * **Multi-session handling**: When ≥2 sessions are active, automatically maps to
+ * Juggling (clawd) or Conducting (calico/cloudling) via priority comparison.
+ * Higher-priority states (Error, Attention) always win over the mapping.
  */
-class PetStateManager(
-    private val character: String,
-    private val onReactionGifRequested: (resId: Int) -> Unit
-) {
+class PetStateManager(var character: String) {
+
+    // ======================================================================
+    //  Unified command type — single pipe output
+    // ======================================================================
+
+    /**
+     * All view-layer commands emitted through the unified [stateFlow].
+     * The Service collects this single flow and applies each command sequentially
+     * on the Main dispatcher, eliminating dual-pipeline race conditions.
+     */
+    sealed interface StateCommand {
+        /** Pet state changed — load the corresponding SVG. */
+        data class StateChanged(val state: PetState) : StateCommand
+        /** One-shot SVG load (reaction, idle animation variant). Does not change [currentState]. */
+        data class SvgLoad(val assetPath: String?, val force: Boolean) : StateCommand
+        /** Reaction SVG overlay — load immediately, then auto-restore after delay. */
+        data class ReactionSvg(val assetPath: String?) : StateCommand
+    }
 
     companion object {
         private const val TAG = "PetStateManager"
@@ -37,14 +59,15 @@ class PetStateManager(
         // --- Timing constants (ms) ---
         const val STALE_THRESHOLD_MS       = 30_000L
         const val ATTENTION_RECHECK_MS     = 3_000L
-        const val REACTION_DISPLAY_MS      = 1_500L
+        const val REACTION_DISPLAY_MS      = 4_000L
         const val IDLE_ANIM_INTERVAL_MS    = 30_000L
-        const val IDLE_READING_DISPLAY_MS  = 5_000L
+        const val IDLE_ANIM_DISPLAY_MS     = 5_000L
         const val STATE_COLLECTOR_RETRY_MS = 3_000L
         const val WS_POLL_INTERVAL_MS     = 3_000L
         const val WATCHDOG_INTERVAL_MS     = 10_000L
         const val WATCHDOG_TIMEOUT_MS      = 60_000L
         const val IDLE_RECHECK_SETTLE_MS   = 200L
+        const val IDLE_SLEEP_TIMEOUT_MS    = 60_000L  // 对齐 PC 端 MOUSE_SLEEP_TIMEOUT
 
         // --- Per-character sleep sequence timings (from PC theme.json) ---
         data class SleepConfig(
@@ -61,35 +84,40 @@ class PetStateManager(
         )
     }
 
-    // --- Outputs ---
+    // --- Unified output ---
 
-    private val _stateFlow = MutableStateFlow<PetState>(PetState.Idle)
-    /** The current resolved pet state. Observe to drive GIF loads. */
-    val stateFlow: StateFlow<PetState> = _stateFlow.asStateFlow()
+    private val _commandFlow = MutableStateFlow<StateCommand>(StateCommand.StateChanged(PetState.Idle))
+    /**
+     * Single-pipe output: all state changes AND GIF load requests.
+     * The Service collects this and applies commands sequentially on Main.
+     * Uses distinct data class equality so consecutive identical commands
+     * (e.g. same resId) still emit when forced.
+     */
+    val stateFlow: StateFlow<StateCommand> = _commandFlow.asStateFlow()
 
-    private val gifLoadEvents = Channel<GifLoadEvent>(Channel.CONFLATED)
-    /** One-shot GIF load requests (reactions, idle cycle). Service collects and loads. */
-    fun consumeGifLoadEvents(): Channel<GifLoadEvent> = gifLoadEvents
+    // --- Internal state (used for conditional logic inside the state machine) ---
 
-    // --- Internal state ---
+    /** The current resolved PetState. Updated on every [emitState] call. */
+    private var currentState: PetState = PetState.Idle
 
     private var lastNonIdleState: PetState = PetState.Idle
     private var prevBadge: MutableMap<String, String> = mutableMapOf()
+    private val consumedDoneSessions = mutableSetOf<String>()
     private var gifGeneration = 0
-    private var idleCycleJob: Job? = null
+    private var idleSince: Long = 0L  // idle 状态开始时间，用于 60s 超时对齐 PC 端
     private var sleepSequenceJob: Job? = null
-    private var stateCollectorJob: Job? = null
+    private var wsCollectorJob: Job? = null
     private val sessionMutex = Mutex()
-    private val sleepConfig: SleepConfig = SLEEP_TIMINGS[character] ?: SLEEP_TIMINGS["clawd"]!!
+    private val sleepConfig: SleepConfig get() = SLEEP_TIMINGS[character] ?: SLEEP_TIMINGS["clawd"]!!
 
     // ======================================================================
     //  Public lifecycle
     // ======================================================================
 
-    /** Start the state collector loop (called from Service.onCreate). */
+    /** Start the WebSocket session collector loop. */
     fun start(scope: CoroutineScope) {
-        stateCollectorJob?.cancel()
-        stateCollectorJob = scope.launch {
+        wsCollectorJob?.cancel()
+        wsCollectorJob = scope.launch {
             while (isActive) {
                 val ws = waitForWebSocket()
                 Log.d(TAG, "WebSocket acquired, collecting sessions")
@@ -99,7 +127,7 @@ class PetStateManager(
                     Log.e(TAG, "State collector exception, retrying", e)
                 }
                 emitState(PetState.Idle)
-                gifLoadEvents.send(GifLoadEvent(getGifResId(PetState.Idle), force = false))
+                commandFlowEmit(StateCommand.SvgLoad(getSvgAssetPath(PetState.Idle), force = false))
                 delay(STATE_COLLECTOR_RETRY_MS)
             }
         }
@@ -107,13 +135,16 @@ class PetStateManager(
 
     /** Full reset — called on ACTION_DISCONNECT or Service.onDestroy. */
     fun reset() {
-        stateCollectorJob?.cancel()
-        stateCollectorJob = null
-        stopIdleCycle()
+        wsCollectorJob?.cancel()
+        wsCollectorJob = null
         cancelSleepSequence()
         gifGeneration++
         lastNonIdleState = PetState.Idle
         prevBadge.clear()
+        currentState = PetState.Idle
+        idleSince = 0L
+        // Reset the command flow so new subscribers start from a clean Idle state
+        _commandFlow.value = StateCommand.StateChanged(PetState.Idle)
     }
 
     // ======================================================================
@@ -130,15 +161,14 @@ class PetStateManager(
     ) = sessionMutex.withLock {
         val visible = sessions.values.filter { it.isVisible }
         if (visible.isEmpty()) {
-            startSleepSequence(scope)
+            // 无可见 session → 视为 idle，走超时逻辑
+            handleIdleTimeout(scope)
             return@withLock
         }
 
         // Resolve best state from sessions (excludes sleep sequence states)
+        // displayState 已由服务器正确设置（包括 juggling/conducting），不再本地映射
         var bestState = resolveDisplayState(visible)
-
-        // Conducting mapping: SubagentStart + ≥2 visible sessions
-        bestState = applyConductingMapping(visible, bestState)
 
         // Badge transition detection (happy interlude)
         checkBadgeTransitions(sessions.values, scope)
@@ -150,21 +180,38 @@ class PetStateManager(
         if (bestState.isActive) {
             // Active state — wake from sleep or update directly
             cancelSleepSequence()
-            stopIdleCycle()
-            if (stateFlow.value.isSleepSequence) {
+            idleSince = 0L  // 活跃状态重置 idle 计时
+            if (currentState.isSleepSequence) {
                 playWakingAndRestore(bestState, scope)
             } else {
                 lastNonIdleState = bestState
+                Log.w("PetState", "emitState: ${bestState.themeKey}")
                 Log.d(TAG, "State update: resolved=${bestState.themeKey}, activeCount=${visible.size}")
                 emitState(bestState)
             }
         } else {
-            // Idle — start or continue sleep sequence
-            if (!stateFlow.value.isSleepSequence) {
+            // Idle — 等待超时后进入睡眠序列（对齐 PC 端 60s MOUSE_SLEEP_TIMEOUT）
+            handleIdleTimeout(scope)
+        }
+    }
+
+    /**
+     * Idle 超时处理：首次 idle 开始计时，60 秒后仍 idle 才进入睡眠序列。
+     * 对齐 PC 端 MOUSE_SLEEP_TIMEOUT 行为。
+     */
+    private fun handleIdleTimeout(scope: CoroutineScope) {
+        val now = System.currentTimeMillis()
+        if (idleSince == 0L) {
+            idleSince = now  // 首次 idle，开始计时
+            Log.d(TAG, "Idle timeout started")
+        }
+        if (now - idleSince >= IDLE_SLEEP_TIMEOUT_MS) {
+            if (!currentState.isSleepSequence) {
+                Log.d(TAG, "Idle timeout reached (${IDLE_SLEEP_TIMEOUT_MS}ms), starting sleep sequence")
                 startSleepSequence(scope)
             }
-            // else: sleep sequence already running, let it continue
         }
+        // else: 还没到 60 秒，保持 idle 状态等待
     }
 
     /**
@@ -173,30 +220,52 @@ class PetStateManager(
      * Aligns with PC [resolveDominantSessionState].
      */
     private fun resolveDisplayState(visible: List<SessionData>): PetState {
+        Log.w("PetState", "resolveDisplayState input sessions: ${visible.map { "${it.sessionId}:state=${it.state}:displayState=${it.displayState}:badge=${it.badge}:isVisible=${it.isVisible}" }}")
         var best: PetState = PetState.Idle
         for (session in visible) {
-            val state = PetState.fromString(session.displayState ?: session.state)
+            val state = when {
+                session.displayState != null && session.displayState != "idle" ->
+                    PetState.fromString(session.displayState)
+                session.badge == "interrupted" -> PetState.Error
+                session.badge == "done" -> {
+                    val sid = session.sessionId
+                    if (sid != null && sid !in consumedDoneSessions) {
+                        consumedDoneSessions.add(sid)
+                        PetState.Attention  // 只触发一次
+                    } else {
+                        PetState.Idle  // 已消费
+                    }
+                }
+                session.badge == "running" -> {
+                    session.sessionId?.let { consumedDoneSessions.remove(it) }  // 新任务开始，重置
+                    PetState.fromString(session.state)
+                }
+                else -> PetState.Idle
+            }
             if (state.isSleepSequence) continue
             if (state.priority > best.priority) best = state
         }
+        Log.w("PetState", "resolveDisplayState result: ${best.themeKey}")
         return best
     }
 
     /**
-     * Apply conducting/juggling mapping when SubagentStart is detected.
-     * PC behavior: SubagentStart + ≥2 sessions → Calico/Cloudling: Conducting, Clawd: Juggling.
+     * Apply conducting/juggling mapping when ≥2 sessions are active.
+     * PC behavior: multi-session → Clawd: Juggling, Calico/Cloudling: Conducting.
+     * The mapped state (priority 4) naturally outranks Working (priority 3)
+     * but defers to higher-priority states like Attention or Error.
      */
     private fun applyConductingMapping(
         visible: List<SessionData>,
         currentBest: PetState
     ): PetState {
-        val hasSubagentStart = visible.any { s ->
-            s.event == "SubagentStart" || s.event == "subagentStart"
-        }
-        if (!hasSubagentStart || visible.size < 2) return currentBest
-
-        val mapped = if (character == "clawd") PetState.Juggling else PetState.Conducting
-        return if (mapped.priority >= currentBest.priority) mapped else currentBest
+        Log.w("PetState", "applyConductingMapping visible=${visible.size} currentBest=${currentBest.themeKey}")
+        if (visible.size < 2) return currentBest
+        if (currentBest !is PetState.Working && currentBest !is PetState.Juggling)
+            return currentBest
+        val result = if (character == "clawd") PetState.Juggling else PetState.Conducting
+        Log.w("PetState", "applyConductingMapping result: ${result.themeKey}")
+        return result
     }
 
     // ======================================================================
@@ -205,11 +274,10 @@ class PetStateManager(
 
     /**
      * Start the sleep animation sequence as a coroutine.
-     * Skips states that have no dedicated GIF (falls back through PetGifLoader).
+     * Skips states that have no dedicated SVG (falls back through SvgLoader).
      */
     private fun startSleepSequence(scope: CoroutineScope) {
         if (sleepSequenceJob?.isActive == true) return
-        stopIdleCycle()
         sleepSequenceJob = scope.launch {
             val cfg = sleepConfig
 
@@ -228,14 +296,14 @@ class PetStateManager(
             // Deep sleep
             emitState(PetState.Sleeping)
 
-            // Idle animation loop while sleeping (reading GIF periodically)
+            // Idle animation loop while sleeping — random variant each tick
             while (isActive) {
                 delay(IDLE_ANIM_INTERVAL_MS)
                 if (!isActive) break
-                val readingResId = PetGifLoader.getReadingGifResId(character)
-                if (readingResId != null) {
-                    gifLoadEvents.send(GifLoadEvent(readingResId, force = false))
-                    delay(IDLE_READING_DISPLAY_MS)
+                val idlePath = pickIdleAnimPath()
+                if (idlePath != null) {
+                    commandFlowEmit(StateCommand.SvgLoad(idlePath, force = false))
+                    delay(IDLE_ANIM_DISPLAY_MS)
                 }
             }
         }
@@ -249,7 +317,7 @@ class PetStateManager(
         cancelSleepSequence()
         val gen = ++gifGeneration
 
-        if (PetGifLoader.hasGifForState(PetState.Waking, character)) {
+        if (SvgLoader.hasSvgForState(PetState.Waking, character)) {
             emitState(PetState.Waking)
             scope.launch {
                 delay(sleepConfig.wakeMs)
@@ -285,21 +353,22 @@ class PetStateManager(
             val curr = s.badge
             if (prev in PetState.RUNNING_BADGES && curr == "done") {
                 Log.d(TAG, "Badge transition: $prev → done for session $sid, playing happy")
-                val happyResId = getGifResId(PetState.Attention)
-                if (happyResId != null && happyResId != 0) {
-                    loadReactionAndRestore(happyResId, REACTION_DISPLAY_MS, scope)
+                val happyPath = getSvgAssetPath(PetState.Attention)
+                if (happyPath != null) {
+                    loadReactionAndRestore(happyPath, REACTION_DISPLAY_MS, scope)
                 }
             }
         }
     }
 
     /**
-     * Play a reaction GIF, then restore the previous state.
+     * Play a reaction SVG, then restore the previous state.
      * Uses [gifGeneration] to discard stale restore callbacks.
      */
-    private fun loadReactionAndRestore(gifResId: Int, delayMs: Long, scope: CoroutineScope) {
+    private fun loadReactionAndRestore(assetPath: String, delayMs: Long, scope: CoroutineScope) {
         val gen = ++gifGeneration
-        onReactionGifRequested(gifResId)
+        // Emit reaction through the unified command pipe — no separate callback needed
+        commandFlowEmit(StateCommand.ReactionSvg(assetPath))
 
         scope.launch {
             delay(delayMs)
@@ -310,46 +379,25 @@ class PetStateManager(
     }
 
     // ======================================================================
-    //  Idle animation cycle (legacy, used when sleep sequence unavailable)
+    //  Idle animation variant picker (aligns with PC idleAnimations)
     // ======================================================================
 
-    private suspend fun enterIdleCycle(scope: CoroutineScope) {
-        if (idleCycleJob?.isActive == true) return
-        idleCycleJob = scope.launch {
-            // If last active state was attention, play it for a beat first
-            if (lastNonIdleState is PetState.Attention) {
-                val attentionResId = getGifResId(PetState.Attention)
-                if (attentionResId != null && attentionResId != 0) {
-                    gifLoadEvents.send(GifLoadEvent(attentionResId, force = false))
-                    delay(ATTENTION_RECHECK_MS)
-                }
-            }
-            // Normal idle loop
-            while (isActive) {
-                emitState(PetState.Idle)
-                delay(IDLE_ANIM_INTERVAL_MS)
-                // Try reading GIF (only clawd and cloudling have one)
-                val readingResId = PetGifLoader.getReadingGifResId(character)
-                if (readingResId != null) {
-                    gifLoadEvents.send(GifLoadEvent(readingResId, force = false))
-                    delay(IDLE_READING_DISPLAY_MS)
-                }
-            }
-        }
-    }
-
-    private fun stopIdleCycle() {
-        idleCycleJob?.cancel()
-        idleCycleJob = null
+    /**
+     * Pick a random idle animation SVG for the current character.
+     * Uses [SvgLoader.pickIdleAnimation] which aligns with PC theme.json
+     * idleAnimations (clawd: look/bubble/reading, cloudling: reading, calico: idle).
+     * Returns an asset path or null if no variants exist.
+     */
+    private fun pickIdleAnimPath(): String? {
+        return SvgLoader.pickIdleAnimation(character)
     }
 
     // ======================================================================
-    //  State collector (WebSocket lifecycle)
+    //  WebSocket session collector
     // ======================================================================
 
     private suspend fun collectSessions(ws: ClawdWebSocket, scope: CoroutineScope) {
         // This function blocks until disconnection, mirroring the original design.
-        // Inside, it launches a coroutine that calls updateSessions on each emission.
         val collectJob = scope.launch {
             ws.sessions.collect { sessions ->
                 updateSessions(sessions, scope)
@@ -370,7 +418,7 @@ class PetStateManager(
         val watchdogJob = scope.launch {
             while (isActive) {
                 delay(WATCHDOG_INTERVAL_MS)
-                val current = _stateFlow.value
+                val current = currentState
                 if (!current.isIdleLike) {
                     // Simple watchdog: if we've been non-idle for a long time without
                     // session updates, the collector's updateSessions handles staleness.
@@ -384,7 +432,6 @@ class PetStateManager(
             collectJob.join()
         } finally {
             watchdogJob.cancel()
-            stopIdleCycle()
             cancelSleepSequence()
         }
     }
@@ -400,15 +447,30 @@ class PetStateManager(
     //  Helpers
     // ======================================================================
 
+    /**
+     * Emit a state change through the unified command pipe.
+     * Also updates [currentState] for internal conditional logic.
+     */
     private fun emitState(state: PetState) {
-        if (_stateFlow.value != state) {
+        if (currentState != state) {
             Log.d(TAG, "State → ${state.themeKey}")
         }
-        _stateFlow.value = state
+        currentState = state
+        commandFlowEmit(StateCommand.StateChanged(state))
     }
 
-    private fun getGifResId(state: PetState): Int? {
-        return PetGifLoader.getGifResId(state.themeKey, 1, character)
+    /**
+     * Emit a command to the unified [commandFlow].
+     * Each call produces a new data class instance, so even consecutive
+     * identical values (same resId, same force) are emitted and not
+     * deduplicated by [MutableStateFlow].
+     */
+    private fun commandFlowEmit(command: StateCommand) {
+        _commandFlow.value = command
+    }
+
+    private fun getSvgAssetPath(state: PetState): String? {
+        return SvgLoader.resolveSvgAsset(state.themeKey, 1, character)
     }
 
     /** Snapshot the best visible session's state, falling back to Idle. */
@@ -418,10 +480,4 @@ class PetStateManager(
             ?: return PetState.Idle
         return resolveDisplayState(visible)
     }
-
-    // ======================================================================
-    //  Event type for one-shot GIF loads
-    // ======================================================================
-
-    data class GifLoadEvent(val resId: Int?, val force: Boolean)
 }

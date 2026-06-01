@@ -4,7 +4,6 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.ksp)
 }
 
 android {
@@ -88,9 +87,8 @@ dependencies {
     implementation(libs.camera.view)
     implementation(libs.zxing.core)
 
-    // Image loading (GIF)
-    implementation(libs.glide)
-    ksp(libs.glide.ksp)
+    // WebView asset loader (maps assets/ to https:// for fetch() in SVG WebView)
+    implementation("androidx.webkit:webkit:1.8.0")
 
     testImplementation(libs.junit)
 }
