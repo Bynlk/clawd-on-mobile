@@ -2,14 +2,16 @@ package com.clawd.mobile.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class PrefsStore(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("clawd_prefs", Context.MODE_PRIVATE)
-    private val json = Json { ignoreUnknownKeys = true }
 
     companion object {
+        private const val TAG = "PrefsStore"
         private const val KEY_CONFIG = "connection_config"
         private const val KEY_HISTORY = "connection_history"
         private const val KEY_MAX_HISTORY = 5
@@ -18,6 +20,56 @@ class PrefsStore(context: Context) {
         private const val KEY_NOTIFY_ALERT = "notify_alert"
         private const val KEY_NOTIFY_ENABLED = "notify_enabled"
         private const val KEY_FLOATING_PET = "floating_pet_enabled"
+        private const val PREFS_ENCRYPTED = "clawd_prefs_encrypted"
+        private const val PREFS_LEGACY = "clawd_prefs"
+        private const val KEY_MIGRATED = "_migrated_v1"
+    }
+
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+
+    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        PREFS_ENCRYPTED,
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    init {
+        migrateIfNeeded(context)
+    }
+
+    /**
+     * One-time migration from legacy plaintext SharedPreferences.
+     * Copies all key-value pairs to encrypted prefs, then clears the old store.
+     */
+    private fun migrateIfNeeded(context: Context) {
+        if (prefs.getBoolean(KEY_MIGRATED, false)) return
+        val oldPrefs = context.getSharedPreferences(PREFS_LEGACY, Context.MODE_PRIVATE)
+        if (oldPrefs.all.isEmpty()) {
+            // No legacy data — just mark as migrated
+            prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+            return
+        }
+        Log.i(TAG, "Migrating ${oldPrefs.all.size} keys from legacy prefs to EncryptedSharedPreferences")
+        val editor = prefs.edit()
+        oldPrefs.all.forEach { (key, value) ->
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Long -> editor.putLong(key, value)
+            }
+        }
+        editor.putBoolean(KEY_MIGRATED, true)
+        editor.apply()
+        oldPrefs.edit().clear().apply()
+        Log.i(TAG, "Migration complete, legacy prefs cleared")
     }
 
     fun saveConfig(config: ConnectionConfig) {
@@ -71,7 +123,6 @@ class PrefsStore(context: Context) {
     // Floating pet
     fun isFloatingPetEnabled(): Boolean = prefs.getBoolean(KEY_FLOATING_PET, false)
     fun setFloatingPetEnabled(v: Boolean) { prefs.edit().putBoolean(KEY_FLOATING_PET, v).apply() }
-
 
     // Session name overrides
     fun saveSessionName(sessionId: String, name: String) {

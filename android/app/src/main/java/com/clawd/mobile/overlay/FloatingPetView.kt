@@ -51,6 +51,16 @@ class FloatingPetView @JvmOverloads constructor(
     /** Drag end callback (set by Service, used to save position). */
     var onDragEnd: (() -> Unit)? = null
 
+    /** Visual insets: empty padding between SVG viewBox edge and actual visible content (getBBox). */
+    data class VisualInsets(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+    var visualInsets: VisualInsets = VisualInsets(0f, 0f, 0f, 0f)
+        private set
+
+    /** viewBox width for scaling insets to window pixels. */
+    var viewBoxSize: Float = 0f
+        private set
+
     /** Cached bitmap snapshot for transparent click-through hit testing. */
     private var hitTestBitmap: Bitmap? = null
 
@@ -71,11 +81,11 @@ class FloatingPetView @JvmOverloads constructor(
         settings.apply {
             // SVG rendering — no JavaScript needed for Clawd/Calico
             // (Cloudling scripted SVGs need JS; enable per-character if needed)
-            javaScriptEnabled = true
-           domStorageEnabled = true
-           allowFileAccessFromFileURLs = true
-           allowUniversalAccessFromFileURLs = true
-           allowContentAccess = true
+            javaScriptEnabled = true                // SVG 内联 + CSS 动画需要
+            domStorageEnabled = false               // 不需要
+            allowFileAccessFromFileURLs = false      // WebViewAssetLoader 走 HTTP 响应流，不依赖 file://
+            allowUniversalAccessFromFileURLs = false  // 同上
+            allowContentAccess = false               // 不需要
             // Disable zoom
             setSupportZoom(false)
             builtInZoomControls = false
@@ -127,6 +137,7 @@ class FloatingPetView @JvmOverloads constructor(
                             if (w > 0 && h > 0) {
                                 Log.d(TAG, "SVG dimensions: ${w}x${h}")
                                 onContentReady?.invoke(0f, 0f, w, h)
+                                readVisualInsets()
                             } else if (attempt < 5) {
                                 postDelayed({ tryQuery(attempt + 1) }, 100)
                             }
@@ -199,6 +210,35 @@ class FloatingPetView @JvmOverloads constructor(
             Log.d(TAG, "Hit-test bitmap cached: ${w}x${h}")
         } catch (e: Exception) {
             Log.w(TAG, "cacheHitTestBitmap failed", e)
+        }
+    }
+
+    /**
+     * Read SVG visual insets (getBBox vs viewBox) via JS bridge.
+     * These insets represent the empty padding around the actual visible content,
+     * used by FloatingPetService for edge-snap correction.
+     * Reads from window._visualInsets and window._viewBox set by SvgLoader.
+     */
+    private fun readVisualInsets() {
+        val js = """
+            (function() {
+                var vi = window._visualInsets;
+                var vb = window._viewBox;
+                if (!vi || !vb) return '';
+                return vi.left + ',' + vi.top + ',' + vi.right + ',' + vi.bottom + ',' + vb.width;
+            })();
+        """.trimIndent()
+        evaluateJavascript(js) { result ->
+            try {
+                val clean = result.trim('"')
+                if (clean.isEmpty() || clean == "null") return@evaluateJavascript
+                val parts = clean.split(",").map { it.toFloatOrNull() ?: 0f }
+                if (parts.size == 5 && (parts[0] != 0f || parts[1] != 0f || parts[2] != 0f || parts[3] != 0f)) {
+                    visualInsets = VisualInsets(parts[0], parts[1], parts[2], parts[3])
+                    viewBoxSize = parts[4]
+                    Log.d(TAG, "Visual insets: L=${parts[0]} T=${parts[1]} R=${parts[2]} B=${parts[3]} vbW=${parts[4]}")
+                }
+            } catch (_: Exception) {}
         }
     }
 

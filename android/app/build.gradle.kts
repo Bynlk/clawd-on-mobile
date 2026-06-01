@@ -14,8 +14,8 @@ android {
         applicationId = "com.clawd.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.1.5"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -89,6 +89,9 @@ dependencies {
 
     // WebView asset loader (maps assets/ to https:// for fetch() in SVG WebView)
     implementation("androidx.webkit:webkit:1.8.0")
+
+    // Encrypted SharedPreferences (AES-256-GCM)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     testImplementation(libs.junit)
 }

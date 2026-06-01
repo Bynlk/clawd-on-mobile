@@ -5,6 +5,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import okhttp3.*
+import okhttp3.CertificatePinner
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.sse.EventSource
@@ -14,10 +15,6 @@ import android.util.Log
 import java.util.concurrent.TimeUnit
 
 class ClawdWebSocket(private val prefsStore: PrefsStore) {
-
-    private val client = OkHttpClient.Builder()
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .build()
 
     private var eventSource: EventSource? = null
     private var config: ConnectionConfig? = null
@@ -29,7 +26,32 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     private val watchdogTimeoutMs = 30_000L
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
-    private val sseFactory: EventSource.Factory = EventSources.createFactory(client)
+
+    /** OkHttpClient — rebuilt when config changes; adds CertificatePinner for non-LAN. */
+    private var _client: OkHttpClient? = null
+    private var _clientConfig: ConnectionConfig? = null
+    private val client: OkHttpClient
+        get() {
+            val cfg = config
+            if (_client == null || cfg != _clientConfig) {
+                val builder = OkHttpClient.Builder()
+                    .readTimeout(0, TimeUnit.MILLISECONDS)
+                // 非局域网连接：启用证书锁定
+                if (cfg != null && !cfg.isLan) {
+                    builder.certificatePinner(
+                        CertificatePinner.Builder()
+                            .add(cfg.host, "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=") // TODO: 替换为实际证书指纹
+                            .build()
+                    )
+                }
+                _client = builder.build()
+                _clientConfig = cfg
+            }
+            return _client!!
+        }
+
+    private val sseFactory: EventSource.Factory
+        get() = EventSources.createFactory(client)
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
@@ -71,6 +93,8 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         watchdogJob?.cancel()
         eventSource?.cancel()
         eventSource = null
+        _client = null       // Reset client so next connect uses fresh config
+        _clientConfig = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _sessions.value = emptyMap()
         _displayState.value = "idle"

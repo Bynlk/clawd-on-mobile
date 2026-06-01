@@ -8,9 +8,18 @@ data class ConnectionConfig(
     val port: Int,
     val token: String
 ) {
-    fun streamUrl(): String = "http://$host:$port/mobile/stream"
+    /** Whether the host is on a local network (no TLS required). */
+    val isLan: Boolean get() = host.matches(Regex("^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.|localhost|127\\.).*"))
 
-    fun approveUrl(): String = "http://$host:$port/mobile/approve"
+    fun streamUrl(): String {
+        val scheme = if (isLan) "http" else "https"
+        return "$scheme://$host:$port/mobile/stream?token=$token"
+    }
+
+    fun approveUrl(): String {
+        val scheme = if (isLan) "http" else "https"
+        return "$scheme://$host:$port/mobile/approve"
+    }
 
     fun pairUrl(): String = "clawd://$host:$port/$token"
 
