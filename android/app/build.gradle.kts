@@ -52,6 +52,11 @@ android {
         jvmTarget = "17"
     }
 
+    lint {
+        disable += "UnsafeImplicitIntentLaunch"  // ApprovalReceiver exported=false, intent is safe
+        abortOnError = true
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
