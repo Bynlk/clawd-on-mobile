@@ -3,6 +3,7 @@ package com.clawd.mobile.overlay
 import android.content.Context
 import android.util.Log
 import android.webkit.WebView
+import java.io.IOException
 
 /**
  * SVG asset loader replacing [PetGifLoader].
@@ -22,6 +23,16 @@ object SvgLoader {
 
     private const val TAG = "SvgLoader"
     private const val SVG_BASE = "https://appassets.androidplatform.net/svg"
+
+    private var appContext: Context? = null
+
+    /**
+     * Initialize with application context for real asset existence checks.
+     * Must be called once from [ClawdApp.onCreate].
+     */
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
 
     // ======================================================================
     //  State → SVG filename mappings (from PC theme.json)
@@ -324,6 +335,20 @@ object SvgLoader {
             |            window._svgWidth = parseFloat(svgEl.getAttribute('width')) || 0;
             |            window._svgHeight = parseFloat(svgEl.getAttribute('height')) || 0;
             |          }
+            |          // Visual insets: getBBox vs viewBox for edge-snap correction
+            |          try {
+            |            var bbox = svgEl.getBBox();
+            |            var vb2 = svgEl.viewBox.baseVal;
+            |            if (vb2 && vb2.width > 0 && vb2.height > 0) {
+            |              window._visualInsets = {
+            |                left: bbox.x - vb2.x,
+            |                top: bbox.y - vb2.y,
+            |                right: (vb2.x + vb2.width) - (bbox.x + bbox.width),
+            |                bottom: (vb2.y + vb2.height) - (bbox.y + bbox.height)
+            |              };
+            |              window._viewBox = { x: vb2.x, y: vb2.y, width: vb2.width, height: vb2.height };
+            |            }
+            |          } catch(e) {}
             |        }
             |      }
             |    };
@@ -439,13 +464,24 @@ object SvgLoader {
     }
 
     /** Check if an asset file exists in the assets directory. */
-    private var assetCache = mutableSetOf<String>()
-    private var assetCachePopulated = false
+    private val assetCache = mutableSetOf<String>()
+    private val missingCache = mutableSetOf<String>()
 
     private fun assetExists(path: String): Boolean {
         if (path in assetCache) return true
-        // We can't easily list assets at runtime, so we trust the mapping.
-        // The mapping is derived from theme.json which matches actual files.
-        return true
+        if (path in missingCache) return false
+        val ctx = appContext
+        if (ctx == null) {
+            // Not initialized yet — degrade to always-true (legacy behavior)
+            return true
+        }
+        return try {
+            ctx.assets.open(path).use { /* open succeeded → file exists */ }
+            assetCache.add(path)
+            true
+        } catch (_: IOException) {
+            missingCache.add(path)
+            false
+        }
     }
 }

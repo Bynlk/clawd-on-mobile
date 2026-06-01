@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import com.clawd.mobile.overlay.SvgLoader
 
 class ClawdApp : Application() {
 
@@ -16,6 +17,7 @@ class ClawdApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        SvgLoader.init(this)
         createNotificationChannels()
     }
 
