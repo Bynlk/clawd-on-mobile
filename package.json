@@ -128,6 +128,7 @@
       "NOTICE.md",
       "src/**/*",
       "assets/icon.ico",
+      "assets/dock-icon.png",
       "assets/icons/**/*",
       "assets/icons/agents/**/*",
       "assets/svg/**/*",
