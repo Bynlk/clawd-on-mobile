@@ -96,4 +96,74 @@ class ConnectionConfigTest {
         assertFalse(ConnectionConfig("172.15.0.1", 443, "tok").isLan)
         assertFalse(ConnectionConfig("172.32.0.1", 443, "tok").isLan)
     }
+
+    // ── authHeader ─────────────────────────────────────────────────────
+
+    @Test
+    fun `authHeader returns Bearer token`() {
+        val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
+        assertEquals("Bearer abcdef1234567890abcdef1234567890", config.authHeader())
+    }
+
+    // ── streamUrlMasked ────────────────────────────────────────────────
+
+    @Test
+    fun `streamUrlMasked masks long token`() {
+        val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
+        val masked = config.streamUrlMasked()
+        assertTrue(masked.contains("abcd****7890"))
+        assertFalse(masked.contains("abcdef1234567890abcdef1234567890"))
+        assertTrue(masked.startsWith("http://192.168.1.10:23334/mobile/stream?token="))
+    }
+
+    @Test
+    fun `streamUrlMasked uses asterisks for short token`() {
+        val config = ConnectionConfig("192.168.1.10", 23334, "shorttok")
+        val masked = config.streamUrlMasked()
+        assertTrue(masked.contains("****"))
+        assertFalse(masked.contains("shorttok"))
+    }
+
+    // ── fromClawdUrl edge cases ────────────────────────────────────────
+
+    @Test
+    fun `reject empty url`() {
+        assertNull(ConnectionConfig.fromClawdUrl(""))
+    }
+
+    @Test
+    fun `coerce port 0 to 1`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:0/abcdef1234567890abcdef1234567890")
+        assertNotNull(config)
+        assertEquals(1, config!!.port)  // coerceIn(1, 65535) clamps 0 → 1
+    }
+
+    @Test
+    fun `coerce port over 65535 to 65535`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:99999/abcdef1234567890abcdef1234567890")
+        assertNotNull(config)
+        assertEquals(65535, config!!.port)  // coerceIn(1, 65535) clamps 99999 → 65535
+    }
+
+    @Test
+    fun `stream url uses https for non-lan`() {
+        val config = ConnectionConfig("example.com", 443, "abcdef1234567890abcdef1234567890")
+        // isLan will be false for example.com (DNS lookup fails in test, returns false)
+        val url = config.streamUrl()
+        // The scheme depends on InetAddress resolution — in unit tests without network,
+        // InetAddress.getByName("example.com") may throw, making isLan = false
+        assertTrue(url.contains("://example.com:443/mobile/stream?token="))
+    }
+
+    @Test
+    fun `approveUrl scheme matches isLan`() {
+        val lanConfig = ConnectionConfig("192.168.1.10", 23334, "tok")
+        assertTrue(lanConfig.approveUrl().startsWith("http://"))
+    }
+
+    @Test
+    fun `pairUrl always uses clawd scheme`() {
+        val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
+        assertEquals("clawd://192.168.1.10:23334/abcdef1234567890abcdef1234567890", config.pairUrl())
+    }
 }

@@ -212,14 +212,14 @@ object SvgLoader {
         // Working tier logic
         if (stateKey == "working") {
             val tiers = WORKING_TIERS[character] ?: WORKING_TIERS["clawd"]!!
-            val tierFile = tiers.lastOrNull { sessionCount >= it.minSessions }?.file
+            val tierFile = tiers.firstOrNull { sessionCount >= it.minSessions }?.file
             if (tierFile != null) return "svg/$character/$tierFile"
         }
 
         // Juggling tier logic
         if (stateKey == "juggling") {
             val tiers = JUGGLING_TIERS[character] ?: JUGGLING_TIERS["clawd"]!!
-            val tierFile = tiers.lastOrNull { sessionCount >= it.minSessions }?.file
+            val tierFile = tiers.firstOrNull { sessionCount >= it.minSessions }?.file
             if (tierFile != null) return "svg/$character/$tierFile"
         }
 
