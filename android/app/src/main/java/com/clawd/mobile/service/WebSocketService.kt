@@ -55,7 +55,7 @@ class WebSocketService : Service() {
         }
     }
 
-    private val prefsStore by lazy { PrefsStore(this) }
+    private val prefsStore by lazy { PrefsStore.getInstance(this) }
     var webSocket: ClawdWebSocket? = null
         private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())

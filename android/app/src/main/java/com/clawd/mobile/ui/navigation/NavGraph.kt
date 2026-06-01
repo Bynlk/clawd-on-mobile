@@ -21,7 +21,7 @@ import com.clawd.mobile.ws.ClawdWebSocket
 fun ClawdNavGraph() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val prefsStore = remember { PrefsStore(context) }
+    val prefsStore = remember { PrefsStore.getInstance(context) }
     val statusNotifier = remember { StatusNotifier(context, prefsStore) }
 
     // Start foreground service

@@ -36,7 +36,7 @@ class ApprovalReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val prefsStore = PrefsStore(context)
+                val prefsStore = PrefsStore.getInstance(context)
                 val config = prefsStore.loadConfig() ?: return@launch
                 val body = buildJsonObject {
                     put("id", requestId)
@@ -45,6 +45,7 @@ class ApprovalReceiver : BroadcastReceiver() {
                 val client = HttpClientProvider.getClient(config)
                 val request = Request.Builder()
                     .url(config.approveUrl())
+                    .addHeader("Authorization", config.authHeader())
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
                 val response = client.newCall(request).execute()

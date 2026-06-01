@@ -13,7 +13,6 @@ import okhttp3.sse.EventSources
 import android.util.Log
 import com.clawd.mobile.util.HttpClientProvider
 import com.clawd.mobile.util.SafeExecutor
-import java.util.concurrent.TimeUnit
 
 class ClawdWebSocket(private val prefsStore: PrefsStore) {
 
@@ -32,27 +31,11 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    /** OkHttpClient — rebuilt when config changes; adds CertificatePinner for non-LAN. */
-    private var _client: OkHttpClient? = null
-    private var _clientConfig: ConnectionConfig? = null
-    private val client: OkHttpClient
-        get() {
-            val cfg = config
-            if (_client == null || cfg != _clientConfig) {
-                val builder = OkHttpClient.Builder()
-                    .readTimeout(0, TimeUnit.MILLISECONDS)
-                // 非局域网连接：日志提醒（证书指纹需从实际服务器获取，不硬编码占位符）
-                if (cfg != null && !cfg.isLan) {
-                    Log.w(TAG, "Non-LAN connection to ${cfg.host} without certificate pinning. Consider adding cert fingerprint for production.")
-                }
-                _client = builder.build()
-                _clientConfig = cfg
-            }
-            return _client!!
-        }
-
     private val sseFactory: EventSource.Factory
-        get() = EventSources.createFactory(client)
+        get() {
+            val cfg = config ?: return EventSources.createFactory(HttpClientProvider.getClient(ConnectionConfig("", 0, "")))
+            return EventSources.createFactory(HttpClientProvider.getSseClient(cfg))
+        }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
@@ -79,6 +62,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         Log.d("ClawdWebSocket", "connect(${config.host}:${config.port})")
         this.config = config
         prefsStore.saveConfig(config)
+        HttpClientProvider.setCertFingerprint(prefsStore.getCertFingerprint())
         reconnectDelay = 1000L
         doConnect()
     }
@@ -87,6 +71,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         if (_connectionState.value == ConnectionState.CONNECTED) return
         val saved = config ?: prefsStore.loadConfig() ?: return
         config = saved
+        HttpClientProvider.setCertFingerprint(prefsStore.getCertFingerprint())
         doConnect()
     }
 
@@ -95,8 +80,6 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         watchdogJob?.cancel()
         eventSource?.cancel()
         eventSource = null
-        _client = null       // Reset client so next connect uses fresh config
-        _clientConfig = null
         HttpClientProvider.reset()
         _connectionState.value = ConnectionState.DISCONNECTED
         _sessions.value = emptyMap()
@@ -124,6 +107,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
 
         val request = Request.Builder()
             .url(url)
+            .addHeader("Authorization", cfg.authHeader())
             .build()
 
         eventSource = sseFactory.newEventSource(request, object : EventSourceListener() {
@@ -340,9 +324,10 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 }.toString()
                 val request = Request.Builder()
                     .url(cfg.approveUrl())
+                    .addHeader("Authorization", cfg.authHeader())
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
-                client.newCall(request).execute().close()
+                HttpClientProvider.getClient(cfg).newCall(request).execute().close()
             }
         }
     }
@@ -367,9 +352,10 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 }.toString()
                 val request = Request.Builder()
                     .url(cfg.approveUrl())
+                    .addHeader("Authorization", cfg.authHeader())
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build()
-                client.newCall(request).execute().close()
+                HttpClientProvider.getClient(cfg).newCall(request).execute().close()
             }
         }
     }

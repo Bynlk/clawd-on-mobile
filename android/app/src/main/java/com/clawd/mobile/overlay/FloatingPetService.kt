@@ -74,7 +74,7 @@ class FloatingPetService : Service() {
         super.onCreate()
         Log.d(TAG, "onCreate")
 
-        prefsStore = PrefsStore(this)
+        prefsStore = PrefsStore.getInstance(this)
         stateManager = PetStateManager(character)
 
         startForeground(NOTIFICATION_ID, buildNotification())

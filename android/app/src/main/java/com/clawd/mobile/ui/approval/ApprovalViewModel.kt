@@ -31,7 +31,7 @@ class ApprovalViewModel(
         }
     }
 
-    private val prefsStore = PrefsStore(application)
+    private val prefsStore = PrefsStore.getInstance(application)
 
     private val _pendingRequests = MutableStateFlow<List<PermissionRequestData>>(emptyList())
     val pendingRequests: StateFlow<List<PermissionRequestData>> = _pendingRequests
@@ -99,6 +99,12 @@ class ApprovalViewModel(
 
     private fun handleNewRequest(request: PermissionRequestData) {
         Log.d("ApprovalViewModel", "handleNewRequest id=${request.requestId} tool=${request.toolName} currentPending=${_pendingRequests.value.size}")
+        // Deduplicate: SSE reconnect may re-deliver the same request
+        val requestId = request.requestId
+        if (requestId != null && _pendingRequests.value.any { it.requestId == requestId }) {
+            Log.d("ApprovalViewModel", "Duplicate request ignored: $requestId")
+            return
+        }
         _pendingRequests.value = _pendingRequests.value + request
 
         val context = getApplication<Application>()

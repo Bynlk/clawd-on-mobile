@@ -8,7 +8,7 @@ import androidx.security.crypto.MasterKey
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-class PrefsStore(context: Context) {
+class PrefsStore private constructor(context: Context) {
 
     companion object {
         private const val TAG = "PrefsStore"
@@ -27,6 +27,15 @@ class PrefsStore(context: Context) {
         private const val PREFS_ENCRYPTED = "clawd_prefs_encrypted"
         private const val PREFS_LEGACY = "clawd_prefs"
         private const val KEY_MIGRATED = "_migrated_v1"
+
+        @Volatile
+        private var instance: PrefsStore? = null
+
+        fun getInstance(context: Context): PrefsStore {
+            return instance ?: synchronized(this) {
+                instance ?: PrefsStore(context.applicationContext).also { instance = it }
+            }
+        }
     }
 
     private val masterKey = MasterKey.Builder(context)
@@ -157,5 +166,12 @@ class PrefsStore(context: Context) {
 
     fun clearSessionName(sessionId: String) {
         prefs.edit().remove("session_name_$sessionId").apply()
+    }
+
+    // Certificate pinning (non-LAN connections)
+    fun getCertFingerprint(): String? = prefs.getString("cert_fingerprint", null)
+    fun setCertFingerprint(v: String?) {
+        if (v.isNullOrBlank()) prefs.edit().remove("cert_fingerprint").apply()
+        else prefs.edit().putString("cert_fingerprint", v).apply()
     }
 }

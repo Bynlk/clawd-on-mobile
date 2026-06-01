@@ -20,6 +20,41 @@ class ConnectionConfigTest {
     }
 
     @Test
+    fun `accept localhost host`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://localhost:23334/abcdef1234567890abcdef1234567890")
+        assertNotNull(config)
+        assertEquals("localhost", config!!.host)
+    }
+
+    @Test
+    fun `accept mDNS dot-local host`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://my-mac.local:23334/abcdef1234567890abcdef1234567890")
+        assertNotNull(config)
+        assertEquals("my-mac.local", config!!.host)
+    }
+
+    @Test
+    fun `reject public domain host`() {
+        assertNull(ConnectionConfig.fromClawdUrl("clawd://evil.com:23334/abcdef1234567890abcdef1234567890"))
+        assertNull(ConnectionConfig.fromClawdUrl("clawd://example.org:23334/abcdef1234567890abcdef1234567890"))
+    }
+
+    @Test
+    fun `reject arbitrary string host`() {
+        assertNull(ConnectionConfig.fromClawdUrl("clawd://not-a-valid-host:23334/abcdef1234567890abcdef1234567890"))
+    }
+
+    @Test
+    fun `reject out of range IP octets`() {
+        assertNull(ConnectionConfig.fromClawdUrl("clawd://999.999.999.999:23334/abcdef1234567890abcdef1234567890"))
+    }
+
+    @Test
+    fun `reject non-numeric port`() {
+        assertNull(ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:abc/abcdef1234567890abcdef1234567890"))
+    }
+
+    @Test
     fun `generate correct stream url for lan`() {
         val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
         assertEquals("http://192.168.1.10:23334/mobile/stream?token=abcdef1234567890abcdef1234567890", config.streamUrl())

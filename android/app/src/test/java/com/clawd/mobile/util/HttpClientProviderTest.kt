@@ -77,4 +77,21 @@ class HttpClientProviderTest {
             assertSame("Thread $i got a different instance", first, results[i])
         }
     }
+
+    @Test
+    fun `getSseClient returns different instance than getClient`() {
+        val config = ConnectionConfig("192.168.1.10", 23334, "token1234567890abcdef1234567890")
+        val regular = HttpClientProvider.getClient(config)
+        val sse = HttpClientProvider.getSseClient(config)
+        assertNotSame(regular, sse)
+    }
+
+    @Test
+    fun `setCertFingerprint invalidates cached clients`() {
+        val config = ConnectionConfig("example.com", 443, "token1234567890abcdef1234567890")
+        val client1 = HttpClientProvider.getClient(config)
+        HttpClientProvider.setCertFingerprint("abc123")
+        val client2 = HttpClientProvider.getClient(config)
+        assertNotSame(client1, client2)
+    }
 }

@@ -1,5 +1,6 @@
 package com.clawd.mobile.data
 
+import android.util.Log
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -30,15 +31,37 @@ data class ConnectionConfig(
 
     fun pairUrl(): String = "clawd://$host:$port/$token"
 
+    /** Authorization header value for Bearer token auth. */
+    fun authHeader(): String = "Bearer $token"
+
     companion object {
         fun fromClawdUrl(url: String): ConnectionConfig? {
             val regex = Regex("^clawd://([^:]+):(\\d+)/([a-f0-9]{16,})$")
             val match = regex.matchEntire(url) ?: return null
-            return ConnectionConfig(
-                host = match.groupValues[1],
-                port = match.groupValues[2].toInt(),
-                token = match.groupValues[3]
-            )
+            val host = match.groupValues[1]
+
+            if (!isValidHost(host)) {
+                Log.w("ConnectionConfig", "Rejected non-LAN host: $host")
+                return null
+            }
+
+            val port = match.groupValues[2].toIntOrNull()?.coerceIn(1, 65535) ?: return null
+
+            return ConnectionConfig(host, port, match.groupValues[3])
+        }
+
+        private fun isValidHost(host: String): Boolean {
+            if (host == "localhost") return true
+            // IPv4
+            val ipv4Regex = Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$")
+            if (ipv4Regex.matches(host)) {
+                return host.split(".").all { it.toIntOrNull()?.let { v -> v in 0..255 } == true }
+            }
+            // mDNS .local
+            if (host.endsWith(".local")) return true
+            // IPv6 in brackets
+            if (host.startsWith("[") && host.endsWith("]")) return true
+            return false
         }
     }
 }
