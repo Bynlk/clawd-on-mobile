@@ -194,6 +194,7 @@ fun SessionsScreen(
                     showSheet = false
                     currentRequest.requestId?.let { approvalViewModel.dismissRequest(it) }
                 },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 containerColor = ClawdCardDark,
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             ) {
@@ -204,7 +205,7 @@ fun SessionsScreen(
                     onApprove = { requestId -> approvalViewModel.approve(requestId) },
                     onDeny = { requestId -> approvalViewModel.deny(requestId) },
                     onSuggestion = { requestId, index -> approvalViewModel.approveWithSuggestion(requestId, index) },
-                    onElicitation = { requestId, value -> approvalViewModel.submitElicitation(requestId, value) }
+                    onElicitation = { requestId, answers -> approvalViewModel.submitElicitation(requestId, answers) }
                 )
             }
         }

@@ -185,7 +185,7 @@ private fun processImage(imageProxy: ImageProxy, onResult: (ConnectionConfig?) -
         onResult(config)
     } catch (e: Exception) {
         // QR decode failures are expected (no QR in frame) — debug level only
-        android.util.Log.d("Scan", "QR decode failed: ${e.message}")
+        android.util.Log.d("Scan", "QR decode failed: ${e.javaClass.simpleName}: ${e.message}")
         onResult(null)
     } finally {
         imageProxy.close()
