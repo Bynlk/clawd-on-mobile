@@ -503,6 +503,13 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
             Text("dp", fontSize = 12.sp, color = ClawdFaintDark)
         }
 
+        Text(
+            text = "💡 调整大小后需关闭再开启悬浮窗生效",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+
         // Sync slider → text field
         LaunchedEffect(sizeDp) {
             sizeText = sizeDp.toString()
