@@ -26,20 +26,30 @@ data class ConnectionConfig(
     /** Authorization header value for Bearer token auth. */
     fun authHeader(): String = "Bearer $token"
 
+    override fun toString(): String {
+        val masked = if (token.length > 4) token.take(2) + "…" + token.takeLast(2) else "***"
+        return "ConnectionConfig(host=$host, port=$port, token=$masked)"
+    }
+
     companion object {
-        private val lanCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+        private data class CacheEntry(val isLan: Boolean, val timestamp: Long)
+        private const val CACHE_TTL_MS = 5 * 60 * 1000L // 5 minutes
+        private val lanCache = java.util.concurrent.ConcurrentHashMap<String, CacheEntry>()
 
         /** Cached [InetAddress.getByName] → isLan check to avoid repeated DNS lookups. */
         private fun isLanCached(host: String): Boolean {
             if (host == "localhost") return true
-            return lanCache.getOrPut(host) {
-                try {
-                    val addr = java.net.InetAddress.getByName(host)
-                    addr.isLoopbackAddress || addr.isSiteLocalAddress || addr.isLinkLocalAddress
-                } catch (_: Exception) {
-                    false
-                }
+            val now = System.currentTimeMillis()
+            val cached = lanCache[host]
+            if (cached != null && now - cached.timestamp < CACHE_TTL_MS) return cached.isLan
+            val isLan = try {
+                val addr = java.net.InetAddress.getByName(host)
+                addr.isLoopbackAddress || addr.isSiteLocalAddress || addr.isLinkLocalAddress
+            } catch (_: Exception) {
+                false
             }
+            lanCache[host] = CacheEntry(isLan, now)
+            return isLan
         }
 
         fun fromClawdUrl(url: String): ConnectionConfig? {

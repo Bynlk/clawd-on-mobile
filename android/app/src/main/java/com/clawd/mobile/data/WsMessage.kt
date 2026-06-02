@@ -4,17 +4,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 @Serializable
-data class WsMessage(
-    val type: String,
-    val timestamp: Long = 0,
-    val sessionId: String? = null,
-    val sessions: Map<String, SessionData>? = null,
-    val data: SessionData? = null,
-    val requestId: String? = null,
-    val permissionData: PermissionRequestData? = null,
-)
-
-@Serializable
 data class PermissionRequestData(
     val agentId: String? = null,
     val toolName: String? = null,
