@@ -1,28 +1,23 @@
 package com.clawd.mobile.ui.navigation
 
-import android.util.Log
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.clawd.mobile.R
 import com.clawd.mobile.data.ConnectionRepository
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.data.SessionRepository
 import com.clawd.mobile.notification.StatusNotifier
-import com.clawd.mobile.service.SseService
 import com.clawd.mobile.ui.approval.ApprovalViewModel
 import com.clawd.mobile.ui.sessions.SessionsScreen
 import com.clawd.mobile.ui.scan.ScanScreen
 import com.clawd.mobile.ui.manual.ManualScreen
 import com.clawd.mobile.ui.settings.SettingsScreen
-import com.clawd.mobile.util.HttpClientProvider
-import com.clawd.mobile.ws.CertFingerprintInfo
-import com.clawd.mobile.ws.SseClient
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun ClawdNavGraph() {
@@ -31,102 +26,55 @@ fun ClawdNavGraph() {
     val prefsStore = remember { PrefsStore.getInstance(context) }
     val statusNotifier = remember { StatusNotifier(context, prefsStore) }
 
-    // Start foreground service
-    LaunchedEffect(Unit) {
-        SseService.start(context)
-    }
+    val serviceManager = remember { ServiceManager(context, kotlinx.coroutines.MainScope(), prefsStore, statusNotifier) }
 
-    // Wait for service to provide SseClient, fallback to local instance
-    var sseClient by remember { mutableStateOf<SseClient?>(null) }
-    var wsRefreshKey by remember { mutableIntStateOf(0) }
+    // Initialize: start service + acquire client + auto-reconnect
+    LaunchedEffect(Unit) { serviceManager.initialize() }
 
-    LaunchedEffect(wsRefreshKey) {
-        // Fast path: already available
-        SseService.getClient()?.let {
-            sseClient = it
-            return@LaunchedEffect
-        }
-        // Wait for service to create SseClient (event-driven, no polling)
-        val ws = withTimeoutOrNull(5_000L) {
-            SseService.clientReady.first()
-        }
-        if (ws != null) {
-            sseClient = ws
-        } else if (sseClient == null) {
-            // Fallback if service didn't start
-            sseClient = SseClient(prefsStore)
-        }
-    }
+    // Re-acquire client when refreshKey changes (QR/manual scan)
+    var refreshKey by remember { mutableIntStateOf(0) }
+    LaunchedEffect(refreshKey) { if (refreshKey > 0) serviceManager.refresh() }
 
-    val ws = sseClient ?: return
+    val ws = serviceManager.sseClient.collectAsState().value ?: return
 
-    // Repositories — unified data access layer
+    // Repositories
     val sessionRepository = remember(ws) { SessionRepository(ws.sessions, prefsStore) }
     val connectionRepository = remember(ws) { ConnectionRepository(prefsStore, ws.connectionState) }
 
-    // TOFU certificate confirmation dialog
-    var pendingCert by remember { mutableStateOf<CertFingerprintInfo?>(null) }
-    LaunchedEffect(ws) {
-        ws.certFingerprintPending.collect { info ->
-            pendingCert = info
-        }
-    }
-
+    // TOFU certificate dialog
+    val pendingCert by serviceManager.pendingCert.collectAsState()
     pendingCert?.let { cert ->
         AlertDialog(
-            onDismissRequest = {
-                pendingCert = null
-                ws.disconnect()
-            },
-            title = { Text("证书确认") },
+            onDismissRequest = { serviceManager.rejectCert(ws) },
+            title = { Text(stringResource(R.string.cert_confirm_title)) },
             text = {
                 Text(
-                    "正在连接到 ${cert.host}\n\n" +
-                    "服务器证书指纹 (SHA-256):\n${cert.fingerprint}\n\n" +
-                    "确认此指纹与服务器一致？"
+                    stringResource(R.string.cert_confirm_connecting_to, cert.host) + "\n\n" +
+                    stringResource(R.string.cert_confirm_fingerprint, cert.fingerprint)
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    prefsStore.setCertFingerprint(cert.fingerprint)
-                    HttpClientProvider.setCertFingerprint(cert.fingerprint)
-                    pendingCert = null
-                }) { Text("信任并连接") }
+                TextButton(onClick = { serviceManager.trustCert(cert) }) {
+                    Text(stringResource(R.string.cert_confirm_trust))
+                }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    pendingCert = null
-                    ws.disconnect()
-                }) { Text("取消") }
+                TextButton(onClick = { serviceManager.rejectCert(ws) }) {
+                    Text(stringResource(R.string.cert_confirm_cancel))
+                }
             }
         )
     }
 
+    // ViewModel
     val approvalViewModel: ApprovalViewModel = viewModel(
         factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
     )
 
-    // Wire up pending approval check for StatusNotifier
+    // Wire up pending approval check + notification-tap routing
     statusNotifier.hasPendingApprovals = { approvalViewModel.pendingRequests.value.isNotEmpty() }
-
-    // Collect approval requests from notification taps via ClawdApp Channel
-    LaunchedEffect(approvalViewModel) {
-        for (request in com.clawd.mobile.ClawdApp.approvalChannel) {
-            Log.d("NavGraph", "Received approval request from channel: id=${request.requestId}")
-            approvalViewModel.restoreRequestFromNotification(request)
-        }
-    }
-
-    // Try auto-reconnect to last connection
-    LaunchedEffect(ws) {
-        ws.reconnect()
-    }
-
-    // Unified notification: triggers on displayState OR sessions change
-    val displayState by ws.displayState.collectAsState()
-    val sessionsMap by ws.sessions.collectAsState()
-    LaunchedEffect(displayState, sessionsMap) {
-        statusNotifier.updateNotifications(displayState, sessionsMap)
+    serviceManager.onApprovalFromNotification = { request ->
+        approvalViewModel.restoreRequestFromNotification(request)
     }
 
     NavHost(navController = navController, startDestination = "sessions") {
@@ -142,8 +90,8 @@ fun ClawdNavGraph() {
             ScanScreen(
                 onBack = { navController.popBackStack() },
                 onScanned = { config ->
-                    SseService.start(context, config)
-                    wsRefreshKey++
+                    serviceManager.startService(config)
+                    refreshKey++
                     navController.navigate("sessions") {
                         popUpTo("sessions") { inclusive = true }
                     }
@@ -155,8 +103,8 @@ fun ClawdNavGraph() {
                 prefsStore = prefsStore,
                 onBack = { navController.popBackStack() },
                 onConnect = { config ->
-                    SseService.start(context, config)
-                    wsRefreshKey++
+                    serviceManager.startService(config)
+                    refreshKey++
                     navController.navigate("sessions") {
                         popUpTo("sessions") { inclusive = true }
                     }
