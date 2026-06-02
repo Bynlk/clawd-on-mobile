@@ -139,6 +139,8 @@ class PetWindowController(
                 windowManager.removeView(it)
             } catch (e: IllegalArgumentException) {
                 Log.w(TAG, "View already removed: ${e.message}")
+            } finally {
+                it.destroy()
             }
         }
     }

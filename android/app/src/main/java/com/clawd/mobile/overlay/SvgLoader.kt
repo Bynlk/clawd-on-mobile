@@ -325,7 +325,7 @@ object SvgLoader {
                     "// Sanitized inline (Kotlin-side)\n      xhr.open('GET', 'about:blank', true);"
                 ).replace(
                     "document.querySelector('.container').innerHTML = sanitizeSvg(xhr.responseText);",
-                    "document.querySelector('.container').innerHTML = " + java.util.regex.Matcher.quoteReplacement(sanitized) + ";"
+                    "document.querySelector('.container').innerHTML = " + org.json.JSONObject().put("s", sanitized).toString().removeSurrounding("{\"s\":", "}") + ";"
                 )
             } catch (e: IOException) {
                 Log.w(TAG, "Failed to inline-sanitize $assetPath, falling back to XHR", e)

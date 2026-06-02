@@ -30,7 +30,7 @@ class PetTimerManager(
     }
 
     private val gifGeneration = AtomicInteger(0)
-    private var idleSince: Long = 0L
+    @Volatile private var idleSince: Long = 0L
     private var sleepSequenceJob: Job? = null
     private var autoReturnJob: Job? = null
 
@@ -75,6 +75,12 @@ class PetTimerManager(
 
             emitState(PetState.Yawning, null)
             delay(cfg.yawnMs)
+            if (!isActive) return@launch
+
+            // Dozing (浅睡) — aligns with PC dozing state.
+            // Cancellable: cancelSleepSequence() cancels this job, so new sessions can wake immediately.
+            emitState(PetState.Dozing, null)
+            delay(cfg.dozingMs)
             if (!isActive) return@launch
 
             if (cfg.collapseMs > 0) {

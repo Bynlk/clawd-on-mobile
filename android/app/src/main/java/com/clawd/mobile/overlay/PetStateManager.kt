@@ -84,15 +84,16 @@ class PetStateManager(
         // --- Per-character sleep sequence timings (from PC theme.json) ---
         data class SleepConfig(
             val yawnMs: Long,
+            val dozingMs: Long,   // Dozing (浅睡) duration before collapsing; aligns with PC DEEP_SLEEP_TIMEOUT
             val collapseMs: Long,
             val wakeMs: Long,
             val deepSleepMs: Long
         )
 
         val SLEEP_TIMINGS: Map<String, SleepConfig> = mapOf(
-            "clawd"     to SleepConfig(yawnMs = 3_000, collapseMs = 0,     wakeMs = 1_500, deepSleepMs = 600_000),
-            "calico"    to SleepConfig(yawnMs = 8_000, collapseMs = 5_200, wakeMs = 5_800, deepSleepMs = 600_000),
-            "cloudling" to SleepConfig(yawnMs = 9_030, collapseMs = 4_700, wakeMs = 3_650, deepSleepMs = 600_000)
+            "clawd"     to SleepConfig(yawnMs = 3_000, dozingMs = 600_000, collapseMs = 0,     wakeMs = 1_500, deepSleepMs = 600_000),
+            "calico"    to SleepConfig(yawnMs = 8_000, dozingMs = 600_000, collapseMs = 5_200, wakeMs = 5_800, deepSleepMs = 600_000),
+            "cloudling" to SleepConfig(yawnMs = 9_030, dozingMs = 600_000, collapseMs = 4_700, wakeMs = 3_650, deepSleepMs = 600_000)
         )
 
         /**
@@ -119,6 +120,15 @@ class PetStateManager(
             expired.forEach { consumedDoneSessions.remove(it) }
         }
 
+        /** Remove entries from [consumedInterruptedSessions] older than [DONE_SESSION_TTL_MS]. */
+        internal fun cleanupExpiredInterrupted(consumedInterruptedSessions: java.util.concurrent.ConcurrentHashMap<String, Long>) {
+            val now = System.currentTimeMillis()
+            val expired = consumedInterruptedSessions.entries
+                .filter { now - it.value > DONE_SESSION_TTL_MS }
+                .map { it.key }
+            expired.forEach { consumedInterruptedSessions.remove(it) }
+        }
+
         /**
          * Resolve the dominant display state from visible sessions.
          * Excludes sleep-sequence states (they are locally managed).
@@ -129,14 +139,24 @@ class PetStateManager(
          */
         internal fun resolveDisplayState(
             visible: List<SessionData>,
-            consumedDoneSessions: java.util.concurrent.ConcurrentHashMap<String, Long>
+            consumedDoneSessions: java.util.concurrent.ConcurrentHashMap<String, Long>,
+            consumedInterruptedSessions: java.util.concurrent.ConcurrentHashMap<String, Long> = java.util.concurrent.ConcurrentHashMap()
         ): PetState {
             var best: PetState = PetState.Idle
             for (session in visible) {
                 val state = when {
                     session.displayState != null && session.displayState != "idle" ->
                         PetState.fromString(session.displayState)
-                    session.badge == "interrupted" -> PetState.Error
+                    session.badge == "interrupted" -> {
+                        val sid = session.sessionId
+                        if (sid != null && !consumedInterruptedSessions.containsKey(sid)) {
+                            consumedInterruptedSessions[sid] = System.currentTimeMillis()
+                            cleanupExpiredInterrupted(consumedInterruptedSessions)
+                            PetState.Error  // 只触发一次
+                        } else {
+                            PetState.Idle  // 已消费
+                        }
+                    }
                     session.badge == "done" -> {
                         val sid = session.sessionId
                         if (sid != null && !consumedDoneSessions.containsKey(sid)) {
@@ -179,6 +199,7 @@ class PetStateManager(
     private var lastNonIdleState: PetState = PetState.Idle
     private var prevBadge: MutableMap<String, String> = mutableMapOf()
     private val consumedDoneSessions = java.util.concurrent.ConcurrentHashMap<String, Long>()  // sessionId → consumedAt (epoch ms)
+    private val consumedInterruptedSessions = java.util.concurrent.ConcurrentHashMap<String, Long>()  // sessionId → consumedAt (epoch ms)
     private var wsCollectorJob: Job? = null
     private val sessionMutex = Mutex()
 
@@ -214,6 +235,7 @@ class PetStateManager(
         lastNonIdleState = PetState.Idle
         prevBadge.clear()
         consumedDoneSessions.clear()
+        consumedInterruptedSessions.clear()
         currentState = PetState.Idle
         // Reset the command flow so new subscribers start from a clean Idle state
         _commandFlow.value = StateCommand.StateChanged(PetState.Idle)
@@ -304,7 +326,7 @@ class PetStateManager(
      */
     private fun resolveDisplayState(visible: List<SessionData>): PetState {
         Log.d("PetState", "resolveDisplayState input sessions: ${visible.map { "${it.sessionId}:state=${it.state}:displayState=${it.displayState}:badge=${it.badge}:isVisible=${it.isVisible}" }}")
-        val result = resolveDisplayState(visible, consumedDoneSessions)
+        val result = resolveDisplayState(visible, consumedDoneSessions, consumedInterruptedSessions)
         Log.d("PetState", "resolveDisplayState result: ${result.themeKey}")
         return result
     }
@@ -346,12 +368,18 @@ class PetStateManager(
         val watchdogJob = scope.launch {
             while (isActive) {
                 delay(WATCHDOG_INTERVAL_MS)
-                if (!currentState.isIdleLike) {
-                    val hasActiveSessions = sessionsFlow.value.values.any { it.isVisible }
-                    if (!hasActiveSessions) {
-                        Log.d(TAG, "Watchdog: state=${currentState.themeKey} but no visible sessions, forcing idle")
-                        emitState(PetState.Idle)
+                val hasActiveSessions = if (sessionMutex.tryLock()) {
+                    try {
+                        sessionsFlow.value.values.any { it.isVisible }
+                    } finally {
+                        sessionMutex.unlock()
                     }
+                } else {
+                    false
+                }
+                if (!currentState.isIdleLike && !hasActiveSessions) {
+                    Log.d(TAG, "Watchdog: state=${currentState.themeKey} but no visible sessions, forcing idle")
+                    emitState(PetState.Idle)
                 }
             }
         }
@@ -375,6 +403,9 @@ class PetStateManager(
      * @param resolvedSvg Optional server-resolved SVG filename from displayHintMap.
      */
     private fun emitState(state: PetState, resolvedSvg: String? = null) {
+        // Same-state short circuit: skip redundant emissions (prevents autoReturn reset loop).
+        // Allow through when resolvedSvg is non-null (tier/SVG may have changed for same state).
+        if (currentState == state && resolvedSvg == null) return
         if (currentState != state) {
             Log.d(TAG, "State → ${state.themeKey}")
         }
