@@ -20,6 +20,20 @@ class ConnectionConfigTest {
     }
 
     @Test
+    fun `accept uppercase hex token and lowercase it`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:23334/ABCDEF1234567890ABCDEF1234567890")
+        assertNotNull(config)
+        assertEquals("abcdef1234567890abcdef1234567890", config!!.token)
+    }
+
+    @Test
+    fun `accept mixed case hex token and lowercase it`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:23334/aAbBcCdD11223344aAbBcCdD11223344")
+        assertNotNull(config)
+        assertEquals("aabbccdd11223344aabbccdd11223344", config!!.token)
+    }
+
+    @Test
     fun `accept localhost host`() {
         val config = ConnectionConfig.fromClawdUrl("clawd://localhost:23334/abcdef1234567890abcdef1234567890")
         assertNotNull(config)

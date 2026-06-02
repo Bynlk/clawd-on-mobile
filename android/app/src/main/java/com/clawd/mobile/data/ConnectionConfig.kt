@@ -9,16 +9,8 @@ data class ConnectionConfig(
     val port: Int,
     val token: String
 ) {
-    /** Whether the host is on a local network (no TLS required). */
-    val isLan: Boolean get() {
-        if (host == "localhost") return true
-        return try {
-            val addr = java.net.InetAddress.getByName(host)
-            addr.isLoopbackAddress || addr.isSiteLocalAddress || addr.isLinkLocalAddress
-        } catch (_: Exception) {
-            false
-        }
-    }
+    /** Whether the host is on a local network (no TLS required). Cached per host. */
+    val isLan: Boolean get() = isLanCached(host)
 
     private val scheme get() = if (isLan) "http" else "https"
 
@@ -35,8 +27,23 @@ data class ConnectionConfig(
     fun authHeader(): String = "Bearer $token"
 
     companion object {
+        private val lanCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+        /** Cached [InetAddress.getByName] → isLan check to avoid repeated DNS lookups. */
+        private fun isLanCached(host: String): Boolean {
+            if (host == "localhost") return true
+            return lanCache.getOrPut(host) {
+                try {
+                    val addr = java.net.InetAddress.getByName(host)
+                    addr.isLoopbackAddress || addr.isSiteLocalAddress || addr.isLinkLocalAddress
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        }
+
         fun fromClawdUrl(url: String): ConnectionConfig? {
-            val regex = Regex("^clawd://([^:]+):(\\d+)/([a-f0-9]{16,})$")
+            val regex = Regex("^clawd://([^:]+):(\\d+)/([a-fA-F0-9]{16,})$")
             val match = regex.matchEntire(url) ?: return null
             val host = match.groupValues[1]
 
@@ -47,7 +54,7 @@ data class ConnectionConfig(
 
             val port = match.groupValues[2].toIntOrNull()?.coerceIn(1, 65535) ?: return null
 
-            return ConnectionConfig(host, port, match.groupValues[3])
+            return ConnectionConfig(host, port, match.groupValues[3].lowercase())
         }
 
         private fun isValidHost(host: String): Boolean {

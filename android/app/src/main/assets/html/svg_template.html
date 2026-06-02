@@ -12,11 +12,19 @@
 <body>
   <div class="container"></div>
   <script>
+    function sanitizeSvg(raw) {
+      var s = raw;
+      s = s.replace(/<script[\s\S]*?<\/script>/gi, '');
+      s = s.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '');
+      s = s.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+      s = s.replace(/(href|xlink:href)\s*=\s*["']?\s*javascript\s*:[^"'\s>]*/gi, '');
+      return s;
+    }
     var xhr = new XMLHttpRequest();
     xhr.open('GET', '{{URL}}', true);
     xhr.onload = function() {
       if (xhr.responseText.length > 0) {
-        document.querySelector('.container').innerHTML = xhr.responseText;
+        document.querySelector('.container').innerHTML = sanitizeSvg(xhr.responseText);
         var svgEl = document.querySelector('.container svg');
         if (svgEl) {
           var vb = svgEl.viewBox.baseVal;

@@ -129,8 +129,18 @@ class SseClient(private val prefsStore: PrefsStore) {
                 Log.d(TAG, "SSE onOpen code=${response.code}")
                 reconnectJob?.cancel()
                 reconnectDelay = 1000L
-                _connectionState.value = ConnectionState.CONNECTED
                 resetWatchdog()
+
+                // Content-Type validation: reject non-SSE responses
+                val contentType = response.header("Content-Type") ?: ""
+                if (!contentType.contains("text/event-stream", ignoreCase = true)) {
+                    Log.w(TAG, "SSE rejected: Content-Type '$contentType' is not text/event-stream")
+                    eventSource.cancel()
+                    scheduleReconnect()
+                    return
+                }
+
+                _connectionState.value = ConnectionState.CONNECTED
 
                 // TOFU: first HTTPS connection — extract cert fingerprint for user confirmation
                 val cfg = config

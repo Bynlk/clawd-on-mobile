@@ -308,10 +308,29 @@ object SvgLoader {
         val isApng = assetPath.endsWith(".apng")
 
         val templateName = if (isApng) "apng_template.html" else "svg_template.html"
-        val html = loadTemplate(webView.context, templateName)
+        var html = loadTemplate(webView.context, templateName)
             .replace("{{URL}}", url)
             .replace("{{LOOP_STYLE}}", loopStyle)
             .replace("{{ANIM_END_SCRIPT}}", "")
+
+        // Defense-in-depth: sanitize SVG content in Kotlin before building HTML.
+        // APNGs are binary and not subject to XSS; the JS sanitizer in the template
+        // is the secondary layer for the XHR path.
+        if (!isApng) {
+            try {
+                val rawSvg = webView.context.assets.open(assetPath).bufferedReader().readText()
+                val sanitized = sanitizeSvg(rawSvg)
+                html = html.replace(
+                    "xhr.open('GET', '{{URL}}', true);",
+                    "// Sanitized inline (Kotlin-side)\n      xhr.open('GET', 'about:blank', true);"
+                ).replace(
+                    "document.querySelector('.container').innerHTML = sanitizeSvg(xhr.responseText);",
+                    "document.querySelector('.container').innerHTML = " + java.util.regex.Matcher.quoteReplacement(sanitized) + ";"
+                )
+            } catch (e: IOException) {
+                Log.w(TAG, "Failed to inline-sanitize $assetPath, falling back to XHR", e)
+            }
+        }
 
         webView.loadDataWithBaseURL(
             "https://appassets.androidplatform.net/",
@@ -349,6 +368,22 @@ object SvgLoader {
     //  Internal helpers
     // ======================================================================
 
+
+    /**
+     * Defense-in-depth SVG sanitizer. Strips potentially dangerous elements
+     * from SVG content before embedding in a WebView. Applied in both Kotlin
+     * (inline path) and JavaScript (template XHR path).
+     *
+     * Removes: `<script>`, `<foreignObject>`, `on*` event attributes, `javascript:` URLs.
+     */
+    private fun sanitizeSvg(raw: String): String {
+        var s = raw
+        s = Regex("<script[\\s\\S]*?</script>", RegexOption.IGNORE_CASE).replace(s, "")
+        s = Regex("<foreignObject[\\s\\S]*?</foreignObject>", RegexOption.IGNORE_CASE).replace(s, "")
+        s = Regex("""\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)""", RegexOption.IGNORE_CASE).replace(s, "")
+        s = Regex("""(href|xlink:href)\s*=\s*["']?\s*javascript\s*:[^"'\s>]*""", RegexOption.IGNORE_CASE).replace(s, "")
+        return s
+    }
 
     /**
      * Build candidate filename list for fallback resolution.
