@@ -3,6 +3,7 @@ package com.clawd.mobile.overlay
 import android.content.Context
 import android.util.Log
 import android.webkit.WebView
+import kotlinx.serialization.json.*
 import java.io.IOException
 
 /**
@@ -39,165 +40,174 @@ object SvgLoader {
     /**
      * Initialize with application context for real asset existence checks.
      * Must be called once from [ClawdApp.onCreate].
+     * Loads `assets/svg_config.json` if present, otherwise uses hardcoded defaults.
      */
     fun init(context: Context) {
         appContext = context.applicationContext
+        loadConfigFromAssets(context)
     }
 
     // ======================================================================
-    //  State → SVG filename mappings (from PC theme.json)
-    // ======================================================================
-
-    /** Default state → SVG mapping for Clawd */
-    private val CLAWD_STATES = mapOf(
-        "idle" to "clawd-idle-follow.svg",
-        "yawning" to "clawd-idle-yawn.svg",
-        "dozing" to "clawd-idle-doze.svg",
-        "collapsing" to "clawd-collapse-sleep.svg",
-        "thinking" to "clawd-working-thinking.svg",
-        "working" to "clawd-working-typing.svg",
-        "juggling" to "clawd-headphones-groove.svg",
-        "sweeping" to "clawd-working-sweeping.svg",
-        "error" to "clawd-error.svg",
-        "attention" to "clawd-happy.svg",
-        "notification" to "clawd-notification.svg",
-        "carrying" to "clawd-working-carrying.svg",
-        "sleeping" to "clawd-sleeping.svg",
-        "waking" to "clawd-wake.svg",
-        "conducting" to "clawd-working-juggling.svg",
-        "debugger" to "clawd-working-debugger.svg",
-    )
-
-    /** Default state → SVG mapping for Cloudling */
-    private val CLOUDLING_STATES = mapOf(
-        "idle" to "cloudling-idle.svg",
-        "yawning" to "cloudling-idle-to-dozing.svg",
-        "dozing" to "cloudling-dozing.svg",
-        "collapsing" to "cloudling-dozing-to-sleeping.svg",
-        "thinking" to "cloudling-thinking.svg",
-        "working" to "cloudling-typing.svg",
-        "juggling" to "cloudling-juggling.svg",
-        "sweeping" to "cloudling-sweeping.svg",
-        "error" to "cloudling-error.svg",
-        "attention" to "cloudling-attention.svg",
-        "notification" to "cloudling-notification.svg",
-        "carrying" to "cloudling-carrying.svg",
-        "sleeping" to "cloudling-sleeping.svg",
-        "waking" to "cloudling-sleeping-to-idle.svg",
-        "conducting" to "cloudling-conducting.svg",
-    )
-
-    /** Default state → SVG/APNG mapping for Calico */
-    private val CALICO_STATES = mapOf(
-        "idle" to "calico-idle-follow.svg",
-        "yawning" to "calico-yawning.apng",
-        "dozing" to "calico-dozing.apng",
-        "collapsing" to "calico-collapsing.apng",
-        "thinking" to "calico-thinking.apng",
-        "working" to "calico-working-typing.apng",
-        "juggling" to "calico-working-juggling.apng",
-        "sweeping" to "calico-working-sweeping.apng",
-        "error" to "calico-error.apng",
-        "attention" to "calico-happy.apng",
-        "notification" to "calico-notification.apng",
-        "carrying" to "calico-working-carrying.apng",
-        "sleeping" to "calico-sleeping.apng",
-        "waking" to "calico-waking.apng",
-        "conducting" to "calico-working-conducting.apng",
-    )
-
-    private val CHARACTER_STATES = mapOf(
-        "clawd" to CLAWD_STATES,
-        "cloudling" to CLOUDLING_STATES,
-        "calico" to CALICO_STATES,
-    )
-
-    // ======================================================================
-    //  Working tiers (from PC theme.json workingTiers)
+    //  Config data — loaded from assets/svg_config.json, hardcoded fallback
     // ======================================================================
 
     data class Tier(val minSessions: Int, val file: String)
-
-    private val CLAWD_WORKING_TIERS = listOf(
-        Tier(3, "clawd-working-building.svg"),
-        Tier(2, "clawd-headphones-groove.svg"),
-        Tier(1, "clawd-working-typing.svg"),
-    )
-
-    private val CLOUDLING_WORKING_TIERS = listOf(
-        Tier(3, "cloudling-building.svg"),
-        Tier(2, "cloudling-juggling.svg"),
-        Tier(1, "cloudling-typing.svg"),
-    )
-
-    private val CALICO_WORKING_TIERS = listOf(
-        Tier(3, "calico-working-building.apng"),
-        Tier(2, "calico-working-juggling.apng"),
-        Tier(1, "calico-working-typing.apng"),
-    )
-
-    private val CLAWD_JUGGLING_TIERS = listOf(
-        Tier(2, "clawd-working-juggling.svg"),
-        Tier(1, "clawd-headphones-groove.svg"),
-    )
-
-    private val CLOUDLING_JUGGLING_TIERS = listOf(
-        Tier(2, "cloudling-conducting.svg"),
-        Tier(1, "cloudling-juggling.svg"),
-    )
-
-    private val CALICO_JUGGLING_TIERS = listOf(
-        Tier(2, "calico-working-conducting.apng"),
-        Tier(1, "calico-working-juggling.apng"),
-    )
-
-    private val WORKING_TIERS = mapOf(
-        "clawd" to CLAWD_WORKING_TIERS,
-        "cloudling" to CLOUDLING_WORKING_TIERS,
-        "calico" to CALICO_WORKING_TIERS,
-    )
-
-    private val JUGGLING_TIERS = mapOf(
-        "clawd" to CLAWD_JUGGLING_TIERS,
-        "cloudling" to CLOUDLING_JUGGLING_TIERS,
-        "calico" to CALICO_JUGGLING_TIERS,
-    )
-
-    // ======================================================================
-    //  Idle animation variants (from PC theme.json idleAnimations)
-    // ======================================================================
-
-    private val CLAWD_IDLE_ANIMATIONS = listOf(
-        "clawd-idle-look.svg",
-        "clawd-idle-bubble.svg",
-        "clawd-idle-reading.svg",
-    )
-
-    private val CLOUDLING_IDLE_ANIMATIONS = listOf(
-        "cloudling-idle-reading.svg",
-    )
-
-    private val CALICO_IDLE_ANIMATIONS = listOf(
-        "calico-idle.apng",
-    )
-
-    private val IDLE_ANIMATIONS = mapOf(
-        "clawd" to CLAWD_IDLE_ANIMATIONS,
-        "cloudling" to CLOUDLING_IDLE_ANIMATIONS,
-        "calico" to CALICO_IDLE_ANIMATIONS,
-    )
-
-    // ======================================================================
-    //  ViewBox data (from PC theme.json viewBox)
-    // ======================================================================
-
     data class ViewBoxInfo(val width: Int, val height: Int)
 
-    private val VIEWBOXES = mapOf(
+    // ── Hardcoded defaults (fallback if JSON missing/invalid) ──────────
+
+    private val DEFAULT_STATES = mapOf(
+        "clawd" to mapOf(
+            "idle" to "clawd-idle-follow.svg",
+            "yawning" to "clawd-idle-yawn.svg",
+            "dozing" to "clawd-idle-doze.svg",
+            "collapsing" to "clawd-collapse-sleep.svg",
+            "thinking" to "clawd-working-thinking.svg",
+            "working" to "clawd-working-typing.svg",
+            "juggling" to "clawd-headphones-groove.svg",
+            "sweeping" to "clawd-working-sweeping.svg",
+            "error" to "clawd-error.svg",
+            "attention" to "clawd-happy.svg",
+            "notification" to "clawd-notification.svg",
+            "carrying" to "clawd-working-carrying.svg",
+            "sleeping" to "clawd-sleeping.svg",
+            "waking" to "clawd-wake.svg",
+            "conducting" to "clawd-working-juggling.svg",
+            "debugger" to "clawd-working-debugger.svg",
+        ),
+        "cloudling" to mapOf(
+            "idle" to "cloudling-idle.svg",
+            "yawning" to "cloudling-idle-to-dozing.svg",
+            "dozing" to "cloudling-dozing.svg",
+            "collapsing" to "cloudling-dozing-to-sleeping.svg",
+            "thinking" to "cloudling-thinking.svg",
+            "working" to "cloudling-typing.svg",
+            "juggling" to "cloudling-juggling.svg",
+            "sweeping" to "cloudling-sweeping.svg",
+            "error" to "cloudling-error.svg",
+            "attention" to "cloudling-attention.svg",
+            "notification" to "cloudling-notification.svg",
+            "carrying" to "cloudling-carrying.svg",
+            "sleeping" to "cloudling-sleeping.svg",
+            "waking" to "cloudling-sleeping-to-idle.svg",
+            "conducting" to "cloudling-conducting.svg",
+        ),
+        "calico" to mapOf(
+            "idle" to "calico-idle-follow.svg",
+            "yawning" to "calico-yawning.apng",
+            "dozing" to "calico-dozing.apng",
+            "collapsing" to "calico-collapsing.apng",
+            "thinking" to "calico-thinking.apng",
+            "working" to "calico-working-typing.apng",
+            "juggling" to "calico-working-juggling.apng",
+            "sweeping" to "calico-working-sweeping.apng",
+            "error" to "calico-error.apng",
+            "attention" to "calico-happy.apng",
+            "notification" to "calico-notification.apng",
+            "carrying" to "calico-working-carrying.apng",
+            "sleeping" to "calico-sleeping.apng",
+            "waking" to "calico-waking.apng",
+            "conducting" to "calico-working-conducting.apng",
+        ),
+    )
+
+    private val DEFAULT_workingTiers = mapOf(
+        "clawd" to listOf(
+            Tier(3, "clawd-working-building.svg"),
+            Tier(2, "clawd-headphones-groove.svg"),
+            Tier(1, "clawd-working-typing.svg"),
+        ),
+        "cloudling" to listOf(
+            Tier(3, "cloudling-building.svg"),
+            Tier(2, "cloudling-juggling.svg"),
+            Tier(1, "cloudling-typing.svg"),
+        ),
+        "calico" to listOf(
+            Tier(3, "calico-working-building.apng"),
+            Tier(2, "calico-working-juggling.apng"),
+            Tier(1, "calico-working-typing.apng"),
+        ),
+    )
+
+    private val DEFAULT_jugglingTiers = mapOf(
+        "clawd" to listOf(
+            Tier(2, "clawd-working-juggling.svg"),
+            Tier(1, "clawd-headphones-groove.svg"),
+        ),
+        "cloudling" to listOf(
+            Tier(2, "cloudling-conducting.svg"),
+            Tier(1, "cloudling-juggling.svg"),
+        ),
+        "calico" to listOf(
+            Tier(2, "calico-working-conducting.apng"),
+            Tier(1, "calico-working-juggling.apng"),
+        ),
+    )
+
+    private val DEFAULT_idleAnimations = mapOf(
+        "clawd" to listOf("clawd-idle-look.svg", "clawd-idle-bubble.svg", "clawd-idle-reading.svg"),
+        "cloudling" to listOf("cloudling-idle-reading.svg"),
+        "calico" to listOf("calico-idle.apng"),
+    )
+
+    private val DEFAULT_viewBoxes = mapOf(
         "clawd" to ViewBoxInfo(45, 45),
         "cloudling" to ViewBoxInfo(88, 72),
         "calico" to ViewBoxInfo(266, 200),
     )
+
+    // ── Active config (populated from JSON or defaults) ────────────────
+
+    private var characterStates: Map<String, Map<String, String>> = DEFAULT_STATES
+    private var workingTiers: Map<String, List<Tier>> = DEFAULT_workingTiers
+    private var jugglingTiers: Map<String, List<Tier>> = DEFAULT_jugglingTiers
+    private var idleAnimations: Map<String, List<String>> = DEFAULT_idleAnimations
+    private var viewBoxes: Map<String, ViewBoxInfo> = DEFAULT_viewBoxes
+
+    // ── JSON config loader ─────────────────────────────────────────────
+
+    private fun loadConfigFromAssets(context: Context) {
+        try {
+            val jsonStr = context.assets.open("svg_config.json").bufferedReader().readText()
+            val root = Json.parseToJsonElement(jsonStr).jsonObject
+
+            root["states"]?.jsonObject?.let { statesObj ->
+                val result = mutableMapOf<String, Map<String, String>>()
+                for ((char, mappings) in statesObj) {
+                    result[char] = mappings.jsonObject.mapValues { it.value.jsonPrimitive.content }
+                }
+                characterStates = result
+            }
+
+            root["workingTiers"]?.jsonObject?.let { tiersObj ->
+                workingTiers = tiersObj.mapValues { (_, arr) ->
+                    arr.jsonArray.map { Tier(it.jsonObject["minSessions"]!!.jsonPrimitive.int, it.jsonObject["file"]!!.jsonPrimitive.content) }
+                }
+            }
+
+            root["jugglingTiers"]?.jsonObject?.let { tiersObj ->
+                jugglingTiers = tiersObj.mapValues { (_, arr) ->
+                    arr.jsonArray.map { Tier(it.jsonObject["minSessions"]!!.jsonPrimitive.int, it.jsonObject["file"]!!.jsonPrimitive.content) }
+                }
+            }
+
+            root["idleAnimations"]?.jsonObject?.let { animObj ->
+                idleAnimations = animObj.mapValues { (_, arr) ->
+                    arr.jsonArray.map { it.jsonPrimitive.content }
+                }
+            }
+
+            root["viewBoxes"]?.jsonObject?.let { vbObj ->
+                viewBoxes = vbObj.mapValues { (_, obj) ->
+                    ViewBoxInfo(obj.jsonObject["width"]!!.jsonPrimitive.int, obj.jsonObject["height"]!!.jsonPrimitive.int)
+                }
+            }
+
+            Log.d(TAG, "Loaded svg_config.json: ${characterStates.size} characters")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load svg_config.json, using hardcoded defaults", e)
+        }
+    }
 
     // ======================================================================
     //  Public API
@@ -216,18 +226,18 @@ object SvgLoader {
 
     /** String-based overload. */
     fun resolveSvgAsset(stateKey: String, sessionCount: Int, character: String = "clawd"): String? {
-        val charMap = CHARACTER_STATES[character] ?: CHARACTER_STATES["clawd"]!!
+        val charMap = characterStates[character] ?: characterStates["clawd"]!!
 
         // Working tier logic
         if (stateKey == "working") {
-            val tiers = WORKING_TIERS[character] ?: WORKING_TIERS["clawd"]!!
+            val tiers = workingTiers[character] ?: workingTiers["clawd"]!!
             val tierFile = tiers.firstOrNull { sessionCount >= it.minSessions }?.file
             if (tierFile != null) return "svg/$character/$tierFile"
         }
 
         // Juggling tier logic
         if (stateKey == "juggling") {
-            val tiers = JUGGLING_TIERS[character] ?: JUGGLING_TIERS["clawd"]!!
+            val tiers = jugglingTiers[character] ?: jugglingTiers["clawd"]!!
             val tierFile = tiers.firstOrNull { sessionCount >= it.minSessions }?.file
             if (tierFile != null) return "svg/$character/$tierFile"
         }
@@ -249,7 +259,7 @@ object SvgLoader {
      * Returns an asset path or null if no variants exist.
      */
     fun pickIdleAnimation(character: String = "clawd"): String? {
-        val variants = IDLE_ANIMATIONS[character] ?: return null
+        val variants = idleAnimations[character] ?: return null
         if (variants.isEmpty()) return null
         val file = variants.random()
         return "svg/$character/$file"
@@ -260,7 +270,7 @@ object SvgLoader {
      * Used by PetStateManager to decide whether to play sleep/wake animations.
      */
     fun hasSvgForState(state: PetState, character: String): Boolean {
-        val charMap = CHARACTER_STATES[character] ?: return false
+        val charMap = characterStates[character] ?: return false
         val fileName = charMap[state.themeKey] ?: return false
         return assetExists("svg/$character/$fileName")
     }
@@ -270,7 +280,7 @@ object SvgLoader {
      * Used by FloatingPetService for window sizing.
      */
     fun getViewBox(character: String): ViewBoxInfo {
-        return VIEWBOXES[character] ?: VIEWBOXES["clawd"]!!
+        return viewBoxes[character] ?: viewBoxes["clawd"]!!
     }
 
     /**
@@ -350,7 +360,7 @@ object SvgLoader {
         charMap: Map<String, String>
     ): List<String> {
         val primary = charMap[stateKey]
-        val clawdMap = CHARACTER_STATES["clawd"]!!
+        val clawdMap = characterStates["clawd"]!!
         val clawdFallback = clawdMap[stateKey]
         val idle = charMap["idle"]
 

@@ -1,0 +1,105 @@
+{
+  "states": {
+    "clawd": {
+      "idle": "clawd-idle-follow.svg",
+      "yawning": "clawd-idle-yawn.svg",
+      "dozing": "clawd-idle-doze.svg",
+      "collapsing": "clawd-collapse-sleep.svg",
+      "thinking": "clawd-working-thinking.svg",
+      "working": "clawd-working-typing.svg",
+      "juggling": "clawd-headphones-groove.svg",
+      "sweeping": "clawd-working-sweeping.svg",
+      "error": "clawd-error.svg",
+      "attention": "clawd-happy.svg",
+      "notification": "clawd-notification.svg",
+      "carrying": "clawd-working-carrying.svg",
+      "sleeping": "clawd-sleeping.svg",
+      "waking": "clawd-wake.svg",
+      "conducting": "clawd-working-juggling.svg",
+      "debugger": "clawd-working-debugger.svg"
+    },
+    "cloudling": {
+      "idle": "cloudling-idle.svg",
+      "yawning": "cloudling-idle-to-dozing.svg",
+      "dozing": "cloudling-dozing.svg",
+      "collapsing": "cloudling-dozing-to-sleeping.svg",
+      "thinking": "cloudling-thinking.svg",
+      "working": "cloudling-typing.svg",
+      "juggling": "cloudling-juggling.svg",
+      "sweeping": "cloudling-sweeping.svg",
+      "error": "cloudling-error.svg",
+      "attention": "cloudling-attention.svg",
+      "notification": "cloudling-notification.svg",
+      "carrying": "cloudling-carrying.svg",
+      "sleeping": "cloudling-sleeping.svg",
+      "waking": "cloudling-sleeping-to-idle.svg",
+      "conducting": "cloudling-conducting.svg"
+    },
+    "calico": {
+      "idle": "calico-idle-follow.svg",
+      "yawning": "calico-yawning.apng",
+      "dozing": "calico-dozing.apng",
+      "collapsing": "calico-collapsing.apng",
+      "thinking": "calico-thinking.apng",
+      "working": "calico-working-typing.apng",
+      "juggling": "calico-working-juggling.apng",
+      "sweeping": "calico-working-sweeping.apng",
+      "error": "calico-error.apng",
+      "attention": "calico-happy.apng",
+      "notification": "calico-notification.apng",
+      "carrying": "calico-working-carrying.apng",
+      "sleeping": "calico-sleeping.apng",
+      "waking": "calico-waking.apng",
+      "conducting": "calico-working-conducting.apng"
+    }
+  },
+  "workingTiers": {
+    "clawd": [
+      { "minSessions": 3, "file": "clawd-working-building.svg" },
+      { "minSessions": 2, "file": "clawd-headphones-groove.svg" },
+      { "minSessions": 1, "file": "clawd-working-typing.svg" }
+    ],
+    "cloudling": [
+      { "minSessions": 3, "file": "cloudling-building.svg" },
+      { "minSessions": 2, "file": "cloudling-juggling.svg" },
+      { "minSessions": 1, "file": "cloudling-typing.svg" }
+    ],
+    "calico": [
+      { "minSessions": 3, "file": "calico-working-building.apng" },
+      { "minSessions": 2, "file": "calico-working-juggling.apng" },
+      { "minSessions": 1, "file": "calico-working-typing.apng" }
+    ]
+  },
+  "jugglingTiers": {
+    "clawd": [
+      { "minSessions": 2, "file": "clawd-working-juggling.svg" },
+      { "minSessions": 1, "file": "clawd-headphones-groove.svg" }
+    ],
+    "cloudling": [
+      { "minSessions": 2, "file": "cloudling-conducting.svg" },
+      { "minSessions": 1, "file": "cloudling-juggling.svg" }
+    ],
+    "calico": [
+      { "minSessions": 2, "file": "calico-working-conducting.apng" },
+      { "minSessions": 1, "file": "calico-working-juggling.apng" }
+    ]
+  },
+  "idleAnimations": {
+    "clawd": [
+      "clawd-idle-look.svg",
+      "clawd-idle-bubble.svg",
+      "clawd-idle-reading.svg"
+    ],
+    "cloudling": [
+      "cloudling-idle-reading.svg"
+    ],
+    "calico": [
+      "calico-idle.apng"
+    ]
+  },
+  "viewBoxes": {
+    "clawd": { "width": 45, "height": 45 },
+    "cloudling": { "width": 88, "height": 72 },
+    "calico": { "width": 266, "height": 200 }
+  }
+}
