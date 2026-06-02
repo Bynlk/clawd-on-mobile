@@ -199,7 +199,7 @@ private fun CopyableRow(label: String, value: String, onCopy: () -> Unit) {
         IconButton(onClick = onCopy, modifier = Modifier.size(28.dp)) {
             Icon(
                 ClawdIcons.Checks,
-                "复制",
+                stringResource(R.string.settings_copy),
                 tint = ClawdMutedDark,
                 modifier = Modifier.size(14.dp)
             )
@@ -503,7 +503,7 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
         }
 
         Text(
-            text = "💡 调整大小后需关闭再开启悬浮窗生效",
+            text = stringResource(R.string.settings_pet_resize_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp)

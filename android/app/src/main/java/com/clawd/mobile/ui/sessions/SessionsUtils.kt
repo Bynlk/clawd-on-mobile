@@ -15,7 +15,7 @@ internal fun resolveSessionName(
     sessionsMap: Map<String, SessionData>,
     prefsStore: PrefsStore
 ): String? {
-    if (sessionId == null) return null
+    if (sessionId.isNullOrBlank()) return null
     prefsStore.getSessionName(sessionId)?.let { return it }
     sessionsMap[sessionId]?.let { data ->
         data.displayTitle?.let { return it }

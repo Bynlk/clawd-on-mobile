@@ -3,6 +3,7 @@ package com.clawd.mobile.ui.approval
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
+import com.clawd.mobile.ui.sessions.resolveSessionName
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.clawd.mobile.data.PermissionRequestData
@@ -13,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -50,7 +52,7 @@ class ApprovalViewModel(
         recentlyDismissed.remove(requestId)?.let { dismissed ->
             if (_pendingRequests.value.none { it.requestId == requestId }) {
                 Log.d("ApprovalViewModel", "Restoring dismissed request $requestId")
-                _pendingRequests.value = _pendingRequests.value + dismissed
+                _pendingRequests.update { it + dismissed }
                 startCountdown(dismissed)
             }
         }
@@ -63,7 +65,7 @@ class ApprovalViewModel(
         Log.d("ApprovalViewModel", "restoreRequestFromNotification id=$requestId pending=${_pendingRequests.value.size}")
         if (_pendingRequests.value.none { it.requestId == requestId }) {
             Log.d("ApprovalViewModel", "Adding request from notification $requestId")
-            _pendingRequests.value = _pendingRequests.value + request
+            _pendingRequests.update { it + request }
             startCountdown(request)
         }
         _notificationRequestId.value = requestId
@@ -90,15 +92,8 @@ class ApprovalViewModel(
         }
     }
 
-    private fun resolveSessionName(sessionId: String?): String? {
-        if (sessionId == null) return null
-        prefsStore.getSessionName(sessionId)?.let { return it }
-        sseClient.sessions.value[sessionId]?.let { data ->
-            data.displayTitle?.let { return it }
-            data.agentId?.let { return it }
-        }
-        return sessionId
-    }
+    private fun resolveSessionName(sessionId: String?): String? =
+        resolveSessionName(sessionId, sseClient.sessions.value, prefsStore)
 
     private fun handleNewRequest(request: PermissionRequestData) {
         Log.d("ApprovalViewModel", "handleNewRequest id=${request.requestId} tool=${request.toolName} currentPending=${_pendingRequests.value.size}")
@@ -108,7 +103,7 @@ class ApprovalViewModel(
             Log.d("ApprovalViewModel", "Duplicate request ignored: $requestId")
             return
         }
-        _pendingRequests.value = _pendingRequests.value + request
+        _pendingRequests.update { it + request }
 
         val context = getApplication<Application>()
         val sessionName = resolveSessionName(request.sessionId)
@@ -132,10 +127,10 @@ class ApprovalViewModel(
         countdownJobs[requestId]?.cancel()
         countdownJobs[requestId] = viewModelScope.launch {
             for (sec in timeoutSec downTo 0) {
-                _countdowns.value = _countdowns.value + (requestId to sec)
+                _countdowns.update { it + (requestId to sec) }
                 delay(1000)
             }
-            _countdowns.value = _countdowns.value - requestId
+            _countdowns.update { it - requestId }
         }
 
         // Auto-dismiss on timeout (saveForRestore=true so notification tap can restore)
@@ -155,8 +150,8 @@ class ApprovalViewModel(
                 recentlyDismissed.keys.firstOrNull()?.let { recentlyDismissed.remove(it) }
             }
         }
-        _pendingRequests.value = _pendingRequests.value.filter { it.requestId != requestId }
-        _countdowns.value = _countdowns.value - requestId
+        _pendingRequests.update { it.filter { it.requestId != requestId } }
+        _countdowns.update { it - requestId }
         timeoutJobs.remove(requestId)?.cancel()
         countdownJobs.remove(requestId)?.cancel()
     }

@@ -61,7 +61,7 @@ internal fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Mod
 
     // Mobile override: chip text (more descriptive labels)
     val mappedChipText = when (data.chipText) {
-        "等待中" -> when (data.event) {
+        context.getString(R.string.sessions_waiting) -> when (data.event) {
             "PermissionRequest" -> context.getString(R.string.sessions_waiting_auth)
             "Elicitation" -> context.getString(R.string.sessions_waiting_choice)
             else -> chipText

@@ -475,22 +475,22 @@ private fun collectElicitationAnswers(
  * Translate well-known English suggestion labels to Chinese.
  * Falls back to the original label for dynamic / unknown strings.
  */
+@Composable
 private fun translateSuggestionLabel(label: String, mode: String?): String {
     // mode-based translations
-    if (mode == "acceptEdits") return "自动接受编辑"
-    if (mode == "plan") return "切换到计划模式"
+    if (mode == "acceptEdits") return stringResource(R.string.approval_label_auto_accept)
+    if (mode == "plan") return stringResource(R.string.approval_label_plan_mode)
     // label-based fallback
     val lower = label.lowercase()
     return when {
-        lower == "auto-accept edits" -> "自动接受编辑"
-        lower == "always allow" -> "始终允许"
-        lower == "switch to plan mode" -> "切换到计划模式"
+        lower == "auto-accept edits" -> stringResource(R.string.approval_label_auto_accept)
+        lower == "always allow" -> stringResource(R.string.approval_label_always_allow)
+        lower == "switch to plan mode" -> stringResource(R.string.approval_label_plan_mode)
         lower.startsWith("allow ") && lower.contains(" in ") -> {
-            // "Allow Bash in /some/path" → "允许 Bash 在 /some/path"
             val parts = label.removePrefix("Allow ").split(" in ", limit = 2)
-            if (parts.size == 2) "允许 ${parts[0]} 在 ${parts[1]}" else label
+            if (parts.size == 2) stringResource(R.string.approval_label_allow_in, parts[0], parts[1]) else label
         }
-        lower.startsWith("always allow:") -> "始终允许: ${label.removePrefix("Always allow:").trim()}"
+        lower.startsWith("always allow:") -> stringResource(R.string.approval_label_always_allow_tool, label.removePrefix("Always allow:").trim())
         else -> label
     }
 }
