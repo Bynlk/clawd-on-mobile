@@ -171,6 +171,23 @@
     <string name="manual_delete">删除</string>
     <string name="manual_fill_required">请填写完整连接信息</string>
 
+    <!-- Certificate confirmation dialog (NavGraph) -->
+    <string name="cert_confirm_title">证书确认</string>
+    <string name="cert_confirm_connecting_to">正在连接到 %s</string>
+    <string name="cert_confirm_fingerprint">服务器证书指纹 (SHA-256):\n%s\n\n确认此指纹与服务器一致？</string>
+    <string name="cert_confirm_trust">信任并连接</string>
+    <string name="cert_confirm_cancel">取消</string>
+
+    <!-- Approval labels (ApprovalSheet) -->
+    <string name="approval_label_auto_accept">自动接受编辑</string>
+    <string name="approval_label_plan_mode">切换到计划模式</string>
+    <string name="approval_label_always_allow">始终允许</string>
+    <string name="approval_label_allow_in">允许 %1$s 在 %2$s</string>
+    <string name="approval_label_always_allow_tool">始终允许: %s</string>
+
+    <!-- Settings extras -->
+    <string name="settings_pet_resize_hint">💡 调整大小后需关闭再开启悬浮窗生效</string>
+
     <!-- Scan screen -->
     <string name="scan_title">扫码配对</string>
     <string name="scan_need_camera">需要摄像头权限</string>

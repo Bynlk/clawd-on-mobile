@@ -10,9 +10,14 @@ okhttp = "4.12.0"
 kotlinxSerialization = "1.7.3"
 cameraX = "1.4.1"
 zxing = "3.5.3"
+webkit = "1.8.0"
+securityCrypto = "1.1.0-alpha06"
+workManager = "2.10.0"
 junit = "4.13.2"
-robolectric = "4.14.1"
 coroutinesTest = "1.9.0"
+mockk = "1.13.13"
+turbine = "1.2.0"
+mockwebserver = "4.12.0"
 
 [libraries]
 # Compose
@@ -42,9 +47,15 @@ camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.r
 camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraX" }
 camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraX" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
+security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
-robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+mockk-android = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "mockwebserver" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

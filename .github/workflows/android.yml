@@ -10,6 +10,15 @@ on:
     paths:
       - "android/**"
   workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip unit tests'
+        type: boolean
+        default: false
+      debug_only:
+        description: 'Build debug APK only (skip release)'
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -35,10 +44,15 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: echo "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
 
+      - name: Run Unit Tests
+        if: ${{ !inputs.skip_tests }}
+        run: gradle testDebugUnitTest --no-daemon
+
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon
 
       - name: Build Release APK
+        if: ${{ !inputs.debug_only }}
         env:
           KEYSTORE_FILE: release-keystore.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
@@ -54,6 +68,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Release APK
+        if: ${{ !inputs.debug_only }}
         uses: actions/upload-artifact@v7
         with:
           name: clawd-mobile-release

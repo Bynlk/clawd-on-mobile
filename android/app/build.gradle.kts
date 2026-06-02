@@ -96,14 +96,17 @@ dependencies {
     implementation(libs.zxing.core)
 
     // WebView asset loader (maps assets/ to https:// for fetch() in SVG WebView)
-    implementation("androidx.webkit:webkit:1.8.0")
+    implementation(libs.webkit)
 
     // Encrypted SharedPreferences (AES-256-GCM)
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation(libs.security.crypto)
 
     // WorkManager for reliable background tasks (approval responses)
-    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation(libs.work.runtime)
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
+    testImplementation(libs.mockk)
+    testImplementation(libs.turbine)
+    testImplementation(libs.mockwebserver)
 }

@@ -1,6 +1,5 @@
 # OkHttp
 -dontwarn okhttp3.**
--keep class okhttp3.** { *; }
 
 # kotlinx.serialization
 -keepattributes *Annotation*, InnerClasses
@@ -13,7 +12,6 @@
 -keepclasseswithmembers class com.clawd.mobile.** { kotlinx.serialization.KSerializer serializer(...); }
 
 # zxing
--keep class com.google.zxing.** { *; }
 -dontwarn com.google.zxing.**
 
 # Tink / EncryptedSharedPreferences (errorprone annotations)
