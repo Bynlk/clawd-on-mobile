@@ -6,10 +6,10 @@ import org.junit.Test
 import org.junit.Assert.*
 
 /**
- * Tests for JSON message parsing logic used in ClawdWebSocket.handleMessage.
- * These test the data model deserialization without needing a real WebSocket connection.
+ * Tests for JSON message parsing logic used in SseClient.handleMessage.
+ * These test the data model deserialization without needing a real SSE connection.
  */
-class ClawdWebSocketParsingTest {
+class SseClientParsingTest {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 

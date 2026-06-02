@@ -25,13 +25,13 @@ import com.clawd.mobile.ui.approval.ApprovalViewModel
 import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ws.ConnectionState
-import com.clawd.mobile.ws.ClawdWebSocket
+import com.clawd.mobile.ws.SseClient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(
     navController: NavController,
-    webSocket: ClawdWebSocket,
+    webSocket: SseClient,
     approvalViewModel: ApprovalViewModel,
     prefsStore: PrefsStore
 ) {

@@ -22,7 +22,7 @@ data class ConnectionConfig(
 
     fun streamUrl(): String {
         val scheme = if (isLan) "http" else "https"
-        return "$scheme://$host:$port/mobile/stream?token=$token"
+        return "$scheme://$host:$port/mobile/stream"
     }
 
     fun approveUrl(): String {
@@ -30,12 +30,8 @@ data class ConnectionConfig(
         return "$scheme://$host:$port/mobile/approve"
     }
 
-    /** URL with token masked for logging — never log raw token. */
-    fun streamUrlMasked(): String {
-        val scheme = if (isLan) "http" else "https"
-        val masked = if (token.length > 8) "${token.take(4)}****${token.takeLast(4)}" else "****"
-        return "$scheme://$host:$port/mobile/stream?token=$masked"
-    }
+    /** URL safe for logging — no token included. */
+    fun streamUrlMasked(): String = streamUrl()
 
     fun pairUrl(): String = "clawd://$host:$port/$token"
 

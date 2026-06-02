@@ -15,7 +15,7 @@ import com.clawd.mobile.ui.sessions.SessionsScreen
 import com.clawd.mobile.ui.scan.ScanScreen
 import com.clawd.mobile.ui.manual.ManualScreen
 import com.clawd.mobile.ui.settings.SettingsScreen
-import com.clawd.mobile.ws.ClawdWebSocket
+import com.clawd.mobile.ws.SseClient
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -32,7 +32,7 @@ fun ClawdNavGraph() {
     }
 
     // Wait for service to provide WebSocket, fallback to local instance
-    var webSocket by remember { mutableStateOf<ClawdWebSocket?>(null) }
+    var webSocket by remember { mutableStateOf<SseClient?>(null) }
     var wsRefreshKey by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(wsRefreshKey) {
@@ -49,7 +49,7 @@ fun ClawdNavGraph() {
             webSocket = ws
         } else if (webSocket == null) {
             // Fallback if service didn't start
-            webSocket = ClawdWebSocket(prefsStore)
+            webSocket = SseClient(prefsStore)
         }
     }
 

@@ -38,13 +38,13 @@ import com.clawd.mobile.R
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
-import com.clawd.mobile.ws.ClawdWebSocket
+import com.clawd.mobile.ws.SseClient
 import com.clawd.mobile.ws.ConnectionState
 
 @Composable
 fun SettingsScreen(
     navController: NavController,
-    webSocket: ClawdWebSocket,
+    webSocket: SseClient,
     prefsStore: PrefsStore
 ) {
     val connectionState by webSocket.connectionState.collectAsState()
@@ -144,7 +144,7 @@ private fun SettingsTopBar(onBack: () -> Unit) {
 // ─── Connection Info Card ─────────────────────────────────────────
 
 @Composable
-private fun ConnectionInfoCard(webSocket: ClawdWebSocket) {
+private fun ConnectionInfoCard(webSocket: SseClient) {
     val clipboard = LocalClipboardManager.current
     val host = webSocket.currentHost ?: ""
     val port = webSocket.currentPort?.toString() ?: ""

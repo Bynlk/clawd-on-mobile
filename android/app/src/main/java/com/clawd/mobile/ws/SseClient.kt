@@ -14,10 +14,10 @@ import android.util.Log
 import com.clawd.mobile.util.HttpClientProvider
 import com.clawd.mobile.util.SafeExecutor
 
-class ClawdWebSocket(private val prefsStore: PrefsStore) {
+class SseClient(private val prefsStore: PrefsStore) {
 
     companion object {
-        private const val TAG = "ClawdWebSocket"
+        private const val TAG = "SseClient"
     }
 
     private var eventSource: EventSource? = null
@@ -59,7 +59,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     val currentPort: Int? get() = config?.port
 
     fun connect(config: ConnectionConfig) {
-        Log.d("ClawdWebSocket", "connect(${config.host}:${config.port})")
+        Log.d("SseClient", "connect(${config.host}:${config.port})")
         this.config = config
         prefsStore.saveConfig(config)
         HttpClientProvider.setCertFingerprint(prefsStore.getCertFingerprint())
@@ -103,7 +103,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
         _connectionState.value = if (reconnectDelay > 1000) ConnectionState.RECONNECTING else ConnectionState.CONNECTING
 
         val url = cfg.streamUrl()
-        Log.d("ClawdWebSocket", "doConnect → ${cfg.streamUrlMasked()}")
+        Log.d("SseClient", "doConnect → ${cfg.streamUrlMasked()}")
 
         val request = Request.Builder()
             .url(url)
@@ -112,7 +112,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
 
         eventSource = sseFactory.newEventSource(request, object : EventSourceListener() {
             override fun onOpen(eventSource: EventSource, response: Response) {
-                Log.d("ClawdWebSocket", "SSE onOpen code=${response.code}")
+                Log.d("SseClient", "SSE onOpen code=${response.code}")
                 reconnectJob?.cancel()
                 reconnectDelay = 1000L
                 _connectionState.value = ConnectionState.CONNECTED
@@ -125,12 +125,12 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
             }
 
             override fun onClosed(eventSource: EventSource) {
-                Log.d("ClawdWebSocket", "SSE onClosed")
+                Log.d("SseClient", "SSE onClosed")
                 scheduleReconnect()
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
-                Log.e("ClawdWebSocket", "SSE onFailure url=$url code=${response?.code} error=${t?.javaClass?.simpleName}: ${t?.message}")
+                Log.e("SseClient", "SSE onFailure url=$url code=${response?.code} error=${t?.javaClass?.simpleName}: ${t?.message}")
                 if (response?.code == 401) {
                     _connectionState.value = ConnectionState.AUTH_FAILED
                     return
@@ -143,13 +143,13 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
     private fun handleMessage(rawText: String) {
         val obj = try { json.decodeFromString<JsonObject>(rawText) } catch (_: Exception) { return }
         val type = obj["type"]?.jsonPrimitive?.contentOrNull ?: return
-        Log.d("ClawdWebSocket", "SSE message type=$type")
+        Log.d("SseClient", "SSE message type=$type")
 
         when (type) {
             "ping" -> return  // server heartbeat, watchdog already reset in onEvent
             "connected" -> { /* SSE handshake confirmed */ }
             "clear_sessions" -> {
-                Log.d("ClawdWebSocket", "clear_sessions → syncing=true, sessions cleared")
+                Log.d("SseClient", "clear_sessions → syncing=true, sessions cleared")
                 _sessions.value = emptyMap()
                 _syncing.value = true
             }
@@ -157,7 +157,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
             "snapshot" -> {
                 val sessionsObj = obj["sessions"]?.jsonObject
                 if (sessionsObj == null) {
-                    Log.d("ClawdWebSocket", "snapshot (no sessions field) → syncing=false")
+                    Log.d("SseClient", "snapshot (no sessions field) → syncing=false")
                     _syncing.value = false
                     _sessions.value = emptyMap()
                     return
@@ -172,7 +172,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 obj["displayState"]?.jsonPrimitive?.contentOrNull?.let {
                     _displayState.value = it
                 }
-                Log.d("ClawdWebSocket", "snapshot (${map.size} sessions, displayState=${_displayState.value}) → syncing=false")
+                Log.d("SseClient", "snapshot (${map.size} sessions, displayState=${_displayState.value}) → syncing=false")
                 _syncing.value = false
                 _sessions.value = map
             }
@@ -226,7 +226,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 _sessions.value = _sessions.value.toMutableMap().apply {
                     if (data.isVisible) put(sid, data) else remove(sid)
                 }
-                Log.d("ClawdWebSocket", "state sid=$sid state=${data.state} displayState=${data.displayState} globalDisplayState=${_displayState.value} badge=${data.badge} chip=${data.chipText}/${data.chipColor} dot=${data.dotColor} visible=${data.isVisible}")
+                Log.d("SseClient", "state sid=$sid state=${data.state} displayState=${data.displayState} globalDisplayState=${_displayState.value} badge=${data.badge} chip=${data.chipText}/${data.chipColor} dot=${data.dotColor} visible=${data.isVisible}")
             }
 
             "tool_output" -> {
@@ -251,7 +251,7 @@ class ClawdWebSocket(private val prefsStore: PrefsStore) {
                 scope.launch {
                     SafeExecutor.tryOrReport("WS") {
                         val reqId = obj["id"]?.jsonPrimitive?.contentOrNull
-                        Log.d("ClawdWebSocket", "permission_request id=$reqId")
+                        Log.d("SseClient", "permission_request id=$reqId")
                         val toolNameStr = obj["toolName"]?.jsonPrimitive?.contentOrNull
                         val toolInputObj = obj["toolInput"]?.jsonObject
                         val suggestions = SafeExecutor.tryOrNull("WS") {

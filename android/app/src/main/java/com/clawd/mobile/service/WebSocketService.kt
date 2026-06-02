@@ -15,13 +15,17 @@ import com.clawd.mobile.R
 import com.clawd.mobile.data.ConnectionConfig
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
-import com.clawd.mobile.ws.ClawdWebSocket
+import com.clawd.mobile.ws.SseClient
 import com.clawd.mobile.ws.ConnectionState
 import com.clawd.mobile.util.SafeExecutor
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
+/**
+ * Foreground service managing the SSE connection to Clawd server.
+ * Named WebSocketService for historical reasons; actual transport is SSE (Server-Sent Events).
+ */
 class WebSocketService : Service() {
 
     companion object {
@@ -33,12 +37,12 @@ class WebSocketService : Service() {
         @Volatile
         private var instance: WebSocketService? = null
 
-        private val _webSocketReady = Channel<ClawdWebSocket>(Channel.CONFLATED)
+        private val _webSocketReady = Channel<SseClient>(Channel.CONFLATED)
 
         /** Emits when a new WebSocket instance is created and ready. */
-        val webSocketReady: Flow<ClawdWebSocket> = _webSocketReady.receiveAsFlow()
+        val webSocketReady: Flow<SseClient> = _webSocketReady.receiveAsFlow()
 
-        fun getWebSocket(): ClawdWebSocket? = instance?.webSocket
+        fun getWebSocket(): SseClient? = instance?.webSocket
 
         fun isRunning(): Boolean = instance != null
 
@@ -62,7 +66,7 @@ class WebSocketService : Service() {
     }
 
     private val prefsStore by lazy { PrefsStore.getInstance(this) }
-    var webSocket: ClawdWebSocket? = null
+    var webSocket: SseClient? = null
         private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var stateCollectorJob: Job? = null
@@ -72,7 +76,7 @@ class WebSocketService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        webSocket = ClawdWebSocket(prefsStore)
+        webSocket = SseClient(prefsStore)
         _webSocketReady.trySend(webSocket!!)
     }
 

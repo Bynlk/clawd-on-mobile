@@ -33,6 +33,20 @@ Thinking when you prompt, typing when tools run, grooving or juggling for subage
 
 > Supports Windows 11, macOS, and Ubuntu/Linux. Windows releases provide separate x64 and ARM64 installers. Source builds require Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Antigravity CLI (agy)**, **Cursor Agent**, **CodeBuddy**, **Kiro CLI**, **Kimi Code CLI (Kimi-CLI)**, **Qwen Code**, **opencode**, **Pi**, **OpenClaw**, and **Hermes Agent**.
 
+### 📱 Android Companion App (Community)
+
+> **基于原作者桌面端的社区 Android 移植版**，由 [Bynlk](https://github.com/Bynlk) 开发维护。
+
+Clawd Mobile 是一款原生 Android 客户端，通过局域网 SSE 连接桌面端，在手机上实时同步桌面宠物状态。支持扫码配对、通知栏审批权限请求、SVG/APNG 高保真动画渲染，三角色（Clawd/Calico/Cloudling）完整支持。
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
+  <img src="https://img.shields.io/badge/Kotlin-2.1.0-blue.svg" alt="Kotlin">
+  <img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License">
+</p>
+
+> 📖 **详细文档**: [android/README.md](android/README.md) — 架构设计、状态机、通信协议、项目结构
+
 ## Features
 
 ### Multi-Agent Support

@@ -8,7 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
-import com.clawd.mobile.ws.ClawdWebSocket
+import com.clawd.mobile.ws.SseClient
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,12 +18,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ApprovalViewModel(
     application: Application,
-    private val webSocket: ClawdWebSocket
+    private val webSocket: SseClient
 ) : AndroidViewModel(application) {
 
     class Factory(
         private val application: Application,
-        private val webSocket: ClawdWebSocket
+        private val webSocket: SseClient
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {

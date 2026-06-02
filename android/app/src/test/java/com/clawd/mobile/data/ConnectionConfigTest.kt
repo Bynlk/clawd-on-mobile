@@ -57,13 +57,13 @@ class ConnectionConfigTest {
     @Test
     fun `generate correct stream url for lan`() {
         val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
-        assertEquals("http://192.168.1.10:23334/mobile/stream?token=abcdef1234567890abcdef1234567890", config.streamUrl())
+        assertEquals("http://192.168.1.10:23334/mobile/stream", config.streamUrl())
     }
 
     @Test
     fun `generate correct stream url for remote`() {
         val config = ConnectionConfig("example.com", 443, "abcdef1234567890abcdef1234567890")
-        assertEquals("https://example.com:443/mobile/stream?token=abcdef1234567890abcdef1234567890", config.streamUrl())
+        assertEquals("https://example.com:443/mobile/stream", config.streamUrl())
     }
 
     @Test
@@ -108,20 +108,11 @@ class ConnectionConfigTest {
     // ── streamUrlMasked ────────────────────────────────────────────────
 
     @Test
-    fun `streamUrlMasked masks long token`() {
+    fun `streamUrlMasked returns same url as streamUrl - no token leaked`() {
         val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
-        val masked = config.streamUrlMasked()
-        assertTrue(masked.contains("abcd****7890"))
-        assertFalse(masked.contains("abcdef1234567890abcdef1234567890"))
-        assertTrue(masked.startsWith("http://192.168.1.10:23334/mobile/stream?token="))
-    }
-
-    @Test
-    fun `streamUrlMasked uses asterisks for short token`() {
-        val config = ConnectionConfig("192.168.1.10", 23334, "shorttok")
-        val masked = config.streamUrlMasked()
-        assertTrue(masked.contains("****"))
-        assertFalse(masked.contains("shorttok"))
+        assertEquals(config.streamUrl(), config.streamUrlMasked())
+        assertFalse(config.streamUrlMasked().contains("token"))
+        assertFalse(config.streamUrlMasked().contains("abcdef"))
     }
 
     // ── fromClawdUrl edge cases ────────────────────────────────────────
@@ -152,7 +143,8 @@ class ConnectionConfigTest {
         val url = config.streamUrl()
         // The scheme depends on InetAddress resolution — in unit tests without network,
         // InetAddress.getByName("example.com") may throw, making isLan = false
-        assertTrue(url.contains("://example.com:443/mobile/stream?token="))
+        assertTrue(url.contains("://example.com:443/mobile/stream"))
+        assertFalse(url.contains("token"))
     }
 
     @Test

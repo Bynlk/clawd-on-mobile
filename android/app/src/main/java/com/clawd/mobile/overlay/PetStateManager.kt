@@ -3,7 +3,7 @@ package com.clawd.mobile.overlay
 import android.util.Log
 import com.clawd.mobile.data.SessionData
 import com.clawd.mobile.service.WebSocketService
-import com.clawd.mobile.ws.ClawdWebSocket
+import com.clawd.mobile.ws.SseClient
 import com.clawd.mobile.ws.ConnectionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -76,6 +76,7 @@ class PetStateManager(var character: String) {
         const val WATCHDOG_TIMEOUT_MS      = 60_000L
         const val IDLE_RECHECK_SETTLE_MS   = 200L
         const val IDLE_SLEEP_TIMEOUT_MS    = 60_000L  // 对齐 PC 端 MOUSE_SLEEP_TIMEOUT
+        const val DONE_SESSION_TTL_MS      = 5 * 60 * 1000L  // 5 minutes — expired done-session IDs are cleaned up
 
         // --- Per-character sleep sequence timings (from PC theme.json) ---
         data class SleepConfig(
@@ -400,7 +401,7 @@ class PetStateManager(var character: String) {
     //  WebSocket session collector
     // ======================================================================
 
-    private suspend fun collectSessions(ws: ClawdWebSocket, scope: CoroutineScope) {
+    private suspend fun collectSessions(ws: SseClient, scope: CoroutineScope) {
         // This function blocks until disconnection, mirroring the original design.
         val collectJob = scope.launch {
             ws.sessions.collect { sessions ->
@@ -442,7 +443,7 @@ class PetStateManager(var character: String) {
         }
     }
 
-    private suspend fun waitForWebSocket(): ClawdWebSocket {
+    private suspend fun waitForWebSocket(): SseClient {
         // Fast path: already available
         WebSocketService.getWebSocket()?.let { return it }
         // Wait for the ready event
