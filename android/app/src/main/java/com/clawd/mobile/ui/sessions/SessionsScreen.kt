@@ -92,7 +92,7 @@ fun SessionsScreen(
     }
 
     Scaffold(
-        containerColor = ClawdBgDark
+        containerColor = ClawdBackgroundDark
     ) { padding ->
         Column(
             modifier = Modifier
@@ -161,7 +161,7 @@ fun SessionsScreen(
                     showDevicesPlaceholder = false
                     selectedTab = 0
                 },
-                containerColor = ClawdCardDark,
+                containerColor = ClawdSurfaceDark,
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(ClawdIcons.DeviceDesktop, null, tint = ClawdAccent, modifier = Modifier.size(20.dp))
@@ -195,7 +195,7 @@ fun SessionsScreen(
                     currentRequest.requestId?.let { approvalViewModel.dismissRequest(it) }
                 },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = ClawdCardDark,
+                containerColor = ClawdSurfaceDark,
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             ) {
                 ApprovalSheet(
@@ -279,7 +279,7 @@ private fun SectionLabel(title: String, count: Int) {
 @Composable
 private fun EmptyState(onScan: () -> Unit, onManual: () -> Unit) {
     Box(
-        modifier = Modifier.fillMaxSize().background(ClawdBgDark),
+        modifier = Modifier.fillMaxSize().background(ClawdBackgroundDark),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

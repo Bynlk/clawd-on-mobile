@@ -51,7 +51,7 @@ fun SettingsScreen(
     val isConnected = connectionState == ConnectionState.CONNECTED
 
     Scaffold(
-        containerColor = ClawdBgDark,
+        containerColor = ClawdBackgroundDark,
         topBar = {
             SettingsTopBar(onBack = { navController.popBackStack() })
         }
@@ -154,7 +154,7 @@ private fun ConnectionInfoCard(sseClient: SseClient) {
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 4.dp),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = ClawdCardDark),
+        colors = CardDefaults.cardColors(containerColor = ClawdSurfaceDark),
         border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdGreenBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -222,8 +222,8 @@ private fun AccordionSection(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 4.dp)
-            .border(0.5.dp, ClawdCardBorderDark, RoundedCornerShape(14.dp))
-            .background(ClawdCardDark, RoundedCornerShape(14.dp))
+            .border(0.5.dp, ClawdBorderDark, RoundedCornerShape(14.dp))
+            .background(ClawdSurfaceDark, RoundedCornerShape(14.dp))
     ) {
         // Header
         Row(
@@ -265,7 +265,7 @@ private fun AccordionSection(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         .height(0.5.dp)
-                        .background(ClawdCardBorderDark)
+                        .background(ClawdBorderDark)
                 )
                 Column(modifier = Modifier.padding(16.dp)) {
                     content()
@@ -312,7 +312,7 @@ private fun ManualSection(onManual: () -> Unit) {
     )
     OutlinedButton(
         onClick = onManual,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdCardBorderDark),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -427,7 +427,7 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
                         .setAction(FloatingPetService.ACTION_DISCONNECT)
                 )
             },
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdCardBorderDark),
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -470,7 +470,7 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
                 modifier = Modifier
                     .width(60.dp)
                     .height(36.dp)
-                    .border(0.5.dp, ClawdCardBorderDark, RoundedCornerShape(8.dp))
+                    .border(0.5.dp, ClawdBorderDark, RoundedCornerShape(8.dp))
                     .background(ClawdSurfaceAltDark, RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
@@ -620,7 +620,7 @@ private fun AboutSection() {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Bynlk/clawd-on-desk/releases/latest"))
             context.startActivity(intent)
         },
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdCardBorderDark),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier.fillMaxWidth()
     ) {

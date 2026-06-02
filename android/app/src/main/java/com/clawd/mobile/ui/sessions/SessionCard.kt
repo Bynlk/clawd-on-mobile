@@ -75,8 +75,8 @@ internal fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Mod
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = ClawdCardDark),
-        border = BorderStroke(0.5.dp, ClawdCardBorderDark)
+        colors = CardDefaults.cardColors(containerColor = ClawdSurfaceDark),
+        border = BorderStroke(0.5.dp, ClawdBorderDark)
     ) {
         Column(modifier = Modifier.padding(14.dp, 12.dp, 14.dp, 10.dp)) {
             // Header row: [status-dot] [title] [chip] [elapsed] — matches PC HUD
@@ -141,7 +141,7 @@ internal fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Mod
                 var editName by remember { mutableStateOf(customName) }
                 AlertDialog(
                     onDismissRequest = { showRenameDialog = false },
-                    containerColor = ClawdCardDark,
+                    containerColor = ClawdSurfaceDark,
                     title = { Text(stringResource(R.string.sessions_rename_title), color = ClawdTextDark) },
                     text = {
                         OutlinedTextField(
@@ -232,7 +232,7 @@ internal fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Mod
                     .fillMaxWidth()
                     .padding(top = 10.dp)
                     .height(0.5.dp)
-                    .background(ClawdCardBorderDark)
+                    .background(ClawdBorderDark)
             )
 
             // Footer: events label + count + chevron
@@ -254,7 +254,7 @@ internal fun SessionCard(session: Session, prefsStore: PrefsStore, modifier: Mod
                             fontWeight = FontWeight.SemiBold,
                             color = ClawdMutedDark,
                             modifier = Modifier
-                                .border(0.5.dp, ClawdCardBorderDark, RoundedCornerShape(5.dp))
+                                .border(0.5.dp, ClawdBorderDark, RoundedCornerShape(5.dp))
                                 .background(Color(0xFF232330), RoundedCornerShape(5.dp))
                                 .padding(horizontal = 7.dp, vertical = 2.dp)
                         )

@@ -34,9 +34,6 @@ val ClawdTextSecondary = ClawdMutedDark
 val ClawdTextTertiary = ClawdSubtleDark
 
 // Mockup dark theme — from clawd_mobile_ui_redesign.html
-val ClawdBgDark = Color(0xFF111318)           // page background
-val ClawdCardDark = Color(0xFF1A1D26)         // card, bottom nav, action buttons
-val ClawdCardBorderDark = Color(0x12FFFFFF)   // rgba(255,255,255,0.07) 0.5dp
 val ClawdDividerDark = Color(0xFF2E2E35)      // divider
 val ClawdFaintDark = Color(0xFF52525B)        // meta text, event label
 val ClawdGreenBright = Color(0xFF16A34A)      // connected dot, working badge

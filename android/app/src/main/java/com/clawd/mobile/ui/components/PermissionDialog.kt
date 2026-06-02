@@ -28,13 +28,13 @@ fun PermissionDialog(
     onSkip: () -> Unit
 ) {
     Box(
-        modifier = Modifier.fillMaxSize().background(ClawdBgDark),
+        modifier = Modifier.fillMaxSize().background(ClawdBackgroundDark),
         contentAlignment = Alignment.Center
     ) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(24.dp),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = ClawdCardDark)
+            colors = CardDefaults.cardColors(containerColor = ClawdSurfaceDark)
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),

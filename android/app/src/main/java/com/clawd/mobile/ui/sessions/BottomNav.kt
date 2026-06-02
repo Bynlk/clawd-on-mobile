@@ -30,8 +30,8 @@ internal fun BottomNav(selectedTab: Int, onTabSelected: (Int) -> Unit, modifier:
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 16.dp)
-            .border(0.5.dp, ClawdCardBorderDark, RoundedCornerShape(14.dp))
-            .background(ClawdCardDark.copy(alpha = 0.95f), RoundedCornerShape(14.dp))
+            .border(0.5.dp, ClawdBorderDark, RoundedCornerShape(14.dp))
+            .background(ClawdSurfaceDark.copy(alpha = 0.95f), RoundedCornerShape(14.dp))
             .padding(vertical = 10.dp, horizontal = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
