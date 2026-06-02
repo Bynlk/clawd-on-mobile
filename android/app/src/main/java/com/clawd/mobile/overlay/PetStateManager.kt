@@ -41,7 +41,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * - [reset] is called only from Service lifecycle (onDestroy/onStartCommand), which is serialized by Android.
  * - [emitState] and [commandFlowEmit] write to [MutableStateFlow] which is thread-safe by design.
  */
-class PetStateManager(var character: String) {
+class PetStateManager(
+    var character: String,
+    private val sessionsFlow: StateFlow<Map<String, SessionData>>,
+) {
 
     // ======================================================================
     //  Unified command type — single pipe output
@@ -54,7 +57,12 @@ class PetStateManager(var character: String) {
      */
     sealed interface StateCommand {
         /** Pet state changed — load the corresponding SVG. */
-        data class StateChanged(val state: PetState) : StateCommand
+        data class StateChanged(
+            val state: PetState,
+            val sessionCount: Int = 0,
+            /** Server-resolved SVG filename (from displayHintMap / tier logic). */
+            val resolvedSvg: String? = null
+        ) : StateCommand
         /** One-shot SVG load (reaction, idle animation variant). Does not change [currentState]. */
         data class SvgLoad(val assetPath: String?, val force: Boolean) : StateCommand
         /** Reaction SVG overlay — load immediately, then auto-restore after delay. */
@@ -91,6 +99,19 @@ class PetStateManager(var character: String) {
             "calico"    to SleepConfig(yawnMs = 8_000, collapseMs = 5_200, wakeMs = 5_800, deepSleepMs = 600_000),
             "cloudling" to SleepConfig(yawnMs = 9_030, collapseMs = 4_700, wakeMs = 3_650, deepSleepMs = 600_000)
         )
+
+        /**
+         * Auto-return delays for oneshot states (ms).
+         * Aligned with PC-side `theme.timings.autoReturn` (theme-schema.js DEFAULT_TIMINGS).
+         * After this delay the pet returns to the resolved display state.
+         */
+        val AUTO_RETURN_MS: Map<PetState, Long> = mapOf(
+            PetState.Attention   to 4_000L,
+            PetState.Error       to 5_000L,
+            PetState.Sweeping    to 300_000L,
+            PetState.Notification to 5_000L,
+            PetState.Carrying    to 3_000L,
+        )
     }
 
     // --- Unified output ---
@@ -111,10 +132,11 @@ class PetStateManager(var character: String) {
 
     private var lastNonIdleState: PetState = PetState.Idle
     private var prevBadge: MutableMap<String, String> = mutableMapOf()
-    private val consumedDoneSessions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val consumedDoneSessions = java.util.concurrent.ConcurrentHashMap<String, Long>()  // sessionId → consumedAt (epoch ms)
     private val gifGeneration = AtomicInteger(0)
     private var idleSince: Long = 0L  // idle 状态开始时间，用于 60s 超时对齐 PC 端
     private var sleepSequenceJob: Job? = null
+    private var autoReturnJob: Job? = null
     private var wsCollectorJob: Job? = null
     private val sessionMutex = Mutex()
     private val sleepConfig: SleepConfig get() = SLEEP_TIMINGS[character] ?: SLEEP_TIMINGS["clawd"]!!
@@ -147,13 +169,24 @@ class PetStateManager(var character: String) {
         wsCollectorJob?.cancel()
         wsCollectorJob = null
         cancelSleepSequence()
+        cancelAutoReturn()
         gifGeneration.set(0)
         lastNonIdleState = PetState.Idle
         prevBadge.clear()
+        consumedDoneSessions.clear()
         currentState = PetState.Idle
         idleSince = 0L
         // Reset the command flow so new subscribers start from a clean Idle state
         _commandFlow.value = StateCommand.StateChanged(PetState.Idle)
+    }
+
+    /** Remove entries from consumedDoneSessions that are older than [DONE_SESSION_TTL_MS]. */
+    private fun cleanupExpiredDoneSessions() {
+        val now = System.currentTimeMillis()
+        val expired = consumedDoneSessions.entries
+            .filter { now - it.value > DONE_SESSION_TTL_MS }
+            .map { it.key }
+        expired.forEach { consumedDoneSessions.remove(it) }
     }
 
     // ======================================================================
@@ -185,7 +218,15 @@ class PetStateManager(var character: String) {
 
         // Resolve best state from sessions (excludes sleep sequence states)
         // displayState 已由服务器正确设置（包括 juggling/conducting），不再本地映射
-        var bestState = resolveDisplayState(visible)
+        val bestState = resolveDisplayState(visible)
+
+        // Extract server-resolved SVG from the session that contributed the best state.
+        // For working/juggling/thinking, the server resolves display_svg via displayHintMap
+        // so mobile shows the same animation as desktop.
+        val resolvedSvg = visible
+            .filter { PetState.fromString(it.displayState ?: it.state) == bestState }
+            .maxByOrNull { it.updatedAt ?: 0L }
+            ?.resolvedSvg
 
         // Badge transition detection (happy interlude)
         checkBadgeTransitions(sessions.values, scope)
@@ -204,7 +245,11 @@ class PetStateManager(var character: String) {
                 lastNonIdleState = bestState
                 Log.d("PetState", "emitState: ${bestState.themeKey}")
                 Log.d(TAG, "State update: resolved=${bestState.themeKey}, activeCount=${visible.size}")
-                emitState(bestState)
+                emitState(bestState, resolvedSvg)
+                // Schedule auto-return for oneshot states (aligns with PC autoReturn timer)
+                if (bestState in PetState.ONESHOT_STATES) {
+                    scheduleAutoReturn(bestState, scope)
+                }
             }
         } else {
             // Idle — 等待超时后进入睡眠序列（对齐 PC 端 60s MOUSE_SLEEP_TIMEOUT）
@@ -253,8 +298,9 @@ class PetStateManager(var character: String) {
                 session.badge == "interrupted" -> PetState.Error
                 session.badge == "done" -> {
                     val sid = session.sessionId
-                    if (sid != null && sid !in consumedDoneSessions) {
-                        consumedDoneSessions.add(sid)
+                    if (sid != null && !consumedDoneSessions.containsKey(sid)) {
+                        consumedDoneSessions[sid] = System.currentTimeMillis()
+                        cleanupExpiredDoneSessions()
                         PetState.Attention  // 只触发一次
                     } else {
                         PetState.Idle  // 已消费
@@ -345,6 +391,31 @@ class PetStateManager(var character: String) {
     }
 
     // ======================================================================
+    //  Auto-return timer (aligns with PC AUTO_RETURN_MS)
+    // ======================================================================
+
+    /**
+     * Schedule an auto-return from a oneshot state to the resolved display state.
+     * Mirrors PC `autoReturnTimer` in state.js (applyState, line 485).
+     */
+    private fun scheduleAutoReturn(state: PetState, scope: CoroutineScope) {
+        cancelAutoReturn()
+        val delayMs = AUTO_RETURN_MS[state] ?: return
+        autoReturnJob = scope.launch {
+            delay(delayMs)
+            autoReturnJob = null
+            val resolved = resolveBestState()
+            Log.d(TAG, "Auto-return from ${state.themeKey} → ${resolved.themeKey}")
+            emitState(resolved)
+        }
+    }
+
+    private fun cancelAutoReturn() {
+        autoReturnJob?.cancel()
+        autoReturnJob = null
+    }
+
+    // ======================================================================
     //  Badge transition detection (1.5 s happy interlude)
     // ======================================================================
 
@@ -424,8 +495,7 @@ class PetStateManager(var character: String) {
             while (isActive) {
                 delay(WATCHDOG_INTERVAL_MS)
                 if (!currentState.isIdleLike) {
-                    val ws = WebSocketService.getWebSocket()
-                    val hasActiveSessions = ws?.sessions?.value?.values?.any { it.isVisible } ?: false
+                    val hasActiveSessions = sessionsFlow.value.values.any { it.isVisible }
                     if (!hasActiveSessions) {
                         Log.d(TAG, "Watchdog: state=${currentState.themeKey} but no visible sessions, forcing idle")
                         emitState(PetState.Idle)
@@ -457,13 +527,17 @@ class PetStateManager(var character: String) {
     /**
      * Emit a state change through the unified command pipe.
      * Also updates [currentState] for internal conditional logic.
+     *
+     * @param resolvedSvg Optional server-resolved SVG filename from displayHintMap.
      */
-    private fun emitState(state: PetState) {
+    private fun emitState(state: PetState, resolvedSvg: String? = null) {
         if (currentState != state) {
             Log.d(TAG, "State → ${state.themeKey}")
         }
         currentState = state
-        commandFlowEmit(StateCommand.StateChanged(state))
+        // Cancel any pending auto-return — new state supersedes it.
+        cancelAutoReturn()
+        commandFlowEmit(StateCommand.StateChanged(state, resolvedSvg = resolvedSvg))
     }
 
     /**
@@ -482,9 +556,8 @@ class PetStateManager(var character: String) {
 
     /** Snapshot the best visible session's state, falling back to Idle. */
     private fun resolveBestState(): PetState {
-        val ws = WebSocketService.getWebSocket()
-        val visible = ws?.sessions?.value?.values?.filter { it.isVisible }
-            ?: return PetState.Idle
-        return resolveDisplayState(visible)
+        val visible = sessionsFlow.value.values.filter { it.isVisible }
+        return if (visible.isEmpty()) PetState.Idle
+        else resolveDisplayState(visible)
     }
 }

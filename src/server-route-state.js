@@ -234,6 +234,13 @@ function handleStatePost(req, res, options) {
             const chip = deriveMobileChipFields(hookState, tempEvents);
             console.log(`[chip-debug] hookState=${hookState} event=${event} tempLast=${JSON.stringify(tempEvents[tempEvents.length-1])} chip=${JSON.stringify(chip)}`);
             console.log(`[mobile-increment] sid=${sid} hookState=${hookState} effectiveBadge=${effectiveBadge} chipText=${chip ? chip.text : null}`);
+            // Resolve display SVG for mobile — uses the same displayHintMap
+            // lookup as the desktop renderer so working/juggling/thinking
+            // animations match when a hook sends display_svg.
+            let resolvedSvg = null;
+            if (typeof ctx.resolveMobileSvg === "function") {
+              resolvedSvg = ctx.resolveMobileSvg(sessionState);
+            }
             const mobilePayload = {
               sessionId: sid,
               state: sessionState,
@@ -246,6 +253,7 @@ function handleStatePost(req, res, options) {
               lastOutput,
               displayState,
               badge,
+              resolvedSvg,
               displayTitle: session ? sessionDisplayTitle(sid, session, {}, {}) : (sessionTitle || null),
               chipText: chip ? chip.text : null,
               chipColor: chip ? chip.color : null,

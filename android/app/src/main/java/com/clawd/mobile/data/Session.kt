@@ -26,7 +26,10 @@ data class SessionData(
     val chipText: String? = null,
     val chipColor: String? = null,
     val dotColor: String? = null,
-    val isVisible: Boolean = true
+    val isVisible: Boolean = true,
+    // Resolved SVG from server (displayHintMap + tier logic).
+    // Non-null for working/juggling/thinking when hook sends display_svg.
+    val resolvedSvg: String? = null
 )
 
 @Serializable

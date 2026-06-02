@@ -75,7 +75,9 @@ class FloatingPetService : Service() {
         Log.d(TAG, "onCreate")
 
         prefsStore = PrefsStore.getInstance(this)
-        stateManager = PetStateManager(character)
+        val sessionsFlow = WebSocketService.getWebSocket()?.sessions
+            ?: kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
+        stateManager = PetStateManager(character, sessionsFlow)
 
         startForeground(NOTIFICATION_ID, buildNotification())
         loadPrefs()
@@ -150,17 +152,20 @@ class FloatingPetService : Service() {
                 val state = command.state
                 val sessionCount = WebSocketService.getWebSocket()
                     ?.sessions?.value?.values?.count { it.isVisible } ?: 0
-                val assetPath = SvgLoader.resolveSvgAsset(state, sessionCount, character)
+                // Use server-resolved SVG when available (displayHintMap match),
+                // otherwise fall back to local tier/fallback logic.
+                val assetPath = command.resolvedSvg?.let { "svg/$character/$it" }
+                    ?: SvgLoader.resolveSvgAsset(state, sessionCount, character)
                 val isOneshot = state in PetState.ONESHOT_STATES
                 Log.d("PetState", "handleCommand state=${state.themeKey} sessionCount=$sessionCount assetPath=$assetPath isOneshot=$isOneshot")
                 if (assetPath != null) {
+                    // Oneshot states: loop=false so the SVG plays once then stops
+                    // on its last frame. The autoReturn timer in PetStateManager
+                    // handles the transition back to the resolved display state.
                     SvgLoader.loadSvg(
                         petView ?: return, assetPath,
                         loop = !isOneshot,
-                        onFinished = if (isOneshot) ({
-                            Log.w(TAG, "Oneshot ${state.themeKey} SVG finished → Idle")
-                            handleCommand(PetStateManager.StateCommand.StateChanged(PetState.Idle))
-                        }) else null
+                        onFinished = null
                     )
                 }
             }

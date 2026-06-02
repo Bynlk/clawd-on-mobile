@@ -25,7 +25,16 @@ object SvgLoader {
     private const val SVG_BASE = "https://appassets.androidplatform.net/svg"
     private const val MAX_CACHE_SIZE = 128
 
+    /**
+     * Safety-net timeout for oneshot SVG loadFinished callback (ms).
+     * The authoritative return mechanism is PetStateManager's autoReturn timer
+     * (5 000 ms for error, aligned with PC AUTO_RETURN_MS).  This timeout is
+     * only a fallback in case the autoReturn path is somehow delayed.
+     */
+    private const val ONESHOT_TIMEOUT_MS = 6_000L
+
     private var appContext: Context? = null
+    private var pollGeneration = 0  // cancelled on each loadSvg; stale polls check this
 
     /**
      * Initialize with application context for real asset existence checks.
@@ -279,32 +288,20 @@ object SvgLoader {
         loop: Boolean = true,
         onFinished: (() -> Unit)? = null
     ) {
+        // Cancel any stale poll chain from a previous loadSvg call.
+        // Without this, old postDelayed callbacks fire on new content and
+        // can trigger onFinished at the wrong time.
+        pollGeneration++
+
         val url = "$SVG_BASE/${assetPath.removePrefix("svg/")}"
         val loopStyle = if (loop) "" else "animation-iteration-count: 1;"
         val isApng = assetPath.endsWith(".apng")
-
-        // JS snippet to detect CSS animation end (injected for non-looping SVGs)
-        val animEndScript = if (!isApng && !loop && onFinished != null) """
-            |<script>
-            |  document.addEventListener('animationend', function(e) {
-            |    if (e.target.tagName === 'svg' || e.target.closest('svg')) {
-            |      window._clawdAnimFinished = true;
-            |    }
-            |  });
-            |  var svg = document.querySelector('.container svg');
-            |  if (svg) {
-            |    svg.addEventListener('endEvent', function() {
-            |      window._clawdAnimFinished = true;
-            |    });
-            |  }
-            |</script>
-        """.trimMargin() else ""
 
         val templateName = if (isApng) "apng_template.html" else "svg_template.html"
         val html = loadTemplate(webView.context, templateName)
             .replace("{{URL}}", url)
             .replace("{{LOOP_STYLE}}", loopStyle)
-            .replace("{{ANIM_END_SCRIPT}}", animEndScript)
+            .replace("{{ANIM_END_SCRIPT}}", "")
 
         webView.loadDataWithBaseURL(
             "https://appassets.androidplatform.net/",
@@ -314,15 +311,18 @@ object SvgLoader {
             null
         )
 
-        // For non-looping animations, detect end via JS animationend or timeout
+        // For non-looping animations, use a fixed timeout to detect end.
+        // We do NOT rely on CSS animationend because all oneshot SVGs define
+        // infinite animations on child elements — the injected
+        // animation-iteration-count:1 on <svg> cannot override them.
+        // The autoReturn timer in PetStateManager is the authoritative
+        // return mechanism; this callback is a safety-net fallback.
         if (!loop && onFinished != null) {
-            if (isApng) {
-                // APNG: no CSS animationend available, use fixed timeout
-                webView.postDelayed({ onFinished() }, 3000)
-            } else {
-                // SVG: poll for CSS animationend event, 10s timeout fallback
-                pollAnimationEnd(webView, onFinished)
-            }
+            val gen = pollGeneration
+            val timeoutMs = if (isApng) 3000L else ONESHOT_TIMEOUT_MS
+            webView.postDelayed({
+                if (pollGeneration == gen) onFinished()
+            }, timeoutMs)
         }
 
         Log.d(TAG, "loadSvg: $assetPath (loop=$loop, isApng=$isApng)")
@@ -393,30 +393,6 @@ object SvgLoader {
     //  Internal helpers
     // ======================================================================
 
-    private const val POLL_INTERVAL_MS = 200L
-    private const val POLL_MAX_ATTEMPTS = 50  // 50 × 200ms = 10s timeout
-
-    /**
-     * Poll [webView] every 200ms for `window._clawdAnimFinished` set by the
-     * injected CSS animationend listener. Calls [onFinished] when detected
-     * or after 10s timeout (whichever comes first).
-     */
-    private fun pollAnimationEnd(webView: WebView, onFinished: () -> Unit, attempt: Int = 0) {
-        if (attempt >= POLL_MAX_ATTEMPTS) {
-            Log.w(TAG, "animationend poll timeout after ${attempt * POLL_INTERVAL_MS}ms")
-            onFinished()
-            return
-        }
-        webView.postDelayed({
-            webView.evaluateJavascript("window._clawdAnimFinished ? '1' : '0'") { result ->
-                if (result?.trim('"') == "1") {
-                    onFinished()
-                } else {
-                    pollAnimationEnd(webView, onFinished, attempt + 1)
-                }
-            }
-        }, POLL_INTERVAL_MS)
-    }
 
     /**
      * Build candidate filename list for fallback resolution.
