@@ -53,9 +53,6 @@ class SseClient(private val prefsStore: PrefsStore) {
         _sessions.value = _sessionsMap.toMap()
     }
 
-    private val _messages = MutableSharedFlow<WsMessage>(extraBufferCapacity = 64)
-    val messages: SharedFlow<WsMessage> = _messages
-
     private val _permissionRequests = MutableSharedFlow<PermissionRequestData>(extraBufferCapacity = 16)
     val permissionRequests: SharedFlow<PermissionRequestData> = _permissionRequests
 
@@ -81,7 +78,8 @@ class SseClient(private val prefsStore: PrefsStore) {
     }
 
     fun reconnect() {
-        if (_connectionState.value == ConnectionState.CONNECTED) return
+        val state = _connectionState.value
+        if (state == ConnectionState.CONNECTED || state == ConnectionState.PENDING_CERT_CONFIRMATION) return
         val saved = config ?: prefsStore.loadConfig() ?: return
         config = saved
         HttpClientProvider.setCertFingerprint(prefsStore.getCertFingerprint())
@@ -98,6 +96,11 @@ class SseClient(private val prefsStore: PrefsStore) {
         _sessionsMap.clear()
         emitSessions()
         _displayState.value = "idle"
+    }
+
+    /** Set connection state externally (e.g. after TOFU cert confirmation). */
+    fun setConnectionState(state: ConnectionState) {
+        _connectionState.value = state
     }
 
     private fun resetWatchdog() {
@@ -140,14 +143,17 @@ class SseClient(private val prefsStore: PrefsStore) {
                     return
                 }
 
-                _connectionState.value = ConnectionState.CONNECTED
-
                 // TOFU: first HTTPS connection — extract cert fingerprint for user confirmation
                 val cfg = config
                 if (cfg != null && prefsStore.getCertFingerprint() == null) {
                     CertificateVerifier.extractFingerprint(response)?.let { fp ->
+                        _connectionState.value = ConnectionState.PENDING_CERT_CONFIRMATION
                         scope.launch { _certFingerprintPending.emit(CertFingerprintInfo(cfg.host, fp)) }
+                    } ?: run {
+                        _connectionState.value = ConnectionState.CONNECTED
                     }
+                } else {
+                    _connectionState.value = ConnectionState.CONNECTED
                 }
             }
 
@@ -173,6 +179,7 @@ class SseClient(private val prefsStore: PrefsStore) {
     }
 
     private fun handleMessage(rawText: String) {
+        if (_connectionState.value == ConnectionState.PENDING_CERT_CONFIRMATION) return
         val parsed = messageParser.parse(rawText) ?: return
         Log.d(TAG, "SSE message type=${parsed::class.simpleName}")
 
@@ -231,21 +238,6 @@ class SseClient(private val prefsStore: PrefsStore) {
             }
 
             is ParsedMessage.Unknown -> { /* ignore unknown types */ }
-        }
-
-        scope.launch {
-            val msg = WsMessage(
-                type = parsed::class.simpleName ?: "unknown",
-                timestamp = parsed.timestamp,
-                sessionId = when (parsed) {
-                    is ParsedMessage.State -> parsed.sessionId
-                    is ParsedMessage.ToolOutput -> parsed.sessionId
-                    is ParsedMessage.SessionDeleted -> parsed.sessionId
-                    is ParsedMessage.PermissionRequest -> parsed.data.sessionId
-                    else -> null
-                },
-            )
-            _messages.emit(msg)
         }
     }
 

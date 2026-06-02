@@ -52,9 +52,7 @@ class SseService : Service() {
             val intent = Intent(context, SseService::class.java).apply {
                 action = ACTION_CONNECT
                 config?.let {
-                    putExtra("host", it.host)
-                    putExtra("port", it.port)
-                    putExtra("token", it.token)
+                    putExtra("use_new_config", true)
                 }
             }
             context.startForegroundService(intent)
@@ -87,11 +85,14 @@ class SseService : Service() {
             ACTION_CONNECT -> {
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.status_connecting)))
                 acquireLocks()
-                val host = intent.getStringExtra("host")
-                val port = intent.getIntExtra("port", 0)
-                val token = intent.getStringExtra("token")
-                if (host != null && port > 0 && token != null) {
-                    sseClient?.connect(ConnectionConfig(host, port, token))
+                val useNewConfig = intent.getBooleanExtra("use_new_config", false)
+                if (useNewConfig) {
+                    val config = prefsStore.loadConfig()
+                    if (config != null) {
+                        sseClient?.connect(config)
+                    } else {
+                        sseClient?.reconnect()
+                    }
                 } else {
                     sseClient?.reconnect()
                 }
@@ -130,6 +131,7 @@ class SseService : Service() {
                 val status = when (state) {
                     ConnectionState.CONNECTED -> getString(R.string.status_connected_to, sseClient?.currentHost ?: "")
                     ConnectionState.CONNECTING -> getString(R.string.status_connecting)
+                    ConnectionState.PENDING_CERT_CONFIRMATION -> getString(R.string.status_connected_to, sseClient?.currentHost ?: "")
                     ConnectionState.RECONNECTING -> getString(R.string.status_reconnecting)
                     ConnectionState.AUTH_FAILED -> getString(R.string.status_auth_failed)
                     ConnectionState.DISCONNECTED -> getString(R.string.status_disconnected)

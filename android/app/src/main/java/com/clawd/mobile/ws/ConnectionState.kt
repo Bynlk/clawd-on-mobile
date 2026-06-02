@@ -4,6 +4,7 @@ enum class ConnectionState {
     DISCONNECTED,
     CONNECTING,
     CONNECTED,
+    PENDING_CERT_CONFIRMATION,
     RECONNECTING,
     AUTH_FAILED;
 
