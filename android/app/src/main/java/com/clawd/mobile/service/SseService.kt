@@ -24,9 +24,8 @@ import kotlinx.coroutines.flow.*
 
 /**
  * Foreground service managing the SSE connection to Clawd server.
- * Named WebSocketService for historical reasons; actual transport is SSE (Server-Sent Events).
  */
-class WebSocketService : Service() {
+class SseService : Service() {
 
     companion object {
         const val CHANNEL_SERVICE = "clawd_service"
@@ -38,19 +37,19 @@ class WebSocketService : Service() {
         private const val WAKELOCK_RENEWAL_INTERVAL_MS = 30 * 60 * 1000L  // 30 minutes
 
         @Volatile
-        private var instance: WebSocketService? = null
+        private var instance: SseService? = null
 
-        private val _webSocketReady = Channel<SseClient>(Channel.CONFLATED)
+        private val _clientReady = Channel<SseClient>(Channel.CONFLATED)
 
-        /** Emits when a new WebSocket instance is created and ready. */
-        val webSocketReady: Flow<SseClient> = _webSocketReady.receiveAsFlow()
+        /** Emits when a new SseClient instance is created and ready. */
+        val clientReady: Flow<SseClient> = _clientReady.receiveAsFlow()
 
-        fun getWebSocket(): SseClient? = instance?.webSocket
+        fun getClient(): SseClient? = instance?.sseClient
 
         fun isRunning(): Boolean = instance != null
 
         fun start(context: Context, config: ConnectionConfig? = null) {
-            val intent = Intent(context, WebSocketService::class.java).apply {
+            val intent = Intent(context, SseService::class.java).apply {
                 action = ACTION_CONNECT
                 config?.let {
                     putExtra("host", it.host)
@@ -62,14 +61,14 @@ class WebSocketService : Service() {
         }
 
         fun stop(context: Context) {
-            context.startService(Intent(context, WebSocketService::class.java).apply {
+            context.startService(Intent(context, SseService::class.java).apply {
                 action = ACTION_DISCONNECT
             })
         }
     }
 
     private val prefsStore by lazy { PrefsStore.getInstance(this) }
-    var webSocket: SseClient? = null
+    var sseClient: SseClient? = null
         private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var stateCollectorJob: Job? = null
@@ -79,8 +78,8 @@ class WebSocketService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        webSocket = SseClient(prefsStore)
-        _webSocketReady.trySend(webSocket!!)
+        sseClient = SseClient(prefsStore)
+        _clientReady.trySend(sseClient!!)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -92,14 +91,14 @@ class WebSocketService : Service() {
                 val port = intent.getIntExtra("port", 0)
                 val token = intent.getStringExtra("token")
                 if (host != null && port > 0 && token != null) {
-                    webSocket?.connect(ConnectionConfig(host, port, token))
+                    sseClient?.connect(ConnectionConfig(host, port, token))
                 } else {
-                    webSocket?.reconnect()
+                    sseClient?.reconnect()
                 }
                 startStateCollector()
             }
             ACTION_DISCONNECT -> {
-                webSocket?.disconnect()
+                sseClient?.disconnect()
                 releaseLocks()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -108,7 +107,7 @@ class WebSocketService : Service() {
                 // Service restarted by system
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.status_disconnected)))
                 acquireLocks()
-                webSocket?.reconnect()
+                sseClient?.reconnect()
                 startStateCollector()
             }
         }
@@ -127,9 +126,9 @@ class WebSocketService : Service() {
                 }
             }
 
-            webSocket?.connectionState?.collect { state ->
+            sseClient?.connectionState?.collect { state ->
                 val status = when (state) {
-                    ConnectionState.CONNECTED -> getString(R.string.status_connected_to, webSocket?.currentHost ?: "")
+                    ConnectionState.CONNECTED -> getString(R.string.status_connected_to, sseClient?.currentHost ?: "")
                     ConnectionState.CONNECTING -> getString(R.string.status_connecting)
                     ConnectionState.RECONNECTING -> getString(R.string.status_reconnecting)
                     ConnectionState.AUTH_FAILED -> getString(R.string.status_auth_failed)
@@ -140,15 +139,15 @@ class WebSocketService : Service() {
                     nm.notify(NOTIFICATION_ID, buildNotification(status))
 
                     // Alert notifications for connection state changes
-                    val alertOpenIntent = Intent(this@WebSocketService, MainActivity::class.java).apply {
+                    val alertOpenIntent = Intent(this@SseService, MainActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     }
                     if (previousState == ConnectionState.CONNECTED && state == ConnectionState.DISCONNECTED) {
                         val alertPending = PendingIntent.getActivity(
-                            this@WebSocketService, "conn:disconnect".hashCode(), alertOpenIntent,
+                            this@SseService, "conn:disconnect".hashCode(), alertOpenIntent,
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                         )
-                        val alert = NotificationCompat.Builder(this@WebSocketService, NotificationHelper.CHANNEL_ALERT)
+                        val alert = NotificationCompat.Builder(this@SseService, NotificationHelper.CHANNEL_ALERT)
                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                             .setContentTitle(getString(R.string.alert_disconnect_title))
                             .setContentText(getString(R.string.alert_disconnect_text))
@@ -160,10 +159,10 @@ class WebSocketService : Service() {
                     }
                     if (previousState == ConnectionState.RECONNECTING && state == ConnectionState.CONNECTED) {
                         val alertPending = PendingIntent.getActivity(
-                            this@WebSocketService, "conn:reconnect".hashCode(), alertOpenIntent,
+                            this@SseService, "conn:reconnect".hashCode(), alertOpenIntent,
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                         )
-                        val alert = NotificationCompat.Builder(this@WebSocketService, NotificationHelper.CHANNEL_ALERT)
+                        val alert = NotificationCompat.Builder(this@SseService, NotificationHelper.CHANNEL_ALERT)
                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                             .setContentTitle(getString(R.string.alert_reconnect_title))
                             .setContentText(getString(R.string.alert_reconnect_text))
@@ -223,7 +222,7 @@ class WebSocketService : Service() {
     private fun renewWakeLock() {
         wakeLock?.let { wl ->
             if (!wl.isHeld) {
-                android.util.Log.d("WebSocketService", "WakeLock expired, re-acquiring")
+                android.util.Log.d("SseService", "WakeLock expired, re-acquiring")
                 wl.acquire(WAKELOCK_TIMEOUT_MS)
             }
         }
@@ -235,8 +234,8 @@ class WebSocketService : Service() {
         stateCollectorJob?.cancel()
         releaseLocks()
         scope.cancel()
-        webSocket?.destroy()
-        webSocket = null
+        sseClient?.destroy()
+        sseClient = null
         instance = null
         super.onDestroy()
     }

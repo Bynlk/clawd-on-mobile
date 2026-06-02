@@ -17,7 +17,7 @@ import androidx.core.app.NotificationCompat
 import com.clawd.mobile.ClawdApp
 import com.clawd.mobile.R
 import com.clawd.mobile.data.PrefsStore
-import com.clawd.mobile.service.WebSocketService
+import com.clawd.mobile.service.SseService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -75,7 +75,7 @@ class FloatingPetService : Service() {
         Log.d(TAG, "onCreate")
 
         prefsStore = PrefsStore.getInstance(this)
-        val sessionsFlow = WebSocketService.getWebSocket()?.sessions
+        val sessionsFlow = SseService.getClient()?.sessions
             ?: kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
         stateManager = PetStateManager(character, sessionsFlow)
 

@@ -12,7 +12,7 @@ import com.clawd.mobile.data.ConnectionRepository
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.data.SessionRepository
 import com.clawd.mobile.notification.StatusNotifier
-import com.clawd.mobile.service.WebSocketService
+import com.clawd.mobile.service.SseService
 import com.clawd.mobile.ui.approval.ApprovalViewModel
 import com.clawd.mobile.ui.sessions.SessionsScreen
 import com.clawd.mobile.ui.scan.ScanScreen
@@ -33,32 +33,32 @@ fun ClawdNavGraph() {
 
     // Start foreground service
     LaunchedEffect(Unit) {
-        WebSocketService.start(context)
+        SseService.start(context)
     }
 
-    // Wait for service to provide WebSocket, fallback to local instance
-    var webSocket by remember { mutableStateOf<SseClient?>(null) }
+    // Wait for service to provide SseClient, fallback to local instance
+    var sseClient by remember { mutableStateOf<SseClient?>(null) }
     var wsRefreshKey by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(wsRefreshKey) {
         // Fast path: already available
-        WebSocketService.getWebSocket()?.let {
-            webSocket = it
+        SseService.getClient()?.let {
+            sseClient = it
             return@LaunchedEffect
         }
-        // Wait for service to create WebSocket (event-driven, no polling)
+        // Wait for service to create SseClient (event-driven, no polling)
         val ws = withTimeoutOrNull(5_000L) {
-            WebSocketService.webSocketReady.first()
+            SseService.clientReady.first()
         }
         if (ws != null) {
-            webSocket = ws
-        } else if (webSocket == null) {
+            sseClient = ws
+        } else if (sseClient == null) {
             // Fallback if service didn't start
-            webSocket = SseClient(prefsStore)
+            sseClient = SseClient(prefsStore)
         }
     }
 
-    val ws = webSocket ?: return
+    val ws = sseClient ?: return
 
     // Repositories — unified data access layer
     val sessionRepository = remember(ws) { SessionRepository(ws.sessions, prefsStore) }
@@ -133,7 +133,7 @@ fun ClawdNavGraph() {
         composable("sessions") {
             SessionsScreen(
                 navController = navController,
-                webSocket = ws,
+                sseClient = ws,
                 approvalViewModel = approvalViewModel,
                 prefsStore = prefsStore
             )
@@ -142,7 +142,7 @@ fun ClawdNavGraph() {
             ScanScreen(
                 onBack = { navController.popBackStack() },
                 onScanned = { config ->
-                    WebSocketService.start(context, config)
+                    SseService.start(context, config)
                     wsRefreshKey++
                     navController.navigate("sessions") {
                         popUpTo("sessions") { inclusive = true }
@@ -155,7 +155,7 @@ fun ClawdNavGraph() {
                 prefsStore = prefsStore,
                 onBack = { navController.popBackStack() },
                 onConnect = { config ->
-                    WebSocketService.start(context, config)
+                    SseService.start(context, config)
                     wsRefreshKey++
                     navController.navigate("sessions") {
                         popUpTo("sessions") { inclusive = true }
@@ -166,7 +166,7 @@ fun ClawdNavGraph() {
         composable("settings") {
             SettingsScreen(
                 navController = navController,
-                webSocket = ws,
+                sseClient = ws,
                 prefsStore = prefsStore
             )
         }

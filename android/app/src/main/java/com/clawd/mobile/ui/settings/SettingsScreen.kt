@@ -44,10 +44,10 @@ import com.clawd.mobile.ws.ConnectionState
 @Composable
 fun SettingsScreen(
     navController: NavController,
-    webSocket: SseClient,
+    sseClient: SseClient,
     prefsStore: PrefsStore
 ) {
-    val connectionState by webSocket.connectionState.collectAsState()
+    val connectionState by sseClient.connectionState.collectAsState()
     val isConnected = connectionState == ConnectionState.CONNECTED
 
     Scaffold(
@@ -65,7 +65,7 @@ fun SettingsScreen(
         ) {
             // Connection info (when connected)
             if (isConnected) {
-                ConnectionInfoCard(webSocket)
+                ConnectionInfoCard(sseClient)
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
@@ -144,10 +144,10 @@ private fun SettingsTopBar(onBack: () -> Unit) {
 // ─── Connection Info Card ─────────────────────────────────────────
 
 @Composable
-private fun ConnectionInfoCard(webSocket: SseClient) {
+private fun ConnectionInfoCard(sseClient: SseClient) {
     val clipboard = LocalClipboardManager.current
-    val host = webSocket.currentHost ?: ""
-    val port = webSocket.currentPort?.toString() ?: ""
+    val host = sseClient.currentHost ?: ""
+    val port = sseClient.currentPort?.toString() ?: ""
 
     Card(
         modifier = Modifier

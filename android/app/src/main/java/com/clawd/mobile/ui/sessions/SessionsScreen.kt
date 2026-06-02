@@ -31,13 +31,13 @@ import com.clawd.mobile.ws.SseClient
 @Composable
 fun SessionsScreen(
     navController: NavController,
-    webSocket: SseClient,
+    sseClient: SseClient,
     approvalViewModel: ApprovalViewModel,
     prefsStore: PrefsStore
 ) {
-    val connectionState by webSocket.connectionState.collectAsState()
-    val sessionsMap by webSocket.sessions.collectAsState()
-    val syncing by webSocket.syncing.collectAsState()
+    val connectionState by sseClient.connectionState.collectAsState()
+    val sessionsMap by sseClient.sessions.collectAsState()
+    val syncing by sseClient.syncing.collectAsState()
     val pendingRequests by approvalViewModel.pendingRequests.collectAsState()
     val countdowns by approvalViewModel.countdowns.collectAsState()
     val notificationRequestId by approvalViewModel.notificationRequestId.collectAsState()

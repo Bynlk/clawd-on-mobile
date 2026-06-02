@@ -6,7 +6,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
-import com.clawd.mobile.service.WebSocketService
+import com.clawd.mobile.service.SseService
 import com.clawd.mobile.ws.ConnectionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -58,7 +58,7 @@ class PetBubbleManager(
         val screenH = context.resources.displayMetrics.heightPixels
         val maxBubbleH = (screenH * BUBBLE_HEIGHT_SCREEN_RATIO).toInt()
 
-        val ws = WebSocketService.getWebSocket()
+        val ws = SseService.getClient()
         val connectionState = ws?.connectionState?.value
         val sessions = ws?.sessions?.value?.values?.filter { it.isVisible } ?: emptyList()
 

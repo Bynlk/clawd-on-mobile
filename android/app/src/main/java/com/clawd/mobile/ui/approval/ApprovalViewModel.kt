@@ -18,16 +18,16 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ApprovalViewModel(
     application: Application,
-    private val webSocket: SseClient
+    private val sseClient: SseClient
 ) : AndroidViewModel(application) {
 
     class Factory(
         private val application: Application,
-        private val webSocket: SseClient
+        private val sseClient: SseClient
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-            return ApprovalViewModel(application, webSocket) as T
+            return ApprovalViewModel(application, sseClient) as T
         }
     }
 
@@ -84,7 +84,7 @@ class ApprovalViewModel(
 
     init {
         viewModelScope.launch {
-            webSocket.permissionRequests.collect { request ->
+            sseClient.permissionRequests.collect { request ->
                 handleNewRequest(request)
             }
         }
@@ -93,7 +93,7 @@ class ApprovalViewModel(
     private fun resolveSessionName(sessionId: String?): String? {
         if (sessionId == null) return null
         prefsStore.getSessionName(sessionId)?.let { return it }
-        webSocket.sessions.value[sessionId]?.let { data ->
+        sseClient.sessions.value[sessionId]?.let { data ->
             data.displayTitle?.let { return it }
             data.agentId?.let { return it }
         }
@@ -162,23 +162,23 @@ class ApprovalViewModel(
     }
 
     fun approve(requestId: String) {
-        webSocket.sendPermissionResponse(requestId, "allow")
+        sseClient.sendPermissionResponse(requestId, "allow")
         removeRequest(requestId, saveForRestore = false)
     }
 
     fun deny(requestId: String) {
-        webSocket.sendPermissionResponse(requestId, "deny")
+        sseClient.sendPermissionResponse(requestId, "deny")
         removeRequest(requestId, saveForRestore = false)
     }
 
     fun approveWithSuggestion(requestId: String, suggestionIndex: Int) {
-        webSocket.sendPermissionResponse(requestId, "allow", suggestionIndex)
+        sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex)
         removeRequest(requestId, saveForRestore = false)
     }
 
     fun submitElicitation(requestId: String, answers: Map<String, String>) {
         val request = _pendingRequests.value.find { it.requestId == requestId }
-        webSocket.sendElicitationResponse(requestId, request?.toolInputRaw, answers)
+        sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers)
         removeRequest(requestId, saveForRestore = false)
     }
 

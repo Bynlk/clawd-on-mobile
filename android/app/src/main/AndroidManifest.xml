@@ -52,7 +52,7 @@
         </receiver>
 
         <service
-            android:name=".service.WebSocketService"
+            android:name=".service.SseService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
