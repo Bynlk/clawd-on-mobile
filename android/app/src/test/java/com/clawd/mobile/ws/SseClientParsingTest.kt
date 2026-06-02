@@ -6,12 +6,13 @@ import org.junit.Test
 import org.junit.Assert.*
 
 /**
- * Tests for JSON message parsing logic used in SseClient.handleMessage.
- * These test the data model deserialization without needing a real SSE connection.
+ * Tests for [MessageParser] — the real SSE message parser.
+ * Verifies both typed [ParsedMessage] output and [buildToolInputSummary] logic.
  */
 class SseClientParsingTest {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val parser = MessageParser()
 
     // ── SessionData deserialization ──────────────────────────────────
 
@@ -179,53 +180,75 @@ class SseClientParsingTest {
         assertEquals(0L, output.at)
     }
 
-    // ── Message type routing logic ───────────────────────────────────
+    // ── MessageParser.parse() — typed routing ─────────────────────────
 
     @Test
-    fun `parse message type from JSON`() {
-        val types = listOf("ping", "connected", "clear_sessions", "snapshot", "state", "tool_output", "session_deleted", "permission_request")
-        for (type in types) {
-            val jsonString = """{"type": "$type"}"""
-            val obj = json.decodeFromString<JsonObject>(jsonString)
-            assertEquals(type, obj["type"]?.jsonPrimitive?.contentOrNull)
-        }
+    fun `parse ping message returns Ping`() {
+        val result = parser.parse("""{"type": "ping", "timestamp": 100}""")
+        assertTrue(result is ParsedMessage.Ping)
+        assertEquals(100L, result!!.timestamp)
     }
 
     @Test
-    fun `parse snapshot with sessions`() {
+    fun `parse connected message returns Connected`() {
+        val result = parser.parse("""{"type": "connected"}""")
+        assertTrue(result is ParsedMessage.Connected)
+    }
+
+    @Test
+    fun `parse clear_sessions message returns ClearSessions`() {
+        val result = parser.parse("""{"type": "clear_sessions"}""")
+        assertTrue(result is ParsedMessage.ClearSessions)
+    }
+
+    @Test
+    fun `parse unknown type returns Unknown`() {
+        val result = parser.parse("""{"type": "future_event"}""")
+        assertTrue(result is ParsedMessage.Unknown)
+        assertEquals("future_event", (result as ParsedMessage.Unknown).type)
+    }
+
+    @Test
+    fun `parse malformed JSON returns null`() {
+        assertNull(parser.parse("not json"))
+    }
+
+    @Test
+    fun `parse JSON without type returns null`() {
+        assertNull(parser.parse("""{"foo": "bar"}"""))
+    }
+
+    @Test
+    fun `parse snapshot filters real+visible sessions`() {
         val jsonString = """
         {
             "type": "snapshot",
             "sessions": {
                 "s1": {"state": "working", "badge": "running", "isVisible": true, "isReal": true},
-                "s2": {"state": "idle", "badge": "idle", "isVisible": true, "isReal": false}
+                "s2": {"state": "idle", "badge": "idle", "isVisible": true, "isReal": false},
+                "s3": {"state": "working", "isVisible": false, "isReal": true}
             },
             "displayState": "working"
         }
         """.trimIndent()
 
-        val obj = json.decodeFromString<JsonObject>(jsonString)
-        val sessionsObj = obj["sessions"]?.jsonObject
-        assertNotNull(sessionsObj)
-        assertEquals(2, sessionsObj!!.size)
-
-        val s1 = json.decodeFromJsonElement<SessionData>(sessionsObj["s1"]!!)
-        assertEquals("working", s1.state)
-        assertEquals("running", s1.badge)
-        assertTrue(s1.isReal)
-
-        val s2 = json.decodeFromJsonElement<SessionData>(sessionsObj["s2"]!!)
-        assertEquals("idle", s2.state)
-        assertFalse(s2.isReal)
+        val result = parser.parse(jsonString) as ParsedMessage.Snapshot
+        assertEquals("working", result.displayState)
+        // Only s1 passes isReal && isVisible filter
+        assertEquals(1, result.sessions.size)
+        assertNotNull(result.sessions["s1"])
+        assertEquals("working", result.sessions["s1"]!!.state)
+        assertEquals("running", result.sessions["s1"]!!.badge)
     }
 
     @Test
-    fun `parse state message with all mobile fields`() {
+    fun `parse state message extracts all mobile fields`() {
         val jsonString = """
         {
             "type": "state",
             "sessionId": "s1",
             "state": "working",
+            "event": "PreToolUse",
             "badge": "running",
             "chipText": "工作中",
             "chipColor": "#22c55e",
@@ -237,19 +260,47 @@ class SseClientParsingTest {
         }
         """.trimIndent()
 
-        val obj = json.decodeFromString<JsonObject>(jsonString)
-        assertEquals("s1", obj["sessionId"]?.jsonPrimitive?.contentOrNull)
-        assertEquals("running", obj["badge"]?.jsonPrimitive?.contentOrNull)
-        assertEquals("工作中", obj["chipText"]?.jsonPrimitive?.contentOrNull)
-        assertEquals("#22c55e", obj["chipColor"]?.jsonPrimitive?.contentOrNull)
-        assertEquals("#16a34a", obj["dotColor"]?.jsonPrimitive?.contentOrNull)
-        assertTrue(obj["isVisible"]?.jsonPrimitive?.booleanOrNull ?: true)
+        val result = parser.parse(jsonString) as ParsedMessage.State
+        assertEquals("s1", result.sessionId)
+        assertEquals("working", result.displayState)
+        val data = result.sessionData!!
+        assertEquals("working", data.state)
+        assertEquals("PreToolUse", data.event)
+        assertEquals("running", data.badge)
+        assertEquals("工作中", data.chipText)
+        assertEquals("#22c55e", data.chipColor)
+        assertEquals("#16a34a", data.dotColor)
+        assertTrue(data.isVisible)
+        assertEquals(1717000000000L, data.updatedAt)
     }
 
-    // ── PermissionRequestData parsing ────────────────────────────────
+    @Test
+    fun `parse state message with isReal=false returns null sessionData`() {
+        val jsonString = """{"type": "state", "sessionId": "s1", "isReal": false}"""
+        val result = parser.parse(jsonString) as ParsedMessage.State
+        assertEquals("s1", result.sessionId)
+        assertNull(result.sessionData)
+    }
 
     @Test
-    fun `parse permission_request message`() {
+    fun `parse tool_output message`() {
+        val jsonString = """{"type": "tool_output", "sessionId": "s1", "toolName": "Bash", "output": "done", "timestamp": 500}"""
+        val result = parser.parse(jsonString) as ParsedMessage.ToolOutput
+        assertEquals("s1", result.sessionId)
+        assertEquals("Bash", result.toolName)
+        assertEquals("done", result.output)
+        assertEquals(500L, result.timestamp)
+    }
+
+    @Test
+    fun `parse session_deleted message`() {
+        val jsonString = """{"type": "session_deleted", "sessionId": "s1", "timestamp": 600}"""
+        val result = parser.parse(jsonString) as ParsedMessage.SessionDeleted
+        assertEquals("s1", result.sessionId)
+    }
+
+    @Test
+    fun `parse permission_request with suggestions`() {
         val jsonString = """
         {
             "type": "permission_request",
@@ -266,21 +317,21 @@ class SseClientParsingTest {
         }
         """.trimIndent()
 
-        val obj = json.decodeFromString<JsonObject>(jsonString)
-        assertEquals("perm_abc123", obj["id"]?.jsonPrimitive?.contentOrNull)
-        assertEquals("Bash", obj["toolName"]?.jsonPrimitive?.contentOrNull)
-        assertEquals("claude-code", obj["agentId"]?.jsonPrimitive?.contentOrNull)
-        assertEquals(60000L, obj["timeout"]?.jsonPrimitive?.longOrNull)
-
-        val suggestions = obj["suggestions"]?.jsonArray
-        assertEquals(2, suggestions?.size)
-        assertEquals("Allow", suggestions?.get(0)?.jsonObject?.get("label")?.jsonPrimitive?.content)
+        val result = parser.parse(jsonString) as ParsedMessage.PermissionRequest
+        val data = result.data
+        assertEquals("perm_abc123", data.requestId)
+        assertEquals("Bash", data.toolName)
+        assertEquals("claude-code", data.agentId)
+        assertEquals("s1", data.sessionId)
+        assertEquals(60000L, data.timeout)
+        assertEquals("Bash → rm -rf /tmp/test", data.toolInputSummary)
+        assertEquals(2, data.suggestions.size)
+        assertEquals("Allow", data.suggestions[0].label)
+        assertEquals("allow", data.suggestions[0].behavior)
     }
 
-    // ── Elicitation parsing ──────────────────────────────────────────
-
     @Test
-    fun `parse AskUserQuestion elicitation message`() {
+    fun `parse AskUserQuestion elicitation with questions`() {
         val jsonString = """
         {
             "type": "permission_request",
@@ -302,20 +353,19 @@ class SseClientParsingTest {
         }
         """.trimIndent()
 
-        val obj = json.decodeFromString<JsonObject>(jsonString)
-        val toolInput = obj["toolInput"]?.jsonObject
-        val questions = toolInput?.get("questions")?.jsonArray
-        assertEquals(1, questions?.size)
+        val result = parser.parse(jsonString) as ParsedMessage.PermissionRequest
+        val data = result.data
+        assertEquals("AskUserQuestion", data.toolName)
+        assertEquals("AskUserQuestion → Which approach?", data.toolInputSummary)
+        assertEquals(1, data.elicitationQuestions.size)
 
-        val q = questions?.get(0)?.jsonObject
-        assertEquals("Which approach?", q?.get("question")?.jsonPrimitive?.content)
-        assertEquals("Approach", q?.get("header")?.jsonPrimitive?.contentOrNull)
-        assertEquals(false, q?.get("multiSelect")?.jsonPrimitive?.booleanOrNull)
-
-        val options = q?.get("options")?.jsonArray
-        assertEquals(2, options?.size)
-        assertEquals("Option A", options?.get(0)?.jsonObject?.get("label")?.jsonPrimitive?.content)
-        assertEquals("Fast approach", options?.get(0)?.jsonObject?.get("description")?.jsonPrimitive?.contentOrNull)
+        val q = data.elicitationQuestions[0]
+        assertEquals("Which approach?", q.question)
+        assertEquals("Approach", q.header)
+        assertFalse(q.multiSelect)
+        assertEquals(2, q.options.size)
+        assertEquals("Option A", q.options[0].label)
+        assertEquals("Fast approach", q.options[0].description)
     }
 
     // ── buildToolInputSummary logic (recreated for testing) ──────────
@@ -326,7 +376,7 @@ class SseClientParsingTest {
             put("file_path", "/home/user/test.kt")
             put("content", "fun main() {}")
         }
-        val summary = buildSummary("Write", toolInput)
+        val summary = parser.buildToolInputSummary("Write", toolInput)
         assertEquals("Write → /home/user/test.kt", summary)
     }
 
@@ -335,7 +385,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("command", "ls -la /tmp")
         }
-        val summary = buildSummary("Bash", toolInput)
+        val summary = parser.buildToolInputSummary("Bash", toolInput)
         assertEquals("Bash → ls -la /tmp", summary)
     }
 
@@ -344,7 +394,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("file_path", "/etc/hosts")
         }
-        val summary = buildSummary("Read", toolInput)
+        val summary = parser.buildToolInputSummary("Read", toolInput)
         assertEquals("Read → /etc/hosts", summary)
     }
 
@@ -353,7 +403,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("file_path", "/src/main.kt")
         }
-        val summary = buildSummary("Edit", toolInput)
+        val summary = parser.buildToolInputSummary("Edit", toolInput)
         assertEquals("Edit → /src/main.kt", summary)
     }
 
@@ -362,7 +412,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("url", "https://example.com/api")
         }
-        val summary = buildSummary("WebFetch", toolInput)
+        val summary = parser.buildToolInputSummary("WebFetch", toolInput)
         assertEquals("WebFetch → https://example.com/api", summary)
     }
 
@@ -371,7 +421,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("query", "kotlin coroutines tutorial")
         }
-        val summary = buildSummary("WebSearch", toolInput)
+        val summary = parser.buildToolInputSummary("WebSearch", toolInput)
         assertEquals("WebSearch → kotlin coroutines tutorial", summary)
     }
 
@@ -380,7 +430,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("notebook_path", "/notebooks/analysis.ipynb")
         }
-        val summary = buildSummary("NotebookEdit", toolInput)
+        val summary = parser.buildToolInputSummary("NotebookEdit", toolInput)
         assertEquals("NotebookEdit → /notebooks/analysis.ipynb", summary)
     }
 
@@ -389,7 +439,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("description", "Custom tool description")
         }
-        val summary = buildSummary("CustomTool", toolInput)
+        val summary = parser.buildToolInputSummary("CustomTool", toolInput)
         assertEquals("CustomTool → Custom tool description", summary)
     }
 
@@ -398,7 +448,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("summary", "Brief summary")
         }
-        val summary = buildSummary("CustomTool", toolInput)
+        val summary = parser.buildToolInputSummary("CustomTool", toolInput)
         assertEquals("CustomTool → Brief summary", summary)
     }
 
@@ -407,7 +457,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("reason", "Because")
         }
-        val summary = buildSummary("CustomTool", toolInput)
+        val summary = parser.buildToolInputSummary("CustomTool", toolInput)
         assertEquals("CustomTool → Because", summary)
     }
 
@@ -417,7 +467,7 @@ class SseClientParsingTest {
         val toolInput = buildJsonObject {
             put("file_path", longPath)
         }
-        val summary = buildSummary("Write", toolInput)
+        val summary = parser.buildToolInputSummary("Write", toolInput)
         assertNotNull(summary)
         assertTrue(summary!!.contains("…"))
         assertTrue(summary.length <= "Write → ".length + 61)
@@ -425,45 +475,30 @@ class SseClientParsingTest {
 
     @Test
     fun `buildToolInputSummary returns null for null input`() {
-        val summary = buildSummary("Bash", null)
+        val summary = parser.buildToolInputSummary("Bash", null)
         assertNull(summary)
     }
 
     @Test
     fun `buildToolInputSummary returns null for empty toolInput`() {
         val toolInput = buildJsonObject {}
-        val summary = buildSummary("Bash", toolInput)
+        val summary = parser.buildToolInputSummary("Bash", toolInput)
         // Empty object toString() = "{}" which has length 2, not > 2
         assertNull(summary)
     }
 
-    // ── Helper: recreate buildToolInputSummary logic for testing ─────
-
-    private fun buildSummary(toolName: String?, toolInput: JsonObject?): String? {
-        if (toolInput == null) return null
-        val key = toolName ?: ""
-        val summary = when (key) {
-            "Write", "Edit", "Delete", "Read" ->
-                toolInput["file_path"]?.jsonPrimitive?.contentOrNull
-            "Bash" ->
-                toolInput["command"]?.jsonPrimitive?.contentOrNull
-            "NotebookEdit" ->
-                toolInput["notebook_path"]?.jsonPrimitive?.contentOrNull
-            "WebFetch" ->
-                toolInput["url"]?.jsonPrimitive?.contentOrNull
-            "WebSearch" ->
-                toolInput["query"]?.jsonPrimitive?.contentOrNull
-            else -> {
-                toolInput["description"]?.jsonPrimitive?.contentOrNull
-                    ?: toolInput["summary"]?.jsonPrimitive?.contentOrNull
-                    ?: toolInput["reason"]?.jsonPrimitive?.contentOrNull
+    @Test
+    fun `buildToolInputSummary for AskUserQuestion returns first question`() {
+        val toolInput = buildJsonObject {
+            putJsonArray("questions") {
+                addJsonObject {
+                    put("question", "Which approach?")
+                    put("header", "Approach")
+                    put("multiSelect", false)
+                }
             }
         }
-        val text = summary?.take(60)?.trim()
-        if (text.isNullOrBlank()) {
-            val fallback = toolInput.toString().take(80)
-            return if (fallback.length > 2) "$key → $fallback…" else null
-        }
-        return "$key → $text" + if (summary.length > 60) "…" else ""
+        val summary = parser.buildToolInputSummary("AskUserQuestion", toolInput)
+        assertEquals("AskUserQuestion → Which approach?", summary)
     }
 }
