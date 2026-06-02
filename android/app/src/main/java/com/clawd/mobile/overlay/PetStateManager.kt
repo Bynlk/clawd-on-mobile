@@ -8,12 +8,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Centralised state decision engine extracted from [FloatingPetService].
@@ -181,13 +179,15 @@ class PetStateManager(
     private var lastNonIdleState: PetState = PetState.Idle
     private var prevBadge: MutableMap<String, String> = mutableMapOf()
     private val consumedDoneSessions = java.util.concurrent.ConcurrentHashMap<String, Long>()  // sessionId → consumedAt (epoch ms)
-    private val gifGeneration = AtomicInteger(0)
-    private var idleSince: Long = 0L  // idle 状态开始时间，用于 60s 超时对齐 PC 端
-    private var sleepSequenceJob: Job? = null
-    private var autoReturnJob: Job? = null
     private var wsCollectorJob: Job? = null
     private val sessionMutex = Mutex()
-    private val sleepConfig: SleepConfig get() = SLEEP_TIMINGS[character] ?: SLEEP_TIMINGS["clawd"]!!
+
+    /** Timer/sequence delegate — owns idle timeout, sleep sequence, auto-return, reactions. */
+    internal val timerManager = PetTimerManager(
+        manager = this,
+        emitState = ::emitState,
+        commandFlowEmit = ::commandFlowEmit,
+    )
 
     // ======================================================================
     //  Public lifecycle
@@ -210,21 +210,21 @@ class PetStateManager(
     fun reset() {
         wsCollectorJob?.cancel()
         wsCollectorJob = null
-        cancelSleepSequence()
-        cancelAutoReturn()
-        gifGeneration.set(0)
+        timerManager.reset()
         lastNonIdleState = PetState.Idle
         prevBadge.clear()
         consumedDoneSessions.clear()
         currentState = PetState.Idle
-        idleSince = 0L
         // Reset the command flow so new subscribers start from a clean Idle state
         _commandFlow.value = StateCommand.StateChanged(PetState.Idle)
     }
 
-    /** Remove entries from consumedDoneSessions that are older than [DONE_SESSION_TTL_MS]. */
-    private fun cleanupExpiredDoneSessions() {
-        cleanupExpiredDoneSessions(consumedDoneSessions)
+    /** Expose current state for [PetTimerManager]. */
+    internal fun getCurrentState(): PetState = currentState
+
+    /** Update lastNonIdleState from [PetTimerManager]. */
+    internal fun setLastNonIdleState(state: PetState) {
+        if (state.isActive) lastNonIdleState = state
     }
 
     // ======================================================================
@@ -248,12 +248,12 @@ class PetStateManager(
             if (!currentState.isIdleLike) {
                 emitState(PetState.Idle)
             }
-            handleIdleTimeout(scope)
+            timerManager.handleIdleTimeout(scope)
             return@withLock
         }
         if (allSleeping && !currentState.isSleepSequence) {
             // SessionEnd 场景：对齐 PC 端，立即进入睡眠序列（不等 60s 超时）
-            startSleepSequence(scope)
+            timerManager.startSleepSequence(scope)
             return@withLock
         }
 
@@ -278,10 +278,10 @@ class PetStateManager(
 
         if (bestState.isActive) {
             // Active state — wake from sleep or update directly
-            cancelSleepSequence()
-            idleSince = 0L  // 活跃状态重置 idle 计时
+            timerManager.cancelSleepSequence()
+            timerManager.resetIdleTimer()
             if (currentState.isSleepSequence) {
-                playWakingAndRestore(bestState, scope)
+                timerManager.playWakingAndRestore(bestState, scope)
             } else {
                 lastNonIdleState = bestState
                 Log.d("PetState", "emitState: ${bestState.themeKey}")
@@ -289,36 +289,13 @@ class PetStateManager(
                 emitState(bestState, resolvedSvg)
                 // Schedule auto-return for oneshot states (aligns with PC autoReturn timer)
                 if (bestState in PetState.ONESHOT_STATES) {
-                    scheduleAutoReturn(bestState, scope)
+                    timerManager.scheduleAutoReturn(bestState, scope)
                 }
             }
         } else {
             // Idle — 等待超时后进入睡眠序列（对齐 PC 端 60s MOUSE_SLEEP_TIMEOUT）
-            handleIdleTimeout(scope)
+            timerManager.handleIdleTimeout(scope)
         }
-    }
-
-    /**
-     * Idle timeout handler: starts timer on first idle, enters sleep sequence after 60s.
-     * Aligns with PC MOUSE_SLEEP_TIMEOUT.
-     *
-     * Note: this is only called from [updateSessions] (driven by sessionFlow.collect).
-     * On SSE disconnect, [collectSessions]'s connectionState collector cancels the collectJob,
-     * so idleSince won't be checked indefinitely after disconnection.
-     */
-    private fun handleIdleTimeout(scope: CoroutineScope) {
-        val now = System.currentTimeMillis()
-        if (idleSince == 0L) {
-            idleSince = now  // 首次 idle，开始计时
-            Log.d(TAG, "Idle timeout started")
-        }
-        if (now - idleSince >= IDLE_SLEEP_TIMEOUT_MS) {
-            if (!currentState.isSleepSequence) {
-                Log.d(TAG, "Idle timeout reached (${IDLE_SLEEP_TIMEOUT_MS}ms), starting sleep sequence")
-                startSleepSequence(scope)
-            }
-        }
-        // else: 还没到 60 秒，保持 idle 状态等待
     }
 
     /**
@@ -330,102 +307,6 @@ class PetStateManager(
         val result = resolveDisplayState(visible, consumedDoneSessions)
         Log.d("PetState", "resolveDisplayState result: ${result.themeKey}")
         return result
-    }
-
-    // ======================================================================
-    //  Sleep sequence (yawning → [dozing →] collapsing → sleeping)
-    // ======================================================================
-
-    /**
-     * Start the sleep animation sequence as a coroutine.
-     * Skips states that have no dedicated SVG (falls back through SvgLoader).
-     */
-    private fun startSleepSequence(scope: CoroutineScope) {
-        if (sleepSequenceJob?.isActive == true) return
-        sleepSequenceJob = scope.launch {
-            val cfg = sleepConfig
-
-            // Yawning phase
-            emitState(PetState.Yawning)
-            delay(cfg.yawnMs)
-            if (!isActive) return@launch
-
-            // Collapsing phase (skip if collapseMs <= 0, e.g. clawd)
-            if (cfg.collapseMs > 0) {
-                emitState(PetState.Collapsing)
-                delay(cfg.collapseMs)
-                if (!isActive) return@launch
-            }
-
-            // Deep sleep
-            emitState(PetState.Sleeping)
-
-            // Idle animation loop while sleeping — random variant each tick
-            while (isActive) {
-                delay(IDLE_ANIM_INTERVAL_MS)
-                if (!isActive) break
-                val idlePath = pickIdleAnimPath()
-                if (idlePath != null) {
-                    commandFlowEmit(StateCommand.SvgLoad(idlePath, force = false))
-                    delay(IDLE_ANIM_DISPLAY_MS)
-                }
-            }
-        }
-    }
-
-    /**
-     * Play waking animation then restore to [targetState].
-     * If no dedicated waking GIF exists, skips straight to target.
-     */
-    private fun playWakingAndRestore(targetState: PetState, scope: CoroutineScope) {
-        cancelSleepSequence()
-        val gen = gifGeneration.incrementAndGet()
-
-        if (SvgLoader.hasSvgForState(PetState.Waking, character)) {
-            emitState(PetState.Waking)
-            scope.launch {
-                delay(sleepConfig.wakeMs)
-                if (gifGeneration.get() != gen) return@launch
-                if (targetState.isActive) lastNonIdleState = targetState
-                Log.d(TAG, "Waking complete → ${targetState.themeKey}")
-                emitState(targetState)
-            }
-        } else {
-            // No waking GIF — go straight to target
-            if (targetState.isActive) lastNonIdleState = targetState
-            Log.d(TAG, "No waking GIF, direct → ${targetState.themeKey}")
-            emitState(targetState)
-        }
-    }
-
-    private fun cancelSleepSequence() {
-        sleepSequenceJob?.cancel()
-        sleepSequenceJob = null
-    }
-
-    // ======================================================================
-    //  Auto-return timer (aligns with PC AUTO_RETURN_MS)
-    // ======================================================================
-
-    /**
-     * Schedule an auto-return from a oneshot state to the resolved display state.
-     * Mirrors PC `autoReturnTimer` in state.js (applyState, line 485).
-     */
-    private fun scheduleAutoReturn(state: PetState, scope: CoroutineScope) {
-        cancelAutoReturn()
-        val delayMs = AUTO_RETURN_MS[state] ?: return
-        autoReturnJob = scope.launch {
-            delay(delayMs)
-            autoReturnJob = null
-            val resolved = resolveBestState()
-            Log.d(TAG, "Auto-return from ${state.themeKey} → ${resolved.themeKey}")
-            emitState(resolved)
-        }
-    }
-
-    private fun cancelAutoReturn() {
-        autoReturnJob?.cancel()
-        autoReturnJob = null
     }
 
     // ======================================================================
@@ -444,41 +325,10 @@ class PetStateManager(
                 Log.d(TAG, "Badge transition: $prev → done for session $sid, playing happy")
                 val happyPath = getSvgAssetPath(PetState.Attention)
                 if (happyPath != null) {
-                    loadReactionAndRestore(happyPath, REACTION_DISPLAY_MS, scope)
+                    timerManager.loadReactionAndRestore(happyPath, REACTION_DISPLAY_MS, scope)
                 }
             }
         }
-    }
-
-    /**
-     * Play a reaction SVG, then restore the previous state.
-     * Uses [gifGeneration] to discard stale restore callbacks.
-     */
-    private fun loadReactionAndRestore(assetPath: String, delayMs: Long, scope: CoroutineScope) {
-        val gen = gifGeneration.incrementAndGet()
-        // Emit reaction through the unified command pipe — no separate callback needed
-        commandFlowEmit(StateCommand.ReactionSvg(assetPath))
-
-        scope.launch {
-            delay(delayMs)
-            if (gifGeneration.get() != gen) return@launch
-            val restoreState = resolveBestState()
-            emitState(restoreState)
-        }
-    }
-
-    // ======================================================================
-    //  Idle animation variant picker (aligns with PC idleAnimations)
-    // ======================================================================
-
-    /**
-     * Pick a random idle animation SVG for the current character.
-     * Uses [SvgLoader.pickIdleAnimation] which aligns with PC theme.json
-     * idleAnimations (clawd: look/bubble/reading, cloudling: reading, calico: idle).
-     * Returns an asset path or null if no variants exist.
-     */
-    private fun pickIdleAnimPath(): String? {
-        return SvgLoader.pickIdleAnimation(character)
     }
 
     // ======================================================================
@@ -510,7 +360,7 @@ class PetStateManager(
             collectJob.join()
         } finally {
             watchdogJob.cancel()
-            cancelSleepSequence()
+            timerManager.cancelSleepSequence()
         }
     }
 
@@ -530,7 +380,7 @@ class PetStateManager(
         }
         currentState = state
         // Cancel any pending auto-return — new state supersedes it.
-        cancelAutoReturn()
+        timerManager.cancelAutoReturn()
         val sessionCount = sessionsFlow.value.values.count { it.isVisible }
         commandFlowEmit(StateCommand.StateChanged(state, sessionCount, resolvedSvg))
     }
@@ -550,7 +400,7 @@ class PetStateManager(
     }
 
     /** Snapshot the best visible session's state, falling back to Idle. */
-    private fun resolveBestState(): PetState {
+    internal fun resolveBestState(): PetState {
         val visible = sessionsFlow.value.values.filter { it.isVisible }
         return if (visible.isEmpty()) PetState.Idle
         else resolveDisplayState(visible)
