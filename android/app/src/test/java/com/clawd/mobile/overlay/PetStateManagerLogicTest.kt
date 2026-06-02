@@ -112,6 +112,19 @@ class PetStateManagerLogicTest {
     }
 
     @Test
+    fun `badge interrupted maps to Error on first call then Idle on second (consumed)`() {
+        val consumedDone = ConcurrentHashMap<String, Long>()
+        val consumedInterrupted = ConcurrentHashMap<String, Long>()
+        val sessions = listOf(
+            session("s1", state = "idle", badge = "interrupted")
+        )
+        // First call: Error
+        assertEquals(PetState.Error, PetStateManager.resolveDisplayState(sessions, consumedDone, consumedInterrupted))
+        // Second call: Idle (consumed)
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, consumedDone, consumedInterrupted))
+    }
+
+    @Test
     fun `badge done maps to Attention on first encounter`() {
         val sessions = listOf(
             session("s1", state = "idle", badge = "done")

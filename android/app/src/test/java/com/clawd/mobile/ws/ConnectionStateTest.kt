@@ -31,6 +31,11 @@ class ConnectionStateTest {
     }
 
     @Test
+    fun `PENDING_CERT_CONFIRMATION isConnected is false`() {
+        assertFalse(ConnectionState.PENDING_CERT_CONFIRMATION.isConnected)
+    }
+
+    @Test
     fun `CONNECTING isConnecting is true`() {
         assertTrue(ConnectionState.CONNECTING.isConnecting)
     }
@@ -56,8 +61,13 @@ class ConnectionStateTest {
     }
 
     @Test
-    fun `has exactly 5 values`() {
-        assertEquals(5, ConnectionState.entries.size)
+    fun `PENDING_CERT_CONFIRMATION isConnecting is false`() {
+        assertFalse(ConnectionState.PENDING_CERT_CONFIRMATION.isConnecting)
+    }
+
+    @Test
+    fun `has exactly 6 values`() {
+        assertEquals(6, ConnectionState.entries.size)
     }
 
     @Test
