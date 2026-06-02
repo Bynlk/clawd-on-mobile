@@ -148,7 +148,7 @@ class ConnectionConfigTest {
     }
 
     @Test
-    fun `approveUrl scheme matches isLan`() {
+    fun `approveUrl uses http for lan`() {
         val lanConfig = ConnectionConfig("192.168.1.10", 23334, "tok")
         assertTrue(lanConfig.approveUrl().startsWith("http://"))
     }

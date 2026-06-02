@@ -3,51 +3,13 @@ package com.clawd.mobile.overlay
 import com.clawd.mobile.data.SessionData
 import org.junit.Test
 import org.junit.Assert.*
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Tests for PetStateManager's resolveDisplayState logic.
- * Recreated as a pure function to test the priority selection algorithm
- * without Android framework dependencies.
+ * Tests for PetStateManager's resolveDisplayState and cleanupExpiredDoneSessions.
+ * Calls the real companion methods directly — no local copies.
  */
 class PetStateManagerLogicTest {
-
-    // ── Helper: recreate resolveDisplayState logic ───────────────────
-
-    /**
-     * Pure recreation of PetStateManager.resolveDisplayState for testing.
-     * The actual method is private and coupled to instance state (consumedDoneSessions).
-     * This tests the algorithm directly.
-     */
-    private fun resolveDisplayState(
-        visible: List<SessionData>,
-        consumedDoneSessions: MutableSet<String> = mutableSetOf()
-    ): PetState {
-        var best: PetState = PetState.Idle
-        for (session in visible) {
-            val state = when {
-                session.displayState != null && session.displayState != "idle" ->
-                    PetState.fromString(session.displayState)
-                session.badge == "interrupted" -> PetState.Error
-                session.badge == "done" -> {
-                    val sid = session.sessionId
-                    if (sid != null && sid !in consumedDoneSessions) {
-                        consumedDoneSessions.add(sid)
-                        PetState.Attention
-                    } else {
-                        PetState.Idle
-                    }
-                }
-                session.badge == "running" -> {
-                    session.sessionId?.let { consumedDoneSessions.remove(it) }
-                    PetState.fromString(session.state)
-                }
-                else -> PetState.Idle
-            }
-            if (state.isSleepSequence) continue
-            if (state.priority > best.priority) best = state
-        }
-        return best
-    }
 
     private fun session(
         sessionId: String,
@@ -63,17 +25,23 @@ class PetStateManagerLogicTest {
         isVisible = isVisible
     )
 
+    private fun consumed(vararg ids: String): ConcurrentHashMap<String, Long> {
+        val map = ConcurrentHashMap<String, Long>()
+        ids.forEach { map[it] = System.currentTimeMillis() }
+        return map
+    }
+
     // ── Empty / idle ─────────────────────────────────────────────────
 
     @Test
     fun `empty sessions returns Idle`() {
-        assertEquals(PetState.Idle, resolveDisplayState(emptyList()))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(emptyList(), ConcurrentHashMap()))
     }
 
     @Test
     fun `single idle session returns Idle`() {
         val sessions = listOf(session("s1", state = "idle", badge = "idle"))
-        assertEquals(PetState.Idle, resolveDisplayState(sessions))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     // ── Priority selection ───────────────────────────────────────────
@@ -84,7 +52,7 @@ class PetStateManagerLogicTest {
             session("s1", state = "idle", badge = "idle"),
             session("s2", state = "working", badge = "running")
         )
-        assertEquals(PetState.Working, resolveDisplayState(sessions))
+        assertEquals(PetState.Working, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -93,7 +61,7 @@ class PetStateManagerLogicTest {
             session("s1", state = "working", badge = "running"),
             session("s2", state = "error", badge = "running")
         )
-        assertEquals(PetState.Error, resolveDisplayState(sessions))
+        assertEquals(PetState.Error, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -101,7 +69,7 @@ class PetStateManagerLogicTest {
         val sessions = listOf(
             session("s1", state = "thinking", badge = "running")
         )
-        assertEquals(PetState.Thinking, resolveDisplayState(sessions))
+        assertEquals(PetState.Thinking, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -110,7 +78,7 @@ class PetStateManagerLogicTest {
             session("s1", state = "working", badge = "running"),
             session("s2", state = "notification", badge = "running")
         )
-        assertEquals(PetState.Notification, resolveDisplayState(sessions))
+        assertEquals(PetState.Notification, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -119,7 +87,7 @@ class PetStateManagerLogicTest {
             session("s1", state = "attention", badge = "running"),
             session("s2", state = "sweeping", badge = "running")
         )
-        assertEquals(PetState.Sweeping, resolveDisplayState(sessions))
+        assertEquals(PetState.Sweeping, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -130,7 +98,7 @@ class PetStateManagerLogicTest {
             session("s3", state = "error", badge = "running"),
             session("s4", state = "idle", badge = "idle")
         )
-        assertEquals(PetState.Error, resolveDisplayState(sessions))
+        assertEquals(PetState.Error, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     // ── Badge-based state mapping ────────────────────────────────────
@@ -140,28 +108,27 @@ class PetStateManagerLogicTest {
         val sessions = listOf(
             session("s1", state = "idle", badge = "interrupted")
         )
-        assertEquals(PetState.Error, resolveDisplayState(sessions))
+        assertEquals(PetState.Error, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
     fun `badge done maps to Attention on first encounter`() {
-        val consumed = mutableSetOf<String>()
         val sessions = listOf(
             session("s1", state = "idle", badge = "done")
         )
-        assertEquals(PetState.Attention, resolveDisplayState(sessions, consumed))
+        assertEquals(PetState.Attention, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
     fun `badge done maps to Idle on second encounter`() {
-        val consumed = mutableSetOf<String>()
+        val map = ConcurrentHashMap<String, Long>()
         val sessions = listOf(
             session("s1", state = "idle", badge = "done")
         )
         // First call: Attention
-        assertEquals(PetState.Attention, resolveDisplayState(sessions, consumed))
+        assertEquals(PetState.Attention, PetStateManager.resolveDisplayState(sessions, map))
         // Second call: Idle (consumed)
-        assertEquals(PetState.Idle, resolveDisplayState(sessions, consumed))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, map))
     }
 
     @Test
@@ -169,21 +136,16 @@ class PetStateManagerLogicTest {
         val sessions = listOf(
             session("s1", state = "working", badge = "running")
         )
-        assertEquals(PetState.Working, resolveDisplayState(sessions))
+        assertEquals(PetState.Working, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
     fun `badge running resets consumed done`() {
-        val consumed = mutableSetOf<String>()
-        // First: done → Attention
-        val doneSessions = listOf(session("s1", state = "idle", badge = "done"))
-        assertEquals(PetState.Attention, resolveDisplayState(doneSessions, consumed))
-        assertTrue(consumed.contains("s1"))
-
-        // Then: running → resets consumed
+        val map = consumed("s1")
+        // running → resets consumed
         val runningSessions = listOf(session("s1", state = "working", badge = "running"))
-        assertEquals(PetState.Working, resolveDisplayState(runningSessions, consumed))
-        assertFalse(consumed.contains("s1"))
+        assertEquals(PetState.Working, PetStateManager.resolveDisplayState(runningSessions, map))
+        assertFalse(map.containsKey("s1"))
     }
 
     // ── displayState override ────────────────────────────────────────
@@ -193,7 +155,7 @@ class PetStateManagerLogicTest {
         val sessions = listOf(
             session("s1", state = "idle", badge = "idle", displayState = "working")
         )
-        assertEquals(PetState.Working, resolveDisplayState(sessions))
+        assertEquals(PetState.Working, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -202,7 +164,7 @@ class PetStateManagerLogicTest {
             session("s1", state = "working", badge = "running", displayState = "idle")
         )
         // displayState="idle" → falls through to badge="running" → state="working"
-        assertEquals(PetState.Working, resolveDisplayState(sessions))
+        assertEquals(PetState.Working, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -210,7 +172,7 @@ class PetStateManagerLogicTest {
         val sessions = listOf(
             session("s1", state = "thinking", badge = "running", displayState = null)
         )
-        assertEquals(PetState.Thinking, resolveDisplayState(sessions))
+        assertEquals(PetState.Thinking, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     // ── Sleep sequence states are skipped ────────────────────────────
@@ -222,7 +184,7 @@ class PetStateManagerLogicTest {
             session("s2", state = "working", badge = "running")
         )
         // Yawning is sleep sequence → skipped, Working wins
-        assertEquals(PetState.Working, resolveDisplayState(sessions))
+        assertEquals(PetState.Working, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -233,7 +195,7 @@ class PetStateManagerLogicTest {
             session("s3", state = "sleeping", badge = "running"),
             session("s4", state = "waking", badge = "running")
         )
-        assertEquals(PetState.Idle, resolveDisplayState(sessions))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     // ── Conducting/Juggling/Carrying/Debugger (priority 4) ───────────
@@ -244,7 +206,7 @@ class PetStateManagerLogicTest {
             session("s1", state = "working", badge = "running"),
             session("s2", state = "conducting", badge = "running")
         )
-        assertEquals(PetState.Conducting, resolveDisplayState(sessions))
+        assertEquals(PetState.Conducting, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -253,26 +215,26 @@ class PetStateManagerLogicTest {
             session("s1", state = "thinking", badge = "running"),
             session("s2", state = "juggling", badge = "running")
         )
-        assertEquals(PetState.Juggling, resolveDisplayState(sessions))
+        assertEquals(PetState.Juggling, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     // ── Multiple done sessions ───────────────────────────────────────
 
     @Test
     fun `multiple done sessions each trigger Attention once`() {
-        val consumed = mutableSetOf<String>()
+        val map = ConcurrentHashMap<String, Long>()
         val sessions = listOf(
             session("s1", state = "idle", badge = "done"),
             session("s2", state = "idle", badge = "done")
         )
         // First call: both trigger Attention (priority equal, last one wins)
-        val result1 = resolveDisplayState(sessions, consumed)
+        val result1 = PetStateManager.resolveDisplayState(sessions, map)
         assertEquals(PetState.Attention, result1)
-        assertTrue(consumed.contains("s1"))
-        assertTrue(consumed.contains("s2"))
+        assertTrue(map.containsKey("s1"))
+        assertTrue(map.containsKey("s2"))
 
         // Second call: both consumed → Idle
-        val result2 = resolveDisplayState(sessions, consumed)
+        val result2 = PetStateManager.resolveDisplayState(sessions, map)
         assertEquals(PetState.Idle, result2)
     }
 
@@ -284,7 +246,7 @@ class PetStateManagerLogicTest {
             session("s1", state = "unknown_state", badge = "running")
         )
         // fromString("unknown_state") → Idle
-        assertEquals(PetState.Idle, resolveDisplayState(sessions))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
@@ -292,16 +254,67 @@ class PetStateManagerLogicTest {
         val sessions = listOf(
             session("s1", state = "idle", badge = "unknown_badge")
         )
-        assertEquals(PetState.Idle, resolveDisplayState(sessions))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
     }
 
     @Test
     fun `done with null sessionId goes to else branch`() {
-        val consumed = mutableSetOf<String>()
         val sessions = listOf(
             SessionData(sessionId = null, state = "idle", badge = "done")
         )
         // sessionId is null → sid != null is false → else branch → Idle
-        assertEquals(PetState.Idle, resolveDisplayState(sessions, consumed))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap()))
+    }
+
+    // ── cleanupExpiredDoneSessions ────────────────────────────────────
+
+    @Test
+    fun `cleanup removes expired entries`() {
+        val map = ConcurrentHashMap<String, Long>()
+        val oldTimestamp = System.currentTimeMillis() - PetStateManager.DONE_SESSION_TTL_MS - 1000
+        map["expired1"] = oldTimestamp
+        map["expired2"] = oldTimestamp
+        map["fresh"] = System.currentTimeMillis()
+
+        PetStateManager.cleanupExpiredDoneSessions(map)
+
+        assertFalse(map.containsKey("expired1"))
+        assertFalse(map.containsKey("expired2"))
+        assertTrue(map.containsKey("fresh"))
+    }
+
+    @Test
+    fun `cleanup preserves fresh entries`() {
+        val map = ConcurrentHashMap<String, Long>()
+        map["fresh1"] = System.currentTimeMillis()
+        map["fresh2"] = System.currentTimeMillis() - 1000  // 1s ago, well within TTL
+
+        PetStateManager.cleanupExpiredDoneSessions(map)
+
+        assertTrue(map.containsKey("fresh1"))
+        assertTrue(map.containsKey("fresh2"))
+    }
+
+    @Test
+    fun `cleanup on empty map is no-op`() {
+        val map = ConcurrentHashMap<String, Long>()
+        PetStateManager.cleanupExpiredDoneSessions(map)
+        assertTrue(map.isEmpty())
+    }
+
+    @Test
+    fun `cleanup called during done badge processing`() {
+        val map = ConcurrentHashMap<String, Long>()
+        // Add an expired entry
+        map["old_session"] = System.currentTimeMillis() - PetStateManager.DONE_SESSION_TTL_MS - 1000
+
+        val sessions = listOf(
+            session("new_session", state = "idle", badge = "done")
+        )
+        PetStateManager.resolveDisplayState(sessions, map)
+
+        // Old entry should be cleaned up, new entry should be added
+        assertFalse(map.containsKey("old_session"))
+        assertTrue(map.containsKey("new_session"))
     }
 }

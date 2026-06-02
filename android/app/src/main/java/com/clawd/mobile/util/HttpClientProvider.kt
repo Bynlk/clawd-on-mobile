@@ -1,10 +1,16 @@
 package com.clawd.mobile.util
 
+import android.annotation.SuppressLint
 import android.util.Log
 import com.clawd.mobile.data.ConnectionConfig
 import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.SSLContext
+import javax.net.ssl.X509TrustManager
 
 /**
  * Shared OkHttpClient provider.
@@ -75,14 +81,26 @@ object HttpClientProvider {
         }
     }
 
+    @SuppressLint("TrustAllX509TrustManager", "CustomX509TrustManager")
     private fun buildClient(config: ConnectionConfig, readTimeout: Long): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .writeTimeout(5, TimeUnit.SECONDS)
             .readTimeout(readTimeout, TimeUnit.SECONDS)
 
-        // Non-LAN: apply certificate pinning if fingerprint is configured
-        if (!config.isLan) {
+        if (config.isLan) {
+            // LAN: trust all certificates — TOFU fingerprint pinning happens in SseClient
+            val trustManager = object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+                override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            }
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(null, arrayOf(trustManager), SecureRandom())
+            builder.sslSocketFactory(sslContext.socketFactory, trustManager)
+            builder.hostnameVerifier(HostnameVerifier { _, _ -> true })
+        } else {
+            // Non-LAN: apply certificate pinning if fingerprint is configured
             val fp = _fingerprint
             if (fp != null) {
                 Log.d(TAG, "Applying cert pinning for ${config.host}")

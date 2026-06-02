@@ -34,6 +34,9 @@ class WebSocketService : Service() {
         const val ACTION_CONNECT = "com.clawd.mobile.CONNECT"
         const val ACTION_DISCONNECT = "com.clawd.mobile.DISCONNECT"
 
+        private const val WAKELOCK_TIMEOUT_MS = 60 * 60 * 1000L       // 1 hour
+        private const val WAKELOCK_RENEWAL_INTERVAL_MS = 30 * 60 * 1000L  // 30 minutes
+
         @Volatile
         private var instance: WebSocketService? = null
 
@@ -116,6 +119,14 @@ class WebSocketService : Service() {
         stateCollectorJob?.cancel()
         var previousState: ConnectionState? = null
         stateCollectorJob = scope.launch {
+            // WakeLock renewal: check every 30 min, re-acquire if expired
+            launch {
+                while (isActive) {
+                    delay(WAKELOCK_RENEWAL_INTERVAL_MS)
+                    renewWakeLock()
+                }
+            }
+
             webSocket?.connectionState?.collect { state ->
                 val status = when (state) {
                     ConnectionState.CONNECTED -> getString(R.string.status_connected_to, webSocket?.currentHost ?: "")
@@ -187,7 +198,7 @@ class WebSocketService : Service() {
     private fun acquireLocks() {
         if (wifiLock == null) {
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "clawd:sse").apply {
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "clawd:sse").apply {
                 setReferenceCounted(false)
                 acquire()
             }
@@ -196,7 +207,7 @@ class WebSocketService : Service() {
             val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:sse").apply {
                 setReferenceCounted(false)
-                acquire(60 * 60 * 1000L) // 1 hour timeout safety net
+                acquire(WAKELOCK_TIMEOUT_MS)
             }
         }
     }
@@ -206,6 +217,16 @@ class WebSocketService : Service() {
         wifiLock = null
         SafeExecutor.tryOrNull("WS") { wakeLock?.release() }
         wakeLock = null
+    }
+
+    /** Re-acquire WakeLock if it expired (called periodically by renewal coroutine). */
+    private fun renewWakeLock() {
+        wakeLock?.let { wl ->
+            if (!wl.isHeld) {
+                android.util.Log.d("WebSocketService", "WakeLock expired, re-acquiring")
+                wl.acquire(WAKELOCK_TIMEOUT_MS)
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

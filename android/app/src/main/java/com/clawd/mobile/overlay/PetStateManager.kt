@@ -2,9 +2,6 @@ package com.clawd.mobile.overlay
 
 import android.util.Log
 import com.clawd.mobile.data.SessionData
-import com.clawd.mobile.service.WebSocketService
-import com.clawd.mobile.ws.SseClient
-import com.clawd.mobile.ws.ConnectionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -112,6 +109,57 @@ class PetStateManager(
             PetState.Notification to 5_000L,
             PetState.Carrying    to 3_000L,
         )
+
+        // ── Extracted for testing ─────────────────────────────────────────
+
+        /** Remove entries from [consumedDoneSessions] older than [DONE_SESSION_TTL_MS]. */
+        internal fun cleanupExpiredDoneSessions(consumedDoneSessions: java.util.concurrent.ConcurrentHashMap<String, Long>) {
+            val now = System.currentTimeMillis()
+            val expired = consumedDoneSessions.entries
+                .filter { now - it.value > DONE_SESSION_TTL_MS }
+                .map { it.key }
+            expired.forEach { consumedDoneSessions.remove(it) }
+        }
+
+        /**
+         * Resolve the dominant display state from visible sessions.
+         * Excludes sleep-sequence states (they are locally managed).
+         * Aligns with PC [resolveDominantSessionState].
+         *
+         * Note: Juggling/Conducting mapping is handled server-side via [SessionData.displayState].
+         * Local applyConductingMapping was removed as dead code (2026-06-01 audit).
+         */
+        internal fun resolveDisplayState(
+            visible: List<SessionData>,
+            consumedDoneSessions: java.util.concurrent.ConcurrentHashMap<String, Long>
+        ): PetState {
+            var best: PetState = PetState.Idle
+            for (session in visible) {
+                val state = when {
+                    session.displayState != null && session.displayState != "idle" ->
+                        PetState.fromString(session.displayState)
+                    session.badge == "interrupted" -> PetState.Error
+                    session.badge == "done" -> {
+                        val sid = session.sessionId
+                        if (sid != null && !consumedDoneSessions.containsKey(sid)) {
+                            consumedDoneSessions[sid] = System.currentTimeMillis()
+                            cleanupExpiredDoneSessions(consumedDoneSessions)
+                            PetState.Attention  // 只触发一次
+                        } else {
+                            PetState.Idle  // 已消费
+                        }
+                    }
+                    session.badge == "running" -> {
+                        session.sessionId?.let { consumedDoneSessions.remove(it) }  // 新任务开始，重置
+                        PetState.fromString(session.state)
+                    }
+                    else -> PetState.Idle
+                }
+                if (state.isSleepSequence) continue
+                if (state.priority > best.priority) best = state
+            }
+            return best
+        }
     }
 
     // --- Unified output ---
@@ -145,21 +193,15 @@ class PetStateManager(
     //  Public lifecycle
     // ======================================================================
 
-    /** Start the WebSocket session collector loop. */
+    /** Start the session collector loop. Collects from the injected [sessionsFlow]. */
     fun start(scope: CoroutineScope) {
         wsCollectorJob?.cancel()
         wsCollectorJob = scope.launch {
-            while (isActive) {
-                val ws = waitForWebSocket()
-                Log.d(TAG, "WebSocket acquired, collecting sessions")
-                try {
-                    collectSessions(ws, scope)
-                } catch (e: Exception) {
-                    Log.e(TAG, "State collector exception, retrying", e)
-                }
-                emitState(PetState.Idle)
-                commandFlowEmit(StateCommand.SvgLoad(getSvgAssetPath(PetState.Idle), force = false))
-                delay(STATE_COLLECTOR_RETRY_MS)
+            Log.d(TAG, "Collecting sessions from injected flow")
+            try {
+                collectSessions(scope)
+            } catch (e: Exception) {
+                Log.e(TAG, "State collector exception", e)
             }
         }
     }
@@ -182,11 +224,7 @@ class PetStateManager(
 
     /** Remove entries from consumedDoneSessions that are older than [DONE_SESSION_TTL_MS]. */
     private fun cleanupExpiredDoneSessions() {
-        val now = System.currentTimeMillis()
-        val expired = consumedDoneSessions.entries
-            .filter { now - it.value > DONE_SESSION_TTL_MS }
-            .map { it.key }
-        expired.forEach { consumedDoneSessions.remove(it) }
+        cleanupExpiredDoneSessions(consumedDoneSessions)
     }
 
     // ======================================================================
@@ -206,7 +244,10 @@ class PetStateManager(
             it.displayState == "sleeping" || it.state == "sleeping"
         }
         if (visible.isEmpty()) {
-            // 无可见 session → 视为 idle，走超时逻辑
+            // 无可见 session → 立即回 Idle（如果当前是活跃状态），然后走超时逻辑
+            if (!currentState.isIdleLike) {
+                emitState(PetState.Idle)
+            }
             handleIdleTimeout(scope)
             return@withLock
         }
@@ -282,41 +323,13 @@ class PetStateManager(
 
     /**
      * Resolve the dominant display state from visible sessions.
-     * Excludes sleep-sequence states (they are locally managed).
-     * Aligns with PC [resolveDominantSessionState].
-     *
-     * Note: Juggling/Conducting mapping is handled server-side via [SessionData.displayState].
-     * Local applyConductingMapping was removed as dead code (2026-06-01 audit).
+     * Delegates to [companion object][Companion.resolveDisplayState] with instance state.
      */
     private fun resolveDisplayState(visible: List<SessionData>): PetState {
         Log.d("PetState", "resolveDisplayState input sessions: ${visible.map { "${it.sessionId}:state=${it.state}:displayState=${it.displayState}:badge=${it.badge}:isVisible=${it.isVisible}" }}")
-        var best: PetState = PetState.Idle
-        for (session in visible) {
-            val state = when {
-                session.displayState != null && session.displayState != "idle" ->
-                    PetState.fromString(session.displayState)
-                session.badge == "interrupted" -> PetState.Error
-                session.badge == "done" -> {
-                    val sid = session.sessionId
-                    if (sid != null && !consumedDoneSessions.containsKey(sid)) {
-                        consumedDoneSessions[sid] = System.currentTimeMillis()
-                        cleanupExpiredDoneSessions()
-                        PetState.Attention  // 只触发一次
-                    } else {
-                        PetState.Idle  // 已消费
-                    }
-                }
-                session.badge == "running" -> {
-                    session.sessionId?.let { consumedDoneSessions.remove(it) }  // 新任务开始，重置
-                    PetState.fromString(session.state)
-                }
-                else -> PetState.Idle
-            }
-            if (state.isSleepSequence) continue
-            if (state.priority > best.priority) best = state
-        }
-        Log.d("PetState", "resolveDisplayState result: ${best.themeKey}")
-        return best
+        val result = resolveDisplayState(visible, consumedDoneSessions)
+        Log.d("PetState", "resolveDisplayState result: ${result.themeKey}")
+        return result
     }
 
     // ======================================================================
@@ -472,21 +485,10 @@ class PetStateManager(
     //  WebSocket session collector
     // ======================================================================
 
-    private suspend fun collectSessions(ws: SseClient, scope: CoroutineScope) {
-        // This function blocks until disconnection, mirroring the original design.
+    private suspend fun collectSessions(scope: CoroutineScope) {
         val collectJob = scope.launch {
-            ws.sessions.collect { sessions ->
+            sessionsFlow.collect { sessions ->
                 updateSessions(sessions, scope)
-            }
-        }
-
-        // Wait for disconnection
-        scope.launch {
-            ws.connectionState.collect { state ->
-                if (state == ConnectionState.DISCONNECTED || state == ConnectionState.AUTH_FAILED) {
-                    Log.d(TAG, "Connection lost (state=$state)")
-                    collectJob.cancel()
-                }
             }
         }
 
@@ -504,20 +506,12 @@ class PetStateManager(
             }
         }
 
-        // Suspend until collectJob finishes (connection drop)
         try {
             collectJob.join()
         } finally {
             watchdogJob.cancel()
             cancelSleepSequence()
         }
-    }
-
-    private suspend fun waitForWebSocket(): SseClient {
-        // Fast path: already available
-        WebSocketService.getWebSocket()?.let { return it }
-        // Wait for the ready event
-        return WebSocketService.webSocketReady.first()
     }
 
     // ======================================================================
@@ -537,7 +531,8 @@ class PetStateManager(
         currentState = state
         // Cancel any pending auto-return — new state supersedes it.
         cancelAutoReturn()
-        commandFlowEmit(StateCommand.StateChanged(state, resolvedSvg = resolvedSvg))
+        val sessionCount = sessionsFlow.value.values.count { it.isVisible }
+        commandFlowEmit(StateCommand.StateChanged(state, sessionCount, resolvedSvg))
     }
 
     /**

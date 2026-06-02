@@ -420,27 +420,31 @@ object SvgLoader {
         return context.assets.open("html/$name").bufferedReader().readText()
     }
 
-    /** Check if an asset file exists in the assets directory. */
-    private val assetCache = LinkedHashSet<String>(MAX_CACHE_SIZE, 0.75f)
-    private val missingCache = LinkedHashSet<String>(MAX_CACHE_SIZE, 0.75f)
+    /** Check if an asset file exists in the assets directory. Thread-safe. */
+    private val assetCache = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val missingCache = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private fun assetExists(path: String): Boolean {
         if (path in assetCache) return true
         if (path in missingCache) return false
         val ctx = appContext
         if (ctx == null) {
-            // Not initialized yet — degrade to always-true (legacy behavior)
+            // Not initialized — assume asset exists (allows pure-logic unit tests without Android context)
             return true
         }
         return try {
             ctx.assets.open(path).use { /* open succeeded → file exists */ }
-            if (assetCache.size >= MAX_CACHE_SIZE) assetCache.iterator().let { it.next(); it.remove() }
             assetCache.add(path)
             true
         } catch (_: IOException) {
-            if (missingCache.size >= MAX_CACHE_SIZE) missingCache.iterator().let { it.next(); it.remove() }
             missingCache.add(path)
             false
         }
+    }
+
+    /** Reset caches for testing. */
+    fun resetForTesting() {
+        assetCache.clear()
+        missingCache.clear()
     }
 }

@@ -20,15 +20,11 @@ data class ConnectionConfig(
         }
     }
 
-    fun streamUrl(): String {
-        val scheme = if (isLan) "http" else "https"
-        return "$scheme://$host:$port/mobile/stream"
-    }
+    private val scheme get() = if (isLan) "http" else "https"
 
-    fun approveUrl(): String {
-        val scheme = if (isLan) "http" else "https"
-        return "$scheme://$host:$port/mobile/approve"
-    }
+    fun streamUrl(): String = "$scheme://$host:$port/mobile/stream"
+
+    fun approveUrl(): String = "$scheme://$host:$port/mobile/approve"
 
     /** URL safe for logging — no token included. */
     fun streamUrlMasked(): String = streamUrl()

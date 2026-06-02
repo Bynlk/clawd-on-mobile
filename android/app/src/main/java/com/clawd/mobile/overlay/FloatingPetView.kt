@@ -83,8 +83,8 @@ class FloatingPetView @JvmOverloads constructor(
             // (Cloudling scripted SVGs need JS; enable per-character if needed)
             javaScriptEnabled = true                // SVG 内联 + CSS 动画需要
             domStorageEnabled = false               // 不需要
-            allowFileAccessFromFileURLs = false      // WebViewAssetLoader 走 HTTP 响应流，不依赖 file://
-            allowUniversalAccessFromFileURLs = false  // 同上
+            // allowFileAccessFromFileURLs / allowUniversalAccessFromFileURLs removed —
+            // deprecated in API 30+, default is false (WebViewAssetLoader uses HTTP streams)
             allowContentAccess = false               // 不需要
             // Disable zoom
             setSupportZoom(false)

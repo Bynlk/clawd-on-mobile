@@ -3,18 +3,18 @@ package com.clawd.mobile.notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.clawd.mobile.data.PrefsStore
-import com.clawd.mobile.util.HttpClientProvider
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import android.util.Log
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import androidx.work.BackoffPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import java.util.concurrent.TimeUnit
 
+/**
+ * Receives approval/denial intents from notification action buttons.
+ * Delegates the actual network call to [ApprovalWorker] via WorkManager,
+ * avoiding ANR risk from goAsync() timeout and unmanaged coroutine scopes.
+ */
 class ApprovalReceiver : BroadcastReceiver() {
 
     companion object {
@@ -32,35 +32,22 @@ class ApprovalReceiver : BroadcastReceiver() {
             else -> return
         }
 
-        val pendingResult = goAsync()
+        val inputData = workDataOf(
+            "request_id" to requestId,
+            "decision" to decision,
+            "notification_id" to notificationId,
+        )
 
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val prefsStore = PrefsStore.getInstance(context)
-                val config = prefsStore.loadConfig() ?: return@launch
-                val body = buildJsonObject {
-                    put("id", requestId)
-                    put("decision", decision)
-                }.toString()
-                val client = HttpClientProvider.getClient(config)
-                val request = Request.Builder()
-                    .url(config.approveUrl())
-                    .addHeader("Authorization", config.authHeader())
-                    .post(body.toRequestBody("application/json".toMediaType()))
-                    .build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    Log.w("ApprovalReceiver", "Approval response: HTTP ${response.code}")
-                }
-                response.close()
-            } catch (e: Exception) {
-                Log.e("ApprovalReceiver", "Approval failed", e)
-            } finally {
-                if (notificationId >= 0) {
-                    NotificationHelper.cancelNotification(context, notificationId)
-                }
-                pendingResult.finish()
-            }
-        }
+        val workRequest = OneTimeWorkRequestBuilder<ApprovalWorker>()
+            .setInputData(inputData)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+            .build()
+
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork(
+                "${ApprovalWorker.WORK_NAME_PREFIX}$requestId",
+                ExistingWorkPolicy.KEEP,
+                workRequest,
+            )
     }
 }

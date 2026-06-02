@@ -101,6 +101,9 @@ dependencies {
     // Encrypted SharedPreferences (AES-256-GCM)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // WorkManager for reliable background tasks (approval responses)
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
 }

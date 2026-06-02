@@ -1,13 +1,16 @@
 package com.clawd.mobile.ui.navigation
 
 import android.util.Log
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.clawd.mobile.data.ConnectionRepository
 import com.clawd.mobile.data.PrefsStore
+import com.clawd.mobile.data.SessionRepository
 import com.clawd.mobile.notification.StatusNotifier
 import com.clawd.mobile.service.WebSocketService
 import com.clawd.mobile.ui.approval.ApprovalViewModel
@@ -15,6 +18,8 @@ import com.clawd.mobile.ui.sessions.SessionsScreen
 import com.clawd.mobile.ui.scan.ScanScreen
 import com.clawd.mobile.ui.manual.ManualScreen
 import com.clawd.mobile.ui.settings.SettingsScreen
+import com.clawd.mobile.util.HttpClientProvider
+import com.clawd.mobile.ws.CertFingerprintInfo
 import com.clawd.mobile.ws.SseClient
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -54,6 +59,48 @@ fun ClawdNavGraph() {
     }
 
     val ws = webSocket ?: return
+
+    // Repositories — unified data access layer
+    val sessionRepository = remember(ws) { SessionRepository(ws.sessions, prefsStore) }
+    val connectionRepository = remember(ws) { ConnectionRepository(prefsStore, ws.connectionState) }
+
+    // TOFU certificate confirmation dialog
+    var pendingCert by remember { mutableStateOf<CertFingerprintInfo?>(null) }
+    LaunchedEffect(ws) {
+        ws.certFingerprintPending.collect { info ->
+            pendingCert = info
+        }
+    }
+
+    pendingCert?.let { cert ->
+        AlertDialog(
+            onDismissRequest = {
+                pendingCert = null
+                ws.disconnect()
+            },
+            title = { Text("证书确认") },
+            text = {
+                Text(
+                    "正在连接到 ${cert.host}\n\n" +
+                    "服务器证书指纹 (SHA-256):\n${cert.fingerprint}\n\n" +
+                    "确认此指纹与服务器一致？"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    prefsStore.setCertFingerprint(cert.fingerprint)
+                    HttpClientProvider.setCertFingerprint(cert.fingerprint)
+                    pendingCert = null
+                }) { Text("信任并连接") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingCert = null
+                    ws.disconnect()
+                }) { Text("取消") }
+            }
+        )
+    }
 
     val approvalViewModel: ApprovalViewModel = viewModel(
         factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)

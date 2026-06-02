@@ -150,8 +150,7 @@ class FloatingPetService : Service() {
         when (command) {
             is PetStateManager.StateCommand.StateChanged -> {
                 val state = command.state
-                val sessionCount = WebSocketService.getWebSocket()
-                    ?.sessions?.value?.values?.count { it.isVisible } ?: 0
+                val sessionCount = command.sessionCount
                 // Use server-resolved SVG when available (displayHintMap match),
                 // otherwise fall back to local tier/fallback logic.
                 val assetPath = command.resolvedSvg?.let { "svg/$character/$it" }

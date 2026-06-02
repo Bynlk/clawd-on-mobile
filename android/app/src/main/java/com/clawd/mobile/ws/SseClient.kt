@@ -11,8 +11,12 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import android.util.Log
+import com.clawd.mobile.util.CertificateVerifier
 import com.clawd.mobile.util.HttpClientProvider
 import com.clawd.mobile.util.SafeExecutor
+
+/** Info about a server certificate pending user confirmation (TOFU). */
+data class CertFingerprintInfo(val host: String, val fingerprint: String)
 
 class SseClient(private val prefsStore: PrefsStore) {
 
@@ -29,7 +33,7 @@ class SseClient(private val prefsStore: PrefsStore) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val watchdogTimeoutMs = 30_000L
 
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val messageParser = MessageParser()
 
     private val sseFactory: EventSource.Factory
         get() {
@@ -40,8 +44,14 @@ class SseClient(private val prefsStore: PrefsStore) {
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
 
+    private val _sessionsMap = java.util.concurrent.ConcurrentHashMap<String, SessionData>()
     private val _sessions = MutableStateFlow<Map<String, SessionData>>(emptyMap())
     val sessions: StateFlow<Map<String, SessionData>> = _sessions
+
+    /** Emit current _sessionsMap snapshot to the StateFlow. */
+    private fun emitSessions() {
+        _sessions.value = _sessionsMap.toMap()
+    }
 
     private val _messages = MutableSharedFlow<WsMessage>(extraBufferCapacity = 64)
     val messages: SharedFlow<WsMessage> = _messages
@@ -54,6 +64,9 @@ class SseClient(private val prefsStore: PrefsStore) {
 
     private val _displayState = MutableStateFlow("idle")
     val displayState: StateFlow<String> = _displayState
+
+    private val _certFingerprintPending = MutableSharedFlow<CertFingerprintInfo>(extraBufferCapacity = 1)
+    val certFingerprintPending: SharedFlow<CertFingerprintInfo> = _certFingerprintPending
 
     val currentHost: String? get() = config?.host
     val currentPort: Int? get() = config?.port
@@ -82,7 +95,8 @@ class SseClient(private val prefsStore: PrefsStore) {
         eventSource = null
         HttpClientProvider.reset()
         _connectionState.value = ConnectionState.DISCONNECTED
-        _sessions.value = emptyMap()
+        _sessionsMap.clear()
+        emitSessions()
         _displayState.value = "idle"
     }
 
@@ -112,11 +126,19 @@ class SseClient(private val prefsStore: PrefsStore) {
 
         eventSource = sseFactory.newEventSource(request, object : EventSourceListener() {
             override fun onOpen(eventSource: EventSource, response: Response) {
-                Log.d("SseClient", "SSE onOpen code=${response.code}")
+                Log.d(TAG, "SSE onOpen code=${response.code}")
                 reconnectJob?.cancel()
                 reconnectDelay = 1000L
                 _connectionState.value = ConnectionState.CONNECTED
                 resetWatchdog()
+
+                // TOFU: first HTTPS connection — extract cert fingerprint for user confirmation
+                val cfg = config
+                if (cfg != null && prefsStore.getCertFingerprint() == null) {
+                    CertificateVerifier.extractFingerprint(response)?.let { fp ->
+                        scope.launch { _certFingerprintPending.emit(CertFingerprintInfo(cfg.host, fp)) }
+                    }
+                }
             }
 
             override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
@@ -141,173 +163,77 @@ class SseClient(private val prefsStore: PrefsStore) {
     }
 
     private fun handleMessage(rawText: String) {
-        val obj = try { json.decodeFromString<JsonObject>(rawText) } catch (_: Exception) { return }
-        val type = obj["type"]?.jsonPrimitive?.contentOrNull ?: return
-        Log.d("SseClient", "SSE message type=$type")
+        val parsed = messageParser.parse(rawText) ?: return
+        Log.d(TAG, "SSE message type=${parsed::class.simpleName}")
 
-        when (type) {
-            "ping" -> return  // server heartbeat, watchdog already reset in onEvent
-            "connected" -> { /* SSE handshake confirmed */ }
-            "clear_sessions" -> {
-                Log.d("SseClient", "clear_sessions → syncing=true, sessions cleared")
-                _sessions.value = emptyMap()
+        when (parsed) {
+            is ParsedMessage.Ping -> return  // server heartbeat, watchdog already reset in onEvent
+            is ParsedMessage.Connected -> { /* SSE handshake confirmed */ }
+            is ParsedMessage.ClearSessions -> {
+                Log.d(TAG, "clear_sessions → syncing=true, sessions cleared")
+                _sessionsMap.clear()
+                emitSessions()
                 _syncing.value = true
             }
 
-            "snapshot" -> {
-                val sessionsObj = obj["sessions"]?.jsonObject
-                if (sessionsObj == null) {
-                    Log.d("SseClient", "snapshot (no sessions field) → syncing=false")
-                    _syncing.value = false
-                    _sessions.value = emptyMap()
-                    return
-                }
-                val map = mutableMapOf<String, SessionData>()
-                for ((sid, el) in sessionsObj) {
-                    SafeExecutor.tryOrNull("WS") {
-                        val sd = json.decodeFromJsonElement<SessionData>(el)
-                        if (sd.isReal && sd.isVisible) map[sid] = sd
-                    }
-                }
-                obj["displayState"]?.jsonPrimitive?.contentOrNull?.let {
-                    _displayState.value = it
-                }
-                Log.d("SseClient", "snapshot (${map.size} sessions, displayState=${_displayState.value}) → syncing=false")
+            is ParsedMessage.Snapshot -> {
+                parsed.displayState?.let { _displayState.value = it }
+                Log.d(TAG, "snapshot (${parsed.sessions.size} sessions, displayState=${_displayState.value}) → syncing=false")
                 _syncing.value = false
-                _sessions.value = map
+                _sessionsMap.clear()
+                _sessionsMap.putAll(parsed.sessions)
+                emitSessions()
             }
 
-            "state" -> {
-                val sid = obj["sessionId"]?.jsonPrimitive?.contentOrNull ?: return
-                val isReal = obj["isReal"]?.jsonPrimitive?.booleanOrNull ?: true
-                if (!isReal) return
-                val recentEvents = try {
-                    obj["recentEvents"]?.jsonArray?.map { el ->
-                        val o = el.jsonObject
-                        RecentEvent(
-                            at = o["at"]?.jsonPrimitive?.longOrNull ?: 0L,
-                            event = o["event"]?.jsonPrimitive?.contentOrNull,
-                            state = o["state"]?.jsonPrimitive?.contentOrNull,
-                        )
-                    } ?: emptyList()
-                } catch (_: Exception) { emptyList() }
-                val lastOutput = try {
-                    obj["lastOutput"]?.jsonObject?.let { o ->
-                        LastOutput(
-                            toolName = o["toolName"]?.jsonPrimitive?.contentOrNull ?: "",
-                            output = o["output"]?.jsonPrimitive?.contentOrNull ?: "",
-                            at = o["at"]?.jsonPrimitive?.longOrNull ?: 0L,
-                        )
-                    }
-                } catch (_: Exception) { null }
-                obj["displayState"]?.jsonPrimitive?.contentOrNull?.let {
-                    _displayState.value = it
-                }
-                val data = SessionData(
-                    sessionId = sid,
-                    state = obj["state"]?.jsonPrimitive?.contentOrNull ?: "idle",
-                    event = obj["event"]?.jsonPrimitive?.contentOrNull,
-                    agentId = obj["agentId"]?.jsonPrimitive?.contentOrNull,
-                    toolName = obj["toolName"]?.jsonPrimitive?.contentOrNull,
-                    sessionTitle = obj["sessionTitle"]?.jsonPrimitive?.contentOrNull,
-                    displayTitle = obj["displayTitle"]?.jsonPrimitive?.contentOrNull
-                        ?: obj["sessionTitle"]?.jsonPrimitive?.contentOrNull,
-                    cwd = obj["cwd"]?.jsonPrimitive?.contentOrNull,
-                    updatedAt = obj["timestamp"]?.jsonPrimitive?.longOrNull,
-                    recentEvents = recentEvents,
-                    lastOutput = lastOutput,
-                    displayState = obj["displayState"]?.jsonPrimitive?.contentOrNull,
-                    badge = obj["badge"]?.jsonPrimitive?.contentOrNull ?: "idle",
-                    chipText = obj["chipText"]?.jsonPrimitive?.contentOrNull,
-                    chipColor = obj["chipColor"]?.jsonPrimitive?.contentOrNull,
-                    dotColor = obj["dotColor"]?.jsonPrimitive?.contentOrNull,
-                    isVisible = obj["isVisible"]?.jsonPrimitive?.booleanOrNull ?: true,
-                )
-                _sessions.value = _sessions.value.toMutableMap().apply {
-                    if (data.isVisible) put(sid, data) else remove(sid)
-                }
-                Log.d("SseClient", "state sid=$sid state=${data.state} displayState=${data.displayState} globalDisplayState=${_displayState.value} badge=${data.badge} chip=${data.chipText}/${data.chipColor} dot=${data.dotColor} visible=${data.isVisible}")
+            is ParsedMessage.State -> {
+                val data = parsed.sessionData ?: return
+                parsed.displayState?.let { _displayState.value = it }
+                if (data.isVisible) _sessionsMap[parsed.sessionId] = data
+                else _sessionsMap.remove(parsed.sessionId)
+                emitSessions()
+                Log.d(TAG, "state sid=${parsed.sessionId} state=${data.state} displayState=${data.displayState} globalDisplayState=${_displayState.value} badge=${data.badge} chip=${data.chipText}/${data.chipColor} dot=${data.dotColor} visible=${data.isVisible}")
             }
 
-            "tool_output" -> {
-                val sid = obj["sessionId"]?.jsonPrimitive?.contentOrNull ?: return
-                val existing = _sessions.value[sid] ?: return
-                val updated = existing.copy(
+            is ParsedMessage.ToolOutput -> {
+                val existing = _sessionsMap[parsed.sessionId] ?: return
+                _sessionsMap[parsed.sessionId] = existing.copy(
                     lastOutput = LastOutput(
-                        toolName = obj["toolName"]?.jsonPrimitive?.contentOrNull ?: "",
-                        output = obj["output"]?.jsonPrimitive?.contentOrNull ?: "",
-                        at = obj["timestamp"]?.jsonPrimitive?.longOrNull ?: 0L,
+                        toolName = parsed.toolName,
+                        output = parsed.output,
+                        at = parsed.timestamp,
                     )
                 )
-                _sessions.value = _sessions.value.toMutableMap().apply { put(sid, updated) }
+                emitSessions()
             }
 
-            "session_deleted" -> {
-                val sid = obj["sessionId"]?.jsonPrimitive?.contentOrNull ?: return
-                _sessions.value = _sessions.value.toMutableMap().apply { remove(sid) }
+            is ParsedMessage.SessionDeleted -> {
+                _sessionsMap.remove(parsed.sessionId)
+                emitSessions()
             }
 
-            "permission_request" -> {
+            is ParsedMessage.PermissionRequest -> {
                 scope.launch {
                     SafeExecutor.tryOrReport("WS") {
-                        val reqId = obj["id"]?.jsonPrimitive?.contentOrNull
-                        Log.d("SseClient", "permission_request id=$reqId")
-                        val toolNameStr = obj["toolName"]?.jsonPrimitive?.contentOrNull
-                        val toolInputObj = obj["toolInput"]?.jsonObject
-                        val suggestions = SafeExecutor.tryOrNull("WS") {
-                            obj["suggestions"]?.jsonArray?.map { s ->
-                                val so = s.jsonObject
-                                PermissionSuggestion(
-                                    label = so["label"]?.jsonPrimitive?.content ?: "",
-                                    behavior = so["behavior"]?.jsonPrimitive?.content ?: "deny",
-                                    rule = so["rule"]?.jsonPrimitive?.contentOrNull,
-                                )
-                            }
-                        } ?: emptyList()
-                        // AskUserQuestion (elicitation): parse questions hierarchy
-                        val elicitationQuestions = if (toolNameStr == "AskUserQuestion") {
-                            SafeExecutor.tryOrNull("WS") {
-                                toolInputObj?.get("questions")?.jsonArray?.map { q ->
-                                    val qo = q.jsonObject
-                                    ElicitationQuestion(
-                                        question = qo["question"]?.jsonPrimitive?.content ?: "",
-                                        header = qo["header"]?.jsonPrimitive?.contentOrNull,
-                                        multiSelect = qo["multiSelect"]?.jsonPrimitive?.booleanOrNull ?: false,
-                                        options = qo["options"]?.jsonArray?.map { o ->
-                                            val oo = o.jsonObject
-                                            ElicitationOption(
-                                                label = oo["label"]?.jsonPrimitive?.content ?: "",
-                                                description = oo["description"]?.jsonPrimitive?.contentOrNull,
-                                            )
-                                        } ?: emptyList(),
-                                    )
-                                }
-                            } ?: emptyList()
-                        } else emptyList()
-
-                        val data = PermissionRequestData(
-                            agentId = obj["agentId"]?.jsonPrimitive?.contentOrNull,
-                            toolName = toolNameStr,
-                            toolInputSummary = buildToolInputSummary(toolNameStr, toolInputObj),
-                            sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull,
-                            requestId = obj["id"]?.jsonPrimitive?.contentOrNull,
-                            timeout = obj["timeout"]?.jsonPrimitive?.longOrNull ?: 60000,
-                            suggestions = suggestions,
-                            elicitationQuestions = elicitationQuestions,
-                            toolInputRaw = obj["toolInput"],
-                        )
-                        _permissionRequests.emit(data)
+                        Log.d(TAG, "permission_request id=${parsed.data.requestId}")
+                        _permissionRequests.emit(parsed.data)
                     }
                 }
             }
 
+            is ParsedMessage.Unknown -> { /* ignore unknown types */ }
         }
 
         scope.launch {
             val msg = WsMessage(
-                type = type,
-                timestamp = obj["timestamp"]?.jsonPrimitive?.longOrNull ?: 0,
-                sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull,
+                type = parsed::class.simpleName ?: "unknown",
+                timestamp = parsed.timestamp,
+                sessionId = when (parsed) {
+                    is ParsedMessage.State -> parsed.sessionId
+                    is ParsedMessage.ToolOutput -> parsed.sessionId
+                    is ParsedMessage.SessionDeleted -> parsed.sessionId
+                    is ParsedMessage.PermissionRequest -> parsed.data.sessionId
+                    else -> null
+                },
             )
             _messages.emit(msg)
         }
@@ -360,44 +286,11 @@ class SseClient(private val prefsStore: PrefsStore) {
         }
     }
 
-    private fun buildToolInputSummary(toolName: String?, toolInput: JsonObject?): String? {
-        if (toolInput == null) return null
-        val key = toolName ?: ""
-        val summary = when (key) {
-            "Write", "Edit", "Delete", "Read" ->
-                toolInput["file_path"]?.jsonPrimitive?.contentOrNull
-            "Bash" ->
-                toolInput["command"]?.jsonPrimitive?.contentOrNull
-            "NotebookEdit" ->
-                toolInput["notebook_path"]?.jsonPrimitive?.contentOrNull
-            "WebFetch" ->
-                toolInput["url"]?.jsonPrimitive?.contentOrNull
-            "WebSearch" ->
-                toolInput["query"]?.jsonPrimitive?.contentOrNull
-            "AskUserQuestion" ->
-                SafeExecutor.tryOrNull("WS") {
-                    val questions = toolInput["questions"]?.jsonArray
-                    val first = questions?.firstOrNull()?.jsonObject
-                    first?.get("question")?.jsonPrimitive?.contentOrNull
-                }
-            else -> {
-                toolInput["description"]?.jsonPrimitive?.contentOrNull
-                    ?: toolInput["summary"]?.jsonPrimitive?.contentOrNull
-                    ?: toolInput["reason"]?.jsonPrimitive?.contentOrNull
-            }
-        }
-        val text = summary?.take(60)?.trim()
-        if (text.isNullOrBlank()) {
-            val fallback = toolInput.toString().take(80)
-            return if (fallback.length > 2) "$key → $fallback…" else null
-        }
-        return "$key → $text" + if (summary.length > 60) "…" else ""
-    }
-
     private fun scheduleReconnect() {
         if (reconnectJob?.isActive == true) return
         _connectionState.value = ConnectionState.RECONNECTING
-        _sessions.value = emptyMap()
+        _sessionsMap.clear()
+        emitSessions()
         _displayState.value = "idle"
         reconnectJob = scope.launch {
             delay(reconnectDelay)

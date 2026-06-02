@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Allow cleartext (http://) for LAN connections -->
+    <!--
+        Allow cleartext for LAN connections.
+        The server runs plain HTTP on LAN; the app uses http:// for isLan hosts
+        and https:// for non-LAN hosts (see ConnectionConfig.scheme).
+        Android's <domain> matching is hostname-based (no CIDR), so we use
+        base-config cleartext=true since LAN IPs are dynamic.
+    -->
     <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
