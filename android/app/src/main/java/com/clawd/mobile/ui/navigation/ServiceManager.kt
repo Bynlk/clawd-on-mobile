@@ -9,6 +9,7 @@ import com.clawd.mobile.util.HttpClientProvider
 import com.clawd.mobile.ws.CertFingerprintInfo
 import com.clawd.mobile.ws.SseClient
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +36,8 @@ class ServiceManager(
     private val _sseClient = MutableStateFlow<SseClient?>(null)
     /** Current [SseClient], null until service starts or fallback creates one. */
     val sseClient: StateFlow<SseClient?> = _sseClient.asStateFlow()
+
+    private val collectorJobs = mutableListOf<Job>()
 
     private val _pendingCert = MutableStateFlow<CertFingerprintInfo?>(null)
     /** Non-null when a TOFU certificate confirmation dialog should be shown. */
@@ -86,13 +89,16 @@ class ServiceManager(
     // ======================================================================
 
     private fun startCollectors(ws: SseClient) {
-        scope.launch {
+        collectorJobs.forEach { it.cancel() }
+        collectorJobs.clear()
+
+        collectorJobs += scope.launch {
             ws.certFingerprintPending.collect { info ->
                 _pendingCert.value = info
             }
         }
 
-        scope.launch {
+        collectorJobs += scope.launch {
             var lastDisplayState: String? = null
             var lastSessionsJson = ""
             ws.displayState.collect { displayState ->
@@ -107,7 +113,7 @@ class ServiceManager(
             }
         }
 
-        scope.launch {
+        collectorJobs += scope.launch {
             for (request in ClawdApp.approvalChannel) {
                 Log.d(TAG, "Received approval request from channel: id=${request.requestId}")
                 onApprovalFromNotification?.invoke(request)
@@ -124,6 +130,7 @@ class ServiceManager(
 
     /** Start or restart the service with an optional new [config][com.clawd.mobile.data.ConnectionConfig]. */
     fun startService(config: com.clawd.mobile.data.ConnectionConfig? = null) {
+        config?.let { prefsStore.saveConfig(it) }
         SseService.start(context, config)
     }
 
@@ -132,11 +139,18 @@ class ServiceManager(
         prefsStore.setCertFingerprint(cert.fingerprint)
         HttpClientProvider.setCertFingerprint(cert.fingerprint)
         _pendingCert.value = null
+        _sseClient.value?.setConnectionState(com.clawd.mobile.ws.ConnectionState.CONNECTED)
     }
 
     /** Reject the pending TOFU certificate. */
     fun rejectCert(ws: SseClient) {
         _pendingCert.value = null
         ws.disconnect()
+    }
+
+    /** Cancel all long-running collectors and release resources. */
+    fun destroy() {
+        collectorJobs.forEach { it.cancel() }
+        collectorJobs.clear()
     }
 }

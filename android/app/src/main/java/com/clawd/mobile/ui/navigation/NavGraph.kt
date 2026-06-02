@@ -1,7 +1,11 @@
 package com.clawd.mobile.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -9,9 +13,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.clawd.mobile.R
-import com.clawd.mobile.data.ConnectionRepository
 import com.clawd.mobile.data.PrefsStore
-import com.clawd.mobile.data.SessionRepository
 import com.clawd.mobile.notification.StatusNotifier
 import com.clawd.mobile.ui.approval.ApprovalViewModel
 import com.clawd.mobile.ui.sessions.SessionsScreen
@@ -35,11 +37,13 @@ fun ClawdNavGraph() {
     var refreshKey by remember { mutableIntStateOf(0) }
     LaunchedEffect(refreshKey) { if (refreshKey > 0) serviceManager.refresh() }
 
-    val ws = serviceManager.sseClient.collectAsState().value ?: return
-
-    // Repositories
-    val sessionRepository = remember(ws) { SessionRepository(ws.sessions, prefsStore) }
-    val connectionRepository = remember(ws) { ConnectionRepository(prefsStore, ws.connectionState) }
+    val ws = serviceManager.sseClient.collectAsState().value
+    if (ws == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
 
     // TOFU certificate dialog
     val pendingCert by serviceManager.pendingCert.collectAsState()
@@ -66,19 +70,19 @@ fun ClawdNavGraph() {
         )
     }
 
-    // ViewModel
-    val approvalViewModel: ApprovalViewModel = viewModel(
-        factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
-    )
-
-    // Wire up pending approval check + notification-tap routing
-    statusNotifier.hasPendingApprovals = { approvalViewModel.pendingRequests.value.isNotEmpty() }
-    serviceManager.onApprovalFromNotification = { request ->
-        approvalViewModel.restoreRequestFromNotification(request)
-    }
-
     NavHost(navController = navController, startDestination = "sessions") {
         composable("sessions") {
+            val approvalViewModel: ApprovalViewModel = viewModel(
+                key = "approval_$refreshKey",
+                factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
+            )
+
+            // Wire up pending approval check + notification-tap routing
+            statusNotifier.hasPendingApprovals = { approvalViewModel.pendingRequests.value.isNotEmpty() }
+            serviceManager.onApprovalFromNotification = { request ->
+                approvalViewModel.restoreRequestFromNotification(request)
+            }
+
             SessionsScreen(
                 navController = navController,
                 sseClient = ws,
