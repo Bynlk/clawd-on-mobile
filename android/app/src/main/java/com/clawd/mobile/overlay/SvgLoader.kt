@@ -335,60 +335,6 @@ object SvgLoader {
         webView.loadUrl("about:blank")
     }
 
-    /**
-     * Inject JS to get the SVG's intrinsic dimensions from its viewBox attribute.
-     * Calls [onResult] with (width, height) in SVG units.
-     */
-    fun querySvgDimensions(webView: WebView, onResult: (Int, Int) -> Unit) {
-        val js = """
-            (function() {
-                var img = document.querySelector('img.svg');
-                if (!img) return '0,0';
-                // Try to get natural dimensions
-                return img.naturalWidth + ',' + img.naturalHeight;
-            })();
-        """.trimIndent()
-        webView.evaluateJavascript(js) { result ->
-            try {
-                val clean = result.trim('"').split(",")
-                val w = clean[0].toIntOrNull() ?: 0
-                val h = clean[1].toIntOrNull() ?: 0
-                if (w > 0 && h > 0) onResult(w, h)
-            } catch (e: Exception) { Log.w(TAG, "hitTest JS eval failed", e) }
-        }
-    }
-
-    /**
-     * Check if a point (in WebView coordinates) hits visible content.
-     * Uses canvas pixel sampling via JS injection.
-     *
-     * @return true if the point is on visible content, false if transparent
-     */
-    fun hitTest(webView: WebView, x: Float, y: Float, onResult: (Boolean) -> Unit) {
-        val js = """
-            (function() {
-                var img = document.querySelector('img.svg');
-                if (!img) return '0';
-                var rect = img.getBoundingClientRect();
-                var scaleX = img.naturalWidth / rect.width;
-                var scaleY = img.naturalHeight / rect.height;
-                var px = ($x - rect.left) * scaleX;
-                var py = ($y - rect.top) * scaleY;
-                if (px < 0 || py < 0 || px >= img.naturalWidth || py >= img.naturalHeight) return '0';
-                var canvas = document.createElement('canvas');
-                canvas.width = img.naturalWidth;
-                canvas.height = img.naturalHeight;
-                var ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                var pixel = ctx.getImageData(Math.floor(px), Math.floor(py), 1, 1).data;
-                return pixel[3] > 0 ? '1' : '0';
-            })();
-        """.trimIndent()
-        webView.evaluateJavascript(js) { result ->
-            onResult(result.trim('"') == "1")
-        }
-    }
-
     // ======================================================================
     //  Internal helpers
     // ======================================================================

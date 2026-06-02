@@ -454,41 +454,6 @@ object ClawdIcons {
         }
     }
 
-    // UserCircle — my tab (simplified)
-    val UserCircle: ImageVector = iconBuilder("userCircle") {
-        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            // circle
-            moveTo(12f, 2f)
-            arcTo(10f, 10f, 0f, true, true, 12f, 22f)
-            arcTo(10f, 10f, 0f, true, true, 12f, 2f)
-            close()
-        }
-        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            // head
-            moveTo(12f, 4f)
-            lineTo(14f, 5f)
-            lineTo(15f, 7f)
-            lineTo(15f, 9f)
-            lineTo(14f, 10f)
-            lineTo(12f, 11f)
-            lineTo(10f, 10f)
-            lineTo(9f, 9f)
-            lineTo(9f, 7f)
-            lineTo(10f, 5f)
-            close()
-        }
-        path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
-            // body
-            moveTo(5f, 19f)
-            lineTo(7f, 15f)
-            lineTo(9f, 13f)
-            lineTo(12f, 13f)
-            lineTo(15f, 13f)
-            lineTo(17f, 15f)
-            lineTo(19f, 19f)
-        }
-    }
-
     // LayoutList — sessions tab (simplified)
     val LayoutList: ImageVector = iconBuilder("layoutList") {
         path(stroke = strokeColor, strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
