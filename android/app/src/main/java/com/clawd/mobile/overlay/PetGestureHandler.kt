@@ -7,7 +7,7 @@ import android.view.MotionEvent
 import android.view.WindowManager
 
 /**
- * Handles pet touch gestures: drag, single tap (bubble toggle), double tap (open app).
+ * Handles pet touch gestures: drag (reaction + reposition), single tap (bubble toggle), double tap (reaction).
  */
 class PetGestureHandler(
     context: Context,
@@ -15,8 +15,9 @@ class PetGestureHandler(
     private val windowManager: WindowManager,
     private val getPetView: () -> FloatingPetView?,
     private val onDragStart: () -> Unit,
+    private val onDragEnd: () -> Unit,
     private val onSingleTap: () -> Unit,
-    private val onDoubleTap: () -> Unit
+    private val onDoubleTap: (MotionEvent) -> Unit
 ) {
     companion object {
         private const val TAG = "PetGestureHandler"
@@ -27,7 +28,8 @@ class PetGestureHandler(
     private var initialY = 0
     private var initialTouchX = 0f
     private var initialTouchY = 0f
-    private var isDragging = false
+    var isDragging = false
+        private set
 
     val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean {
@@ -47,9 +49,13 @@ class PetGestureHandler(
             return true
         }
 
-        override fun onDoubleTap(e: MotionEvent): Boolean {
-            Log.d(TAG, "Double tap → openApp")
-            onDoubleTap()
+        override fun onDoubleTapEvent(e: MotionEvent): Boolean {
+            // Fires on second tap DOWN — before onSingleTapConfirmed resolves.
+            // Returning true consumes the event, preventing single-tap from also firing.
+            if (e.action == MotionEvent.ACTION_DOWN) {
+                Log.d(TAG, "Double tap → reaction")
+                onDoubleTap(e)
+            }
             return true
         }
 
@@ -72,5 +78,19 @@ class PetGestureHandler(
             }
             return true
         }
+
     })
+
+    /**
+     * Call from the view's onTouchEvent for ACTION_UP/ACTION_CANCEL detection.
+     * Handles drag-end cleanup that GestureDetector doesn't expose.
+     */
+    fun onTouchUp(event: MotionEvent) {
+        if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
+            if (isDragging) {
+                isDragging = false
+                onDragEnd()
+            }
+        }
+    }
 }

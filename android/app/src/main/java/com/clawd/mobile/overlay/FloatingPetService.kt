@@ -36,6 +36,11 @@ class FloatingPetService : Service() {
         const val EXTRA_CHARACTER = "character"
         private const val NOTIFICATION_ID = 9001
         private const val DEFAULT_SIZE_DP = 96
+
+        /** Whether the service is currently alive. Used by Settings to avoid redundant starts. */
+        @Volatile
+        var isRunning = false
+            private set
     }
 
     // --- View & window ---
@@ -72,6 +77,7 @@ class FloatingPetService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         Log.d(TAG, "onCreate")
 
         prefsStore = PrefsStore.getInstance(this)
@@ -117,6 +123,7 @@ class FloatingPetService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
+        isRunning = false
         started = false
         bubbleManager?.dismiss()
         stateManager.reset()
@@ -134,14 +141,25 @@ class FloatingPetService : Service() {
 
     private fun reloadGif() {
         stateManager.character = character
+        petView?.character = character
         stateManager.reset()
         commandCollectorJob?.cancel()
         petView?.clearSvg()
 
         commandCollectorJob = scope.launch(Dispatchers.Main) {
             stateManager.start(this)
-            stateManager.stateFlow.collect { command ->
-                handleCommand(command)
+            // Collect state commands
+            launch {
+                stateManager.stateFlow.collect { command ->
+                    handleCommand(command)
+                }
+            }
+            // Collect SSE reaction events from server
+            launch {
+                SseService.getClient()?.reactions?.collect { svg ->
+                    val path = "svg/$character/$svg"
+                    stateManager.loadReaction(path)
+                }
             }
         }
     }
@@ -234,6 +252,7 @@ class FloatingPetService : Service() {
         petView = FloatingPetView(this).apply {
             setBackgroundColor(0)
             targetContentPx = sizePx
+            character = this@FloatingPetService.character
         }
 
         layoutParams = WindowManager.LayoutParams(
@@ -260,6 +279,7 @@ class FloatingPetService : Service() {
             context = this,
             windowManager = windowManager!!,
             scope = scope,
+            getPetView = { petView },
             onEnterApp = { openApp() }
         )
 
@@ -268,17 +288,24 @@ class FloatingPetService : Service() {
             layoutParams = layoutParams!!,
             windowManager = windowManager!!,
             getPetView = { petView },
-            onDragStart = { bubbleManager?.dismiss() },
+            onDragStart = {
+                bubbleManager?.dismiss()
+                stateManager.triggerDragReaction()
+            },
+            onDragEnd = {
+                stateManager.restoreFromDragReaction()
+            },
             onSingleTap = {
                 layoutParams?.let { bubbleManager?.toggle(it) }
             },
             onDoubleTap = {
-                bubbleManager?.dismiss()
-                openApp()
+                stateManager.triggerClickReaction()
             }
         )
         petView!!.gestureDetector = gestureHandler!!.gestureDetector
+        petView!!.gestureHandler = gestureHandler!!
 
+        petView!!.onTouchUp = { event -> gestureHandler?.onTouchUp(event) }
         petView!!.onDragEnd = {
             windowController?.snapToEdge()
             windowController?.savePosition(prefsStore)
@@ -291,6 +318,10 @@ class FloatingPetService : Service() {
                 it.svgFrameH = fH
                 it.recalcWindowSize(sizeDp)
             }
+        }
+        petView!!.onInsetsReady = {
+            windowController?.snapToEdge()
+            windowController?.updateTouchRegion()
         }
 
         windowManager?.addView(petView!!, layoutParams)

@@ -19,6 +19,10 @@ import java.io.IOException
  * - Idle animation variants (cycle through look/bubble/reading)
  * - Sleep sequence states (yawning, dozing, collapsing, waking)
  * - All 3 characters: clawd, cloudling, calico
+ *
+ * **Hot-swap rendering**: After the initial page load, subsequent SVG changes
+ * use `window.updatePetSvg(url)` via `evaluateJavascript` — no page reload,
+ * no flicker, no hit-test region gap.
  */
 object SvgLoader {
 
@@ -28,9 +32,8 @@ object SvgLoader {
 
     /**
      * Safety-net timeout for oneshot SVG loadFinished callback (ms).
-     * The authoritative return mechanism is PetStateManager's autoReturn timer
-     * (5 000 ms for error, aligned with PC AUTO_RETURN_MS).  This timeout is
-     * only a fallback in case the autoReturn path is somehow delayed.
+     * Oneshot states are now driven entirely by external session state changes.
+     * This timeout is a fallback in case the session update is somehow delayed.
      */
     private const val ONESHOT_TIMEOUT_MS = 6_000L
 
@@ -53,6 +56,54 @@ object SvgLoader {
 
     data class Tier(val minSessions: Int, val file: String)
     data class ViewBoxInfo(val width: Int, val height: Int)
+
+    /**
+     * Fixed content bounds in viewBox coordinates.
+     * Defines where the actual visible character content sits within the viewBox,
+     * excluding transparent animation padding.
+     *
+     * @param vbX ViewBox origin X
+     * @param vbY ViewBox origin Y
+     * @param vbW ViewBox width
+     * @param vbH ViewBox height
+     * @param contentLeft Inset from viewBox left edge to content left edge
+     * @param contentTop Inset from viewBox top edge to content top edge
+     * @param contentRight Inset from viewBox right edge to content right edge
+     * @param contentBottom Inset from viewBox bottom edge to content bottom edge
+     */
+    data class FixedContentBounds(
+        val vbX: Float, val vbY: Float,
+        val vbW: Float, val vbH: Float,
+        val contentLeft: Float, val contentTop: Float,
+        val contentRight: Float, val contentBottom: Float,
+    )
+
+    // ── Per-character fixed content bounds ─────────────────────────────
+    // Derived from SVG source analysis. Values are insets from viewBox edges
+    // in viewBox units, covering the union of all animation states.
+
+    private val FIXED_CONTENT_BOUNDS: Map<String, FixedContentBounds> = mapOf(
+        "clawd" to FixedContentBounds(
+            vbX = -15f, vbY = -25f, vbW = 45f, vbH = 45f,
+            // Body: x=[0,15] y=[6,15]; sparkles extend to x=[-6,20] y=[-9,15]
+            contentLeft = 9f, contentTop = 16f,
+            contentRight = 10f, contentBottom = 5f,
+        ),
+        "cloudling" to FixedContentBounds(
+            vbX = -32f, vbY = -24f, vbW = 88f, vbH = 72f,
+            // Cloud: x=[3,21] y=[3,21]
+            contentLeft = 35f, contentTop = 27f,
+            contentRight = 35f, contentBottom = 27f,
+        ),
+    )
+
+    /**
+     * Get fixed content bounds for a character, or null if not available.
+     * Clawd and Cloudling have pre-computed bounds from SVG analysis.
+     * Other characters (e.g. Calico) return null and should use dynamic visualInsets.
+     */
+    fun getFixedContentBounds(character: String): FixedContentBounds? =
+        FIXED_CONTENT_BOUNDS[character]
 
     // ── Hardcoded defaults (fallback if JSON missing/invalid) ──────────
 
@@ -287,6 +338,9 @@ object SvgLoader {
      * Load an SVG/APNG into a WebView with an HTML wrapper.
      * The HTML ensures transparent background and proper sizing.
      *
+     * On first call, loads a full HTML page via `loadDataWithBaseURL`.
+     * On subsequent calls, hot-swaps via `window.updatePetSvg(url)` — no flicker.
+     *
      * @param webView The WebView to load into
      * @param assetPath Path relative to assets/, e.g. "svg/clawd/clawd-idle-follow.svg"
      * @param loop Whether to loop the animation (true for most states, false for oneshots)
@@ -299,53 +353,34 @@ object SvgLoader {
         onFinished: (() -> Unit)? = null
     ) {
         // Cancel any stale poll chain from a previous loadSvg call.
-        // Without this, old postDelayed callbacks fire on new content and
-        // can trigger onFinished at the wrong time.
         pollGeneration++
 
+        val view = webView as? FloatingPetView
         val url = "$SVG_BASE/${assetPath.removePrefix("svg/")}"
-        val loopStyle = if (loop) "" else "animation-iteration-count: 1;"
         val isApng = assetPath.endsWith(".apng")
 
-        val templateName = if (isApng) "apng_template.html" else "svg_template.html"
-        var html = loadTemplate(webView.context, templateName)
-            .replace("{{URL}}", url)
-            .replace("{{LOOP_STYLE}}", loopStyle)
-            .replace("{{ANIM_END_SCRIPT}}", "")
+        if (view != null && view.isPageLoaded) {
+            // ── Hot-swap path: in-place JS update, zero flicker ──
+            swapSvg(view, url, isApng)
+        } else {
+            // ── First load: full HTML page ──
+            val loopStyle = if (loop) "" else "animation-iteration-count: 1;"
+            val templateName = if (isApng) "apng_template.html" else "svg_template.html"
+            val html = loadTemplate(webView.context, templateName)
+                .replace("{{URL}}", url)
+                .replace("{{LOOP_STYLE}}", loopStyle)
+                .replace("{{ANIM_END_SCRIPT}}", "")
 
-        // Defense-in-depth: sanitize SVG content in Kotlin before building HTML.
-        // APNGs are binary and not subject to XSS; the JS sanitizer in the template
-        // is the secondary layer for the XHR path.
-        if (!isApng) {
-            try {
-                val rawSvg = webView.context.assets.open(assetPath).bufferedReader().readText()
-                val sanitized = sanitizeSvg(rawSvg)
-                html = html.replace(
-                    "xhr.open('GET', '{{URL}}', true);",
-                    "// Sanitized inline (Kotlin-side)\n      xhr.open('GET', 'about:blank', true);"
-                ).replace(
-                    "document.querySelector('.container').innerHTML = sanitizeSvg(xhr.responseText);",
-                    "document.querySelector('.container').innerHTML = " + org.json.JSONObject().put("s", sanitized).toString().removeSurrounding("{\"s\":", "}") + ";"
-                )
-            } catch (e: IOException) {
-                Log.w(TAG, "Failed to inline-sanitize $assetPath, falling back to XHR", e)
-            }
+            webView.loadDataWithBaseURL(
+                "https://appassets.androidplatform.net/",
+                html,
+                "text/html",
+                "UTF-8",
+                null
+            )
         }
 
-        webView.loadDataWithBaseURL(
-            "https://appassets.androidplatform.net/",
-            html,
-            "text/html",
-            "UTF-8",
-            null
-        )
-
-        // For non-looping animations, use a fixed timeout to detect end.
-        // We do NOT rely on CSS animationend because all oneshot SVGs define
-        // infinite animations on child elements — the injected
-        // animation-iteration-count:1 on <svg> cannot override them.
-        // The autoReturn timer in PetStateManager is the authoritative
-        // return mechanism; this callback is a safety-net fallback.
+        // Oneshot timeout: safety-net fallback for non-looping animations.
         if (!loop && onFinished != null) {
             val gen = pollGeneration
             val timeoutMs = if (isApng) 3000L else ONESHOT_TIMEOUT_MS
@@ -354,7 +389,7 @@ object SvgLoader {
             }, timeoutMs)
         }
 
-        Log.d(TAG, "loadSvg: $assetPath (loop=$loop, isApng=$isApng)")
+        Log.d(TAG, "loadSvg: $assetPath (loop=$loop, isApng=$isApng, hotSwap=${view?.isPageLoaded == true})")
     }
 
     /**
@@ -362,33 +397,50 @@ object SvgLoader {
      */
     fun clearSvg(webView: WebView) {
         webView.loadUrl("about:blank")
+        (webView as? FloatingPetView)?.isPageLoaded = false
+    }
+
+    // ======================================================================
+    //  Internal: hot-swap via evaluateJavascript
+    // ======================================================================
+
+    /**
+     * In-place SVG/APNG swap using `window.updatePetSvg(url)`.
+     * The JS function fetches, sanitizes, and replaces content without page reload.
+     */
+    private fun swapSvg(view: FloatingPetView, url: String, isApng: Boolean) {
+        // Inject JS callback for dimension reading after swap completes
+        val callbackJs = """
+            window.onSvgLoaded = function() {
+                var c = document.querySelector('.container');
+                var el = c ? (${ if (isApng) "'img'" else "'svg'" }) ? c.querySelector('img') : c.querySelector('svg') : null;
+                if (!el) return;
+                var w = window._svgWidth || 0, h = window._svgHeight || 0;
+                if (w > 0 && h > 0) {
+                    // Signal native side to read dimensions and cache hit-test bitmap
+                    // Use a temporary bridge: poll from Kotlin side
+                }
+            };
+        """.trimIndent()
+        // Note: We don't actually need to inject the callback — the template's
+        // readSvgMeta / onload already calls window.onSvgLoaded if defined.
+        // The dimension reading is triggered by onPageFinished polling, which
+        // works for both paths since _svgWidth/_svgHeight are updated by the JS.
+
+        val escapedUrl = url.replace("'", "\\'")
+        view.evaluateJavascript("window.updatePetSvg('$escapedUrl');", null)
+
+        // After hot-swap, re-read dimensions and cache hit-test bitmap.
+        // The JS updatePetSvg sets _svgWidth/_svgHeight asynchronously (on XHR load),
+        // so we poll with a short delay — same pattern as onPageFinished.
+        view.postDelayed({ view.readDimensionsAndCacheBitmap() }, 150)
     }
 
     // ======================================================================
     //  Internal helpers
     // ======================================================================
 
-
-    /**
-     * Defense-in-depth SVG sanitizer. Strips potentially dangerous elements
-     * from SVG content before embedding in a WebView. Applied in both Kotlin
-     * (inline path) and JavaScript (template XHR path).
-     *
-     * Removes: `<script>`, `<foreignObject>`, `on*` event attributes, `javascript:` URLs.
-     */
-    private fun sanitizeSvg(raw: String): String {
-        var s = raw
-        s = Regex("<script[\\s\\S]*?</script>", RegexOption.IGNORE_CASE).replace(s, "")
-        s = Regex("<foreignObject[\\s\\S]*?</foreignObject>", RegexOption.IGNORE_CASE).replace(s, "")
-        s = Regex("""\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)""", RegexOption.IGNORE_CASE).replace(s, "")
-        s = Regex("""(href|xlink:href)\s*=\s*["']?\s*javascript\s*:[^"'\s>]*""", RegexOption.IGNORE_CASE).replace(s, "")
-        return s
-    }
-
-    /**
-     * Build candidate filename list for fallback resolution.
-     * Pattern: character-specific → clawd fallback → idle
-     */
+    /** Build candidate filename list for fallback resolution. */
     private fun buildCandidateList(
         stateKey: String,
         character: String,

@@ -1,11 +1,8 @@
 package com.clawd.mobile.overlay
 
 import android.content.Context
-import android.provider.Settings
 import android.util.Log
-import android.view.Gravity
 import android.view.WindowManager
-import android.graphics.PixelFormat
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.util.SafeExecutor
 
@@ -84,6 +81,9 @@ class PetWindowController(
             petView.targetContentPx = windowPx
             petView.requestLayout()
             petView.invalidate()
+            // Re-cache hit-test bitmap after layout pass completes (window size changed)
+            petView.post { petView.cacheHitTestBitmap() }
+            updateTouchRegion()
             Log.d(TAG, "recalcWindowSize: offset=($contentOffsetDx,$contentOffsetDy), frame=${frameW}x${frameH}, window=${windowPx}px")
         } catch (e: Exception) {
             Log.e(TAG, "recalcWindowSize error", e)
@@ -91,7 +91,9 @@ class PetWindowController(
     }
 
     /**
-     * Snap the pet to the nearest screen edge, accounting for visual insets.
+     * Snap the pet to the nearest screen edge, accounting for content insets.
+     * Uses [FloatingPetView.getContentRect] which handles both fixed bounds
+     * (Clawd/Cloudling) and dynamic visualInsets (Calico).
      */
     fun snapToEdge() {
         val petView = getPetView() ?: return
@@ -101,23 +103,44 @@ class PetWindowController(
         val screenH = context.resources.displayMetrics.heightPixels
         val marginPx = (EDGE_MARGIN_DP * density).toInt()
 
-        val vi = petView.visualInsets ?: FloatingPetView.VisualInsets(0f, 0f, 0f, 0f)
-        val vbSize = petView.viewBoxSize ?: 0f
-        val windowPx = lp.width.toFloat()
+        val windowRect = android.graphics.Rect(lp.x, lp.y, lp.x + lp.width, lp.y + lp.height)
+        val contentRect = petView.getContentRect(windowRect)
 
-        val scale = if (vbSize > 0f) windowPx / vbSize else 0f
-        if (scale > 0f && (vi.left != 0f || vi.top != 0f || vi.right != 0f || vi.bottom != 0f)) {
-            val leftPx = (vi.left * scale).toInt()
-            val topPx = (vi.top * scale).toInt()
-            val rightPx = (vi.right * scale).toInt()
-            val bottomPx = (vi.bottom * scale).toInt()
+        // Only adjust if content rect differs from window rect
+        if (contentRect == windowRect) return
 
-            if (lp.x + leftPx < marginPx) lp.x = marginPx - leftPx
-            if (lp.x + lp.width - rightPx > screenW - marginPx) lp.x = screenW - marginPx - lp.width + rightPx
-            if (lp.y + topPx < marginPx) lp.y = marginPx - topPx
-            if (lp.y + lp.height - bottomPx > screenH - marginPx) lp.y = screenH - marginPx - lp.height + bottomPx
+        if (contentRect.left < marginPx) lp.x += marginPx - contentRect.left
+        if (contentRect.right > screenW - marginPx) lp.x -= contentRect.right - (screenW - marginPx)
+        if (contentRect.top < marginPx) lp.y += marginPx - contentRect.top
+        if (contentRect.bottom > screenH - marginPx) lp.y -= contentRect.bottom - (screenH - marginPx)
 
-            SafeExecutor.tryOrNull(TAG) { windowManager.updateViewLayout(petView, lp) }
+        SafeExecutor.tryOrNull(TAG) { windowManager.updateViewLayout(petView, lp) }
+    }
+
+    /**
+     * Restrict the window's touchable area to the actual visible content.
+     * Transparent regions become click-through at the WindowManager level.
+     * Uses reflection for touchRegion (API 33+) since the field is not in compile stubs.
+     */
+    fun updateTouchRegion() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        val petView = getPetView() ?: return
+        val lp = layoutParams
+        val windowRect = android.graphics.Rect(lp.x, lp.y, lp.x + lp.width, lp.y + lp.height)
+        val contentRect = petView.getContentRect(windowRect)
+        try {
+            val field = lp.javaClass.getField("touchRegion")
+            if (contentRect == windowRect) {
+                field.set(lp, null)
+            } else {
+                field.set(lp, android.graphics.Region(
+                    contentRect.left, contentRect.top,
+                    contentRect.right, contentRect.bottom
+                ))
+            }
+            windowManager.updateViewLayout(petView, lp)
+        } catch (e: Exception) {
+            Log.w(TAG, "updateTouchRegion failed (API ${android.os.Build.VERSION.SDK_INT})", e)
         }
     }
 

@@ -3,6 +3,7 @@ package com.clawd.mobile.overlay
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.util.AttributeSet
 import android.util.Log
 import android.view.GestureDetector
@@ -15,10 +16,14 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewAssetLoader.AssetsPathHandler
 
 /**
- * Floating pet overlay view — now WebView-based for SVG rendering.
+ * Floating pet overlay view — WebView-based for SVG rendering.
  *
  * Replaces the previous ImageView+Glide implementation to support CSS-animated
  * SVGs from the PC-side theme system (breathe, blink, tail-sway, etc.).
+ *
+ * **Hot-swap rendering**: After the initial HTML page loads, all subsequent
+ * SVG/APNG changes go through `window.updatePetSvg(url)` via `evaluateJavascript`.
+ * This eliminates page-reload flicker and maintains continuous hit-test regions.
  *
  * Touch transparent regions: caches a Bitmap snapshot after each SVG load and
  * checks pixel alpha at the touch point. Transparent pixels pass through to
@@ -35,6 +40,10 @@ class FloatingPetView @JvmOverloads constructor(
         private const val TAG = "FloatingPetView"
     }
 
+    /** Whether the HTML page has finished loading (onPageFinished fired). */
+    var isPageLoaded: Boolean = false
+        internal set
+
     /** Currently loaded asset path (e.g. "svg/clawd/clawd-idle-follow.svg"). */
     var currentAssetPath: String? = null
         internal set
@@ -42,14 +51,26 @@ class FloatingPetView @JvmOverloads constructor(
     /** Target content display size (px). Set by Service for window sizing. */
     var targetContentPx: Int = 0
 
+    /** Current character name (e.g. "clawd"). Set by Service for fixed content bounds lookup. */
+    var character: String = "clawd"
+
     /** Content ready callback: (offsetDx, offsetDy, frameW, frameH). */
     var onContentReady: ((Float, Float, Int, Int) -> Unit)? = null
 
     /** Gesture detector reference (set by Service). */
     var gestureDetector: GestureDetector? = null
 
+    /** Gesture handler reference (set by Service, used for isDragging check on ACTION_UP). */
+    var gestureHandler: PetGestureHandler? = null
+
     /** Drag end callback (set by Service, used to save position). */
     var onDragEnd: (() -> Unit)? = null
+
+    /** Touch up callback (set by Service, used for gesture-handler drag-end detection). */
+    var onTouchUp: ((MotionEvent) -> Unit)? = null
+
+    /** Insets ready callback: fired after visualInsets are read from JS. */
+    var onInsetsReady: (() -> Unit)? = null
 
     /** Visual insets: empty padding between SVG viewBox edge and actual visible content (getBBox). */
     data class VisualInsets(val left: Float, val top: Float, val right: Float, val bottom: Float)
@@ -60,6 +81,71 @@ class FloatingPetView @JvmOverloads constructor(
     /** viewBox width for scaling insets to window pixels. */
     var viewBoxSize: Float = 0f
         private set
+
+    /**
+     * Calculate the screen rect of the actual visible content (excluding transparent padding).
+     *
+     * For Clawd/Cloudling: uses pre-computed fixed content bounds from SvgLoader,
+     * scaled to window pixels with proper `preserveAspectRatio="xMidYMid meet"` handling.
+     *
+     * For other characters (e.g. Calico): falls back to dynamic visualInsets
+     * read from JS getBBox.
+     *
+     * Falls back to [windowRect] if no bounds are available.
+     */
+    fun getContentRect(windowRect: Rect): Rect {
+        // 1. Try fixed content bounds (Clawd/Cloudling)
+        SvgLoader.getFixedContentBounds(character)?.let { bounds ->
+            return getContentRectFromBounds(windowRect, bounds)
+        }
+
+        // 2. Fall back to dynamic visualInsets (Calico, etc.)
+        val vbSize = viewBoxSize
+        if (vbSize <= 0f) return windowRect
+        val vi = visualInsets
+        if (vi.left == 0f && vi.top == 0f && vi.right == 0f && vi.bottom == 0f) return windowRect
+        val winW = windowRect.width().toFloat()
+        val scale = winW / vbSize
+        val left = windowRect.left + (vi.left * scale).toInt()
+        val top = windowRect.top + (vi.top * scale).toInt()
+        val right = windowRect.right - (vi.right * scale).toInt()
+        val bottom = windowRect.bottom - (vi.bottom * scale).toInt()
+        return Rect(left, top, right, bottom)
+    }
+
+    /**
+     * Compute content rect from fixed bounds with `preserveAspectRatio="xMidYMid meet"` scaling.
+     *
+     * The SVG is rendered in a square window with uniform scaling (min of width/height scale)
+     * and centered in the other dimension. Content insets are applied in viewBox coordinates
+     * then scaled to window pixels.
+     */
+    private fun getContentRectFromBounds(
+        windowRect: Rect,
+        bounds: SvgLoader.FixedContentBounds
+    ): Rect {
+        val winW = windowRect.width().toFloat()
+        val winH = windowRect.height().toFloat()
+        if (winW <= 0f || winH <= 0f) return windowRect
+
+        // meet mode: uniform scale = min(w/vbW, h/vbH)
+        val scaleX = winW / bounds.vbW
+        val scaleY = winH / bounds.vbH
+        val scale = minOf(scaleX, scaleY)
+
+        // Centering offset (content is centered in the larger dimension)
+        val offsetX = ((winW - bounds.vbW * scale) / 2f).toInt()
+        val offsetY = ((winH - bounds.vbH * scale) / 2f).toInt()
+
+        val left = windowRect.left + offsetX + (bounds.contentLeft * scale).toInt()
+        val top = windowRect.top + offsetY + (bounds.contentTop * scale).toInt()
+        val right = windowRect.right - offsetX - (bounds.contentRight * scale).toInt()
+        val bottom = windowRect.bottom - offsetY - (bounds.contentBottom * scale).toInt()
+
+        // Safety: ensure rect is valid
+        if (left >= right || top >= bottom) return windowRect
+        return Rect(left, top, right, bottom)
+    }
 
     /** Cached bitmap snapshot for transparent click-through hit testing. */
     private var hitTestBitmap: Bitmap? = null
@@ -79,24 +165,16 @@ class FloatingPetView @JvmOverloads constructor(
 
     private fun configureSettings() {
         settings.apply {
-            // SVG rendering — no JavaScript needed for Clawd/Calico
-            // (Cloudling scripted SVGs need JS; enable per-character if needed)
-            javaScriptEnabled = true                // SVG 内联 + CSS 动画需要
-            domStorageEnabled = false               // 不需要
-            // allowFileAccessFromFileURLs / allowUniversalAccessFromFileURLs removed —
-            // deprecated in API 30+, default is false (WebViewAssetLoader uses HTTP streams)
-            allowContentAccess = false               // 不需要
-            // Disable zoom
+            javaScriptEnabled = true
+            domStorageEnabled = false
+            allowContentAccess = false
             setSupportZoom(false)
             builtInZoomControls = false
             displayZoomControls = false
-            // Disable scroll
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
-            // Performance
             loadWithOverviewMode = true
             useWideViewPort = false
-            // Cache
             cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
         }
         setLayerType(LAYER_TYPE_SOFTWARE, null)
@@ -115,43 +193,16 @@ class FloatingPetView @JvmOverloads constructor(
                 super.onPageFinished(view, url)
                 if (view == null) return
 
-                // Poll until async XHR injects SVG into DOM
-                fun tryQuery(attempt: Int) {
-                    val js = """
-                        (function() {
-                            if (window._svgWidth > 0 && window._svgHeight > 0)
-                                return window._svgWidth + ',' + window._svgHeight;
-                            var svg = document.querySelector('.container svg');
-                            if (!svg) return '0,0';
-                            var vb = svg.viewBox.baseVal;
-                            if (vb && vb.width > 0 && vb.height > 0) return vb.width + ',' + vb.height;
-                            return (svg.getAttribute('width') || '0') + ',' + (svg.getAttribute('height') || '0');
-                        })();
-                    """.trimIndent()
+                // Ignore about:blank (from clearSvg) — it would falsely set isPageLoaded
+                // and cause subsequent loadSvg to use hot-swap on an empty page.
+                if (url == "about:blank") return
 
-                    view.evaluateJavascript(js) { result ->
-                        try {
-                            val clean = result.trim('"').split(",")
-                            val w = clean[0].toIntOrNull() ?: 0
-                            val h = clean[1].toIntOrNull() ?: 0
-                            if (w > 0 && h > 0) {
-                                Log.d(TAG, "SVG dimensions: ${w}x${h}")
-                                onContentReady?.invoke(0f, 0f, w, h)
-                                readVisualInsets()
-                            } else if (attempt < 5) {
-                                postDelayed({ tryQuery(attempt + 1) }, 100)
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "SVG dimension query failed (attempt $attempt)", e)
-                            if (attempt < 5) {
-                                postDelayed({ tryQuery(attempt + 1) }, 100)
-                            }
-                        }
-                    }
-                }
+                // Mark page as loaded — all subsequent SVG changes use hot-swap JS
+                isPageLoaded = true
 
-                postDelayed({ tryQuery(0) }, 100)
-                postDelayed({ cacheHitTestBitmap() }, 500)
+                // Initial dimension read after first page load.
+                // The template's XHR sets _svgWidth/_svgHeight; poll briefly for it.
+                readDimensionsAndCacheBitmap()
             }
         }
     }
@@ -171,6 +222,10 @@ class FloatingPetView @JvmOverloads constructor(
 
     /**
      * Load an SVG/APNG from assets. Called by FloatingPetService.
+     *
+     * First call: loads full HTML page (template + XHR).
+     * Subsequent calls: hot-swaps via `window.updatePetSvg(url)` — zero flicker.
+     *
      * @param assetPath Path relative to assets/, e.g. "svg/clawd/clawd-idle-follow.svg"
      */
     fun loadSvg(assetPath: String) {
@@ -184,6 +239,7 @@ class FloatingPetView @JvmOverloads constructor(
      */
     fun clearSvg() {
         currentAssetPath = null
+        isPageLoaded = false
         hitTestBitmap?.recycle()
         hitTestBitmap = null
         SvgLoader.clearSvg(this)
@@ -196,14 +252,61 @@ class FloatingPetView @JvmOverloads constructor(
     }
 
     // ======================================================================
-    //  Hit-test bitmap for transparent click-through
+    //  Dimension reading & hit-test bitmap (called after SVG loads)
     // ======================================================================
+
+    /**
+     * Read SVG dimensions from JS globals and notify [onContentReady].
+     * Then cache a hit-test bitmap for transparent click-through.
+     *
+     * Called from:
+     * - [onPageFinished] (initial load)
+     * - [SvgLoader.swapSvg] (hot-swap, via postDelayed)
+     */
+    internal fun readDimensionsAndCacheBitmap() {
+        val js = """
+            (function() {
+                if (window._svgWidth > 0 && window._svgHeight > 0)
+                    return window._svgWidth + ',' + window._svgHeight;
+                var svg = document.querySelector('.container svg');
+                if (!svg) return '0,0';
+                var vb = svg.viewBox.baseVal;
+                if (vb && vb.width > 0 && vb.height > 0) return vb.width + ',' + vb.height;
+                return (svg.getAttribute('width') || '0') + ',' + (svg.getAttribute('height') || '0');
+            })();
+        """.trimIndent()
+
+        fun tryQuery(attempt: Int) {
+            evaluateJavascript(js) { result ->
+                try {
+                    val clean = result.trim('"').split(",")
+                    val w = clean[0].toIntOrNull() ?: 0
+                    val h = clean[1].toIntOrNull() ?: 0
+                    if (w > 0 && h > 0) {
+                        Log.d(TAG, "SVG dimensions: ${w}x${h}")
+                        onContentReady?.invoke(0f, 0f, w, h)
+                        readVisualInsets()
+                        cacheHitTestBitmap()
+                    } else if (attempt < 5) {
+                        postDelayed({ tryQuery(attempt + 1) }, 100)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "SVG dimension query failed (attempt $attempt)", e)
+                    if (attempt < 5) {
+                        postDelayed({ tryQuery(attempt + 1) }, 100)
+                    }
+                }
+            }
+        }
+
+        tryQuery(0)
+    }
 
     /**
      * Cache a bitmap snapshot of the WebView content.
      * Used for pixel-level transparent click-through detection.
      */
-    private fun cacheHitTestBitmap() {
+    internal fun cacheHitTestBitmap() {
         try {
             val w = width
             val h = height
@@ -246,6 +349,7 @@ class FloatingPetView @JvmOverloads constructor(
                     Log.d(TAG, "Visual insets: L=${parts[0]} T=${parts[1]} R=${parts[2]} B=${parts[3]} vbW=${parts[4]}")
                 }
             } catch (e: Exception) { Log.w(TAG, "readVisualInsets failed", e) }
+            onInsetsReady?.invoke()
         }
     }
 
@@ -279,7 +383,11 @@ class FloatingPetView @JvmOverloads constructor(
             }
             val handled = gestureDetector?.onTouchEvent(event) ?: super.onTouchEvent(event)
             if (event.action == MotionEvent.ACTION_UP) {
-                onDragEnd?.invoke()
+                val wasDragging = gestureHandler?.isDragging == true
+                onTouchUp?.invoke(event)
+                if (wasDragging) {
+                    onDragEnd?.invoke()
+                }
             }
             return handled
         } catch (e: Exception) {
