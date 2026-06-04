@@ -1,6 +1,7 @@
 package com.clawd.mobile.ui.approval
 
 import android.app.Application
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import com.clawd.mobile.ui.sessions.resolveSessionName
@@ -130,13 +131,13 @@ class ApprovalViewModel(
     private fun startCountdown(request: PermissionRequestData) {
         val requestId = request.requestId ?: return
         val timeoutMs = request.timeout.coerceIn(10_000, 300_000) // 10s to 5min
-        val deadline = System.currentTimeMillis() + timeoutMs
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
 
         // Single job: countdown ticker + auto-dismiss combined
         countdownJobs[requestId]?.cancel()
         val job = viewModelScope.launch {
             while (true) {
-                val remainingMs = deadline - System.currentTimeMillis()
+                val remainingMs = deadline - SystemClock.elapsedRealtime()
                 if (remainingMs <= 0) break
                 val remainingSec = (remainingMs / 1000).toInt()
                 _countdowns.update { it + (requestId to remainingSec) }

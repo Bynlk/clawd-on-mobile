@@ -71,7 +71,8 @@ class WsClient(prefsStore: PrefsStore) : AbstractStreamingClient(prefsStore) {
             put("type", type)
             for ((k, v) in payload) put(k, v)
         }.toString()
-        ws.send(msg)
+        val sent = ws.send(msg)
+        if (!sent) Log.w(tag, "sendCommand: WebSocket buffer full, message dropped")
     }
 
     override fun sendMessage(json: String) {
