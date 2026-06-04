@@ -5,8 +5,8 @@ import com.clawd.mobile.data.SessionData
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Typed result of parsing a single SSE message.
- * Produced by [MessageParser], consumed by [SseClient.handleMessage].
+ * Typed result of parsing a single message.
+ * Produced by [MessageParser], consumed by [SseClient.handleMessage] and [WsClient.handleMessage].
  */
 sealed class ParsedMessage {
     abstract val timestamp: Long
@@ -43,6 +43,11 @@ sealed class ParsedMessage {
     data class PermissionRequest(
         val data: PermissionRequestData,
         val rawToolInput: JsonElement?,
+        override val timestamp: Long,
+    ) : ParsedMessage()
+
+    data class Reaction(
+        val svg: String?,
         override val timestamp: Long,
     ) : ParsedMessage()
 

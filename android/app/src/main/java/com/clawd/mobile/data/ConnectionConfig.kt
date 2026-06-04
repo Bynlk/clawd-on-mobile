@@ -13,13 +13,14 @@ data class ConnectionConfig(
     val isLan: Boolean get() = isLanCached(host)
 
     private val scheme get() = if (isLan) "http" else "https"
+    private val wsScheme get() = if (isLan) "ws" else "wss"
 
-    fun streamUrl(): String = "$scheme://$host:$port/mobile/stream"
+    fun streamUrl(): String = "$wsScheme://$host:$port/mobile/ws"
 
     fun approveUrl(): String = "$scheme://$host:$port/mobile/approve"
 
     /** URL safe for logging — no token included. */
-    fun streamUrlMasked(): String = streamUrl()
+    fun streamUrlMasked(): String = streamUrl()  // already no token in URL
 
     fun pairUrl(): String = "clawd://$host:$port/$token"
 

@@ -5,14 +5,14 @@ import com.clawd.mobile.util.SafeExecutor
 import kotlinx.serialization.json.*
 
 /**
- * Parses raw SSE message JSON into typed [ParsedMessage] instances.
+ * Parses raw message JSON into typed [ParsedMessage] instances.
  * Stateless — all methods are pure functions that produce data without side effects.
  */
 class MessageParser {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    /** Parse a raw SSE message string. Returns null on malformed JSON or missing type. */
+    /** Parse a raw message string. Returns null on malformed JSON or missing type. */
     fun parse(rawText: String): ParsedMessage? {
         val obj = try {
             json.decodeFromString<JsonObject>(rawText)
@@ -31,6 +31,7 @@ class MessageParser {
             "tool_output" -> parseToolOutput(obj, timestamp)
             "session_deleted" -> parseSessionDeleted(obj, timestamp)
             "permission_request" -> parsePermissionRequest(obj, timestamp)
+            "reaction" -> parseReaction(obj, timestamp)
             else -> ParsedMessage.Unknown(type, timestamp)
         }
     }
@@ -100,6 +101,7 @@ class MessageParser {
             recentEvents = recentEvents,
             lastOutput = lastOutput,
             displayState = displayState,
+            hookState = obj["hookState"]?.jsonPrimitive?.contentOrNull,
             badge = obj["badge"]?.jsonPrimitive?.contentOrNull ?: "idle",
             chipText = obj["chipText"]?.jsonPrimitive?.contentOrNull,
             chipColor = obj["chipColor"]?.jsonPrimitive?.contentOrNull,
@@ -180,6 +182,13 @@ class MessageParser {
             toolInputRaw = obj["toolInput"],
         )
         return ParsedMessage.PermissionRequest(data, obj["toolInput"], timestamp)
+    }
+
+    // ── Reaction ────────────────────────────────────────────────────────
+
+    private fun parseReaction(obj: JsonObject, timestamp: Long): ParsedMessage.Reaction {
+        val svg = obj["svg"]?.jsonPrimitive?.contentOrNull
+        return ParsedMessage.Reaction(svg, timestamp)
     }
 
     // ── Tool input summary builder ──────────────────────────────────────

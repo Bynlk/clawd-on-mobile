@@ -1,31 +1,34 @@
 package com.clawd.mobile.util
 
-import android.annotation.SuppressLint
 import android.util.Log
 import com.clawd.mobile.data.ConnectionConfig
 import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.SSLContext
-import javax.net.ssl.X509TrustManager
 
 /**
  * Shared OkHttpClient provider.
  * Reuses a single client instance per [ConnectionConfig] to share connection pools
  * and consistent timeout/TLS settings across the app (WebSocket, ApprovalReceiver, etc.).
+ *
+ * LAN connections use [TofuTrustManager] for Trust-On-First-Use certificate pinning
+ * instead of accepting all certificates.
  */
 object HttpClientProvider {
 
     private const val TAG = "HttpClientProvider"
 
+    /** Singleton TOFU trust manager shared by all LAN-mode OkHttpClients. */
+    val tofuTrustManager = TofuTrustManager()
+
     @Volatile
     private var _client: OkHttpClient? = null
 
     @Volatile
-    private var _sseClient: OkHttpClient? = null
+    private var _streamingClient: OkHttpClient? = null
 
     @Volatile
     private var _config: ConnectionConfig? = null
@@ -34,16 +37,19 @@ object HttpClientProvider {
     private var _fingerprint: String? = null
 
     /**
-     * Set the SHA-256 certificate fingerprint for non-LAN certificate pinning.
-     * Pass null to clear. Clients are rebuilt on next [getClient]/[getSseClient] call.
+     * Set the SHA-256 certificate fingerprint for certificate pinning.
+     * For LAN: updates [tofuTrustManager]'s pinned fingerprint.
+     * For non-LAN: updates OkHttp [CertificatePinner].
+     * Pass null to clear. Clients are rebuilt on next [getClient]/[getStreamingClient] call.
      */
     fun setCertFingerprint(sha256: String?) {
         synchronized(this) {
             if (_fingerprint != sha256) {
                 _fingerprint = sha256
+                tofuTrustManager.pinFingerprint(sha256)
                 // Invalidate cached clients so they get rebuilt with new pinning
                 _client = null
-                _sseClient = null
+                _streamingClient = null
             }
         }
     }
@@ -58,7 +64,7 @@ object HttpClientProvider {
             if (_client == null || config != _config) {
                 Log.d(TAG, "Building new OkHttpClient for ${config.host}:${config.port} (isLan=${config.isLan})")
                 _client = buildClient(config, readTimeout = 30)
-                _sseClient = buildClient(config, readTimeout = 0)
+                _streamingClient = buildClient(config, readTimeout = 0)
                 _config = config
             }
             _client!!
@@ -66,22 +72,21 @@ object HttpClientProvider {
     }
 
     /**
-     * Returns an [OkHttpClient] for SSE long-polling with [config].
+     * Returns an [OkHttpClient] for streaming (SSE/WebSocket) with [config].
      * readTimeout=0 (no timeout on streaming responses).
      */
-    fun getSseClient(config: ConnectionConfig): OkHttpClient {
+    fun getStreamingClient(config: ConnectionConfig): OkHttpClient {
         return synchronized(this) {
-            if (_sseClient == null || config != _config) {
-                Log.d(TAG, "Building new SSE OkHttpClient for ${config.host}:${config.port} (isLan=${config.isLan})")
+            if (_streamingClient == null || config != _config) {
+                Log.d(TAG, "Building new streaming OkHttpClient for ${config.host}:${config.port} (isLan=${config.isLan})")
                 _client = buildClient(config, readTimeout = 30)
-                _sseClient = buildClient(config, readTimeout = 0)
+                _streamingClient = buildClient(config, readTimeout = 0)
                 _config = config
             }
-            _sseClient!!
+            _streamingClient!!
         }
     }
 
-    @SuppressLint("TrustAllX509TrustManager", "CustomX509TrustManager")
     private fun buildClient(config: ConnectionConfig, readTimeout: Long): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
@@ -89,15 +94,12 @@ object HttpClientProvider {
             .readTimeout(readTimeout, TimeUnit.SECONDS)
 
         if (config.isLan) {
-            // LAN: trust all certificates — TOFU fingerprint pinning happens in SseClient
-            val trustManager = object : X509TrustManager {
-                override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-            }
+            // LAN: TOFU certificate pinning via TofuTrustManager.
+            // First connection accepts any cert (stores fingerprint for user confirmation).
+            // Subsequent connections require fingerprint match.
             val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, arrayOf(trustManager), SecureRandom())
-            builder.sslSocketFactory(sslContext.socketFactory, trustManager)
+            sslContext.init(null, arrayOf(tofuTrustManager), SecureRandom())
+            builder.sslSocketFactory(sslContext.socketFactory, tofuTrustManager)
             builder.hostnameVerifier(HostnameVerifier { _, _ -> true })
         } else {
             // Non-LAN: apply certificate pinning if fingerprint is configured
@@ -116,10 +118,15 @@ object HttpClientProvider {
         return builder.build()
     }
 
-    /** Reset client — call when connection config changes or app disconnects. */
-    fun reset() {
+    /**
+     * Reset cached clients — call when connection config changes or app disconnects.
+     * Does NOT clear the certificate fingerprint, which is managed explicitly via
+     * [setCertFingerprint]. This prevents a race where [disconnect][com.clawd.mobile.ws.SseClient.disconnect]
+     * clears the fingerprint while [ApprovalWorker] may still need it for in-flight requests.
+     */
+    fun reset() = synchronized(this) {
         _client = null
-        _sseClient = null
+        _streamingClient = null
         _config = null
     }
 }
