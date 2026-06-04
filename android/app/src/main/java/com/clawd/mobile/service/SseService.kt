@@ -231,7 +231,7 @@ class SseService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         return NotificationCompat.Builder(this, CHANNEL_SERVICE)
-            .setContentTitle("Clawd Mobile")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(status)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
