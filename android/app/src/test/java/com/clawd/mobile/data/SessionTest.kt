@@ -132,4 +132,88 @@ class SessionTest {
         assertNull(event.event)
         assertNull(event.state)
     }
+
+    // ── SessionData copy ────────────────────────────────────────────
+
+    @Test
+    fun `SessionData copy preserves unchanged fields`() {
+        val original = SessionData(sessionId = "s1", state = "working", badge = "running")
+        val copy = original.copy(badge = "done")
+        assertEquals("s1", copy.sessionId)
+        assertEquals("working", copy.state)
+        assertEquals("done", copy.badge)
+    }
+
+    @Test
+    fun `SessionData equality`() {
+        val a = SessionData(sessionId = "s1", state = "working")
+        val b = SessionData(sessionId = "s1", state = "working")
+        assertEquals(a, b)
+        assertEquals(a.hashCode(), b.hashCode())
+    }
+
+    @Test
+    fun `SessionData inequality`() {
+        val a = SessionData(sessionId = "s1", state = "working")
+        val b = SessionData(sessionId = "s2", state = "working")
+        assertNotEquals(a, b)
+    }
+
+    // ── Session wrapper ─────────────────────────────────────────────
+
+    @Test
+    fun `Session wraps id and data`() {
+        val data = SessionData(sessionId = "s1", state = "working")
+        val session = Session("s1", data)
+        assertEquals("s1", session.id)
+        assertEquals(data, session.data)
+    }
+
+    // ── LastOutput with values ──────────────────────────────────────
+
+    @Test
+    fun `LastOutput with custom values`() {
+        val output = LastOutput(toolName = "Bash", output = "hello", at = 12345L)
+        assertEquals("Bash", output.toolName)
+        assertEquals("hello", output.output)
+        assertEquals(12345L, output.at)
+    }
+
+    // ── RecentEvent with values ─────────────────────────────────────
+
+    @Test
+    fun `RecentEvent with custom values`() {
+        val event = RecentEvent(at = 999L, event = "PreToolUse", state = "working")
+        assertEquals(999L, event.at)
+        assertEquals("PreToolUse", event.event)
+        assertEquals("working", event.state)
+    }
+
+    // ── SessionData with hookState ──────────────────────────────────
+
+    @Test
+    fun `SessionData hookState defaults to null`() {
+        val data = SessionData()
+        assertNull(data.hookState)
+    }
+
+    @Test
+    fun `SessionData with hookState`() {
+        val data = SessionData(hookState = "notification")
+        assertEquals("notification", data.hookState)
+    }
+
+    // ── SessionData with resolvedSvg ────────────────────────────────
+
+    @Test
+    fun `SessionData resolvedSvg defaults to null`() {
+        val data = SessionData()
+        assertNull(data.resolvedSvg)
+    }
+
+    @Test
+    fun `SessionData with resolvedSvg`() {
+        val data = SessionData(resolvedSvg = "clawd-working.svg")
+        assertEquals("clawd-working.svg", data.resolvedSvg)
+    }
 }

@@ -36,6 +36,11 @@ class ConnectionStateTest {
     }
 
     @Test
+    fun `CIRCUIT_OPEN isConnected is false`() {
+        assertFalse(ConnectionState.CIRCUIT_OPEN.isConnected)
+    }
+
+    @Test
     fun `CONNECTING isConnecting is true`() {
         assertTrue(ConnectionState.CONNECTING.isConnecting)
     }
@@ -66,8 +71,13 @@ class ConnectionStateTest {
     }
 
     @Test
-    fun `has exactly 6 values`() {
-        assertEquals(6, ConnectionState.entries.size)
+    fun `CIRCUIT_OPEN isConnecting is false`() {
+        assertFalse(ConnectionState.CIRCUIT_OPEN.isConnecting)
+    }
+
+    @Test
+    fun `has exactly 7 values`() {
+        assertEquals(7, ConnectionState.entries.size)
     }
 
     @Test

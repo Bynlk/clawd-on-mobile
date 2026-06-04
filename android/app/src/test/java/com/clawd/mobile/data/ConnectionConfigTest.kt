@@ -71,13 +71,13 @@ class ConnectionConfigTest {
     @Test
     fun `generate correct stream url for lan`() {
         val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
-        assertEquals("http://192.168.1.10:23334/mobile/stream", config.streamUrl())
+        assertEquals("ws://192.168.1.10:23334/mobile/ws", config.streamUrl())
     }
 
     @Test
     fun `generate correct stream url for remote`() {
         val config = ConnectionConfig("example.com", 443, "abcdef1234567890abcdef1234567890")
-        assertEquals("https://example.com:443/mobile/stream", config.streamUrl())
+        assertEquals("wss://example.com:443/mobile/ws", config.streamUrl())
     }
 
     @Test
@@ -157,7 +157,7 @@ class ConnectionConfigTest {
         val url = config.streamUrl()
         // The scheme depends on InetAddress resolution — in unit tests without network,
         // InetAddress.getByName("example.com") may throw, making isLan = false
-        assertTrue(url.contains("://example.com:443/mobile/stream"))
+        assertTrue(url.contains("://example.com:443/mobile/ws"))
         assertFalse(url.contains("token"))
     }
 
@@ -171,5 +171,59 @@ class ConnectionConfigTest {
     fun `pairUrl always uses clawd scheme`() {
         val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
         assertEquals("clawd://192.168.1.10:23334/abcdef1234567890abcdef1234567890", config.pairUrl())
+    }
+
+    // ── toString masking ─────────────────────────────────────────────
+
+    @Test
+    fun `toString masks token`() {
+        val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
+        val str = config.toString()
+        assertTrue(str.contains("host=192.168.1.10"))
+        assertTrue(str.contains("port=23334"))
+        assertFalse(str.contains("abcdef1234567890"))
+        assertTrue(str.contains("ab…90"))
+    }
+
+    @Test
+    fun `toString handles short token`() {
+        val config = ConnectionConfig("192.168.1.10", 23334, "abc")
+        val str = config.toString()
+        assertTrue(str.contains("***"))
+    }
+
+    // ── fromClawdUrl with IPv6 ───────────────────────────────────────
+
+    // IPv6 in brackets is NOT supported by current regex (colon conflicts with port separator).
+    // isValidHost() accepts "[::1]" but fromClawdUrl() regex cannot parse it.
+
+    // ── fromClawdUrl with exact 16-char token ────────────────────────
+
+    @Test
+    fun `reject 15-char token`() {
+        assertNull(ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:23334/abcdef123456789"))
+    }
+
+    @Test
+    fun `accept exactly 16-char token`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:23334/abcdef1234567890")
+        assertNotNull(config)
+        assertEquals("abcdef1234567890", config!!.token)
+    }
+
+    // ── fromClawdUrl with port 1 and 65535 ───────────────────────────
+
+    @Test
+    fun `accept port 1`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:1/abcdef1234567890abcdef1234567890")
+        assertNotNull(config)
+        assertEquals(1, config!!.port)
+    }
+
+    @Test
+    fun `accept port 65535`() {
+        val config = ConnectionConfig.fromClawdUrl("clawd://192.168.1.10:65535/abcdef1234567890abcdef1234567890")
+        assertNotNull(config)
+        assertEquals(65535, config!!.port)
     }
 }

@@ -16,12 +16,14 @@ class PetStateManagerLogicTest {
         state: String = "idle",
         badge: String = "idle",
         displayState: String? = null,
+        hookState: String? = null,
         isVisible: Boolean = true
     ) = SessionData(
         sessionId = sessionId,
         state = state,
         badge = badge,
         displayState = displayState,
+        hookState = hookState,
         isVisible = isVisible
     )
 
@@ -329,5 +331,277 @@ class PetStateManagerLogicTest {
         // Old entry should be cleaned up, new entry should be added
         assertFalse(map.containsKey("old_session"))
         assertTrue(map.containsKey("new_session"))
+    }
+
+    // ── countSessionsForTier ─────────────────────────────────────────
+
+    @Test
+    fun `working tier counts working thinking juggling sessions`() {
+        val sessions = listOf(
+            session("s1", state = "working", isVisible = true),
+            session("s2", state = "thinking", isVisible = true),
+            session("s3", state = "juggling", isVisible = true),
+            session("s4", state = "idle", isVisible = true)
+        )
+        assertEquals(3, PetStateManager.countSessionsForTier(PetState.Working, sessions))
+    }
+
+    @Test
+    fun `working tier excludes sleeping and idle sessions`() {
+        val sessions = listOf(
+            session("s1", state = "working", isVisible = true),
+            session("s2", state = "sleeping", isVisible = true),
+            session("s3", state = "idle", isVisible = true),
+            session("s4", state = "error", isVisible = true)
+        )
+        assertEquals(1, PetStateManager.countSessionsForTier(PetState.Working, sessions))
+    }
+
+    @Test
+    fun `working tier excludes invisible sessions`() {
+        val sessions = listOf(
+            session("s1", state = "working", isVisible = true),
+            session("s2", state = "working", isVisible = false),
+            session("s3", state = "thinking", isVisible = false)
+        )
+        assertEquals(1, PetStateManager.countSessionsForTier(PetState.Working, sessions))
+    }
+
+    @Test
+    fun `juggling tier counts only juggling sessions`() {
+        val sessions = listOf(
+            session("s1", state = "juggling", isVisible = true),
+            session("s2", state = "working", isVisible = true),
+            session("s3", state = "thinking", isVisible = true)
+        )
+        assertEquals(1, PetStateManager.countSessionsForTier(PetState.Juggling, sessions))
+    }
+
+    @Test
+    fun `juggling tier excludes invisible juggling sessions`() {
+        val sessions = listOf(
+            session("s1", state = "juggling", isVisible = true),
+            session("s2", state = "juggling", isVisible = false)
+        )
+        assertEquals(1, PetStateManager.countSessionsForTier(PetState.Juggling, sessions))
+    }
+
+    @Test
+    fun `thinking state returns zero session count`() {
+        val sessions = listOf(
+            session("s1", state = "thinking", isVisible = true),
+            session("s2", state = "working", isVisible = true)
+        )
+        assertEquals(0, PetStateManager.countSessionsForTier(PetState.Thinking, sessions))
+    }
+
+    @Test
+    fun `idle state returns zero session count`() {
+        val sessions = listOf(
+            session("s1", state = "working", isVisible = true)
+        )
+        assertEquals(0, PetStateManager.countSessionsForTier(PetState.Idle, sessions))
+    }
+
+    @Test
+    fun `empty sessions returns zero for all states`() {
+        val sessions = emptyList<SessionData>()
+        assertEquals(0, PetStateManager.countSessionsForTier(PetState.Working, sessions))
+        assertEquals(0, PetStateManager.countSessionsForTier(PetState.Juggling, sessions))
+    }
+
+    @Test
+    fun `working tier with mixed visibility and states`() {
+        // 1 working visible + 1 working invisible + 1 sleeping visible = count 1
+        val sessions = listOf(
+            session("s1", state = "working", isVisible = true),
+            session("s2", state = "working", isVisible = false),
+            session("s3", state = "sleeping", isVisible = true),
+            session("s4", state = "thinking", isVisible = true),
+            session("s5", state = "juggling", isVisible = true)
+        )
+        assertEquals(3, PetStateManager.countSessionsForTier(PetState.Working, sessions))
+    }
+
+    @Test
+    fun `1 working 2 sleeping should be tier 1 not tier 3`() {
+        // This is the exact scenario from the bug report
+        val sessions = listOf(
+            session("s1", state = "working", isVisible = true),
+            session("s2", state = "sleeping", isVisible = true),
+            session("s3", state = "sleeping", isVisible = true)
+        )
+        assertEquals(1, PetStateManager.countSessionsForTier(PetState.Working, sessions))
+    }
+
+    // ── Notification displayState consumption ───────────────────────
+
+    @Test
+    fun `displayState notification triggers Notification on first call`() {
+        val consumed = ConcurrentHashMap<String, Long>()
+        val sessions = listOf(
+            session("s1", state = "idle", badge = "idle", displayState = "notification")
+        )
+        assertEquals(PetState.Notification, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumed))
+        assertTrue(consumed.containsKey("s1"))
+    }
+
+    @Test
+    fun `displayState notification returns Idle on second call (consumed)`() {
+        val consumed = ConcurrentHashMap<String, Long>()
+        val sessions = listOf(
+            session("s1", state = "idle", badge = "idle", displayState = "notification")
+        )
+        assertEquals(PetState.Notification, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumed))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumed))
+    }
+
+    // ── hookState notification branch ────────────────────────────────
+
+    @Test
+    fun `interrupted with hookState notification triggers Notification`() {
+        val consumedNotif = ConcurrentHashMap<String, Long>()
+        val sessions = listOf(
+            session("s1", state = "idle", badge = "interrupted", hookState = "notification")
+        )
+        val result = PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumedNotif)
+        assertEquals(PetState.Notification, result)
+        assertTrue(consumedNotif.containsKey("s1"))
+    }
+
+    @Test
+    fun `interrupted with hookState notification consumed on second call`() {
+        val consumedNotif = ConcurrentHashMap<String, Long>()
+        val sessions = listOf(
+            session("s1", state = "idle", badge = "interrupted", hookState = "notification")
+        )
+        assertEquals(PetState.Notification, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumedNotif))
+        assertEquals(PetState.Idle, PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumedNotif))
+    }
+
+    @Test
+    fun `interrupted without hookState triggers Error not Notification`() {
+        val consumedNotif = ConcurrentHashMap<String, Long>()
+        val sessions = listOf(
+            session("s1", state = "idle", badge = "interrupted")
+        )
+        val result = PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumedNotif)
+        assertEquals(PetState.Error, result)
+        assertFalse(consumedNotif.containsKey("s1"))
+    }
+
+    // ── cleanupExpiredNotifications ──────────────────────────────────
+
+    @Test
+    fun `cleanupExpiredNotifications removes old entries`() {
+        val map = ConcurrentHashMap<String, Long>()
+        val old = System.currentTimeMillis() - PetStateManager.DONE_SESSION_TTL_MS - 1000
+        map["old"] = old
+        map["fresh"] = System.currentTimeMillis()
+
+        PetStateManager.cleanupExpiredNotifications(map)
+
+        assertFalse(map.containsKey("old"))
+        assertTrue(map.containsKey("fresh"))
+    }
+
+    @Test
+    fun `cleanupExpiredNotifications on empty map is no-op`() {
+        val map = ConcurrentHashMap<String, Long>()
+        PetStateManager.cleanupExpiredNotifications(map)
+        assertTrue(map.isEmpty())
+    }
+
+    // ── cleanupExpiredInterrupted ────────────────────────────────────
+
+    @Test
+    fun `cleanupExpiredInterrupted removes old entries`() {
+        val map = ConcurrentHashMap<String, Long>()
+        val old = System.currentTimeMillis() - PetStateManager.DONE_SESSION_TTL_MS - 1000
+        map["old"] = old
+        map["fresh"] = System.currentTimeMillis()
+
+        PetStateManager.cleanupExpiredInterrupted(map)
+
+        assertFalse(map.containsKey("old"))
+        assertTrue(map.containsKey("fresh"))
+    }
+
+    // ── Notification TTL cleanup during processing ───────────────────
+
+    @Test
+    fun `notification cleanup triggered during displayState notification processing`() {
+        val consumed = ConcurrentHashMap<String, Long>()
+        // Pre-add an expired entry
+        consumed["expired_session"] = System.currentTimeMillis() - PetStateManager.DONE_SESSION_TTL_MS - 1000
+
+        val sessions = listOf(
+            session("new_session", state = "idle", badge = "idle", displayState = "notification")
+        )
+        PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumed)
+
+        // Old entry should be cleaned up, new entry should be added
+        assertFalse(consumed.containsKey("expired_session"))
+        assertTrue(consumed.containsKey("new_session"))
+    }
+
+    // ── Multiple notification sessions ───────────────────────────────
+
+    @Test
+    fun `multiple notification sessions each trigger once`() {
+        val consumed = ConcurrentHashMap<String, Long>()
+        val sessions = listOf(
+            session("s1", state = "idle", badge = "idle", displayState = "notification"),
+            session("s2", state = "idle", badge = "idle", displayState = "notification")
+        )
+        // First call: last one wins (both are Notification, same priority)
+        val result = PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumed)
+        assertEquals(PetState.Notification, result)
+        assertTrue(consumed.containsKey("s1"))
+        assertTrue(consumed.containsKey("s2"))
+
+        // Second call: both consumed → Idle
+        val result2 = PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumed)
+        assertEquals(PetState.Idle, result2)
+    }
+
+    // ── Mixed done + interrupted + notification ──────────────────────
+
+    @Test
+    fun `mixed done interrupted and notification prioritizes correctly`() {
+        val sessions = listOf(
+            session("s1", state = "idle", badge = "done"),
+            session("s2", state = "idle", badge = "interrupted"),
+            session("s3", state = "working", badge = "running")
+        )
+        // interrupted → Error (priority 6) > Attention (priority 3) > Working (priority 2)
+        val result = PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap())
+        assertEquals(PetState.Error, result)
+    }
+
+    // ── Session with null sessionId ──────────────────────────────────
+
+    @Test
+    fun `notification with null sessionId does not consume`() {
+        val consumed = ConcurrentHashMap<String, Long>()
+        val sessions = listOf(
+            SessionData(sessionId = null, state = "idle", badge = "idle", displayState = "notification")
+        )
+        // null sessionId → sid != null is false → Idle (not Notification)
+        val result = PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap(), ConcurrentHashMap(), consumed)
+        assertEquals(PetState.Idle, result)
+        assertTrue(consumed.isEmpty())
+    }
+
+    // ── Interrupted with null sessionId ──────────────────────────────
+
+    @Test
+    fun `interrupted with null sessionId returns Idle`() {
+        val sessions = listOf(
+            SessionData(sessionId = null, state = "idle", badge = "interrupted")
+        )
+        // null sessionId → cannot consume → falls through to Idle
+        val result = PetStateManager.resolveDisplayState(sessions, ConcurrentHashMap())
+        assertEquals(PetState.Idle, result)
     }
 }

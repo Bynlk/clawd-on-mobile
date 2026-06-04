@@ -31,7 +31,7 @@ class ConnectionConfigIntegrationTest {
 
         assertFalse("streamUrl must not contain token", url.contains("token"))
         assertFalse("streamUrl must not contain secret", url.contains("secret"))
-        assertTrue(url.endsWith("/mobile/stream"))
+        assertTrue(url.endsWith("/mobile/ws"))
 
         // Auth is via header
         assertEquals("Bearer secrettoken1234567890abcdef12", config.authHeader())
@@ -50,7 +50,7 @@ class ConnectionConfigIntegrationTest {
     fun `localhost is always LAN`() {
         val config = ConnectionConfig("localhost", 3000, "tok")
         assertTrue(config.isLan)
-        assertTrue(config.streamUrl().startsWith("http://"))
+        assertTrue(config.streamUrl().startsWith("ws://"))
     }
 
     @Test
@@ -114,8 +114,8 @@ class ConnectionConfigIntegrationTest {
         val config = ConnectionConfig("192.168.1.10", 23334, "tok")
         val url = config.streamUrl()
 
-        // Should be scheme://host:port/mobile/stream
-        assertTrue(url.matches(Regex("^https?://[^:]+:\\d+/mobile/stream$")))
+        // Should be ws/wss://host:port/mobile/ws
+        assertTrue(url.matches(Regex("^wss?://[^:]+:\\d+/mobile/ws$")))
     }
 
     @Test

@@ -180,4 +180,77 @@ class PetStateTest {
         assertFalse(PetState.Waking.isActive)
         assertTrue(PetState.Waking.isSleepSequence)
     }
+
+    // ── fromString sleep sequence states ────────────────────────────
+
+    @Test
+    fun `fromString maps sleep sequence states`() {
+        assertEquals(PetState.Yawning, PetState.fromString("yawning"))
+        assertEquals(PetState.Dozing, PetState.fromString("dozing"))
+        assertEquals(PetState.Collapsing, PetState.fromString("collapsing"))
+        assertEquals(PetState.Waking, PetState.fromString("waking"))
+        assertEquals(PetState.Sleeping, PetState.fromString("sleeping"))
+    }
+
+    // ── Priority numeric values ─────────────────────────────────────
+
+    @Test
+    fun `error has highest priority 8`() {
+        assertEquals(8, PetState.Error.priority)
+    }
+
+    @Test
+    fun `sleeping has lowest priority 0`() {
+        assertEquals(0, PetState.Sleeping.priority)
+    }
+
+    @Test
+    fun `idle has priority 1`() {
+        assertEquals(1, PetState.Idle.priority)
+    }
+
+    @Test
+    fun `working has priority 3`() {
+        assertEquals(3, PetState.Working.priority)
+    }
+
+    // ── data object equality ────────────────────────────────────────
+
+    @Test
+    fun `data object equality works`() {
+        assertEquals(PetState.Error, PetState.Error)
+        assertNotEquals(PetState.Error, PetState.Working)
+    }
+
+    // ── Notification and Sweeping classification ────────────────────
+
+    @Test
+    fun `notification is active not idleLike`() {
+        assertTrue(PetState.Notification.isActive)
+        assertFalse(PetState.Notification.isIdleLike)
+        assertFalse(PetState.Notification.isSleepSequence)
+    }
+
+    @Test
+    fun `sweeping is active not idleLike`() {
+        assertTrue(PetState.Sweeping.isActive)
+        assertFalse(PetState.Sweeping.isIdleLike)
+        assertFalse(PetState.Sweeping.isSleepSequence)
+    }
+
+    // ── Conducting/Juggling/Carrying/Debugger all priority 4 ────────
+
+    @Test
+    fun `all priority 4 states have same priority`() {
+        val states = listOf(PetState.Conducting, PetState.Juggling, PetState.Carrying, PetState.Debugger)
+        states.forEach { assertEquals(4, it.priority) }
+    }
+
+    @Test
+    fun `all priority 4 states are active`() {
+        assertTrue(PetState.Conducting.isActive)
+        assertTrue(PetState.Juggling.isActive)
+        assertTrue(PetState.Carrying.isActive)
+        assertTrue(PetState.Debugger.isActive)
+    }
 }

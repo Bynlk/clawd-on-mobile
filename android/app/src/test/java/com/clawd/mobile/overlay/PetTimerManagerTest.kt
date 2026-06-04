@@ -73,12 +73,8 @@ class PetTimerManagerTest {
 
     @Test
     fun `sleep sequence triggers after 60s idle timeout`() = runTest {
-        // handleIdleTimeout uses System.currentTimeMillis(), not virtual time.
-        // We need to use startSleepSequence directly for the sequence test,
-        // and test the trigger logic by mocking the time check.
         every { manager.getCurrentState() } returns PetState.Idle
 
-        // Directly start the sleep sequence (the timeout trigger uses real time)
         timerManager.startSleepSequence(this)
         runCurrent()
 
@@ -96,10 +92,10 @@ class PetTimerManagerTest {
         assertFalse(emittedStates.any { it.first.isSleepSequence })
     }
 
-    // ── 3. Sleep sequence state flow ───────────────────────────────────
+    // ── 3. Sleep sequence: 4-stage flow (Yawning → Dozing → Collapsing → Sleeping) ──
 
     @Test
-    fun `sleep sequence emits Yawning then Dozing then Sleeping`() = runTest {
+    fun `sleep sequence emits all 4 stages for clawd`() = runTest {
         every { manager.getCurrentState() } returns PetState.Idle
 
         timerManager.startSleepSequence(this)
@@ -113,7 +109,18 @@ class PetTimerManagerTest {
 
         advanceTimeBy(cfg.dozingMs)
         runCurrent()
+        // clawd collapseMs is 0 → uses 2s fallback
+        assertEquals(PetState.Collapsing, emittedStates.last().first)
+
+        advanceTimeBy(2_000L)
+        runCurrent()
         assertEquals(PetState.Sleeping, emittedStates.last().first)
+
+        // Verify no idle animation loop after sleeping
+        emittedStates.clear()
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertTrue(emittedStates.isEmpty())
 
         timerManager.cancelSleepSequence()
     }
@@ -172,52 +179,7 @@ class PetTimerManagerTest {
         assertFalse(emittedStates.any { it.first == PetState.Waking })
     }
 
-    // ── 5. Auto-return delays then restores ────────────────────────────
-
-    @Test
-    fun `scheduleAutoReturn resolves best state after delay`() = runTest {
-        every { manager.resolveBestState() } returns PetState.Working
-
-        timerManager.scheduleAutoReturn(PetState.Attention, this)
-        runCurrent()
-        assertTrue(emittedStates.isEmpty())
-
-        advanceTimeBy(PetStateManager.AUTO_RETURN_MS[PetState.Attention]!!)
-        runCurrent()
-        assertEquals(PetState.Working, emittedStates.last().first)
-    }
-
-    @Test
-    fun `scheduleAutoReturn does nothing for state without auto-return`() {
-        val scope = TestScope()
-        timerManager.scheduleAutoReturn(PetState.Working, scope)
-        assertTrue(emittedStates.isEmpty())
-    }
-
-    // ── 6. New state cancels pending auto-return ───────────────────────
-
-    @Test
-    fun `new scheduleAutoReturn cancels previous auto-return`() = runTest {
-        every { manager.resolveBestState() } returns PetState.Idle
-
-        timerManager.scheduleAutoReturn(PetState.Attention, this)
-
-        advanceTimeBy(2000)
-        every { manager.resolveBestState() } returns PetState.Working
-        timerManager.scheduleAutoReturn(PetState.Error, this)
-
-        // Advance past original Attention 4s mark
-        advanceTimeBy(3000)
-        runCurrent()
-
-        // Attention auto-return was cancelled; only Error auto-return fires
-        advanceTimeBy(PetStateManager.AUTO_RETURN_MS[PetState.Error]!!)
-        runCurrent()
-
-        assertEquals(PetState.Working, emittedStates.last().first)
-    }
-
-    // ── 7. Reaction SVG overlay and restore ────────────────────────────
+    // ── 5. Reaction SVG overlay and restore ────────────────────────────
 
     @Test
     fun `loadReactionAndRestore emits reaction command then restores`() = runTest {
@@ -234,7 +196,7 @@ class PetTimerManagerTest {
         assertEquals(PetState.Working, emittedStates.last().first)
     }
 
-    // ── 8. Generation mechanism cancels stale callbacks ─────────────────
+    // ── 6. Generation mechanism cancels stale callbacks ─────────────────
 
     @Test
     fun `stale reaction restore is cancelled by newer reaction`() = runTest {
@@ -276,20 +238,72 @@ class PetTimerManagerTest {
         verify { manager.setLastNonIdleState(PetState.Thinking) }
     }
 
-    // ── 9. reset clears all timers ─────────────────────────────────────
+    // ── 7. Working stale timeout (5 min) ───────────────────────────────
 
     @Test
-    fun `reset cancels sleep sequence and auto-return`() = runTest {
+    fun `working stale timer forces Idle after 5 min`() = runTest {
+        every { manager.getCurrentState() } returns PetState.Working
+
+        timerManager.startWorkingStaleTimer(this)
+        runCurrent()
+        assertTrue(emittedStates.isEmpty())
+
+        advanceTimeBy(PetTimerManager.WORKING_STALE_TIMEOUT_MS)
+        runCurrent()
+        assertEquals(PetState.Idle, emittedStates.last().first)
+    }
+
+    @Test
+    fun `working stale timer does not fire if state changed`() = runTest {
+        every { manager.getCurrentState() } returns PetState.Thinking
+
+        timerManager.startWorkingStaleTimer(this)
+
+        // State changes before timeout
+        advanceTimeBy(60_000)
         every { manager.getCurrentState() } returns PetState.Idle
-        every { manager.resolveBestState() } returns PetState.Working
+        timerManager.cancelWorkingStaleTimer()
+
+        advanceTimeBy(PetTimerManager.WORKING_STALE_TIMEOUT_MS)
+        runCurrent()
+        assertFalse(emittedStates.any { it.first == PetState.Idle })
+    }
+
+    @Test
+    fun `new working stale timer cancels previous one`() = runTest {
+        every { manager.getCurrentState() } returns PetState.Working
+
+        timerManager.startWorkingStaleTimer(this)
+
+        advanceTimeBy(60_000)
+        // Start a new timer — should cancel the previous
+        timerManager.startWorkingStaleTimer(this)
+
+        // Previous would have fired at 300s; advance past that
+        advanceTimeBy(250_000)
+        runCurrent()
+        // Should NOT have fired yet (new timer started at 60s mark)
+        assertFalse(emittedStates.any { it.first == PetState.Idle })
+
+        // Now advance to the new timer's 5 min mark (60s + 300s)
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(PetState.Idle, emittedStates.last().first)
+    }
+
+    // ── 8. reset clears all timers ─────────────────────────────────────
+
+    @Test
+    fun `reset cancels sleep sequence and working stale`() = runTest {
+        every { manager.getCurrentState() } returns PetState.Idle
 
         timerManager.startSleepSequence(this)
-        timerManager.scheduleAutoReturn(PetState.Attention, this)
+        timerManager.startWorkingStaleTimer(this)
 
         timerManager.reset()
 
         emittedStates.clear()
-        advanceTimeBy(60_000)
+        advanceTimeBy(PetTimerManager.WORKING_STALE_TIMEOUT_MS)
         runCurrent()
         assertTrue(emittedStates.isEmpty())
     }
