@@ -10,7 +10,6 @@ import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
 import com.clawd.mobile.ws.StreamingClient
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -19,7 +18,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 class ApprovalViewModel(
@@ -172,9 +170,7 @@ class ApprovalViewModel(
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { sseClient.sendPermissionResponse(requestId, "allow") }.isSuccess
-            }
+            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "allow") }.isSuccess
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -190,9 +186,7 @@ class ApprovalViewModel(
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { sseClient.sendPermissionResponse(requestId, "deny") }.isSuccess
-            }
+            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "deny") }.isSuccess
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -208,9 +202,7 @@ class ApprovalViewModel(
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex) }.isSuccess
-            }
+            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex) }.isSuccess
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -227,9 +219,7 @@ class ApprovalViewModel(
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
             val request = _pendingRequests.value.find { it.requestId == requestId }
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers) }.isSuccess
-            }
+            val ok = runCatching { sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers) }.isSuccess
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {

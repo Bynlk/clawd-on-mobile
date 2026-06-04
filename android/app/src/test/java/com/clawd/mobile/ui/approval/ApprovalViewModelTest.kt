@@ -131,6 +131,7 @@ class ApprovalViewModelTest {
 
         assertNotNull(vm.countdowns.value["cd2"])
         vm.approve("cd2")
+        advanceUntilIdle()
         assertNull(vm.countdowns.value["cd2"])
     }
 
@@ -143,6 +144,7 @@ class ApprovalViewModelTest {
         assertEquals(1, vm.pendingRequests.value.size)
 
         vm.approve("app1")
+        advanceUntilIdle()
 
         verify { streamingClient.sendPermissionResponse("app1", "allow", null) }
         assertTrue(vm.pendingRequests.value.isEmpty())
@@ -154,6 +156,7 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "den1"))
 
         vm.deny("den1")
+        advanceUntilIdle()
 
         verify { streamingClient.sendPermissionResponse("den1", "deny", null) }
         assertTrue(vm.pendingRequests.value.isEmpty())
@@ -165,6 +168,7 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "sug1"))
 
         vm.approveWithSuggestion("sug1", 2)
+        advanceUntilIdle()
 
         verify { streamingClient.sendPermissionResponse("sug1", "allow", 2) }
         assertTrue(vm.pendingRequests.value.isEmpty())
@@ -176,6 +180,7 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "no-restore"))
 
         vm.approve("no-restore")
+        advanceUntilIdle()
 
         // Should NOT be restorable via notification
         vm.setNotificationRequestId("no-restore")
@@ -243,6 +248,7 @@ class ApprovalViewModelTest {
             if (vm.pendingRequests.value.size > beforeSize) restoredCount++
             // Clean up so next iteration starts fresh
             vm.approve("evict$i")
+            advanceUntilIdle()
         }
         assertTrue("At most 20 should be restorable, but $restoredCount were", restoredCount <= 20)
         assertTrue("At least some should be restorable", restoredCount > 0)
@@ -331,6 +337,7 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "multi3"))
 
         vm.approve("multi2")
+        advanceUntilIdle()
 
         assertEquals(2, vm.pendingRequests.value.size)
         assertTrue(vm.pendingRequests.value.any { it.requestId == "multi1" })
