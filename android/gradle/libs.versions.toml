@@ -13,11 +13,17 @@ zxing = "3.5.3"
 webkit = "1.8.0"
 securityCrypto = "1.1.0-alpha06"
 workManager = "2.10.0"
+hilt = "2.51.1"
+hiltNavigationCompose = "1.2.0"
+ksp = "2.1.0-1.0.29"
 junit = "4.13.2"
 coroutinesTest = "1.9.0"
 mockk = "1.13.13"
 turbine = "1.2.0"
 mockwebserver = "4.12.0"
+androidxTestExt = "1.2.1"
+androidxTestRunner = "1.6.2"
+androidxTestMonitor = "1.7.2"
 
 [libraries]
 # Compose
@@ -50,15 +56,26 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" 
 webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
+# DI
+hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
+hilt-android-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
+hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 mockk-android = { group = "io.mockk", name = "mockk-android", version.ref = "mockk" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "mockwebserver" }
+# AndroidX Test
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-test-monitor = { group = "androidx.test", name = "monitor", version.ref = "androidxTestMonitor" }
+work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workManager" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

@@ -21,7 +21,37 @@ on:
         default: false
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Lint
+        run: gradle lint --no-daemon
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-report
+          path: android/app/build/reports/lint-results-*.html
+          if-no-files-found: ignore
+
   build:
+    needs: lint
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -74,32 +104,3 @@ jobs:
           name: clawd-mobile-release
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-
-  lint:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: android
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: "8.11.1"
-
-      - name: Lint
-        run: gradle lint --no-daemon
-
-      - name: Upload lint report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: lint-report
-          path: android/app/build/reports/lint-results-*.html
-          if-no-files-found: ignore

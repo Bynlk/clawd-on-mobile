@@ -95,12 +95,14 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
           echo "versionName=$TAG" >> "$GITHUB_OUTPUT"
-          CURRENT=$(grep 'versionCode' app/build.gradle.kts | grep -oE '[0-9]+')
-          NEW=$((CURRENT + 1))
+          # Use GITHUB_RUN_NUMBER to avoid read-modify-write race condition.
+          # Add 1000 base offset to ensure it's always larger than manual versionCodes.
+          NEW=$((1000 + GITHUB_RUN_NUMBER))
           echo "versionCode=$NEW" >> "$GITHUB_OUTPUT"
+          CURRENT=$(grep 'versionCode' app/build.gradle.kts | grep -oE '[0-9]+')
           sed -i "s/versionCode = $CURRENT/versionCode = $NEW/" app/build.gradle.kts
           sed -i "s/versionName = \"[^\"]*\"/versionName = \"$TAG\"/" app/build.gradle.kts
-          echo "Version: $CURRENT -> $NEW, Name: $TAG"
+          echo "Version: $CURRENT -> $NEW (run#$GITHUB_RUN_NUMBER), Name: $TAG"
 
       - name: Build Release APK
         env:

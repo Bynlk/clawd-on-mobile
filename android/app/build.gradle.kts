@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt.android)
 }
 
 android {
@@ -14,8 +16,9 @@ android {
         applicationId = "com.clawd.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 29
-        versionName = "0.1.21"
+        versionCode = 30
+        versionName = "0.1.22"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -104,9 +107,19 @@ dependencies {
     // WorkManager for reliable background tasks (approval responses)
     implementation(libs.work.runtime)
 
+    // DI (Hilt)
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
+    implementation(libs.hilt.navigation.compose)
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.mockk)
     testImplementation(libs.turbine)
     testImplementation(libs.mockwebserver)
+
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.work.testing)
+    debugImplementation(libs.androidx.test.monitor)
 }
