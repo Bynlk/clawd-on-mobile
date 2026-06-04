@@ -55,7 +55,7 @@ class ServiceManager(
         SseService.start(context)
         val client = acquireClient()
         _sseClient.value = client
-        startCollectors(client)
+        if (client != null) startCollectors(client)
     }
 
     /**
@@ -65,7 +65,7 @@ class ServiceManager(
     suspend fun refresh() {
         val client = acquireClient()
         _sseClient.value = client
-        startCollectors(client)
+        if (client != null) startCollectors(client)
     }
 
     private suspend fun acquireClient(): StreamingClient? {

@@ -39,7 +39,6 @@ import com.clawd.mobile.R
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
-import com.clawd.mobile.ws.SseClient
 import com.clawd.mobile.ws.StreamingClient
 import com.clawd.mobile.ws.ConnectionState
 

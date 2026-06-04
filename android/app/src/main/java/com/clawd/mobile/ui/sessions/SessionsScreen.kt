@@ -25,7 +25,6 @@ import com.clawd.mobile.ui.approval.ApprovalViewModel
 import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ws.ConnectionState
-import com.clawd.mobile.ws.SseClient
 import com.clawd.mobile.ws.StreamingClient
 
 @OptIn(ExperimentalMaterial3Api::class)
