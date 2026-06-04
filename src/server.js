@@ -94,7 +94,9 @@ function saveMobileState(patch) {
   try {
     const current = loadMobileState();
     const updated = { ...current, ...patch, savedAt: Date.now() };
-    require("fs").writeFileSync(MOBILE_STATE_PATH, JSON.stringify(updated, null, 2));
+    const tmpPath = MOBILE_STATE_PATH + ".tmp";
+    require("fs").writeFileSync(tmpPath, JSON.stringify(updated, null, 2));
+    require("fs").renameSync(tmpPath, MOBILE_STATE_PATH);
   } catch (err) {
     console.warn("[mobile] Failed to save state:", err.message);
   }
@@ -108,7 +110,6 @@ let mobileWS = null;
 let activeServerPort = null;
 let mobileHttpServer = null;
 let mobileServerPort = null;
-const mobileSSEClients = new Set();
 const pendingMobileApprovals = new Map();
 let lastClaudeHookGuardNotice = null;
 const codexOfficialTurns = new Map();
@@ -418,110 +419,20 @@ function startHttpServer() {
 }
 
 function broadcastHookEvent(eventData) {
-  if (mobileSSEClients.size === 0) {
+  if (!mobileWS || mobileWS.getClientCount() === 0) {
     if (eventData.type === "permission_request") {
-      console.log(`[mobile-sse] broadcastHookEvent type=${eventData.type} SKIPPED — no SSE clients connected`);
+      console.log(`[mobile-ws] broadcastHookEvent type=${eventData.type} SKIPPED — no WS clients connected`);
     }
     return;
   }
-  const data = `data: ${JSON.stringify(eventData)}\n\n`;
-  console.log(`[mobile-sse] broadcastHookEvent type=${eventData.type} clients=${mobileSSEClients.size}`);
-  for (const client of mobileSSEClients) {
-    try { client.write(data); } catch { mobileSSEClients.delete(client); }
-  }
+  console.log(`[mobile-ws] broadcastHookEvent type=${eventData.type} clients=${mobileWS.getClientCount()}`);
+  mobileWS.broadcast(eventData);
 }
 
 function startMobileServer() {
   const MOBILE_PORT = 23334;
   mobileHttpServer = createHttpServer((req, res) => {
     // WebSocket upgrade on /mobile/ws is handled by wsServerMobile below
-
-    if (req.method === "GET" && req.url.startsWith("/mobile/stream")) {
-      // Token authentication
-      const streamUrl = new URL(req.url, "http://localhost");
-      let streamToken = streamUrl.searchParams.get("token");
-      if (!streamToken) {
-        const authHeader = req.headers["authorization"] || "";
-        if (authHeader.startsWith("Bearer ")) streamToken = authHeader.slice(7);
-      }
-      if (streamToken !== MOBILE_TOKEN) {
-        res.writeHead(401, { "Content-Type": "text/plain" });
-        res.end("Unauthorized");
-        return;
-      }
-      const corsOrigin = getAllowedCorsOrigin(req);
-      const corsHeaders = corsOrigin ? { "Access-Control-Allow-Origin": corsOrigin } : {};
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        ...corsHeaders,
-      });
-      res.write(`data: ${JSON.stringify({ type: "connected", timestamp: Date.now() })}\n\n`);
-      // Tell client to flush stale sessions before snapshot arrives
-      res.write(`data: ${JSON.stringify({ type: "clear_sessions", timestamp: Date.now() })}\n\n`);
-      mobileSSEClients.add(res);
-      const sseClientId = "sse_" + crypto.randomBytes(8).toString("hex");
-      const sseClientIp = (req.socket.remoteAddress || "unknown").replace(/^::ffff:/, "");
-      res._sseClientId = sseClientId;
-      if (mobileWS) {
-        mobileWS.registerExternalClient(sseClientId, { ip: sseClientIp, res });
-        // Send current session cache to the new client so syncing state resolves
-        const cache = mobileWS.getSessionCache ? mobileWS.getSessionCache() : new Map();
-        const displayState = typeof ctx.resolveDisplayState === "function"
-          ? ctx.resolveDisplayState()
-          : "idle";
-        if (cache.size > 0) {
-          res.write(`data: ${JSON.stringify({ type: "snapshot", sessions: Object.fromEntries(cache), displayState, timestamp: Date.now() })}\n\n`);
-        } else {
-          // No sessions — still resolve syncing state
-          res.write(`data: ${JSON.stringify({ type: "snapshot", sessions: {}, displayState, timestamp: Date.now() })}\n\n`);
-        }
-      }
-      console.log(`[mobile-sse] Client connected (total: ${mobileSSEClients.size})`);
-      // SSE heartbeat: keep TCP alive and detect dead clients
-      const pingInterval = setInterval(() => {
-        try { res.write(`data: ${JSON.stringify({ type: "ping", timestamp: Date.now() })}\n\n`); }
-        catch { clearInterval(pingInterval); mobileSSEClients.delete(res); if (mobileWS && res._sseClientId) mobileWS.unregisterExternalClient(res._sseClientId); }
-      }, 15000);
-      req.on("close", () => {
-        clearInterval(pingInterval);
-        mobileSSEClients.delete(res);
-        if (mobileWS && res._sseClientId) mobileWS.unregisterExternalClient(res._sseClientId);
-        console.log(`[mobile-sse] Client disconnected (total: ${mobileSSEClients.size})`);
-      });
-      return;
-    }
-
-    if (req.method === "POST" && req.url.startsWith("/mobile/approve")) {
-      // Token authentication
-      const approveUrl = new URL(req.url, "http://localhost");
-      let approveToken = approveUrl.searchParams.get("token");
-      if (!approveToken) {
-        const authHeader = req.headers["authorization"] || "";
-        if (authHeader.startsWith("Bearer ")) approveToken = authHeader.slice(7);
-      }
-      if (approveToken !== MOBILE_TOKEN) {
-        res.writeHead(401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "unauthorized" }));
-        return;
-      }
-      let body = "";
-      req.on("data", (chunk) => { body += chunk; });
-      req.on("end", () => {
-        let data;
-        try { data = JSON.parse(body); } catch {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "invalid json" }));
-          return;
-        }
-        const result = resolveMobileApproval(data.id, data);
-        const status = result.ok ? 200 : (result.error === "request not found or expired" ? 404 : 400);
-        res.writeHead(status, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(result));
-      });
-      return;
-    }
 
     if (req.method === "OPTIONS") {
       const corsOrigin = getAllowedCorsOrigin(req);
@@ -545,9 +456,9 @@ function startMobileServer() {
 
   mobileHttpServer.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
-      console.warn(`[mobile-sse] Port ${MOBILE_PORT} occupied, mobile SSE disabled`);
+      console.warn(`[mobile-ws] Port ${MOBILE_PORT} occupied, mobile server disabled`);
     } else {
-      console.error("[mobile-sse] Server error:", err.message);
+      console.error("[mobile-ws] Server error:", err.message);
     }
   });
 
@@ -566,15 +477,11 @@ function startMobileServer() {
   const mobileBindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
   mobileHttpServer.listen(MOBILE_PORT, mobileBindHost, () => {
     mobileServerPort = MOBILE_PORT;
-    console.log(`[mobile-sse] Listening on ${mobileBindHost}:${MOBILE_PORT}`);
+    console.log(`[mobile-ws] Listening on ${mobileBindHost}:${MOBILE_PORT}`);
   });
 }
 
 function stopMobileServer() {
-  for (const client of mobileSSEClients) {
-    try { client.end(); } catch {}
-  }
-  mobileSSEClients.clear();
   for (const [, pending] of pendingMobileApprovals) {
     try { clearTimeout(pending.timer); } catch {}
   }
