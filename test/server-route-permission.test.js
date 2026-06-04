@@ -13,6 +13,7 @@ const {
   handlePermissionPost,
   shouldBypassCCBubble,
   shouldBypassCodexBubble,
+  shouldBypassCopilotBubble,
   shouldBypassOpencodeBubble,
 } = require("../src/server-route-permission");
 
@@ -137,6 +138,13 @@ describe("server-route-permission helpers", () => {
     assert.strictEqual(shouldBypassOpencodeBubble({
       isAgentPermissionsEnabled: (agentId) => agentId !== "opencode",
     }), true);
+    assert.strictEqual(shouldBypassCopilotBubble({ hideBubbles: true }), true);
+    assert.strictEqual(shouldBypassCopilotBubble({
+      isAgentPermissionsEnabled: (agentId) => agentId !== "copilot-cli",
+    }), true);
+    assert.strictEqual(shouldBypassCopilotBubble({
+      isAgentPermissionsEnabled: () => true,
+    }), false);
   });
 
 });
@@ -245,6 +253,32 @@ describe("server-route-permission POST", () => {
     assert.deepStrictEqual(res.recorder.map((entry) => entry.outcome).filter(Boolean), ["disabled"]);
     assert.deepStrictEqual(res.ctx.pendingPermissions, []);
     assert.deepStrictEqual(res.ctx.calls.replyOpencodePermission, []);
+  });
+
+  it("routes opencode permissions by hook_source when agent_id is missing", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      hook_source: "opencode-plugin",
+      session_id: "opencode:s1",
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+      request_id: "req-1",
+      bridge_url: "http://127.0.0.1:1234",
+      bridge_token: "token",
+    }));
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body, "ok");
+    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
+    const entry = res.ctx.pendingPermissions[0];
+    assert.strictEqual(entry.agentId, "opencode");
+    assert.strictEqual(entry.isOpencode, true);
+    assert.deepStrictEqual(res.ctx.calls.updateSession, [[
+      "opencode:s1",
+      "notification",
+      "PermissionRequest",
+      { agentId: "opencode" },
+    ]]);
+    assert.deepStrictEqual(res.recorder.map((item) => item.outcome).filter(Boolean), ["accepted"]);
   });
 
   it("destroys the Claude/CodeBuddy connection during DND", async () => {
@@ -542,5 +576,389 @@ describe("server-route-permission POST", () => {
       const res = await callPermissionPost(JSON.stringify(item.body), { ctx: item.ctx || {} });
       assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, [], item.body.tool_name);
     }
+  });
+
+  // ── Copilot CLI branch ──
+  // Phase 0 locked: empty stdout + exit 0 means "no decision, native flow".
+  // Every Clawd fallback (DND / disabled / bubble bypass / bubble failure /
+  // abort) must end with 204 so the hook emits empty stdout and Copilot's
+  // native menu owns the decision. v1 explicitly excludes Telegram remote
+  // approval (plan §6, Phase 6 lifecycle table).
+
+  it("returns no-decision for Copilot DND fallback", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "copilot-cli",
+      session_id: "copilot:s1",
+      tool_name: "edit",
+      tool_input: { filePath: "a.txt", newString: "x", oldString: "" },
+    }), {
+      ctx: { doNotDisturb: true },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.recorder.map((entry) => entry.outcome).filter(Boolean), ["dnd"]);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, []);
+  });
+
+  it("returns no-decision when the Copilot agent master switch is off", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "copilot-cli",
+      session_id: "copilot:s1",
+      tool_name: "powershell",
+      tool_input: { command: "ls" },
+    }), {
+      ctx: {
+        isAgentEnabled: (agentId) => agentId !== "copilot-cli",
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.recorder.map((entry) => entry.outcome).filter(Boolean), ["disabled"]);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+  });
+
+  it("returns no-decision when the global permission bubble gate is off (Copilot)", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "copilot-cli",
+      session_id: "copilot:s1",
+      tool_name: "edit",
+      tool_input: { filePath: "a.txt" },
+    }), {
+      ctx: { hideBubbles: true },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.recorder.map((entry) => entry.outcome).filter(Boolean), ["accepted"]);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, []);
+  });
+
+  it("returns no-decision when the per-agent Copilot permission subgate is off", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "copilot-cli",
+      session_id: "copilot:s1",
+      tool_name: "edit",
+      tool_input: { filePath: "a.txt" },
+    }), {
+      ctx: {
+        isAgentPermissionsEnabled: (agentId) => agentId !== "copilot-cli",
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, []);
+  });
+
+  it("pushes a Copilot permission entry with isCopilotCli=true and shows the bubble", async () => {
+    const sessionId = "copilot:01HQABCD";
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "copilot-cli",
+      session_id: sessionId,
+      tool_name: "edit",
+      tool_input: { filePath: "src/a.ts", newString: "x", oldString: "" },
+      tool_use_id: "tool-1",
+      source_pid: 1234,
+      agent_pid: 1234,
+      pid_chain: [9999, 1234, -1],
+      cwd: "D:/repo",
+      host: "devbox",
+    }));
+
+    assert.strictEqual(res.statusCode, null);
+    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
+    const entry = res.ctx.pendingPermissions[0];
+    assert.strictEqual(entry.res, res);
+    assert.strictEqual(entry.sessionId, sessionId);
+    assert.strictEqual(entry.agentId, "copilot-cli");
+    assert.strictEqual(entry.isCopilotCli, true);
+    assert.strictEqual(entry.toolName, "edit");
+    assert.strictEqual(entry.toolUseId, "tool-1");
+    assert.strictEqual(entry.sourcePid, 1234);
+    assert.strictEqual(entry.agentPid, 1234);
+    assert.deepStrictEqual(entry.pidChain, [9999, 1234]);
+    assert.strictEqual(entry.cwd, "D:/repo");
+    assert.strictEqual(entry.host, "devbox");
+    assert.deepStrictEqual(res.ctx.calls.updateSession, [[
+      sessionId,
+      "notification",
+      "PermissionRequest",
+      {
+        agentId: "copilot-cli",
+        sourcePid: 1234,
+        agentPid: 1234,
+        pidChain: [9999, 1234],
+        cwd: "D:/repo",
+        host: "devbox",
+      },
+    ]]);
+    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, [entry]);
+    assert.deepStrictEqual(res.ctx.calls.addPendingPermission, [entry]);
+    assert.deepStrictEqual(res.recorder.map((item) => item.outcome).filter(Boolean), ["accepted"]);
+  });
+
+  it("does NOT start remote approval for Copilot (v1 excludes Telegram)", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "copilot-cli",
+      session_id: "copilot:s1",
+      tool_name: "edit",
+      tool_input: { filePath: "a.txt" },
+    }));
+
+    assert.strictEqual(res.statusCode, null);
+    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
+    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, []);
+  });
+
+  it("recovers via 204 when the Copilot bubble fails to construct", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "copilot-cli",
+      session_id: "copilot:s1",
+      tool_name: "edit",
+      tool_input: { filePath: "a.txt" },
+    }), {
+      ctx: {
+        showPermissionBubble: () => {
+          throw new Error("no window");
+        },
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.removePendingPermission.map((item) => item.reason), ["copilot-bubble-failed"]);
+    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, []);
+  });
+
+  it("resolves Copilot abort as no-decision (NOT deny) when the connection closes", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "copilot-cli",
+      session_id: "copilot:s1",
+      tool_name: "edit",
+      tool_input: { filePath: "a.txt" },
+    }));
+
+    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
+    const entry = res.ctx.pendingPermissions[0];
+    res.emit("close");
+
+    assert.strictEqual(res.ctx.calls.resolved.length, 1);
+    assert.strictEqual(res.ctx.calls.resolved[0].entry, entry);
+    assert.strictEqual(res.ctx.calls.resolved[0].behavior, "no-decision");
+  });
+
+  it("routes Copilot permissions by hook_source when agent_id is missing", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      hook_source: "copilot-hook",
+      session_id: "copilot:s1",
+      tool_name: "edit",
+      tool_input: { filePath: "a.txt" },
+    }));
+
+    assert.strictEqual(res.statusCode, null);
+    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
+    const entry = res.ctx.pendingPermissions[0];
+    assert.strictEqual(entry.agentId, "copilot-cli");
+    assert.strictEqual(entry.isCopilotCli, true);
+    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, []);
+  });
+
+  // ── Hermes Agent branch ──
+  // Hermes permissions behave like Copilot: every Clawd fallback (DND /
+  // disabled / subgate / bubble failure / abort) emits 204 so the Hermes
+  // plugin falls back to its native clarify or terminal-based approval.
+
+  it("returns no-decision for Hermes DND fallback", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "hermes",
+      session_id: "hermes:s1",
+      tool_name: "execute_bash",
+      tool_input: { command: "rm -rf /tmp/test" },
+    }), {
+      ctx: { doNotDisturb: true },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.recorder.map((entry) => entry.outcome).filter(Boolean), ["dnd"]);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, []);
+  });
+
+  it("returns no-decision when the Hermes agent master switch is off", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "hermes",
+      session_id: "hermes:s1",
+      tool_name: "execute_bash",
+      tool_input: { command: "rm -rf /tmp/test" },
+    }), {
+      ctx: {
+        isAgentEnabled: (agentId) => agentId !== "hermes",
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.recorder.map((entry) => entry.outcome).filter(Boolean), ["disabled"]);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+  });
+
+  it("returns no-decision when the global permission bubble gate is off (Hermes)", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "hermes",
+      session_id: "hermes:s1",
+      tool_name: "execute_bash",
+      tool_input: { command: "rm -rf /tmp/test" },
+    }), {
+      ctx: { hideBubbles: true },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.recorder.map((entry) => entry.outcome).filter(Boolean), ["accepted"]);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, []);
+  });
+
+  it("returns no-decision when the per-agent Hermes permission subgate is off", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "hermes",
+      session_id: "hermes:s1",
+      tool_name: "execute_bash",
+      tool_input: { command: "rm -rf /tmp/test" },
+    }), {
+      ctx: {
+        isAgentPermissionsEnabled: (agentId) => agentId !== "hermes",
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, []);
+  });
+
+  it("pushes a Hermes permission entry with isHermes=true and full metadata", async () => {
+    const sessionId = "hermes:01HQABCD";
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "hermes",
+      session_id: sessionId,
+      tool_name: "execute_bash",
+      tool_input: { command: "rm -rf /tmp/test" },
+      tool_use_id: "tool-1",
+      source_pid: 1234,
+      agent_pid: 1234,
+      pid_chain: [9999, 1234, -1],
+      cwd: "/home/user/repo",
+      editor: "cursor",
+    }));
+
+    assert.strictEqual(res.statusCode, null);
+    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
+    const entry = res.ctx.pendingPermissions[0];
+    assert.strictEqual(entry.res, res);
+    assert.strictEqual(entry.sessionId, sessionId);
+    assert.strictEqual(entry.agentId, "hermes");
+    assert.strictEqual(entry.isHermes, true);
+    assert.strictEqual(entry.toolName, "execute_bash");
+    assert.strictEqual(entry.toolUseId, "tool-1");
+    assert.strictEqual(entry.sourcePid, 1234);
+    assert.strictEqual(entry.agentPid, 1234);
+    assert.deepStrictEqual(entry.pidChain, [9999, 1234]);
+    assert.strictEqual(entry.cwd, "/home/user/repo");
+    assert.strictEqual(entry.editor, "cursor");
+    assert.deepStrictEqual(res.ctx.calls.updateSession, [[
+      sessionId,
+      "notification",
+      "PermissionRequest",
+      {
+        agentId: "hermes",
+        sourcePid: 1234,
+        agentPid: 1234,
+        pidChain: [9999, 1234],
+        cwd: "/home/user/repo",
+        editor: "cursor",
+      },
+    ]]);
+    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, [entry]);
+    assert.deepStrictEqual(res.ctx.calls.addPendingPermission, [entry]);
+    assert.deepStrictEqual(res.recorder.map((item) => item.outcome).filter(Boolean), ["accepted"]);
+  });
+
+  it("handles Hermes clarify tool as an elicitation entry", async () => {
+    const sessionId = "hermes:clarify-s1";
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "hermes",
+      session_id: sessionId,
+      tool_name: "clarify",
+      tool_input: { questions: [{ question: "Which approach?", options: [{ label: "A" }, { label: "B" }] }] },
+      cwd: "/home/user/repo",
+      agent_pid: 5678,
+    }));
+
+    assert.strictEqual(res.statusCode, null);
+    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
+    const entry = res.ctx.pendingPermissions[0];
+    assert.strictEqual(entry.agentId, "hermes");
+    assert.strictEqual(entry.isHermes, true);
+    assert.strictEqual(entry.isElicitation, true);
+    assert.strictEqual(entry.toolName, "clarify");
+    // updateSession should be called with "Elicitation" kind, not "PermissionRequest"
+    assert.deepStrictEqual(res.ctx.calls.updateSession, [[
+      sessionId,
+      "notification",
+      "Elicitation",
+      {
+        agentId: "hermes",
+        cwd: "/home/user/repo",
+        agentPid: 5678,
+      },
+    ]]);
+    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, [entry]);
+    assert.deepStrictEqual(res.ctx.calls.addPendingPermission, [entry]);
+  });
+
+  it("recovers via 204 when the Hermes bubble fails to construct", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "hermes",
+      session_id: "hermes:s1",
+      tool_name: "execute_bash",
+      tool_input: { command: "rm -rf /tmp/test" },
+    }), {
+      ctx: {
+        showPermissionBubble: () => {
+          throw new Error("no window");
+        },
+      },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.removePendingPermission.map((item) => item.reason), ["hermes-bubble-failed"]);
+    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, []);
+  });
+
+  it("resolves Hermes abort as no-decision when the connection closes", async () => {
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "hermes",
+      session_id: "hermes:s1",
+      tool_name: "execute_bash",
+      tool_input: { command: "rm -rf /tmp/test" },
+    }));
+
+    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
+    const entry = res.ctx.pendingPermissions[0];
+    res.emit("close");
+
+    assert.strictEqual(res.ctx.calls.resolved.length, 1);
+    assert.strictEqual(res.ctx.calls.resolved[0].entry, entry);
+    assert.strictEqual(res.ctx.calls.resolved[0].behavior, "no-decision");
   });
 });

@@ -9,6 +9,7 @@
     "flashDurationMs",
     "soundVolume",
     "lowPowerIdleMode",
+    "keepAwakeWhileWorking",
     "sessionHudEnabled",
     "sessionHudShowStateLabels",
     "sessionHudShowElapsed",
@@ -92,6 +93,11 @@
         key: "lowPowerIdleMode",
         labelKey: "rowLowPowerIdleMode",
         descKey: "rowLowPowerIdleModeDesc",
+      }),
+      helpers.buildSwitchRow({
+        key: "keepAwakeWhileWorking",
+        labelKey: "rowKeepAwakeWhileWorking",
+        descKey: "rowKeepAwakeWhileWorkingDesc",
       }),
       buildFlashGroup(),
       helpers.buildSwitchRow({

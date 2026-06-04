@@ -85,6 +85,40 @@ function makePendingReleaseResponse(queue) {
   };
 }
 
+function makeHttpResponse({ statusCode, headers = {}, body = "" }) {
+  return {
+    statusCode,
+    headers,
+    on(event, handler) {
+      if (event === "data" && body) {
+        process.nextTick(() => handler(Buffer.from(body)));
+      }
+      if (event === "end") process.nextTick(() => handler());
+      return this;
+    },
+    resume() {},
+  };
+}
+
+function makeSequencedHttpsGet(responses, requests = []) {
+  const queue = [...responses];
+  return (options, cb) => {
+    requests.push(`${options.hostname}${options.path}`);
+    const next = queue.shift();
+    if (next instanceof Error) {
+      return {
+        on(event, handler) {
+          if (event === "error") process.nextTick(() => handler(next));
+          return this;
+        },
+        setTimeout() {},
+      };
+    }
+    cb(makeHttpResponse(next));
+    return { on() { return this; }, setTimeout() {} };
+  };
+}
+
 describe("updater visual flow", () => {
   beforeEach(() => {
     mock.restoreAll();
@@ -336,34 +370,164 @@ describe("updater visual flow", () => {
     const visualStates = [];
     const appliedStates = [];
     const bubbles = [];
+    const requests = [];
     const ctx = makeCtx({
       setUpdateVisualState: (state) => visualStates.push(state),
       applyState: (state) => appliedStates.push(state),
       showUpdateBubble: (payload) => bubbles.push(payload),
     });
     const updater = initUpdater(ctx, makeDeps({
-      httpsGetImpl: () => {
-        const req = {
-          on(event, handler) {
-            if (event === "error") {
-              process.nextTick(() => handler(new Error("network down")));
-            }
-            return this;
-          },
-          setTimeout() {},
-        };
-        return req;
-      },
+      httpsGetImpl: makeSequencedHttpsGet([new Error("network down")], requests),
     }));
 
     await updater.checkForUpdates(true);
 
     assert.deepStrictEqual(visualStates, ["checking", null]);
     assert.ok(appliedStates.includes("error"));
+    assert.deepStrictEqual(requests, [
+      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+    ]);
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "error"]);
     assert.match(bubbles[1].detail, /Operation: Check for Updates/);
     assert.match(bubbles[1].detail, /Reason: network down/);
     assert.match(bubbles[1].detail, /network down/);
+  });
+
+  it("falls back to releases/latest redirect when GitHub API is rate-limited", async () => {
+    const bubbles = [];
+    const requests = [];
+    const ctx = makeCtx({
+      showUpdateBubble: (payload) => bubbles.push(payload),
+    });
+    const updater = initUpdater(ctx, makeDeps({
+      httpsGetImpl: makeSequencedHttpsGet([
+        {
+          statusCode: 403,
+          headers: {
+            "x-ratelimit-remaining": "0",
+            "x-ratelimit-limit": "60",
+          },
+          body: JSON.stringify({ message: "API rate limit exceeded" }),
+        },
+        {
+          statusCode: 302,
+          headers: {
+            location: "https://github.com/rullerzhou-afk/clawd-on-desk/releases/tag/v0.5.10",
+          },
+        },
+      ], requests),
+    }));
+
+    await updater.checkForUpdates(true);
+
+    assert.deepStrictEqual(requests, [
+      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+    ]);
+    assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "up-to-date"]);
+  });
+
+  it("continues into electron-updater when redirect fallback finds a newer version", async () => {
+    const bubbles = [];
+    const requests = [];
+    const handlers = {};
+    let updateChecks = 0;
+    const ctx = makeCtx({
+      showUpdateBubble: async (payload) => {
+        bubbles.push(payload);
+        if (payload.mode === "available") return "later";
+        return payload.defaultAction || null;
+      },
+    });
+    const updater = initUpdater(ctx, makeDeps({
+      autoUpdaterFactory: () => ({
+        autoDownload: false,
+        autoInstallOnAppQuit: true,
+        on(event, handler) { handlers[event] = handler; },
+        checkForUpdates: async () => {
+          updateChecks += 1;
+          return { updateInfo: { version: "0.5.11" } };
+        },
+        quitAndInstall() {},
+        downloadUpdate() {},
+      }),
+      httpsGetImpl: makeSequencedHttpsGet([
+        {
+          statusCode: 403,
+          headers: { "x-ratelimit-remaining": "0", "x-ratelimit-limit": "60" },
+          body: JSON.stringify({ message: "API rate limit exceeded" }),
+        },
+        {
+          statusCode: 302,
+          headers: {
+            location: "https://github.com/rullerzhou-afk/clawd-on-desk/releases/tag/v0.5.11",
+          },
+        },
+      ], requests),
+    }));
+
+    updater.setupAutoUpdater();
+    await updater.checkForUpdates(true);
+    await handlers["update-available"]({ version: "0.5.11" });
+
+    assert.strictEqual(updateChecks, 1);
+    assert.deepStrictEqual(requests, [
+      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+    ]);
+    assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "available"]);
+  });
+
+  it("shows an error when the GitHub API and redirect fallback both fail", async () => {
+    const bubbles = [];
+    const requests = [];
+    const ctx = makeCtx({
+      showUpdateBubble: (payload) => bubbles.push(payload),
+    });
+    const updater = initUpdater(ctx, makeDeps({
+      httpsGetImpl: makeSequencedHttpsGet([
+        {
+          statusCode: 403,
+          headers: { "x-ratelimit-remaining": "0", "x-ratelimit-limit": "60" },
+          body: JSON.stringify({ message: "API rate limit exceeded" }),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: "<html>no redirect</html>",
+        },
+      ], requests),
+    }));
+
+    await updater.checkForUpdates(true);
+
+    assert.deepStrictEqual(requests, [
+      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+    ]);
+    assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "error"]);
+    assert.match(bubbles[1].detail, /GitHub releases redirect returned 200/);
+  });
+
+  it("does not fallback when GitHub reports that no releases exist", async () => {
+    const bubbles = [];
+    const requests = [];
+    const ctx = makeCtx({
+      showUpdateBubble: (payload) => bubbles.push(payload),
+    });
+    const updater = initUpdater(ctx, makeDeps({
+      httpsGetImpl: makeSequencedHttpsGet([
+        { statusCode: 404, headers: {} },
+      ], requests),
+    }));
+
+    await updater.checkForUpdates(true);
+
+    assert.deepStrictEqual(requests, [
+      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+    ]);
+    assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "error"]);
+    assert.match(bubbles[1].detail, /Reason: No releases found/);
   });
 
   it("shows a real error bubble when packaged download fails after user starts it", async () => {
@@ -508,6 +672,119 @@ describe("updater visual flow", () => {
     await updater.checkForUpdates(true);
 
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "up-to-date"]);
+  });
+
+  it("lets Windows-on-ARM64 fall back to the normal updater when redirect fallback has no asset metadata", async () => {
+    const bubbles = [];
+    const requests = [];
+    const openedUrls = [];
+    const ctx = makeCtx({
+      showUpdateBubble: async (payload) => {
+        bubbles.push(payload);
+        return payload.defaultAction || null;
+      },
+    });
+    const updater = initUpdater(ctx, makeDeps({
+      platform: "win32",
+      arch: "x64",
+      app: {
+        isPackaged: true,
+        runningUnderARM64Translation: true,
+        getVersion: () => "0.6.1",
+        relaunch() {},
+        exit() {},
+      },
+      shell: {
+        openExternal(url) {
+          openedUrls.push(url);
+        },
+      },
+      httpsGetImpl: makeSequencedHttpsGet([
+        {
+          statusCode: 403,
+          headers: { "x-ratelimit-remaining": "0", "x-ratelimit-limit": "60" },
+          body: JSON.stringify({ message: "API rate limit exceeded" }),
+        },
+        {
+          statusCode: 302,
+          headers: {
+            location: "https://github.com/rullerzhou-afk/clawd-on-desk/releases/tag/v0.6.1",
+          },
+        },
+      ], requests),
+    }));
+
+    await updater.checkForUpdates(true);
+
+    assert.deepStrictEqual(requests, [
+      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+    ]);
+    assert.deepStrictEqual(openedUrls, []);
+    assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "up-to-date"]);
+  });
+
+  it("lets Windows-on-ARM64 use the normal updater for newer redirect fallback releases without asset metadata", async () => {
+    const bubbles = [];
+    const requests = [];
+    const openedUrls = [];
+    let updateChecks = 0;
+    const ctx = makeCtx({
+      showUpdateBubble: async (payload) => {
+        bubbles.push(payload);
+        return payload.defaultAction || null;
+      },
+    });
+    const updater = initUpdater(ctx, makeDeps({
+      platform: "win32",
+      arch: "x64",
+      app: {
+        isPackaged: true,
+        runningUnderARM64Translation: true,
+        getVersion: () => "0.6.0",
+        relaunch() {},
+        exit() {},
+      },
+      shell: {
+        openExternal(url) {
+          openedUrls.push(url);
+        },
+      },
+      autoUpdaterFactory: () => ({
+        autoDownload: false,
+        autoInstallOnAppQuit: true,
+        on() {},
+        checkForUpdates: async () => {
+          updateChecks += 1;
+          return { updateInfo: { version: "0.6.1" } };
+        },
+        quitAndInstall() {},
+        downloadUpdate() {},
+      }),
+      httpsGetImpl: makeSequencedHttpsGet([
+        {
+          statusCode: 403,
+          headers: { "x-ratelimit-remaining": "0", "x-ratelimit-limit": "60" },
+          body: JSON.stringify({ message: "API rate limit exceeded" }),
+        },
+        {
+          statusCode: 302,
+          headers: {
+            location: "https://github.com/rullerzhou-afk/clawd-on-desk/releases/tag/v0.6.1",
+          },
+        },
+      ], requests),
+    }));
+
+    await updater.checkForUpdates(true);
+
+    assert.strictEqual(updateChecks, 1);
+    assert.deepStrictEqual(requests, [
+      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+    ]);
+    assert.deepStrictEqual(openedUrls, []);
+    assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking"]);
   });
 
   it("auto-prompts translated x64 Windows-on-ARM users during updater setup", async () => {

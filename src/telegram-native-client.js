@@ -61,9 +61,20 @@ function classifyError(err) {
     }
     return ERROR_CLASSES.UNKNOWN;
   }
-  if (err.code === "ENOTFOUND" || err.code === "ECONNREFUSED" || err.code === "ECONNRESET") {
+  const code = String(err.code || err.causeCode || (err.cause && err.cause.code) || "");
+  if (code === "ENOTFOUND"
+    || code === "EAI_AGAIN"
+    || code === "ECONNREFUSED"
+    || code === "ECONNRESET"
+    || code === "ECONNABORTED"
+    || code === "ETIMEDOUT"
+    || code === "UND_ERR_CONNECT_TIMEOUT"
+    || code === "UND_ERR_HEADERS_TIMEOUT"
+    || code === "UND_ERR_SOCKET") {
     return ERROR_CLASSES.NETWORK;
   }
+  const message = String(err.message || "");
+  if (/fetch failed|network|socket|timeout/i.test(message)) return ERROR_CLASSES.NETWORK;
   return ERROR_CLASSES.UNKNOWN;
 }
 

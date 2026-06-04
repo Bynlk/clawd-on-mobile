@@ -9,6 +9,7 @@ const {
   buildQwenCodeHookCommand,
   matcherForQwenCodeEvent,
   registerQwenCodeHooks,
+  unregisterQwenCodeHooks,
   timeoutForQwenCodeEvent,
 } = require("../hooks/qwen-code-install");
 const { decodeWindowsEncodedCommand } = require("../hooks/json-utils");
@@ -25,6 +26,12 @@ function makeTempSettingsFile(initial = {}) {
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function listCleanupBackups(filePath) {
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  return fs.readdirSync(dir).filter((name) => name.startsWith(`${base}.clawd-cleanup-`));
 }
 
 // On win32 the installer wraps commands in PowerShell -EncodedCommand
@@ -248,5 +255,46 @@ describe("Qwen Code hook installer", () => {
     assert.strictEqual(result.skipped, QWEN_CODE_HOOK_EVENTS.length);
     const after = readJson(settingsPath);
     assert.match(decodeWindowsEncodedCommand(after.hooks.Stop[0].hooks[0].command), /'C:\\Tools\\node\.exe'/);
+  });
+
+  it("unregister removes encoded Clawd commands while preserving user hooks", () => {
+    const settingsPath = makeTempSettingsFile({
+      hooks: {
+        PreToolUse: [{
+          matcher: "*",
+          hooks: [
+            {
+              name: "clawd",
+              type: "command",
+              command: buildQwenCodeHookCommand(
+                "C:\\Tools\\node.exe",
+                "D:/clawd/hooks/qwen-code-hook.js",
+                "PreToolUse",
+                { platform: "win32" }
+              ),
+              timeout: 30000,
+            },
+            { name: "user", type: "command", command: "echo keep", timeout: 30 },
+          ],
+        }],
+        Stop: [{
+          hooks: [{ name: "user", type: "command", command: "echo stop", timeout: 30 }],
+        }],
+      },
+    });
+
+    const result = unregisterQwenCodeHooks({ silent: true, settingsPath, backup: true });
+
+    assert.strictEqual(result.removed, 1);
+    assert.strictEqual(result.changed, true);
+    const settings = readJson(settingsPath);
+    assert.deepStrictEqual(settings.hooks.PreToolUse, [{
+      matcher: "*",
+      hooks: [{ name: "user", type: "command", command: "echo keep", timeout: 30 }],
+    }]);
+    assert.deepStrictEqual(settings.hooks.Stop, [{
+      hooks: [{ name: "user", type: "command", command: "echo stop", timeout: 30 }],
+    }]);
+    assert.strictEqual(listCleanupBackups(settingsPath).length, 1);
   });
 });

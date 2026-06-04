@@ -78,6 +78,70 @@
     return row;
   }
 
+  function formatCleanupSummary(result) {
+    const summary = result && result.cleanup && result.cleanup.summary;
+    if (!summary) return t("aboutCleanupSuccess");
+    const failed = Number(summary.failed || 0);
+    let text = t("aboutCleanupSuccess")
+      .replace("{removed}", String(Number(summary.entriesRemoved || 0)))
+      .replace("{affected}", String(Number(summary.agentsAffected || 0)))
+      .replace("{failed}", String(failed));
+    const hasKiroNote = Array.isArray(result.cleanup.agents)
+      && result.cleanup.agents.some((agent) =>
+        agent
+        && agent.agentId === "kiro-cli"
+        && Array.isArray(agent.notes)
+        && agent.notes.length > 0
+      );
+    if (hasKiroNote) text += " " + t("aboutCleanupKiroNote");
+    return text;
+  }
+
+  function createCleanupFooterAction() {
+    const wrap = document.createElement("div");
+    wrap.className = "about-cleanup-wrap";
+    const button = document.createElement("button");
+    button.className = "about-cleanup-button";
+    button.type = "button";
+    button.textContent = t("aboutCleanupButton");
+    const status = document.createElement("div");
+    status.className = "about-cleanup-status";
+
+    button.addEventListener("click", () => {
+      if (!window.settingsAPI || typeof window.settingsAPI.command !== "function") return;
+      if (typeof window.confirm !== "function") {
+        status.textContent = t("aboutCleanupFailed");
+        return;
+      }
+      if (!window.confirm(t("aboutCleanupConfirm"))) return;
+      button.disabled = true;
+      button.textContent = t("aboutCleanupRunning");
+      status.textContent = "";
+      window.settingsAPI.command("cleanupIntegrations")
+        .then((result) => {
+          if (!result || result.status !== "ok") {
+            throw new Error((result && result.message) || t("aboutCleanupFailed"));
+          }
+          const message = formatCleanupSummary(result);
+          status.textContent = message;
+          ops.showToast(message, { ttl: 7000 });
+        })
+        .catch((err) => {
+          const message = t("aboutCleanupFailed") + (err && err.message ? ": " + err.message : "");
+          status.textContent = message;
+          ops.showToast(message, { ttl: 7000 });
+        })
+        .finally(() => {
+          button.disabled = false;
+          button.textContent = t("aboutCleanupButton");
+        });
+    });
+
+    wrap.appendChild(button);
+    wrap.appendChild(status);
+    return wrap;
+  }
+
   function render(parent) {
     const hero = document.createElement("div");
     hero.className = "about-hero";
@@ -133,14 +197,10 @@
     const contribLabel = document.createElement("div");
     contribLabel.className = "about-info-label";
     contribLabel.textContent = t("aboutContributorsLabel") + " (" + i18n.CONTRIBUTORS.length + ")";
-    const toggleBtn = document.createElement("button");
-    toggleBtn.className = "about-contributors-toggle";
-    toggleBtn.textContent = runtime.about.contributorsExpanded ? t("aboutContributorsHide") : t("aboutContributorsShowAll");
     contribRow.appendChild(contribLabel);
-    contribRow.appendChild(toggleBtn);
 
     const contribList = document.createElement("div");
-    contribList.className = "about-contributors-list" + (runtime.about.contributorsExpanded ? "" : " collapsed");
+    contribList.className = "about-contributors-list";
     for (const name of i18n.CONTRIBUTORS) {
       const link = document.createElement("a");
       link.className = "about-contributor-link";
@@ -153,18 +213,11 @@
       contribList.appendChild(link);
     }
 
-    toggleBtn.addEventListener("click", () => {
-      runtime.about.contributorsExpanded = !runtime.about.contributorsExpanded;
-      contribList.classList.toggle("collapsed", !runtime.about.contributorsExpanded);
-      toggleBtn.textContent = runtime.about.contributorsExpanded
-        ? t("aboutContributorsHide")
-        : t("aboutContributorsShowAll");
-    });
-
     const footer = document.createElement("div");
     footer.className = "about-footer";
     footer.textContent = t("aboutFooter");
     parent.appendChild(footer);
+    parent.appendChild(createCleanupFooterAction());
 
     fetchAboutInfo().then((info) => {
       const safe = info || {};

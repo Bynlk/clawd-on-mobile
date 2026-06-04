@@ -138,9 +138,23 @@ test("pet interaction IPC delegates menu, drag move, reaction pause, and rendere
     ["setLowPowerIdlePaused", true],
     ["setLowPowerIdlePaused", false],
     ["setIdlePaused", false],
-    ["sendToRenderer", "start-drag-reaction"],
+    ["sendToRenderer", "start-drag-reaction", null],
     ["sendToRenderer", "end-drag-reaction"],
     ["sendToRenderer", "play-click-reaction", "click.svg", 900],
+  ]);
+});
+
+test("pet interaction IPC relays only supported drag directions", () => {
+  const { ipcMain, calls } = createHarness();
+
+  ipcMain.send("start-drag-reaction", "left");
+  ipcMain.send("start-drag-reaction", "right");
+  ipcMain.send("start-drag-reaction", "up");
+
+  assert.deepStrictEqual(calls, [
+    ["sendToRenderer", "start-drag-reaction", "left"],
+    ["sendToRenderer", "start-drag-reaction", "right"],
+    ["sendToRenderer", "start-drag-reaction", null],
   ]);
 });
 

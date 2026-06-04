@@ -6,6 +6,7 @@ const assert = require("node:assert");
 const {
   deriveSessionBadge,
   deriveMobileChipFields,
+  isSessionInProgress,
   buildSessionSnapshot,
   getActiveSessionAliasKeys,
   sessionSnapshotSignature,
@@ -34,6 +35,26 @@ function session(state, overrides = {}) {
     ...overrides,
   };
 }
+
+describe("isSessionInProgress state mapping", () => {
+  it("treats persisted running states as in-progress and idle/sleeping/headless as not", () => {
+    assert.strictEqual(isSessionInProgress(session("working")), true);
+    assert.strictEqual(isSessionInProgress(session("thinking")), true);
+    assert.strictEqual(isSessionInProgress(session("juggling")), true);
+    assert.strictEqual(isSessionInProgress(session("idle")), false);
+    assert.strictEqual(isSessionInProgress(session("sleeping")), false);
+  });
+
+  it("never counts headless sessions, even when active", () => {
+    assert.strictEqual(isSessionInProgress(session("working", { headless: true })), false);
+    assert.strictEqual(isSessionInProgress(session("thinking", { headless: true })), false);
+  });
+
+  it("returns false for nullish sessions", () => {
+    assert.strictEqual(isSessionInProgress(null), false);
+    assert.strictEqual(isSessionInProgress(undefined), false);
+  });
+});
 
 describe("state-session-snapshot badges", () => {
   it("derives running, done, interrupted, and idle badges", () => {
@@ -69,6 +90,7 @@ describe("state-session-snapshot builder", () => {
         updatedAt: 1000,
         cwd: "/tmp/old-project",
         sessionTitle: "Fix login",
+        editor: "code",
         platform: "webui",
         model: "gpt-5.4",
         provider: "openai",
@@ -112,6 +134,7 @@ describe("state-session-snapshot builder", () => {
     assert.strictEqual(oldWorking.platform, "webui");
     assert.strictEqual(oldWorking.model, "gpt-5.4");
     assert.strictEqual(oldWorking.provider, "openai");
+    assert.strictEqual(oldWorking.editor, "code");
     assert.strictEqual(oldWorking.sessionTitle, "Fix login");
     assert.strictEqual(oldWorking.displayTitle, "Fix login");
     assert.deepStrictEqual(oldWorking.lastEvent, {
@@ -191,6 +214,53 @@ describe("state-session-snapshot builder", () => {
       url: "codex://threads/019e115a-4df2-7ed0-b90e-8e6345aca777",
     });
     assert.strictEqual(byId.get("codex:019e115a-4df2-7ed0-b90e-8e6345aca777").codexSource, "vscode");
+  });
+
+  it("downgrades Codex Desktop focus targets on Windows snapshots", () => {
+    const snapshot = buildSessionSnapshot(new Map([
+      ["codex:019e115a-4df2-7ed0-b90e-8e6345aca777", session("working", {
+        agentId: "codex",
+        codexOriginator: "Codex Desktop",
+        sourcePid: 123,
+      })],
+      ["codex:019e115b-4df2-7ed0-b90e-8e6345aca777", session("working", {
+        agentId: "codex",
+        codexOriginator: "Codex Desktop",
+      })],
+    ]), { focusHostPlatform: "win32" });
+
+    const byId = new Map(snapshot.sessions.map((entry) => [entry.id, entry]));
+    assert.strictEqual(byId.get("codex:019e115a-4df2-7ed0-b90e-8e6345aca777").canFocus, true);
+    assert.deepStrictEqual(byId.get("codex:019e115a-4df2-7ed0-b90e-8e6345aca777").focusTarget, {
+      type: "terminal",
+      url: null,
+    });
+    assert.strictEqual(byId.get("codex:019e115b-4df2-7ed0-b90e-8e6345aca777").canFocus, false);
+    assert.strictEqual(byId.get("codex:019e115b-4df2-7ed0-b90e-8e6345aca777").focusTarget, null);
+
+    const nonWindowsSnapshot = buildSessionSnapshot(new Map([
+      ["codex:019e115b-4df2-7ed0-b90e-8e6345aca777", session("working", {
+        agentId: "codex",
+        codexOriginator: "Codex Desktop",
+      })],
+    ]), { focusHostPlatform: "darwin" });
+    assert.deepStrictEqual(nonWindowsSnapshot.sessions[0].focusTarget, {
+      type: "codex-thread",
+      url: "codex://threads/019e115b-4df2-7ed0-b90e-8e6345aca777",
+    });
+  });
+
+  it("exposes assistant last output for completion companion consumers", () => {
+    const snapshot = buildSessionSnapshot(new Map([
+      ["done", session("idle", {
+        assistantLastOutput: "Final assistant text",
+        assistantLastOutputTruncated: true,
+        recentEvents: [{ event: "Stop", state: "attention", at: 1 }],
+      })],
+    ]));
+    const entry = snapshot.sessions.find((s) => s.id === "done");
+    assert.strictEqual(entry.assistantLastOutput, "Final assistant text");
+    assert.strictEqual(entry.assistantLastOutputTruncated, true);
   });
 
   it("does not expose focus targets for sessions hidden from the focusable UI surface", () => {

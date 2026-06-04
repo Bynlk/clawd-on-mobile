@@ -181,6 +181,34 @@ describe("built-in Cloudling theme", () => {
     }
   });
 
+  it("lets low-power idle mode stop Cloudling idle RAF loops", () => {
+    const checks = [
+      {
+        file: "cloudling-idle.svg",
+        source: path.join("assets", "source", "cloudling-pointer-bridge", "cloudling-idle.svg"),
+      },
+      {
+        file: "cloudling-mini-idle.svg",
+        source: path.join("assets", "source", "cloudling-pointer-bridge", "cloudling-mini-idle.svg"),
+      },
+      {
+        file: "cloudling-dozing.svg",
+        source: path.join("assets", "source", "cloudling-low-power", "cloudling-dozing.svg"),
+      },
+    ];
+
+    for (const { file, source } of checks) {
+      const asset = fs.readFileSync(path.join(__dirname, "..", "themes", "cloudling", "assets", file), "utf8");
+      const sourceCopy = fs.readFileSync(path.join(__dirname, "..", source), "utf8");
+
+      for (const content of [asset, sourceCopy]) {
+        assert.ok(content.includes("window.__clawdSetLowPowerPaused = paused =>"), `${file} should expose a low-power pause API`);
+        assert.ok(content.includes("cancelAnimationFrame(rafId)"), `${file} should cancel its RAF while paused`);
+        assert.ok(content.includes("function scheduleLoop()"), `${file} should restart RAF explicitly on resume`);
+      }
+    }
+  });
+
   it("uses a visible normal idle eye-follow range for bridge validation", () => {
     const asset = fs.readFileSync(
       path.join(__dirname, "..", "themes", "cloudling", "assets", "cloudling-idle.svg"),

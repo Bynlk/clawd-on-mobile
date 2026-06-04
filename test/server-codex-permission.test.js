@@ -206,6 +206,7 @@ describe("Codex official /permission path", () => {
         model: "gpt-5.4",
         codexOriginator: "Codex Desktop",
         codexSource: "vscode",
+        transientPermissionEvent: true,
       },
     ]);
   });

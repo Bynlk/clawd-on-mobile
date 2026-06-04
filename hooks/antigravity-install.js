@@ -6,7 +6,9 @@ const path = require("path");
 const os = require("os");
 const { resolveNodeBin } = require("./server-config");
 const {
+  readJsonFile,
   writeJsonAtomic,
+  writeJsonAtomicWithBackup,
   asarUnpackedPath,
   formatNodeHookCommand,
   buildWindowsEncodedNodeHookCommand,
@@ -119,7 +121,7 @@ function hasAntigravityConfig(homeDir) {
 
 function readJsonIfExists(filePath) {
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return readJsonFile(filePath);
   } catch (err) {
     if (err && err.code === "ENOENT") return null;
     throw err;
@@ -184,6 +186,31 @@ function registerAntigravityHooks(options = {}) {
   return { installed: true, added, updated, skipped, configPath };
 }
 
+function groupHasClawdMarker(group) {
+  if (!group || typeof group !== "object" || Array.isArray(group)) return false;
+  return ANTIGRAVITY_HOOK_EVENTS.some((event) =>
+    collectHookCommandsFromEntries(group[event]).length > 0
+  );
+}
+
+function unregisterAntigravityHooks(options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  const configPath = options.configPath || path.join(homeDir, ".gemini", "config", "hooks.json");
+  const settings = normalizeSettings(readJsonIfExists(configPath));
+  const group = settings[HOOK_GROUP_ID];
+
+  if (!groupHasClawdMarker(group)) {
+    return { installed: !!group, removed: 0, changed: false, configPath };
+  }
+
+  delete settings[HOOK_GROUP_ID];
+  const backupPath = writeJsonAtomicWithBackup(configPath, settings, options);
+  if (!options.silent) console.log(`Clawd Antigravity hook group removed -> ${configPath}`);
+  const result = { installed: true, removed: 1, changed: true, configPath };
+  if (options.backup === true) result.backupPath = backupPath;
+  return result;
+}
+
 module.exports = {
   HOOK_GROUP_ID,
   MARKER,
@@ -191,6 +218,7 @@ module.exports = {
   DEFAULT_CONFIG_PATH,
   ANTIGRAVITY_HOOK_EVENTS,
   registerAntigravityHooks,
+  unregisterAntigravityHooks,
   __test: {
     buildAntigravityHookCommand,
     buildAntigravityHooks,
@@ -198,6 +226,7 @@ module.exports = {
     decodeWindowsEncodedCommand,
     extractExistingAntigravityNodeBin,
     extractNodeBinFromCommand,
+    groupHasClawdMarker,
     hasAntigravityConfig,
     normalizeSettings,
     resolveAntigravityNodeBin,
@@ -206,7 +235,8 @@ module.exports = {
 
 if (require.main === module) {
   try {
-    registerAntigravityHooks({});
+    if (process.argv.includes("--uninstall")) unregisterAntigravityHooks({});
+    else registerAntigravityHooks({});
   } catch (err) {
     console.error(err.message);
     process.exit(1);

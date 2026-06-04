@@ -436,7 +436,78 @@ function initUpdater(ctx, deps = {}) {
   let lastReleaseEtag = "";
   let lastReleaseJson = null;
 
-  function fetchLatestRelease() {
+  function buildGitHubApiStatusError(res, body) {
+    const statusCode = res && res.statusCode;
+    const headers = (res && res.headers) || {};
+    const parts = [`GitHub API returned ${statusCode}`];
+    const remaining = headers["x-ratelimit-remaining"];
+    const limit = headers["x-ratelimit-limit"];
+    const reset = headers["x-ratelimit-reset"];
+    if (remaining != null || limit != null) {
+      parts.push(`rate limit ${remaining != null ? remaining : "?"}/${limit != null ? limit : "?"}`);
+    }
+    if (reset != null) parts.push(`reset ${reset}`);
+    const trimmedBody = String(body || "").trim();
+    if (trimmedBody) {
+      try {
+        const parsed = JSON.parse(trimmedBody);
+        if (parsed && parsed.message) parts.push(String(parsed.message));
+      } catch {
+        parts.push(trimmedBody.slice(0, 160));
+      }
+    }
+    const err = new Error(parts.join("; "));
+    err.statusCode = statusCode;
+    return err;
+  }
+
+  function extractLatestRedirectTag(location) {
+    if (!location) return "";
+    try {
+      const url = new URL(String(location), RELEASES_LATEST_URL);
+      const match = /\/releases\/tag\/([^/?#]+)\/?$/.exec(url.pathname);
+      return match ? decodeURIComponent(match[1]) : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function fetchLatestReleaseViaRedirect() {
+    return new Promise((resolve, reject) => {
+      const req = httpsGet({
+        hostname: "github.com",
+        path: "/rullerzhou-afk/clawd-on-desk/releases/latest",
+        headers: {
+          "User-Agent": "Clawd-on-Desk",
+          Accept: "text/html,*/*",
+        },
+      }, (res) => {
+        const tag = extractLatestRedirectTag(res.headers && res.headers.location);
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", () => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && tag) {
+            // The redirect fallback only exposes the tag, not release assets.
+            // Windows-on-ARM64 native-installer prompts therefore fall back to
+            // the normal updater path while the GitHub API is unavailable.
+            return resolve({ tag_name: tag, assets: [] });
+          }
+          reject(new Error(`GitHub releases redirect returned ${res.statusCode}${data ? `: ${data.slice(0, 160)}` : ""}`));
+        });
+        res.on("error", reject);
+      });
+
+      if (req && typeof req.on === "function") req.on("error", reject);
+      if (req && typeof req.setTimeout === "function") {
+        req.setTimeout(10000, () => {
+          if (typeof req.destroy === "function") req.destroy();
+          reject(new Error("GitHub releases redirect request timed out (10s)"));
+        });
+      }
+    });
+  }
+
+  function fetchLatestReleaseFromApi() {
     return new Promise((resolve, reject) => {
       const headers = { "User-Agent": "Clawd-on-Desk" };
       if (lastReleaseEtag) headers["If-None-Match"] = lastReleaseEtag;
@@ -460,7 +531,7 @@ function initUpdater(ctx, deps = {}) {
         res.on("end", () => {
           if (res.statusCode !== 200) {
             if (res.statusCode === 404) return reject(new Error("No releases found"));
-            return reject(new Error(`GitHub API returned ${res.statusCode}`));
+            return reject(buildGitHubApiStatusError(res, data));
           }
           try {
             const release = JSON.parse(data);
@@ -485,10 +556,23 @@ function initUpdater(ctx, deps = {}) {
     });
   }
 
-  // Scheduler-only discovery path. Hits GitHub API, compares against the
-  // running app version, and returns a structured result. Strictly no UI
-  // side effects: no setOverlay, no showInfoBubble, no showUpdateBubble,
-  // no applyState. Errors are logged + returned, never bubbled.
+  async function fetchLatestRelease() {
+    try {
+      return await fetchLatestReleaseFromApi();
+    } catch (err) {
+      if (err && err.message === "No releases found") throw err;
+      if (!err || err.statusCode == null) throw err;
+      const reason = getErrorMessage(err);
+      log(`GitHub API latest release lookup failed (${err.statusCode}): ${reason}; trying releases/latest redirect`);
+      return fetchLatestReleaseViaRedirect();
+    }
+  }
+
+  // Scheduler-only discovery path. Looks up the latest release, compares
+  // against the running app version, and returns a structured result.
+  // Strictly no UI side effects: no setOverlay, no showInfoBubble, no
+  // showUpdateBubble, no applyState. Errors are logged + returned, never
+  // bubbled.
   // electron-updater is intentionally bypassed here — see plan
   // "Architectural Boundary" section. If the caller wants to actually
   // download what this returns, route through checkForUpdates({ trigger:

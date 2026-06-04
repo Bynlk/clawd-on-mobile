@@ -19,6 +19,10 @@ const path = require("path");
 const os = require("os");
 const CodexSubagentClassifier = require("./codex-subagent-classifier");
 const { readCodexThreadName } = require("../hooks/codex-session-index");
+const {
+  clampAssistantOutputText,
+  extractAssistantTextFromRecord,
+} = require("../hooks/codex-assistant-output");
 
 const APPROVAL_HEURISTIC_MS = 2000;
 const MAX_TRACKED_FILES = 50;
@@ -302,6 +306,8 @@ class CodexLogMonitor {
         isSubagent: retired ? retired.isSubagent === true : false,
         agentPid: retired ? retired.agentPid : null,
         pendingApprovalDetail: null,
+        assistantLastOutput: retired ? retired.assistantLastOutput || null : null,
+        assistantLastOutputTruncated: retired ? retired.assistantLastOutputTruncated === true : false,
         // Backfill mode: only a file whose last write predates monitor
         // start (by more than BACKFILL_GRACE_MS) is treated as stale
         // history — we replay it silently to advance offset + pick up
@@ -384,6 +390,13 @@ class CodexLogMonitor {
       if (Number.isFinite(ts) && ts < this._startedAtMs - 1500) return;
     }
 
+    const assistantText = extractAssistantTextFromRecord(obj);
+    if (assistantText) {
+      const assistantOutput = clampAssistantOutputText(assistantText);
+      tracked.assistantLastOutput = assistantOutput ? assistantOutput.text : null;
+      tracked.assistantLastOutputTruncated = !!(assistantOutput && assistantOutput.truncated);
+    }
+
     // Extract Codex-authored session summary (turn_context.summary).
     // Updates tracked.sessionTitle in place; gets picked up by the next
     // _onStateChange call. Intentionally no metaOnly side-channel —
@@ -426,6 +439,8 @@ class CodexLogMonitor {
     // Track tool use per turn — reset on task_started, set on function_call
     if (key === "event_msg:task_started") {
       tracked.hadToolUse = false;
+      tracked.assistantLastOutput = null;
+      tracked.assistantLastOutputTruncated = false;
     }
     if (key === "response_item:function_call") {
       tracked.hadToolUse = true;
@@ -444,7 +459,7 @@ class CodexLogMonitor {
       tracked.hadToolUse = false;
       tracked.lastState = resolved;
       if (tracked.backfilling) return;
-      this._emitStateChange(tracked, resolved, key);
+      this._emitStateChange(tracked, resolved, key, this._assistantOutputExtra(tracked));
       return;
     }
 
@@ -651,6 +666,8 @@ class CodexLogMonitor {
       hadToolUse: tracked.hadToolUse === true,
       isSubagent: tracked.isSubagent === true,
       agentPid: tracked.agentPid || null,
+      assistantLastOutput: tracked.assistantLastOutput || null,
+      assistantLastOutputTruncated: tracked.assistantLastOutputTruncated === true,
     });
     while (this._retiredTracked.size > MAX_RETIRED_TRACKED_FILES) {
       const oldest = this._retiredTracked.keys().next().value;
@@ -670,6 +687,16 @@ class CodexLogMonitor {
       tracked.lastStateEvent || "session_meta",
       extra
     );
+  }
+
+  _assistantOutputExtra(tracked) {
+    if (!tracked || typeof tracked.assistantLastOutput !== "string" || !tracked.assistantLastOutput) {
+      return null;
+    }
+    return {
+      assistantLastOutput: tracked.assistantLastOutput,
+      assistantLastOutputTruncated: tracked.assistantLastOutputTruncated === true,
+    };
   }
 
   _isTrackedSubagent(tracked) {

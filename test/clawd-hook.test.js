@@ -15,6 +15,7 @@ const {
   buildStateBody,
   extractSessionTitleFromTranscript,
   extractApiErrorFromEntries,
+  extractLastAssistantTextFromEntries,
 } = require("../hooks/clawd-hook.js");
 const { buildToolInputFingerprint } = require("../src/server").__test;
 
@@ -96,6 +97,60 @@ describe("buildStateBody", () => {
   it("maps Stop to attention state", () => {
     const body = buildStateBody("Stop", { session_id: "s" }, mockResolve);
     assert.strictEqual(body.state, "attention");
+  });
+
+  it("maps PostCompact (auto / unspecified) to thinking, not attention (#406)", () => {
+    assert.strictEqual(
+      buildStateBody("PostCompact", { session_id: "s" }, mockResolve).state,
+      "thinking"
+    );
+    assert.strictEqual(
+      buildStateBody("PostCompact", { session_id: "s", trigger: "auto" }, mockResolve).state,
+      "thinking"
+    );
+  });
+
+  it("maps PostCompact (manual /compact) to idle (#406)", () => {
+    const body = buildStateBody(
+      "PostCompact",
+      { session_id: "s", trigger: "manual" },
+      mockResolve
+    );
+    assert.strictEqual(body.state, "idle");
+  });
+
+  it("forwards background_tasks / session_crons counts on Stop (#406)", () => {
+    const body = buildStateBody(
+      "Stop",
+      { session_id: "s", background_tasks: [{}, {}], session_crons: [{}] },
+      mockResolve
+    );
+    assert.strictEqual(body.background_tasks_count, 2);
+    assert.strictEqual(body.session_crons_count, 1);
+  });
+
+  it("forwards only counts — never background task command/description text (#406)", () => {
+    const body = buildStateBody(
+      "Stop",
+      { session_id: "s", background_tasks: [{ command: "npm run secret-dev", description: "do not leak" }] },
+      mockResolve
+    );
+    assert.strictEqual(body.background_tasks_count, 1);
+    const serialized = JSON.stringify(body);
+    assert.ok(!serialized.includes("npm run secret-dev"), "task command must not leak");
+    assert.ok(!serialized.includes("do not leak"), "task description must not leak");
+  });
+
+  it("forwards stop_hook_active on Stop (#406)", () => {
+    const body = buildStateBody("Stop", { session_id: "s", stop_hook_active: true }, mockResolve);
+    assert.strictEqual(body.stop_hook_active, true);
+  });
+
+  it("omits completion-gate fields on a plain Stop with no background work (#406)", () => {
+    const body = buildStateBody("Stop", { session_id: "s" }, mockResolve);
+    assert.ok(!("background_tasks_count" in body));
+    assert.ok(!("session_crons_count" in body));
+    assert.ok(!("stop_hook_active" in body));
   });
 
   it("maps SubagentStart to juggling state", () => {
@@ -516,6 +571,79 @@ describe("extractSessionTitleFromTranscript", () => {
   });
 });
 
+describe("extractLastAssistantTextFromEntries", () => {
+  it("extracts only text blocks from the latest assistant entry", () => {
+    const result = extractLastAssistantTextFromEntries([
+      { type: "assistant", sessionId: "sid-1", message: { content: "older" } },
+      {
+        type: "assistant",
+        sessionId: "sid-1",
+        message: {
+          content: [
+            { type: "tool_use", name: "Read", input: { file_path: "secret.txt" } },
+            { type: "text", text: "Done with the fix." },
+            { type: "server_tool_use", name: "WebSearch" },
+            { type: "text", text: "Tests pass." },
+          ],
+        },
+      },
+    ], "sid-1");
+
+    assert.deepStrictEqual(result, {
+      text: "Done with the fix.\n\nTests pass.",
+      truncated: false,
+    });
+  });
+
+  it("skips API error, subagent, and other-session assistant entries", () => {
+    const result = extractLastAssistantTextFromEntries([
+      { type: "assistant", sessionId: "sid-1", message: { content: "root output" } },
+      { type: "assistant", sessionId: "sid-2", message: { content: "wrong session" } },
+      { type: "assistant", sessionId: "sid-1", isSidechain: true, message: { content: "subagent" } },
+      { type: "assistant", sessionId: "sid-1", isApiErrorMessage: true, message: { content: "API Error" } },
+    ], "sid-1");
+
+    assert.deepStrictEqual(result, { text: "root output", truncated: false });
+  });
+
+  it("returns null when the latest assistant messages only contain tool calls", () => {
+    const result = extractLastAssistantTextFromEntries([
+      {
+        type: "assistant",
+        sessionId: "sid-1",
+        message: { content: [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }] },
+      },
+    ], "sid-1");
+
+    assert.strictEqual(result, null);
+  });
+
+  it("does not cross a user boundary to reuse an older assistant answer", () => {
+    const result = extractLastAssistantTextFromEntries([
+      { type: "assistant", sessionId: "sid-1", message: { content: "older answer" } },
+      { type: "user", sessionId: "sid-1", message: { content: "new prompt" } },
+      {
+        type: "assistant",
+        sessionId: "sid-1",
+        message: { content: [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }] },
+      },
+    ], "sid-1");
+
+    assert.strictEqual(result, null);
+  });
+
+  it("clamps long assistant text with a truncation marker", () => {
+    const result = extractLastAssistantTextFromEntries([
+      { type: "assistant", sessionId: "sid-1", message: { content: "a".repeat(100) + "TAIL" } },
+    ], "sid-1", { maxLen: 40 });
+
+    assert.strictEqual(result.truncated, true);
+    assert.ok(result.text.includes("...[truncated]..."));
+    assert.ok(result.text.endsWith("TAIL"));
+    assert.ok(result.text.length <= 40);
+  });
+});
+
 // Helper: build an isApiErrorMessage transcript entry. Mirrors the real
 // schema observed in ~/.claude/projects/**/*.jsonl during Phase 0 investigation.
 function makeApiErrorEntry({ sessionId = "sid-1", error = "unknown", uuid = "err-uuid" }) {
@@ -660,6 +788,35 @@ describe("extractApiErrorFromEntries", () => {
 });
 
 describe("buildStateBody — Stop → ApiError upgrade", () => {
+  it("adds assistant_last_output on normal Stop when transcript has final assistant text", () => {
+    const file = writeTmpJsonl([
+      { type: "assistant", sessionId: "sid-1", message: { content: "Implemented the fix.\nTests pass." } },
+    ]);
+    const body = buildStateBody(
+      "Stop",
+      { session_id: "sid-1", transcript_path: file },
+      mockResolve
+    );
+    assert.strictEqual(body.event, "Stop");
+    assert.strictEqual(body.assistant_last_output, "Implemented the fix.\nTests pass.");
+    assert.ok(!("assistant_last_output_truncated" in body));
+  });
+
+  it("does not add stale assistant output when Stop upgrades to ApiError", () => {
+    const file = writeTmpJsonl([
+      { type: "assistant", sessionId: "sid-1", message: { content: "previous output" } },
+      makeApiErrorEntry({ sessionId: "sid-1", error: "rate_limit", uuid: "e1" }),
+      { type: "system", parentUuid: "e1", sessionId: "sid-1" },
+    ]);
+    const body = buildStateBody(
+      "Stop",
+      { session_id: "sid-1", transcript_path: file },
+      mockResolve
+    );
+    assert.strictEqual(body.event, "ApiError");
+    assert.ok(!("assistant_last_output" in body));
+  });
+
   it("upgrades Stop to ApiError when transcript shows a current-turn error", () => {
     const file = writeTmpJsonl([
       makeApiErrorEntry({ sessionId: "sid-1", error: "rate_limit", uuid: "e1" }),

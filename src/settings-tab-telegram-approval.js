@@ -33,6 +33,14 @@
       enabled: !!(cfg && cfg.enabled),
       allowedTgUserId: cfg && typeof cfg.allowedTgUserId === "string" ? cfg.allowedTgUserId : "",
       targetSessionKey: cfg && typeof cfg.targetSessionKey === "string" ? cfg.targetSessionKey : "",
+      // Preserve notifyOnComplete across saves: recipient/toggle payloads are
+      // built from this object, so omitting it would let normalize() reset a
+      // user's explicit bare-ping choice on the next save.
+      notifyOnComplete: !!(cfg && cfg.notifyOnComplete === true),
+      completionOutputMode: !cfg || cfg.completionOutputMode === undefined || cfg.completionOutputMode === "full"
+        ? "full"
+        : (cfg.completionOutputMode === "tail" ? "full" : "off"),
+      r3DirectSendEnabled: !!(cfg && cfg.r3DirectSendEnabled === true),
     };
   }
 
@@ -117,6 +125,7 @@
     const s = status && typeof status === "object" ? status : {};
     return [
       s.status || "",
+      s.transport || "",
       s.enabled === true ? "1" : "0",
       s.configured === true ? "1" : "0",
       s.reason || "",
@@ -160,6 +169,56 @@
   let migrationPending = false;
   let migrationSnapshotSeq = 0;
 
+  function migrationState() {
+    return migrationSnapshot && typeof migrationSnapshot.state === "string"
+      ? migrationSnapshot.state
+      : "";
+  }
+
+  function isNativeMigrationSelected() {
+    const s = migrationState();
+    return s === "NATIVE_ACTIVE"
+      || s === "TESTING_NATIVE"
+      || !!(migrationSnapshot && migrationSnapshot.transport === "native");
+  }
+
+  function isNativeMigrationActive() {
+    const s = migrationState();
+    const owner = migrationSnapshot && migrationSnapshot.ownerSnapshot
+      ? migrationSnapshot.ownerSnapshot
+      : {};
+    return s === "NATIVE_ACTIVE" || s === "TESTING_NATIVE" || owner.nativePolling === true;
+  }
+
+  function canStartNativeFromSwitch() {
+    const s = migrationState();
+    return s === "IDLE" || s === "NEEDS_SETUP" || s === "LEGACY_ACTIVE";
+  }
+
+  function statusIndicatesNativeApprovalActive() {
+    const s = view.status || {};
+    return s.transport === "native"
+      && (s.enabled === true || s.status === "running" || s.status === "starting");
+  }
+
+  function effectiveTelegramApprovalEnabled(cfg) {
+    return !!(cfg && cfg.enabled) || isNativeMigrationActive() || statusIndicatesNativeApprovalActive();
+  }
+
+  function migrationSnapshotRenderKey(snapshot) {
+    const snap = snapshot && typeof snapshot === "object" ? snapshot : {};
+    const owner = snap.ownerSnapshot && typeof snap.ownerSnapshot === "object"
+      ? snap.ownerSnapshot
+      : {};
+    return [
+      snap.state || "",
+      snap.transport || "",
+      owner.nativePolling === true ? "1" : "0",
+      owner.sidecarRunning === true ? "1" : "0",
+      snap.nativeVerifiedAt || "",
+    ].join("\x1f");
+  }
+
   function buildTelegramMigrationCard() {
     migrationCardEl = document.createElement("div");
     migrationCardEl.className = "tg-migration-card";
@@ -174,8 +233,13 @@
     callCommand("telegramMigration.snapshot").then((res) => {
       if (seq !== migrationSnapshotSeq || migrationPending) return;
       if (res && res.status === "ok") {
+        const previousKey = migrationSnapshotRenderKey(migrationSnapshot);
         migrationSnapshot = res.snapshot;
         renderMigrationCard();
+        if (migrationSnapshotRenderKey(migrationSnapshot) !== previousKey
+          && state.activeTab === "telegram-approval") {
+          ops.requestRender({ content: true });
+        }
       }
     });
   }
@@ -613,6 +677,9 @@
         // `telegram:` prefix. Private-chat scenarios always have chat_id ===
         // user_id in Telegram, so this is correct for the supported path.
         targetSessionKey: raw,
+        notifyOnComplete: currentConfig().notifyOnComplete,
+        completionOutputMode: currentConfig().completionOutputMode,
+        r3DirectSendEnabled: currentConfig().r3DirectSendEnabled,
       });
     });
 
@@ -636,6 +703,8 @@
       rows.push(buildPrerequisitesRow({ tokenConfigured, recipientConfigured }));
     }
     rows.push(buildEnabledRow({ ready }));
+    rows.push(buildCompletionOutputRow());
+    rows.push(buildDirectSendRow({ ready }));
     rows.push(buildTestRow({ ready }));
     return helpers.buildSection(t("telegramApprovalStep3Title"), rows);
   }
@@ -662,6 +731,7 @@
 
   function buildEnabledRow({ ready }) {
     const cfg = currentConfig();
+    const effectiveEnabled = effectiveTelegramApprovalEnabled(cfg);
     const row = document.createElement("div");
     row.className = "row";
     if (!ready) row.classList.add("tg-approval-row-disabled");
@@ -684,13 +754,36 @@
     sw.className = "switch";
     sw.setAttribute("role", "switch");
     sw.setAttribute("tabindex", "0");
-    helpers.setSwitchVisual(sw, cfg.enabled, { pending: view.configPending });
-    if (!ready) {
+    helpers.setSwitchVisual(sw, effectiveEnabled, { pending: view.configPending || migrationPending });
+    const canToggle = ready && !migrationPending && (effectiveEnabled || migrationSnapshot);
+    if (!canToggle) {
       sw.classList.add("disabled");
       sw.setAttribute("aria-disabled", "true");
       sw.removeAttribute("tabindex");
     } else {
-      const toggle = () => saveConfig({ ...cfg, enabled: !cfg.enabled }, { resetDraft: false });
+      const toggle = () => {
+        const turningOff = effectiveEnabled === true;
+        // Stop-the-bleed (zombie switch — see docs audit-r1a-notification-switch-2026-05-30):
+        // this toggle only writes tgApproval.enabled, but v0.9.0 native runtime
+        // (completion notifications + approval transport) is owned by the migration
+        // state machine and never reads that field. Turning the switch OFF must also
+        // dispatch USER_DISABLE, otherwise the native poller + completion pings keep
+        // running and the user thinks they switched it off when they didn't. The
+        // ON path now goes through the same native Test flow as the migration
+        // card instead of reviving the legacy sidecar flag.
+        if (turningOff) {
+          if (cfg.enabled === true) {
+            saveConfig({ ...cfg, enabled: false }, { resetDraft: false });
+          }
+          migrationDispatch("USER_DISABLE");
+          return;
+        }
+        if (migrationSnapshot && canStartNativeFromSwitch()) {
+          ops.requestRender({ content: true });
+          migrationDispatch("USER_TEST_NATIVE");
+          return;
+        }
+      };
       sw.addEventListener("click", toggle);
       sw.addEventListener("keydown", (ev) => {
         if (ev.key === " " || ev.key === "Enter") {
@@ -704,10 +797,107 @@
     return row;
   }
 
+  function buildDirectSendRow({ ready }) {
+    const cfg = currentConfig();
+    const row = document.createElement("div");
+    row.className = "row tg-approval-direct-send-row";
+    if (!ready) row.classList.add("tg-approval-row-disabled");
+
+    const text = document.createElement("div");
+    text.className = "row-text";
+    const label = document.createElement("span");
+    label.className = "row-label";
+    label.textContent = t("telegramApprovalDirectSend");
+    const desc = document.createElement("span");
+    desc.className = "row-desc";
+    desc.textContent = t("telegramApprovalDirectSendDesc");
+    text.appendChild(label);
+    text.appendChild(desc);
+    row.appendChild(text);
+
+    const ctrl = document.createElement("div");
+    ctrl.className = "row-control";
+    const sw = document.createElement("div");
+    sw.className = "switch";
+    sw.setAttribute("role", "switch");
+    sw.setAttribute("tabindex", "0");
+    helpers.setSwitchVisual(sw, cfg.r3DirectSendEnabled === true, { pending: view.configPending });
+    if (!ready || view.configPending) {
+      sw.classList.add("disabled");
+      sw.setAttribute("aria-disabled", "true");
+      sw.removeAttribute("tabindex");
+    } else {
+      const toggle = () => {
+        saveConfig({ ...cfg, r3DirectSendEnabled: cfg.r3DirectSendEnabled !== true }, { resetDraft: false });
+      };
+      sw.addEventListener("click", toggle);
+      sw.addEventListener("keydown", (ev) => {
+        if (ev.key === " " || ev.key === "Enter") {
+          ev.preventDefault();
+          toggle();
+        }
+      });
+    }
+    ctrl.appendChild(sw);
+    row.appendChild(ctrl);
+    return row;
+  }
+
+  function buildCompletionOutputRow() {
+    const cfg = currentConfig();
+    const mode = ["off", "full"].includes(cfg.completionOutputMode)
+      ? cfg.completionOutputMode
+      : "off";
+    const row = document.createElement("div");
+    row.className = "row tg-approval-completion-output-row";
+
+    const text = document.createElement("div");
+    text.className = "row-text";
+    const label = document.createElement("span");
+    label.className = "row-label";
+    label.textContent = t("telegramApprovalCompletionOutput");
+    const desc = document.createElement("span");
+    desc.className = "row-desc";
+    desc.textContent = t("telegramApprovalCompletionOutputDesc");
+    text.appendChild(label);
+    text.appendChild(desc);
+    row.appendChild(text);
+
+    const ctrl = document.createElement("div");
+    ctrl.className = "row-control";
+    const select = document.createElement("select");
+    select.className = "tg-approval-input tg-approval-output-select";
+    select.disabled = view.configPending;
+    for (const value of ["off", "full"]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = t("telegramApprovalCompletionOutput_" + value);
+      select.appendChild(option);
+    }
+    select.value = mode;
+    select.addEventListener("change", () => {
+      const nextMode = ["off", "full"].includes(select.value) ? select.value : "off";
+      if (nextMode === mode) return;
+      if (nextMode === "full") {
+        const ok = window.confirm(t("telegramApprovalCompletionOutputFullConfirm"));
+        if (!ok) {
+          select.value = mode;
+          return;
+        }
+      }
+      saveConfig({ ...cfg, completionOutputMode: nextMode }, { resetDraft: false });
+    });
+    ctrl.appendChild(select);
+    row.appendChild(ctrl);
+    return row;
+  }
+
   function buildTestRow({ ready }) {
     const s = view.status || {};
     const runtimeReady = s.configured === true;
-    const testDisabled = view.testPending || !ready || !runtimeReady;
+    const nativeStatus = s.transport === "native" || isNativeMigrationSelected();
+    const nativeReady = !nativeStatus || (migrationState() === "NATIVE_ACTIVE" && s.status === "running");
+    const testDisabled = view.testPending || !ready || !runtimeReady || !nativeReady;
     const row = document.createElement("div");
     row.className = "row";
     if (!ready) row.classList.add("tg-approval-row-disabled");

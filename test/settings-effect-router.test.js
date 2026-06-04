@@ -62,6 +62,7 @@ function createHarness(options = {}) {
     handleSessionHudPinnedChanged: (next) => calls.push(["handleSessionHudPinnedChanged", next]),
     reclampPetAfterEdgePinningChange: () => calls.push(["reclampPetAfterEdgePinningChange"]),
     rebuildAllMenus: () => calls.push(["rebuildAllMenus"]),
+    reconcilePowerSaveBlocker: () => calls.push(["reconcilePowerSaveBlocker"]),
     logWarn: (...args) => logs.push(args),
     ...(options.routerOptions || {}),
   });
@@ -137,6 +138,23 @@ describe("settings-effect-router", () => {
       ["updateMirrors", { updateBubbleAutoCloseSeconds: 8 }],
       ["refreshUpdateBubbleAutoClose"],
       ["rebuildAllMenus"],
+    ]);
+  });
+
+  it("reconciles the power save blocker when keepAwakeWhileWorking changes", () => {
+    const { calls, emit } = createHarness();
+
+    emit({ keepAwakeWhileWorking: true });
+    assert.deepStrictEqual(calls, [
+      ["updateMirrors", { keepAwakeWhileWorking: true }],
+      ["reconcilePowerSaveBlocker"],
+    ]);
+
+    calls.length = 0;
+    emit({ keepAwakeWhileWorking: false });
+    assert.deepStrictEqual(calls, [
+      ["updateMirrors", { keepAwakeWhileWorking: false }],
+      ["reconcilePowerSaveBlocker"],
     ]);
   });
 

@@ -126,6 +126,24 @@ const TELEGRAM_MIGRATION_RENDERER_EVENTS = new Set([
   TELEGRAM_MIGRATION_EVENTS.USER_DISABLE,
 ]);
 
+const MANAGED_CLEANUP_AGENT_IDS = Object.freeze([
+  "claude-code",
+  "codex",
+  "copilot-cli",
+  "cursor-agent",
+  "gemini-cli",
+  "antigravity-cli",
+  "codebuddy",
+  "kiro-cli",
+  "kimi-cli",
+  "qwen-code",
+  "opencode",
+  "pi",
+  "openclaw",
+  "hermes",
+  "qoder",
+]);
+
 // ── updateRegistry ──
 // Maps prefs field name → validator. Controller looks up by key and runs.
 
@@ -171,6 +189,7 @@ const updateRegistry = {
   flashIntervalMs: requireNumberInRange("flashIntervalMs", 200, 2000),
   flashDurationMs: requireNumberInRange("flashDurationMs", 0, 60000),
   lowPowerIdleMode: requireBoolean("lowPowerIdleMode"),
+  keepAwakeWhileWorking: requireBoolean("keepAwakeWhileWorking"),
   bubbleFollowPet: requireBoolean("bubbleFollowPet"),
   sessionHudEnabled: requireBoolean("sessionHudEnabled"),
   sessionHudShowStateLabels: requireBoolean("sessionHudShowStateLabels"),
@@ -231,6 +250,7 @@ const updateRegistry = {
   detachedIdleStaleMs: requireIntegerInRange("detachedIdleStaleMs", 5_000, 300_000),
   allowEdgePinning: requireBoolean("allowEdgePinning"),
   keepSizeAcrossDisplays: requireBoolean("keepSizeAcrossDisplays"),
+  mobilePreviewEnabled: requireBoolean("mobilePreviewEnabled"),
 
   // ── System-backed prefs (object-form: validate + effect pre-commit gate) ──
   autoStartWithClaude,
@@ -1024,6 +1044,61 @@ async function telegramApprovalSendTest(_payload, deps = {}) {
   return result || { status: "error", message: "Telegram approval test returned no result" };
 }
 
+function cleanupMessage(result) {
+  const summary = result && result.summary;
+  if (!summary) return "Integration cleanup finished";
+  const failed = Number(summary.failed || 0);
+  const affected = Number(summary.agentsAffected || 0);
+  const removed = Number(summary.entriesRemoved || 0);
+  return failed > 0
+    ? `Integration cleanup finished with ${failed} failure(s); removed ${removed} item(s) from ${affected} integration(s).`
+    : `Integration cleanup finished; removed ${removed} item(s) from ${affected} integration(s).`;
+}
+
+async function cleanupIntegrationsCommand(_payload, deps = {}) {
+  if (!deps || typeof deps.cleanupIntegrations !== "function") {
+    return { status: "error", message: "cleanupIntegrations requires cleanupIntegrations dep" };
+  }
+
+  const snapshot = deps.snapshot || {};
+  let agents = { ...((snapshot && snapshot.agents) || {}) };
+  let agentsChanged = false;
+
+  for (const agentId of MANAGED_CLEANUP_AGENT_IDS) {
+    const flagDeps = {
+      ...deps,
+      snapshot: { ...snapshot, agents },
+    };
+    const result = setAgentFlag({ agentId, flag: "enabled", value: false }, flagDeps);
+    if (!result || result.status !== "ok") {
+      return result || { status: "error", message: `Failed to disable ${agentId}` };
+    }
+    if (result.commit && result.commit.agents) {
+      agents = result.commit.agents;
+      agentsChanged = true;
+    }
+  }
+
+  let cleanup;
+  try {
+    cleanup = await deps.cleanupIntegrations({ source: "about", backup: true });
+  } catch (err) {
+    cleanup = {
+      status: "error",
+      message: err && err.message ? err.message : String(err),
+      summary: { agentsChecked: 0, agentsAffected: 0, entriesRemoved: 0, skipped: 0, failed: 1 },
+    };
+  }
+
+  const response = {
+    status: "ok",
+    cleanup,
+    message: cleanup.status === "error" ? cleanup.message : cleanupMessage(cleanup),
+  };
+  if (agentsChanged) response.commit = { agents };
+  return response;
+}
+
 // Share a domain lock across all four remoteSsh.* commands so concurrent
 // invocations against the same prefs field serialize. Without this, the
 // controller assigns each command its own lock by name, and two commands
@@ -1044,6 +1119,7 @@ remoteSshMarkDeployed.lockKey = "remoteSsh";
 remoteSshMarkRemoteNode.lockKey = "remoteSsh";
 telegramApprovalSetToken.lockKey = "tgApproval";
 telegramApprovalSendTest.lockKey = "tgApproval";
+cleanupIntegrationsCommand.lockKey = "agentIntegrationCleanup";
 
 const repairDoctorIssue = createRepairDoctorIssue({
   repairAgentIntegration,
@@ -1054,6 +1130,7 @@ const commandRegistry = {
   removeTheme,
   installHooks,
   uninstallHooks,
+  cleanupIntegrations: cleanupIntegrationsCommand,
   repairAgentIntegration,
   repairLocalServer,
   repairDoctorIssue,
@@ -1093,6 +1170,7 @@ module.exports = {
   commandRegistry,
   ONESHOT_OVERRIDE_STATES,
   ANIMATION_OVERRIDES_EXPORT_VERSION,
+  MANAGED_CLEANUP_AGENT_IDS,
   // Exposed for tests
   requireBoolean,
   requireFiniteNumber,

@@ -68,6 +68,7 @@ function createSettingsEffectRouter(options = {}) {
   const handleSessionHudPinnedChanged = options.handleSessionHudPinnedChanged || noop;
   const reclampPetAfterEdgePinningChange = options.reclampPetAfterEdgePinningChange || noop;
   const rebuildAllMenus = options.rebuildAllMenus || noop;
+  const reconcilePowerSaveBlocker = options.reconcilePowerSaveBlocker || noop;
 
   let started = false;
   let unsubscribeSettings = null;
@@ -92,6 +93,9 @@ function createSettingsEffectRouter(options = {}) {
     }
     if ("lowPowerIdleMode" in changes) {
       sendToRenderer("low-power-idle-mode-change", changes.lowPowerIdleMode);
+    }
+    if ("keepAwakeWhileWorking" in changes) {
+      safeCall(logWarn, "Clawd: reconcilePowerSaveBlocker failed:", reconcilePowerSaveBlocker);
     }
     if ("lang" in changes) {
       safeCall(logWarn, "Clawd: dashboard lang broadcast failed:", sendDashboardI18n);

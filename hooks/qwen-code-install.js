@@ -6,11 +6,14 @@ const path = require("path");
 const os = require("os");
 const { resolveNodeBin } = require("./server-config");
 const {
+  readJsonFile,
   writeJsonAtomic,
+  writeJsonAtomicWithBackup,
   asarUnpackedPath,
   extractExistingNodeBin,
   formatNodeHookCommand,
   decodeWindowsEncodedCommand,
+  removeMatchingCommandHooks,
 } = require("./json-utils");
 
 const MARKER = "qwen-code-hook.js";
@@ -170,7 +173,7 @@ function normalizeQwenCodeHookEntries(entries, desiredCommand, event) {
 
 function readSettings(settingsPath) {
   try {
-    return JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    return readJsonFile(settingsPath);
   } catch (err) {
     if (err.code === "ENOENT") return {};
     throw new Error(`Failed to read settings.json: ${err.message}`);
@@ -244,6 +247,43 @@ function registerQwenCodeHooks(options = {}) {
   return { added, skipped, updated, warnings };
 }
 
+function unregisterQwenCodeHooks(options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  const settingsPath = options.settingsPath || path.join(homeDir, ".qwen", "settings.json");
+
+  let settings = {};
+  try {
+    settings = readJsonFile(settingsPath);
+  } catch (err) {
+    if (err.code === "ENOENT") return { removed: 0, changed: false, settingsPath };
+    throw new Error(`Failed to read settings.json: ${err.message}`);
+  }
+
+  if (!settings.hooks || typeof settings.hooks !== "object") {
+    return { removed: 0, changed: false, settingsPath };
+  }
+
+  let removed = 0;
+  let changed = false;
+  for (const event of QWEN_CODE_HOOK_EVENTS) {
+    const entries = settings.hooks[event];
+    if (!Array.isArray(entries)) continue;
+    const result = removeMatchingCommandHooks(entries, isClawdHookCommand);
+    if (!result.changed) continue;
+    removed += result.removed;
+    changed = true;
+    if (result.entries.length > 0) settings.hooks[event] = result.entries;
+    else delete settings.hooks[event];
+  }
+
+  let backupPath = null;
+  if (changed) backupPath = writeJsonAtomicWithBackup(settingsPath, settings, options);
+  if (!options.silent) console.log(`Clawd Qwen hooks removed: ${removed}`);
+  const result = { removed, changed, settingsPath };
+  if (options.backup === true) result.backupPath = backupPath;
+  return result;
+}
+
 module.exports = {
   DEFAULT_PARENT_DIR,
   DEFAULT_CONFIG_PATH,
@@ -252,12 +292,14 @@ module.exports = {
   buildQwenCodeHookCommand,
   matcherForQwenCodeEvent,
   registerQwenCodeHooks,
+  unregisterQwenCodeHooks,
   timeoutForQwenCodeEvent,
 };
 
 if (require.main === module) {
   try {
-    registerQwenCodeHooks({});
+    if (process.argv.includes("--uninstall")) unregisterQwenCodeHooks({});
+    else registerQwenCodeHooks({});
   } catch (err) {
     console.error(err.message);
     process.exit(1);

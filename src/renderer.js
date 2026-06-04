@@ -37,6 +37,7 @@ function initWithConfig(cfg) {
   _miniViewBox = tc.miniModeViewBox || null;
   _fileViewBoxes = tc.fileViewBoxes || {};
   _dragSvg = tc.dragSvg || null;
+  _dragSvgs = tc.dragSvgs || {};
   _idleFollowSvg = tc.idleFollowSvg || "clawd-idle-follow.svg";
   _glyphFlipDefs = tc.glyphFlips || { "pixel-z": 4, "pixel-z-small": 3 };
 
@@ -102,6 +103,15 @@ function getCurrentSvgRoot() {
   } catch {
     return null;
   }
+}
+
+function setCurrentScriptedSvgLowPowerPaused(paused) {
+  const target = clawdEl;
+  if (!target || target.tagName !== "OBJECT") return;
+  try {
+    const fn = target.contentWindow && target.contentWindow.__clawdSetLowPowerPaused;
+    if (typeof fn === "function") fn(!!paused);
+  } catch {}
 }
 
 function shouldPauseForLowPower() {
@@ -204,6 +214,7 @@ function pauseCurrentSvgForLowPower({ waitForBoundary = false } = {}) {
   try {
     if (typeof root.pauseAnimations === "function") root.pauseAnimations();
   } catch {}
+  setCurrentScriptedSvgLowPowerPaused(true);
   setLowPowerSvgPaused(true);
 }
 
@@ -221,6 +232,7 @@ function resumeCurrentSvgForLowPower() {
       if (typeof root.unpauseAnimations === "function") root.unpauseAnimations();
     } catch {}
   }
+  setCurrentScriptedSvgLowPowerPaused(false);
   setLowPowerSvgPaused(false);
 }
 
@@ -334,6 +346,8 @@ let _imgCacheBustSeq = 0;
 let _miniViewBox = null;
 let _fileViewBoxes = {};
 let _dragSvg;
+let _dragSvgs;
+let currentDragSvg = null;
 let _idleFollowSvg;
 let _glyphFlipDefs;
 let _objectScaleCSS;
@@ -599,7 +613,7 @@ function getAssetUrl(file) {
 }
 
 // --- IPC-triggered reactions (from hit window via main relay) ---
-window.electronAPI.onStartDragReaction(() => startDragReaction());
+window.electronAPI.onStartDragReaction((direction) => startDragReaction(direction));
 window.electronAPI.onEndDragReaction(() => endDragReaction());
 window.electronAPI.onPlayClickReaction((svg, duration) => playReaction(svg, duration));
 
@@ -634,26 +648,29 @@ function cancelReaction() {
 }
 
 // --- Drag reaction (loops while dragging) ---
-function startDragReaction() {
-  if (isDragReacting) return;
+function startDragReaction(direction) {
   if (dndEnabled) return;
-  if (!_dragSvg) return;
+  const dragSvg = (direction && _dragSvgs[direction]) || _dragSvg;
+  if (!dragSvg) return;
+  if (isDragReacting && currentDragSvg === dragSvg) return;
 
-  if (isReacting) {
+  if (!isDragReacting && isReacting) {
     if (reactTimer) { clearTimeout(reactTimer); reactTimer = null; }
     isReacting = false;
   }
 
   isDragReacting = true;
+  currentDragSvg = dragSvg;
   detachEyeTracking();
   resumeCurrentSvgForLowPower();
   window.electronAPI.pauseCursorPolling();
-  swapToFile(_dragSvg, null);
+  swapToFile(dragSvg, null);
 }
 
 function endDragReaction() {
   if (!isDragReacting) return;
   isDragReacting = false;
+  currentDragSvg = null;
   window.electronAPI.resumeFromReaction();
 }
 

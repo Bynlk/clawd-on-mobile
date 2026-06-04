@@ -8,7 +8,16 @@ const path = require("path");
 const os = require("os");
 const childProcess = require("child_process");
 const { buildPermissionUrl, DEFAULT_SERVER_PORT, PERMISSION_PATH, readRuntimePort, REMOTE_HOOK_HTTP_TIMEOUT_MS, resolveNodeBin, resolveNodeBinAsync, SERVER_PORTS } = require("./server-config");
-const { writeJsonAtomic, writeJsonAtomicAsync, asarUnpackedPath, extractExistingNodeBin } = require("./json-utils");
+const {
+  readJsonFile,
+  readJsonFileAsync,
+  writeJsonAtomic,
+  writeJsonAtomicAsync,
+  writeJsonAtomicWithBackup,
+  writeJsonAtomicWithBackupAsync,
+  asarUnpackedPath,
+  extractExistingNodeBin,
+} = require("./json-utils");
 
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".claude");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "settings.json");
@@ -1190,7 +1199,7 @@ function unregisterHooks(options = {}) {
   const settingsPath = options.settingsPath || path.join(os.homedir(), ".claude", "settings.json");
   let settings = {};
   try {
-    settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+    settings = readJsonFile(settingsPath);
   } catch (err) {
     if (err.code === "ENOENT") return { removed: 0, changed: false };
     throw new Error(`Failed to read settings.json: ${err.message}`);
@@ -1224,18 +1233,21 @@ function unregisterHooks(options = {}) {
     else delete settings.hooks[event];
   }
 
+  let backupPath = null;
   if (changed) {
-    writeJsonAtomic(settingsPath, settings);
+    backupPath = writeJsonAtomicWithBackup(settingsPath, settings, options);
   }
 
-  return { removed, changed };
+  const result = { removed, changed };
+  if (options.backup === true) result.backupPath = backupPath;
+  return result;
 }
 
 async function unregisterHooksAsync(options = {}) {
   const settingsPath = options.settingsPath || path.join(os.homedir(), ".claude", "settings.json");
   let settings = {};
   try {
-    settings = JSON.parse(await fs.promises.readFile(settingsPath, "utf-8"));
+    settings = await readJsonFileAsync(settingsPath);
   } catch (err) {
     if (err.code === "ENOENT") return { removed: 0, changed: false };
     throw new Error(`Failed to read settings.json: ${err.message}`);
@@ -1269,11 +1281,14 @@ async function unregisterHooksAsync(options = {}) {
     else delete settings.hooks[event];
   }
 
+  let backupPath = null;
   if (changed) {
-    await writeJsonAtomicAsync(settingsPath, settings);
+    backupPath = await writeJsonAtomicWithBackupAsync(settingsPath, settings, options);
   }
 
-  return { removed, changed };
+  const result = { removed, changed };
+  if (options.backup === true) result.backupPath = backupPath;
+  return result;
 }
 
 /**

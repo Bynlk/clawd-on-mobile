@@ -21,11 +21,12 @@ module.exports = {
   },
   capabilities: {
     httpHook: false,
-    // Copilot CLI exposes a `permissionRequest` hook with
-    // `{ behavior: "allow" | "deny", message, interrupt }` schema, but Clawd
-    // has not wired Copilot permissionRequest into the bubble pipeline yet.
-    // See docs/guides/known-limitations.md for follow-up.
-    permissionApproval: false,
+    // permissionRequest is wired in via command hook + curl https — same
+    // shape as Codex/Qwen (hook command exits 0 with JSON stdout). The
+    // bubble pipeline returns no-decision on fallback so Copilot's
+    // native menu still owns the call.
+    permissionApproval: true,
+    interactiveBubble: true,
     sessionEnd: true,
     subagent: true,
   },

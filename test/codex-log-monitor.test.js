@@ -242,6 +242,63 @@ describe("CodexLogMonitor", () => {
     monitor.start();
   });
 
+  it("carries Codex assistant output on task_complete", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\\"command\\":\\"ls\\"}"}}',
+      '{"type":"event_msg","payload":{"type":"exec_command_end"}}',
+      JSON.stringify({
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "Implemented the Codex fix." }],
+        },
+      }),
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    monitor = new CodexLogMonitor(config, (sid, state, event, extra) => {
+      if (event === "event_msg:task_complete") {
+        assert.strictEqual(state, "attention");
+        assert.strictEqual(extra.assistantLastOutput, "Implemented the Codex fix.");
+        assert.strictEqual(extra.assistantLastOutputTruncated, false);
+        done();
+      }
+    });
+    monitor.start();
+  });
+
+  it("clears Codex assistant output on a new task_started turn", (_, done) => {
+    const testFile = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(testFile, [
+      '{"type":"session_meta","payload":{"cwd":"/tmp"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"event_msg","payload":{"type":"agent_message","message":"Previous answer"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+      '{"type":"event_msg","payload":{"type":"task_started"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\\"command\\":\\"ls\\"}"}}',
+      '{"type":"event_msg","payload":{"type":"exec_command_end"}}',
+      '{"type":"event_msg","payload":{"type":"task_complete"}}',
+    ].join("\n") + "\n");
+
+    const config = makeConfig(tmpDir);
+    const completions = [];
+    monitor = new CodexLogMonitor(config, (sid, state, event, extra) => {
+      if (event !== "event_msg:task_complete") return;
+      completions.push(extra);
+      if (completions.length === 2) {
+        assert.strictEqual(completions[0].assistantLastOutput, "Previous answer");
+        assert.strictEqual(Object.prototype.hasOwnProperty.call(completions[1], "assistantLastOutput"), false);
+        done();
+      }
+    });
+    monitor.start();
+  });
+
   it("marks subagent emits headless and resolves task_complete to idle", (_, done) => {
     const testFile = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(testFile, [

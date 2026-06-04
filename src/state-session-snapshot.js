@@ -28,7 +28,9 @@ const EVENT_LABEL_KEYS = {
   "stale-cleanup": "eventLabelStaleCleanup",
 };
 
-const DONE_EVENTS = new Set(["Stop", "PostCompact", "event_msg:task_complete"]);
+// PostCompact intentionally excluded (#406): compaction finishing is not turn
+// completion, so it must not raise the "done" badge.
+const DONE_EVENTS = new Set(["Stop", "event_msg:task_complete"]);
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
 function isDoneEvent(event) {
@@ -108,6 +110,17 @@ function normalizeTitle(value) {
 function sessionUpdatedAt(session) {
   const updatedAt = Number(session && session.updatedAt);
   return Number.isFinite(updatedAt) ? updatedAt : 0;
+}
+
+// A persisted session counts as "in progress" when it is non-headless and its
+// stored state is anything other than idle/sleeping (mirrors deriveSessionBadge's
+// "running" semantics). One-shot visuals like attention/notification are
+// normally stored as idle by updateSession(); permission prompts stay awake by
+// preserving the prior working/thinking state.
+function isSessionInProgress(session) {
+  if (!session || session.headless) return false;
+  if (session.state === "idle" || session.state === "sleeping") return false;
+  return true;
 }
 
 function deriveSessionBadge(session) {
@@ -217,7 +230,9 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
     : () => null;
   const hiddenFromHud = shouldAutoClearDetachedSession(session, badge, options);
   const focusTarget = session && !session.headless && state !== "sleeping" && !hiddenFromHud
-    ? getSessionFocusTarget({ ...(session || {}), id })
+    ? getSessionFocusTarget({ ...(session || {}), id }, {
+      osPlatform: options.focusHostPlatform || options.osPlatform,
+    })
     : { canFocus: false, type: null, url: null };
   const chip = deriveMobileChipFields(state, recentEvents);
   return {
@@ -235,6 +250,7 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
     updatedAt: sessionUpdatedAt(session),
     sourcePid: (session && session.sourcePid) || null,
     wtHwnd: (session && session.wtHwnd) || null,
+    editor: (session && session.editor) || null,
     canFocus: focusTarget.canFocus === true,
     focusTarget: focusTarget.type ? { type: focusTarget.type, url: focusTarget.url || null } : null,
     host: (session && session.host) || null,
@@ -244,6 +260,10 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
     provider: (session && session.provider) || null,
     codexOriginator: (session && session.codexOriginator) || null,
     codexSource: (session && session.codexSource) || null,
+    assistantLastOutput: (session && typeof session.assistantLastOutput === "string")
+      ? session.assistantLastOutput
+      : null,
+    assistantLastOutputTruncated: !!(session && session.assistantLastOutputTruncated === true),
     lastEvent: latestEvent ? {
       labelKey: rawEvent ? (EVENT_LABEL_KEYS[rawEvent] || null) : null,
       rawEvent,
@@ -361,6 +381,8 @@ function sessionSnapshotSignature(snapshot) {
       provider: entry.provider,
       codexOriginator: entry.codexOriginator,
       codexSource: entry.codexSource,
+      assistantLastOutput: entry.assistantLastOutput,
+      assistantLastOutputTruncated: !!entry.assistantLastOutputTruncated,
       lastEventLabelKey: entry.lastEvent ? entry.lastEvent.labelKey : null,
       lastEventRawEvent: entry.lastEvent ? entry.lastEvent.rawEvent : null,
       lastEventAt: entry.lastEvent ? entry.lastEvent.at : null,
@@ -376,6 +398,7 @@ module.exports = {
   SESSION_TITLE_MAX,
   normalizeTitle,
   sessionUpdatedAt,
+  isSessionInProgress,
   deriveSessionBadge,
   deriveMobileChipFields,
   BADGE_DOT_COLORS,

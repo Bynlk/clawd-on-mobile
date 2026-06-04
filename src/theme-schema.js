@@ -293,6 +293,8 @@ function hasReactionBindings(reactions) {
     isPlainObject(entry)
     && (
       (typeof entry.file === "string" && entry.file.length > 0)
+      || (typeof entry.fileLeft === "string" && entry.fileLeft.length > 0)
+      || (typeof entry.fileRight === "string" && entry.fileRight.length > 0)
       || (Array.isArray(entry.files) && entry.files.some((file) => typeof file === "string" && file.length > 0))
     )
   );
@@ -372,6 +374,8 @@ function collectRequiredAssetFiles(theme) {
     for (const entry of Object.values(theme.reactions)) {
       if (!entry || typeof entry !== "object") continue;
       if (typeof entry.file === "string") addThemeAssetFile(files, entry.file);
+      if (typeof entry.fileLeft === "string") addThemeAssetFile(files, entry.fileLeft);
+      if (typeof entry.fileRight === "string") addThemeAssetFile(files, entry.fileRight);
       if (Array.isArray(entry.files)) {
         for (const file of entry.files) addThemeAssetFile(files, file);
       }
@@ -661,6 +665,8 @@ function mergeDefaults(raw, themeId, isBuiltin) {
   if (theme.reactions) {
     for (const r of Object.values(theme.reactions)) {
       if (r && r.file) r.file = bn(r.file);
+      if (r && r.fileLeft) r.fileLeft = bn(r.fileLeft);
+      if (r && r.fileRight) r.fileRight = bn(r.fileRight);
       if (r && Array.isArray(r.files)) r.files = r.files.map(bn);
     }
   }

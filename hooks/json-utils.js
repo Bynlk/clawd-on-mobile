@@ -5,6 +5,27 @@
 const fs = require("fs");
 const path = require("path");
 
+function stripUtf8Bom(text) {
+  const value = String(text || "");
+  return value.charCodeAt(0) === 0xFEFF ? value.slice(1) : value;
+}
+
+function readTextFileStripBom(filePath, encoding = "utf-8") {
+  return stripUtf8Bom(fs.readFileSync(filePath, encoding));
+}
+
+async function readTextFileStripBomAsync(filePath, encoding = "utf-8") {
+  return stripUtf8Bom(await fs.promises.readFile(filePath, encoding));
+}
+
+function readJsonFile(filePath) {
+  return JSON.parse(readTextFileStripBom(filePath, "utf-8"));
+}
+
+async function readJsonFileAsync(filePath) {
+  return JSON.parse(await readTextFileStripBomAsync(filePath, "utf-8"));
+}
+
 function isAbsoluteCommandToken(token) {
   if (typeof token !== "string" || !token) return false;
   if (path.isAbsolute(token)) return true;
@@ -43,6 +64,73 @@ async function writeJsonAtomicAsync(filePath, data) {
     try { await fs.promises.unlink(tmpPath); } catch {}
     throw err;
   }
+}
+
+function cleanupBackupPath(filePath, options = {}) {
+  if (typeof options.backupPath === "string" && options.backupPath) return options.backupPath;
+  const now = typeof options.now === "function" ? options.now() : new Date();
+  const stamp = now instanceof Date && !Number.isNaN(now.getTime())
+    ? now.toISOString().replace(/[-:TZ.]/g, "").slice(0, 17)
+    : String(Date.now());
+  return `${filePath}.clawd-cleanup-${stamp}.bak`;
+}
+
+function uniqueBackupPath(filePath, options = {}) {
+  const requested = cleanupBackupPath(filePath, options);
+  if (typeof options.backupPath === "string" && options.backupPath) return requested;
+  if (!fs.existsSync(requested)) return requested;
+  const stem = requested.endsWith(".bak") ? requested.slice(0, -4) : requested;
+  for (let i = 1; i < 1000; i++) {
+    const candidate = `${stem}.${i}.bak`;
+    if (!fs.existsSync(candidate)) return candidate;
+  }
+  return `${stem}.${process.pid}.${Date.now()}.bak`;
+}
+
+function createBackup(filePath, options = {}) {
+  if (options.backup !== true) return null;
+  const backupPath = uniqueBackupPath(filePath, options);
+  fs.copyFileSync(filePath, backupPath);
+  return backupPath;
+}
+
+async function createBackupAsync(filePath, options = {}) {
+  if (options.backup !== true) return null;
+  const backupPath = uniqueBackupPath(filePath, options);
+  await fs.promises.copyFile(filePath, backupPath);
+  return backupPath;
+}
+
+function writeJsonAtomicWithBackup(filePath, data, options = {}) {
+  const backupPath = createBackup(filePath, options);
+  writeJsonAtomic(filePath, data);
+  return backupPath;
+}
+
+async function writeJsonAtomicWithBackupAsync(filePath, data, options = {}) {
+  const backupPath = await createBackupAsync(filePath, options);
+  await writeJsonAtomicAsync(filePath, data);
+  return backupPath;
+}
+
+function writeTextAtomic(filePath, text, encoding = "utf-8") {
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  const tmpPath = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    fs.writeFileSync(tmpPath, text, encoding);
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
+}
+
+function writeTextAtomicWithBackup(filePath, text, options = {}) {
+  const backupPath = createBackup(filePath, options);
+  writeTextAtomic(filePath, text, options.encoding || "utf-8");
+  return backupPath;
 }
 
 /**
@@ -208,6 +296,93 @@ function commandMatchesMarker(command, marker) {
   return !!(decoded && decoded.includes(marker));
 }
 
+function removeMatchingCommandHooks(entries, predicate) {
+  if (!Array.isArray(entries)) return { entries, removed: 0, changed: false };
+
+  let removed = 0;
+  let changed = false;
+  const nextEntries = [];
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    if (typeof entry.command === "string" && predicate(entry.command)) {
+      removed++;
+      changed = true;
+      continue;
+    }
+
+    if (!Array.isArray(entry.hooks)) {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    const nextHooks = entry.hooks.filter((hook) => {
+      if (!hook || typeof hook.command !== "string") return true;
+      if (!predicate(hook.command)) return true;
+      removed++;
+      changed = true;
+      return false;
+    });
+
+    if (nextHooks.length === entry.hooks.length) {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    if (nextHooks.length === 0 && typeof entry.command !== "string") continue;
+    nextEntries.push({ ...entry, hooks: nextHooks });
+  }
+
+  return { entries: nextEntries, removed, changed };
+}
+
+function removeMatchingHttpHooks(entries, predicate) {
+  if (!Array.isArray(entries)) return { entries, removed: 0, changed: false };
+
+  let removed = 0;
+  let changed = false;
+  const nextEntries = [];
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    if (predicate(entry)) {
+      removed++;
+      changed = true;
+      continue;
+    }
+
+    if (!Array.isArray(entry.hooks)) {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    const nextHooks = entry.hooks.filter((hook) => {
+      if (!predicate(hook)) return true;
+      removed++;
+      changed = true;
+      return false;
+    });
+
+    if (nextHooks.length === entry.hooks.length) {
+      nextEntries.push(entry);
+      continue;
+    }
+
+    if (nextHooks.length === 0 && typeof entry.command !== "string" && entry.type !== "http") continue;
+    nextEntries.push({ ...entry, hooks: nextHooks });
+  }
+
+  return { entries: nextEntries, removed, changed };
+}
+
 function findHookCommands(settings, marker, options) {
   if (!settings || !settings.hooks || typeof marker !== "string" || !marker) return [];
   const nested = options && options.nested;
@@ -233,12 +408,26 @@ function findHookCommands(settings, marker, options) {
 }
 
 module.exports = {
+  stripUtf8Bom,
+  readTextFileStripBom,
+  readTextFileStripBomAsync,
+  readJsonFile,
+  readJsonFileAsync,
   writeJsonAtomic,
   writeJsonAtomicAsync,
+  writeJsonAtomicWithBackup,
+  writeJsonAtomicWithBackupAsync,
+  writeTextAtomic,
+  writeTextAtomicWithBackup,
+  createBackup,
+  createBackupAsync,
   asarUnpackedPath,
+  commandMatchesMarker,
   extractExistingNodeBin,
   extractExistingNodeBinFromCommands,
   findHookCommands,
+  removeMatchingCommandHooks,
+  removeMatchingHttpHooks,
   formatNodeHookCommand,
   buildWindowsEncodedNodeHookCommand,
   decodeWindowsEncodedCommand,

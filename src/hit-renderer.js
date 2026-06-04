@@ -39,6 +39,8 @@ window.hitAPI.onStateSync((data) => {
 let isDragging = false;
 let didDrag = false;
 let mouseDownX, mouseDownY;
+let lastDragClientX;
+let dragReactionDirection = null;
 let dragMoveRAF = null;
 const DRAG_THRESHOLD = 3;
 
@@ -51,6 +53,7 @@ window.hitAPI.onCancelReaction(() => {
   if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; clickCount = 0; firstClickDir = null; }
   isReacting = false;
   isDragReacting = false;
+  dragReactionDirection = null;
 });
 
 function queueDragMove() {
@@ -77,6 +80,8 @@ area.addEventListener("pointerdown", (e) => {
     didDrag = false;
     mouseDownX = e.clientX;
     mouseDownY = e.clientY;
+    lastDragClientX = e.clientX;
+    dragReactionDirection = null;
     window.hitAPI.dragLock(true);
     area.classList.add("dragging");
   }
@@ -89,9 +94,13 @@ document.addEventListener("pointermove", (e) => {
       const totalDy = e.clientY - mouseDownY;
       if (Math.abs(totalDx) > DRAG_THRESHOLD || Math.abs(totalDy) > DRAG_THRESHOLD) {
         didDrag = true;
-        startDragReaction();
+        startDragReaction(totalDx < 0 ? "left" : (totalDx > 0 ? "right" : null));
       }
+    } else {
+      const stepDx = e.clientX - lastDragClientX;
+      if (stepDx !== 0) startDragReaction(stepDx < 0 ? "left" : "right");
     }
+    lastDragClientX = e.clientX;
     queueDragMove();
   }
 });
@@ -222,21 +231,23 @@ function playReaction(svg, duration) {
 }
 
 // --- Drag reaction ---
-function startDragReaction() {
-  if (isDragReacting) return;
+function startDragReaction(direction) {
   if (dndEnabled) return;
+  if (isDragReacting && dragReactionDirection === direction) return;
 
   if (isReacting) {
     isReacting = false;
   }
 
   isDragReacting = true;
-  window.hitAPI.startDragReaction();
+  dragReactionDirection = direction;
+  window.hitAPI.startDragReaction(direction);
 }
 
 function endDragReaction() {
   if (!isDragReacting) return;
   isDragReacting = false;
+  dragReactionDirection = null;
   window.hitAPI.endDragReaction();
 }
 

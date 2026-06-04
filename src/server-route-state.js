@@ -9,6 +9,7 @@ const {
   normalizeHookToolUseId,
   findPendingPermissionForStateEvent,
 } = require("./server-permission-utils");
+const { resolveHookAgentId } = require("./server-agent-id");
 const { resolveCodexOfficialHookState } = require("./server-codex-official-turns");
 const {
   deriveSessionBadge,
@@ -21,6 +22,7 @@ const {
 // (session_title) headroom on top of cwd / pid_chain / host / etc. Still a
 // local-only 127.0.0.1 endpoint - not an Internet DoS concern.
 const MAX_STATE_BODY_BYTES = 4096;
+const ASSISTANT_LAST_OUTPUT_MAX = 2400;
 
 function normalizeHwndString(value) {
   if (value === null || value === undefined) return null;
@@ -31,6 +33,19 @@ function normalizeHwndString(value) {
   } catch {
     return null;
   }
+}
+
+function normalizeAssistantLastOutput(value) {
+  if (typeof value !== "string") return null;
+  const text = value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]+/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+  if (!text) return null;
+  return text.length > ASSISTANT_LAST_OUTPUT_MAX
+    ? text.slice(0, ASSISTANT_LAST_OUTPUT_MAX)
+    : text;
 }
 
 function sendStateHealthResponse(res, options) {
@@ -82,7 +97,8 @@ function handleStatePost(req, res, options) {
       const pidChain = Array.isArray(data.pid_chain) ? data.pid_chain.filter(n => Number.isFinite(n) && n > 0) : null;
       const rawAgentPid = data.agent_pid ?? data.claude_pid ?? data.cursor_pid;
       const agentPid = Number.isFinite(rawAgentPid) && rawAgentPid > 0 ? Math.floor(rawAgentPid) : null;
-      const agentId = typeof data.agent_id === "string" ? data.agent_id : "claude-code";
+      const agentIdentity = resolveHookAgentId(data);
+      const agentId = agentIdentity.agentId;
       const host = typeof data.host === "string" ? data.host : null;
       const headless = data.headless === true;
       const platform = typeof data.platform === "string" && data.platform.trim()
@@ -100,6 +116,9 @@ function handleStatePost(req, res, options) {
       const codexSource = typeof data.codex_source === "string" && data.codex_source.trim()
         ? data.codex_source.trim()
         : null;
+      const ghosttyTerminalId = typeof data.ghostty_terminal_id === "string" && data.ghostty_terminal_id.trim()
+        ? data.ghostty_terminal_id.trim()
+        : null;
       const toolName = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : null;
       const toolUseId = normalizeHookToolUseId(
         data.tool_use_id ?? data.toolUseId ?? data.toolUseID
@@ -112,9 +131,18 @@ function handleStatePost(req, res, options) {
       // "ignore + fall back" pattern used by cwd / agent_id above.
       const rawTitle = typeof data.session_title === "string" ? data.session_title.trim() : "";
       const sessionTitle = rawTitle || null;
+      const assistantLastOutput = normalizeAssistantLastOutput(data.assistant_last_output);
+      const assistantLastOutputTruncated = data.assistant_last_output_truncated === true;
       const permissionSuspect = data.permission_suspect === true;
       const preserveState = data.preserve_state === true;
       const hookSource = typeof data.hook_source === "string" ? data.hook_source : null;
+      // #406 completion-gate inputs from the Claude Stop hook. Counts / boolean
+      // only — the hook never forwards task command or description text.
+      const backgroundTasksCount = Number.isFinite(data.background_tasks_count)
+        ? data.background_tasks_count : 0;
+      const sessionCronsCount = Number.isFinite(data.session_crons_count)
+        ? data.session_crons_count : 0;
+      const stopHookActive = data.stop_hook_active === true;
       // Agent gate: user disabled this agent in the settings panel. Drop
       // with 204 so hook scripts get a quick no-op response instead of
       // hanging on our HTTP connection. Still surfaces as a success code
@@ -156,15 +184,39 @@ function handleStatePost(req, res, options) {
             const behavior = perm.isQwenCode ? "no-decision" : "deny";
             ctx.resolvePermissionEntry(perm, behavior, "User answered in terminal");
           }
-          // Stale elicitation sweep: AskUserQuestion is a blocking tool
-          // call, so any forward progress in the same session means the
-          // user already answered in the terminal.  The exact-match above
-          // may miss the elicitation entry when the /state PostToolUse
-          // carries a different tool_input fingerprint from the original
-          // /permission request, or when tool_use_id is absent.
+          // Stale blocking-tool sweep: both AskUserQuestion (elicitation) and
+          // ExitPlanMode (plan review) are blocking tool calls. Any forward
+          // progress in the same session means the user already answered in the
+          // terminal. The exact-match above may miss the entry when tool_use_id
+          // or tool_input_fingerprint diverge between /permission and /state.
           for (const stale of [...ctx.pendingPermissions]) {
-            if (stale !== perm && stale.isElicitation && stale.res && stale.sessionId === sid) {
+            if (
+              stale !== perm
+              && stale.res
+              && stale.sessionId === sid
+              && (stale.isElicitation || stale.toolName === "ExitPlanMode")
+            ) {
               ctx.resolvePermissionEntry(stale, "deny", "User answered in terminal");
+            }
+          }
+        }
+        // Stale ExitPlanMode sweep for events outside the PostToolUse/Stop block:
+        // UserPromptSubmit = user typed feedback in plan TUI ("Tell Claude what to
+        // change"); PreToolUse(non-ExitPlanMode) = Claude started executing after
+        // plan approval; SessionEnd = session torn down.
+        if (
+          event === "UserPromptSubmit"
+          || event === "SessionEnd"
+          || (event === "PreToolUse" && toolName !== "ExitPlanMode")
+        ) {
+          for (const stale of [...ctx.pendingPermissions]) {
+            if (
+              stale
+              && stale.res
+              && stale.sessionId === sid
+              && stale.toolName === "ExitPlanMode"
+            ) {
+              ctx.resolvePermissionEntry(stale, "deny", "Plan dialog dismissed in terminal");
             }
           }
         }
@@ -198,11 +250,18 @@ function handleStatePost(req, res, options) {
             provider,
             codexOriginator,
             codexSource,
+            ghosttyTerminalId,
             displayHint: display_svg,
             sessionTitle,
+            assistantLastOutput,
+            assistantLastOutputTruncated,
             permissionSuspect,
             preserveState,
             hookSource,
+            backgroundTasksCount,
+            sessionCronsCount,
+            stopHookActive,
+            ...(agentIdentity.defaulted ? { agentIdDefaulted: true } : {}),
           });
           if (mobileWS && event !== "SubagentStop") {
             const session = ctx.sessions ? ctx.sessions.get(sid) : null;

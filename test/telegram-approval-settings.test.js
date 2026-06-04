@@ -31,6 +31,9 @@ test("normalizeTelegramApproval trims ids and accepts numeric chat id shorthand"
     enabled: true,
     allowedTgUserId: "123456789",
     targetSessionKey: "telegram:987654321",
+    notifyOnComplete: false,
+    completionOutputMode: "full",
+    r3DirectSendEnabled: false,
   });
 });
 
@@ -61,6 +64,42 @@ test("validateTelegramApproval permits incomplete saved config but rejects malfo
     targetSessionKey: "",
     botToken: "123:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi",
   }).status, "error");
+  assert.equal(settings.validateTelegramApproval({
+    enabled: true,
+    allowedTgUserId: "123456789",
+    targetSessionKey: "telegram:987654321",
+    completionOutputMode: "full",
+  }).status, "ok");
+  assert.equal(settings.validateTelegramApproval({
+    enabled: true,
+    allowedTgUserId: "123456789",
+    targetSessionKey: "telegram:987654321",
+    completionOutputMode: "tail",
+  }).status, "error");
+  assert.equal(settings.validateTelegramApproval({
+    enabled: true,
+    allowedTgUserId: "123456789",
+    targetSessionKey: "telegram:987654321",
+    completionOutputMode: "everything",
+  }).status, "error");
+  assert.equal(settings.validateTelegramApproval({
+    enabled: true,
+    allowedTgUserId: "123456789",
+    targetSessionKey: "telegram:987654321",
+    r3DirectSendEnabled: true,
+  }).status, "ok");
+  assert.equal(settings.validateTelegramApproval({
+    enabled: true,
+    allowedTgUserId: "123456789",
+    targetSessionKey: "telegram:987654321",
+    r3DirectSendEnabled: "yes",
+  }).status, "error");
+});
+
+test("normalizeTelegramApproval maps legacy tail completion output to full", () => {
+  assert.equal(settings.normalizeTelegramApproval({
+    completionOutputMode: "tail",
+  }).completionOutputMode, "full");
 });
 
 test("readiness blocks enabled Telegram approval until ids and token are configured", () => {
@@ -76,6 +115,9 @@ test("readiness blocks enabled Telegram approval until ids and token are configu
       enabled: true,
       allowedTgUserId: "",
       targetSessionKey: "telegram:987654321",
+      notifyOnComplete: false,
+      completionOutputMode: "full",
+      r3DirectSendEnabled: false,
     },
   });
   assert.equal(settings.readiness({

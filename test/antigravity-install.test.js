@@ -8,6 +8,7 @@ const {
   MARKER,
   ANTIGRAVITY_HOOK_EVENTS,
   registerAntigravityHooks,
+  unregisterAntigravityHooks,
   __test,
 } = require("../hooks/antigravity-install");
 
@@ -22,6 +23,12 @@ function makeTempHome({ withConfig = true } = {}) {
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function listCleanupBackups(filePath) {
+  const dir = path.dirname(filePath);
+  const base = path.basename(filePath);
+  return fs.readdirSync(dir).filter((name) => name.startsWith(`${base}.clawd-cleanup-`));
 }
 
 function decodeEncodedCommand(command) {
@@ -281,5 +288,49 @@ describe("Antigravity hook installer", () => {
     assert.strictEqual(result.updated, 0);
     assert.strictEqual(result.skipped, 4);
     assert.match(decodeEncodedCommand(hooks[HOOK_GROUP_ID].PreInvocation[0].command), /C:\\Tools\\node\.exe/);
+  });
+
+  it("unregister removes the clawd group only when it contains a Clawd marker", () => {
+    const homeDir = makeTempHome();
+    const configPath = path.join(homeDir, ".gemini", "config", "hooks.json");
+    fs.writeFileSync(configPath, JSON.stringify({
+      [HOOK_GROUP_ID]: {
+        PreInvocation: [{ type: "command", command: "& 'node' 'X/antigravity-hook.js' 'PreInvocation'" }],
+      },
+      user: {
+        Stop: [{ type: "command", command: "echo keep" }],
+      },
+    }, null, 2), "utf8");
+
+    const result = unregisterAntigravityHooks({ silent: true, homeDir, backup: true });
+
+    assert.deepStrictEqual(result, {
+      installed: true,
+      removed: 1,
+      changed: true,
+      configPath,
+      backupPath: result.backupPath,
+    });
+    const hooks = readJson(configPath);
+    assert.ok(!Object.prototype.hasOwnProperty.call(hooks, HOOK_GROUP_ID));
+    assert.strictEqual(hooks.user.Stop[0].command, "echo keep");
+    assert.strictEqual(listCleanupBackups(configPath).length, 1);
+  });
+
+  it("unregister preserves a same-name clawd group without a Clawd marker", () => {
+    const homeDir = makeTempHome();
+    const configPath = path.join(homeDir, ".gemini", "config", "hooks.json");
+    const original = {
+      [HOOK_GROUP_ID]: {
+        Stop: [{ type: "command", command: "echo user-owned clawd group" }],
+      },
+    };
+    fs.writeFileSync(configPath, JSON.stringify(original, null, 2), "utf8");
+
+    const result = unregisterAntigravityHooks({ silent: true, homeDir, backup: true });
+
+    assert.deepStrictEqual(result, { installed: true, removed: 0, changed: false, configPath });
+    assert.deepStrictEqual(readJson(configPath), original);
+    assert.deepStrictEqual(listCleanupBackups(configPath), []);
   });
 });

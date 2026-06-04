@@ -170,6 +170,13 @@ test("Error classes: network error (ECONNREFUSED)", () => {
   assert.equal(classifyError(err), ERROR_CLASSES.NETWORK);
 });
 
+test("Error classes: undici fetch cause codes are network errors", () => {
+  const err = Object.assign(new Error("fetch failed"), {
+    cause: { code: "UND_ERR_CONNECT_TIMEOUT" },
+  });
+  assert.equal(classifyError(err), ERROR_CLASSES.NETWORK);
+});
+
 test("Error classes: status=null but error_code=409 still classified as CONFLICT", () => {
   const err = new TelegramApiError({ status: null, code: 409, description: "Conflict" });
   assert.equal(classifyError(err), ERROR_CLASSES.CONFLICT);

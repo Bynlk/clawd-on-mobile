@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld("hitAPI", {
   showDashboard: () => ipcRenderer.send("show-dashboard"),
   revealSessionHud: () => ipcRenderer.send("pet-interaction:reveal-session-hud"),
   // Reaction triggers → main → renderWin
-  startDragReaction: () => ipcRenderer.send("start-drag-reaction"),
+  startDragReaction: (direction) => ipcRenderer.send("start-drag-reaction", direction),
   endDragReaction: () => ipcRenderer.send("end-drag-reaction"),
   playClickReaction: (svg, duration) => ipcRenderer.send("play-click-reaction", svg, duration),
   // State sync ← main

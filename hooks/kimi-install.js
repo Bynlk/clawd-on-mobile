@@ -5,7 +5,12 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { resolveNodeBin } = require("./server-config");
-const { asarUnpackedPath, extractExistingNodeBinFromCommands } = require("./json-utils");
+const {
+  asarUnpackedPath,
+  extractExistingNodeBinFromCommands,
+  readTextFileStripBom,
+  writeTextAtomicWithBackup,
+} = require("./json-utils");
 const MARKER = "kimi-hook.js";
 const MODE_EXPLICIT = "explicit";
 const MODE_SUSPECT = "suspect";
@@ -242,10 +247,32 @@ timeout = 30
   return { added: KIMI_HOOK_EVENTS.length, skipped: 0, updated: 0 };
 }
 
+function unregisterKimiHooks(options = {}) {
+  const settingsPath = options.settingsPath || path.join(os.homedir(), ".kimi", "config.toml");
+
+  let content = "";
+  try {
+    content = readTextFileStripBom(settingsPath, "utf-8");
+  } catch (err) {
+    if (err.code === "ENOENT") return { removed: 0, changed: false, settingsPath };
+    throw new Error(`Failed to read config.toml: ${err.message}`);
+  }
+
+  const stripped = stripClawdKimiHookBlocks(content);
+  const changed = stripped.content !== content;
+  let backupPath = null;
+  if (changed) backupPath = writeTextAtomicWithBackup(settingsPath, stripped.content, options);
+  if (!options.silent) console.log(`Clawd Kimi hooks removed: ${stripped.removed}`);
+  const result = { removed: stripped.removed, changed, settingsPath };
+  if (options.backup === true) result.backupPath = backupPath;
+  return result;
+}
+
 module.exports = {
   DEFAULT_PARENT_DIR,
   DEFAULT_CONFIG_PATH,
   registerKimiHooks,
+  unregisterKimiHooks,
   KIMI_HOOK_EVENTS,
   normalizePermissionMode,
   extractExistingPermissionMode,
@@ -257,7 +284,8 @@ module.exports = {
 
 if (require.main === module) {
   try {
-    registerKimiHooks({});
+    if (process.argv.includes("--uninstall")) unregisterKimiHooks({});
+    else registerKimiHooks({});
   } catch (err) {
     console.error(err.message);
     process.exit(1);

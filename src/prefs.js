@@ -38,7 +38,7 @@ const {
 } = require("./bubble-policy");
 const { normalizeSessionAliases } = require("./session-alias");
 
-const CURRENT_VERSION = 7;
+const CURRENT_VERSION = 8;
 
 // ── Schema ──
 // Each field has: type, default OR defaultFactory, optional enum/normalize/validate.
@@ -154,6 +154,10 @@ const SCHEMA = {
     validate: (v) => Number.isInteger(v) && v >= 0 && v <= 60000,
   },
   lowPowerIdleMode: { type: "boolean", default: false },
+  mobilePreviewEnabled: { type: "boolean", default: false },
+  // When true, prevent the OS from sleeping while any agent task is in
+  // progress (working/thinking/etc.); allow sleep again once tasks finish.
+  keepAwakeWhileWorking: { type: "boolean", default: false },
   allowEdgePinning: { type: "boolean", default: false },
   // When true, moving the pet between displays does not trigger a
   // proportional pixel-size recomputation. The pet keeps its current
@@ -187,7 +191,9 @@ const SCHEMA = {
       "opencode": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
       "pi": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
       "openclaw": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
-      "hermes": { enabled: true },
+      "hermes": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
+      // Qoder is state-only (Phase 1) — permission bubbles default off.
+      "qoder": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
     }),
     normalize: normalizeAgents,
   },
@@ -452,6 +458,15 @@ function migrate(raw) {
       }
     }
     out.version = 7;
+  }
+  // v7 -> v8: bare Telegram completion pings now default off. There was no
+  // UI for this flag, so a persisted true is overwhelmingly the old default
+  // rather than an explicit user opt-in.
+  if (out.version < 8) {
+    if (out.tgApproval && typeof out.tgApproval === "object") {
+      out.tgApproval.notifyOnComplete = false;
+    }
+    out.version = 8;
   }
   if ((typeof out.version === "number" ? out.version : 0) < CURRENT_VERSION) {
     out.version = CURRENT_VERSION;

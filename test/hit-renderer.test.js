@@ -63,7 +63,7 @@ function createHarness({ isMac = false, sendState = {} } = {}) {
         exitMiniMode: () => apiCalls.push(["exitMiniMode"]),
         showDashboard: () => apiCalls.push(["showDashboard"]),
         revealSessionHud: () => apiCalls.push(["revealSessionHud"]),
-        startDragReaction: () => apiCalls.push(["startDragReaction"]),
+        startDragReaction: (direction) => apiCalls.push(["startDragReaction", direction]),
         endDragReaction: () => apiCalls.push(["endDragReaction"]),
         playClickReaction: (svg, d) => apiCalls.push(["playClickReaction", svg, d]),
         onStateSync: (cb) => { apiHandlers.stateSync = cb; },
@@ -97,6 +97,15 @@ function createHarness({ isMac = false, sendState = {} } = {}) {
     fakeDocument._dispatch("pointerup", { button, ctrlKey, metaKey, clientX });
   }
 
+  function pointerdown({ button = 0, pointerId = 1, clientX = 100, clientY = 100 } = {}) {
+    const cb = area.listeners.get("pointerdown");
+    if (cb) cb({ button, pointerId, clientX, clientY });
+  }
+
+  function pointermove({ clientX = 100, clientY = 100 } = {}) {
+    fakeDocument._dispatch("pointermove", { clientX, clientY });
+  }
+
   function fireTimer(predicate) {
     const t = timers.find((x) => !x.cleared && predicate(x));
     if (!t) return false;
@@ -105,7 +114,7 @@ function createHarness({ isMac = false, sendState = {} } = {}) {
     return true;
   }
 
-  return { apiCalls, apiHandlers, pointerup, fireTimer, timers, area, context };
+  return { apiCalls, apiHandlers, pointerdown, pointermove, pointerup, fireTimer, timers, area, context };
 }
 
 describe("hit-renderer input layer", () => {
@@ -203,5 +212,21 @@ describe("hit-renderer input layer", () => {
     h.fireTimer((t) => t.ms === 400);
     assert.strictEqual(h.apiCalls.length, before,
       "after cancelReaction, no new reaction should fire");
+  });
+
+  it("updates the drag reaction when horizontal direction changes", () => {
+    const h = createHarness();
+    h.pointerdown({ clientX: 100, clientY: 100 });
+    h.pointermove({ clientX: 90, clientY: 100 });
+    h.pointermove({ clientX: 80, clientY: 100 });
+    h.pointermove({ clientX: 95, clientY: 100 });
+
+    assert.deepStrictEqual(
+      h.apiCalls.filter((call) => call[0] === "startDragReaction"),
+      [
+        ["startDragReaction", "left"],
+        ["startDragReaction", "right"],
+      ]
+    );
   });
 });
