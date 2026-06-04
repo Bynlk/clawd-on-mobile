@@ -247,7 +247,7 @@ abstract class AbstractStreamingClient(
         _displayState.value = "idle"
         reconnectJob = scope.launch {
             delay(reconnectDelay)
-            reconnectDelay = (reconnectDelay * 2 * (0.5 + Math.random())).coerceAtMost(maxReconnectDelay)
+            reconnectDelay = (reconnectDelay * 2 * (0.5 + Math.random())).toLong().coerceAtMost(maxReconnectDelay)
             doConnect()
         }
     }
