@@ -53,6 +53,19 @@ const path = require("path");
 
 module.exports = function initServer(ctx) {
 
+// CORS origin whitelist — defaults to localhost only; set CLAWD_CORS_ORIGINS=* to allow all
+const CORS_ORIGINS = process.env.CLAWD_CORS_ORIGINS === "*"
+  ? "*"
+  : (process.env.CLAWD_CORS_ORIGINS || "http://localhost,http://127.0.0.1,https://localhost,https://127.0.0.1")
+      .split(",").map(s => s.trim()).filter(Boolean);
+
+function getAllowedCorsOrigin(req) {
+  if (CORS_ORIGINS === "*") return "*";
+  const origin = req.headers["origin"] || "";
+  if (CORS_ORIGINS.includes(origin)) return origin;
+  return null; // no CORS header — browser will block
+}
+
 const createHttpServer = ctx.createHttpServer || http.createServer.bind(http);
 const setImmediateFn = ctx.setImmediate || setImmediate;
 const nowFn = typeof ctx.now === "function" ? ctx.now : Date.now;
@@ -280,9 +293,10 @@ function startHttpServer() {
   const listenPorts = getPortCandidatesFn();
   let listenIndex = 0;
   httpServer.on("error", (err) => {
+    const bindHost = process.env.CLAWD_BIND_HOST || "127.0.0.1";
     if (!activeServerPort && err.code === "EADDRINUSE" && listenIndex < listenPorts.length - 1) {
       listenIndex++;
-      httpServer.listen(listenPorts[listenIndex], "0.0.0.0");
+      httpServer.listen(listenPorts[listenIndex], bindHost);
       return;
     }
     if (!activeServerPort && err.code === "EADDRINUSE") {
@@ -297,8 +311,9 @@ function startHttpServer() {
   httpServer.on("listening", () => {
     activeServerPort = listenPorts[listenIndex];
     writeRuntimeConfigFn(activeServerPort);
-    console.log(`Clawd state server listening on 127.0.0.1:${activeServerPort}`);
-    console.log(`  Mobile companion token: ${MOBILE_TOKEN}`);
+    const logHost = process.env.CLAWD_BIND_HOST || "127.0.0.1";
+    console.log(`Clawd state server listening on ${logHost}:${activeServerPort}`);
+    console.log(`  Mobile companion token: ${MOBILE_TOKEN.slice(0, 4)}… (set via QR scan or settings page)`);
     // Defer hook/plugin registration off the startup path. Each sync call
     // reads+parses+writes a config JSON (50-150ms cumulative on slow disks),
     // and they operate on independent files for independent agents, so
@@ -308,7 +323,8 @@ function startHttpServer() {
     });
   });
 
-  httpServer.listen(listenPorts[listenIndex], "0.0.0.0");
+  const bindHost = process.env.CLAWD_BIND_HOST || "127.0.0.1";
+  httpServer.listen(listenPorts[listenIndex], bindHost);
 }
 
 function broadcastHookEvent(eventData) {
@@ -328,12 +344,28 @@ function broadcastHookEvent(eventData) {
 function startMobileServer() {
   const MOBILE_PORT = 23334;
   mobileHttpServer = createHttpServer((req, res) => {
+    // WebSocket upgrade on /mobile/ws is handled by wsServerMobile below
+
     if (req.method === "GET" && req.url.startsWith("/mobile/stream")) {
+      // Token authentication
+      const streamUrl = new URL(req.url, "http://localhost");
+      let streamToken = streamUrl.searchParams.get("token");
+      if (!streamToken) {
+        const authHeader = req.headers["authorization"] || "";
+        if (authHeader.startsWith("Bearer ")) streamToken = authHeader.slice(7);
+      }
+      if (streamToken !== MOBILE_TOKEN) {
+        res.writeHead(401, { "Content-Type": "text/plain" });
+        res.end("Unauthorized");
+        return;
+      }
+      const corsOrigin = getAllowedCorsOrigin(req);
+      const corsHeaders = corsOrigin ? { "Access-Control-Allow-Origin": corsOrigin } : {};
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
-        "Access-Control-Allow-Origin": "*",
+        ...corsHeaders,
       });
       res.write(`data: ${JSON.stringify({ type: "connected", timestamp: Date.now() })}\n\n`);
       // Tell client to flush stale sessions before snapshot arrives
@@ -372,6 +404,18 @@ function startMobileServer() {
     }
 
     if (req.method === "POST" && req.url.startsWith("/mobile/approve")) {
+      // Token authentication
+      const approveUrl = new URL(req.url, "http://localhost");
+      let approveToken = approveUrl.searchParams.get("token");
+      if (!approveToken) {
+        const authHeader = req.headers["authorization"] || "";
+        if (authHeader.startsWith("Bearer ")) approveToken = authHeader.slice(7);
+      }
+      if (approveToken !== MOBILE_TOKEN) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
       let body = "";
       req.on("data", (chunk) => { body += chunk; });
       req.on("end", () => {
@@ -410,10 +454,16 @@ function startMobileServer() {
     }
 
     if (req.method === "OPTIONS") {
+      const corsOrigin = getAllowedCorsOrigin(req);
+      if (!corsOrigin) {
+        res.writeHead(403);
+        res.end();
+        return;
+      }
       res.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": corsOrigin,
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
       });
       res.end();
       return;
@@ -431,9 +481,22 @@ function startMobileServer() {
     }
   });
 
-  mobileHttpServer.listen(MOBILE_PORT, "0.0.0.0", () => {
+  // Add WebSocket support on mobile port at /mobile/ws
+  const WebSocket = require("ws");
+  const wsServerMobile = new WebSocket.Server({ server: mobileHttpServer, path: "/mobile/ws" });
+  wsServerMobile.on("connection", (ws, req) => {
+    if (mobileWS) {
+      mobileWS._handleConnection(ws, req);
+    } else {
+      ws.close(1013, "Server not ready");
+    }
+  });
+  console.log(`[mobile-ws] WebSocket endpoint at /mobile/ws on port ${MOBILE_PORT}`);
+
+  const mobileBindHost = process.env.CLAWD_BIND_HOST || "127.0.0.1";
+  mobileHttpServer.listen(MOBILE_PORT, mobileBindHost, () => {
     mobileServerPort = MOBILE_PORT;
-    console.log(`[mobile-sse] Listening on 0.0.0.0:${MOBILE_PORT}`);
+    console.log(`[mobile-sse] Listening on ${mobileBindHost}:${MOBILE_PORT}`);
   });
 }
 

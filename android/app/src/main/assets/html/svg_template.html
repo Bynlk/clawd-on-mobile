@@ -20,36 +20,50 @@
       s = s.replace(/(href|xlink:href)\s*=\s*["']?\s*javascript\s*:[^"'\s>]*/gi, '');
       return s;
     }
+    function readSvgMeta(svgEl) {
+      if (!svgEl) return;
+      var vb = svgEl.viewBox.baseVal;
+      if (vb && vb.width > 0 && vb.height > 0) {
+        window._svgWidth = vb.width;
+        window._svgHeight = vb.height;
+      } else {
+        window._svgWidth = parseFloat(svgEl.getAttribute('width')) || 0;
+        window._svgHeight = parseFloat(svgEl.getAttribute('height')) || 0;
+      }
+      try {
+        var bbox = svgEl.getBBox();
+        var vb2 = svgEl.viewBox.baseVal;
+        if (vb2 && vb2.width > 0 && vb2.height > 0) {
+          window._visualInsets = {
+            left: bbox.x - vb2.x,
+            top: bbox.y - vb2.y,
+            right: (vb2.x + vb2.width) - (bbox.x + bbox.width),
+            bottom: (vb2.y + vb2.height) - (bbox.y + bbox.height)
+          };
+          window._viewBox = { x: vb2.x, y: vb2.y, width: vb2.width, height: vb2.height };
+        }
+      } catch(e) {}
+      if (typeof window.onSvgLoaded === 'function') window.onSvgLoaded();
+    }
+    // Hot-swap API: fetch, sanitize, replace SVG in-place (no page reload)
+    window.updatePetSvg = function(url) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.onload = function() {
+        if (xhr.responseText.length > 0) {
+          document.querySelector('.container').innerHTML = sanitizeSvg(xhr.responseText);
+          readSvgMeta(document.querySelector('.container svg'));
+        }
+      };
+      xhr.send();
+    };
+    // Initial load
     var xhr = new XMLHttpRequest();
     xhr.open('GET', '{{URL}}', true);
     xhr.onload = function() {
       if (xhr.responseText.length > 0) {
         document.querySelector('.container').innerHTML = sanitizeSvg(xhr.responseText);
-        var svgEl = document.querySelector('.container svg');
-        if (svgEl) {
-          var vb = svgEl.viewBox.baseVal;
-          if (vb && vb.width > 0 && vb.height > 0) {
-            window._svgWidth = vb.width;
-            window._svgHeight = vb.height;
-          } else {
-            window._svgWidth = parseFloat(svgEl.getAttribute('width')) || 0;
-            window._svgHeight = parseFloat(svgEl.getAttribute('height')) || 0;
-          }
-          // Visual insets: getBBox vs viewBox for edge-snap correction
-          try {
-            var bbox = svgEl.getBBox();
-            var vb2 = svgEl.viewBox.baseVal;
-            if (vb2 && vb2.width > 0 && vb2.height > 0) {
-              window._visualInsets = {
-                left: bbox.x - vb2.x,
-                top: bbox.y - vb2.y,
-                right: (vb2.x + vb2.width) - (bbox.x + bbox.width),
-                bottom: (vb2.y + vb2.height) - (bbox.y + bbox.height)
-              };
-              window._viewBox = { x: vb2.x, y: vb2.y, width: vb2.width, height: vb2.height };
-            }
-          } catch(e) {}
-        }
+        readSvgMeta(document.querySelector('.container svg'));
       }
     };
     xhr.send();

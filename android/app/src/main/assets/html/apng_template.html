@@ -11,7 +11,21 @@
 </head>
 <body>
   <div class="container">
-    <img src="{{URL}}" onload="window._svgWidth=this.naturalWidth;window._svgHeight=this.naturalHeight;" />
+    <img src="{{URL}}" onload="window._svgWidth=this.naturalWidth;window._svgHeight=this.naturalHeight;if(typeof window.onSvgLoaded==='function')window.onSvgLoaded();" />
   </div>
+  <script>
+    // Hot-swap API: replace APNG src in-place (no page reload)
+    window.updatePetSvg = function(url) {
+      var img = document.querySelector('.container img');
+      if (img) {
+        img.onload = function() {
+          window._svgWidth = this.naturalWidth;
+          window._svgHeight = this.naturalHeight;
+          if (typeof window.onSvgLoaded === 'function') window.onSvgLoaded();
+        };
+        img.src = url;
+      }
+    };
+  </script>
 </body>
 </html>

@@ -19,7 +19,9 @@
     <string name="status_reconnecting">重新连接中…</string>
     <string name="status_auth_failed">认证失败</string>
     <string name="status_disconnected">已断开</string>
+    <string name="status_circuit_open">连接失败 - 点击重试</string>
     <string name="status_not_connected">未连接</string>
+    <string name="error_not_connected">未连接到服务端，无法发送响应</string>
     <string name="status_syncing">正在同步…</string>
 
     <!-- Connection alerts -->

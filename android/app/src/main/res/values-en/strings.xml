@@ -1,0 +1,202 @@
+<resources>
+    <!-- App -->
+    <string name="app_name">Clawd Mobile</string>
+
+    <!-- Notification channels -->
+    <string name="channel_approval">Approval Requests</string>
+    <string name="channel_approval_desc">High-priority notifications for permission approval and confirmation requests</string>
+    <string name="channel_status">Session Status</string>
+    <string name="channel_status_desc">Low-priority notifications showing current session status</string>
+    <string name="channel_alert">Important Alerts</string>
+    <string name="channel_alert_desc">Notifications when tasks complete or need attention</string>
+    <string name="channel_service">Background Connection</string>
+    <string name="channel_service_desc">Low-priority notification to maintain connection with desktop</string>
+
+    <!-- Connection status -->
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_connected_to">Connected - %s</string>
+    <string name="status_reconnecting">Reconnecting…</string>
+    <string name="status_auth_failed">Authentication failed</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_circuit_open">Connection failed — tap to retry</string>
+    <string name="status_not_connected">Not connected</string>
+    <string name="error_not_connected">Not connected to server — cannot send response</string>
+    <string name="status_syncing">Syncing…</string>
+
+    <!-- Connection alerts -->
+    <string name="alert_disconnect_title">😴 Lost connection to desktop</string>
+    <string name="alert_disconnect_text">Check your network?</string>
+    <string name="alert_reconnect_title">✅ Reconnected</string>
+    <string name="alert_reconnect_text">Back to work!</string>
+
+    <!-- Event labels (Session.eventLabel) -->
+    <string name="event_user_prompt">User Input</string>
+    <string name="event_pre_tool">Tool Started</string>
+    <string name="event_post_tool">Tool Completed</string>
+    <string name="event_post_tool_fail">Tool Failed</string>
+    <string name="event_stop">Completed</string>
+    <string name="event_session_start">Session Started</string>
+    <string name="event_session_end">Session Ended</string>
+    <string name="event_permission">Permission Required</string>
+    <string name="event_elicitation">Choice Required</string>
+    <string name="event_notification">Notification</string>
+    <string name="event_subagent_start">Sub-agent Started</string>
+    <string name="event_subagent_stop">Sub-agent Stopped</string>
+
+    <!-- Notification messages (StatusNotifier) -->
+    <string name="notify_done_title">%s Done</string>
+    <string name="notify_done_text">Check out the results!</string>
+    <string name="notify_fail_title">%s Failed</string>
+    <string name="notify_fail_text">See what happened?</string>
+    <string name="notify_attention_title">%s Needs Attention</string>
+    <string name="notify_attention_text">Take a look?</string>
+    <string name="notify_error_title">%s Error</string>
+    <string name="notify_error_text">Needs your attention</string>
+    <string name="notify_approval_title">%s Needs Approval</string>
+    <string name="notify_approval_text">Claude requests execution permission</string>
+
+    <!-- Notification messages (NotificationHelper) -->
+    <string name="notify_permission_title">🦀 %s needs your decision!</string>
+    <string name="notify_permission_body">Confirmation required</string>
+    <string name="notify_elicitation_title">🦀 %s needs you to choose</string>
+    <string name="notify_elicitation_body">Please select an option</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_deny">Deny</string>
+
+    <!-- Floating pet -->
+    <string name="pet_notification_title">Clawd Pet</string>
+    <string name="pet_notification_text">Pet is running</string>
+    <string name="pet_bubble_enter_app">Open App</string>
+    <string name="pet_bubble_no_sessions">No active sessions</string>
+
+    <!-- Permission dialogs (MainActivity) -->
+    <string name="perm_notification_title">Notification Permission</string>
+    <string name="perm_notification_desc">Used to receive session status changes, approval requests, and other push notifications. Disabling will prevent real-time alerts.</string>
+    <string name="perm_camera_title">Camera Permission</string>
+    <string name="perm_camera_desc">Used to scan QR codes displayed on your PC for quick pairing. Only used during scanning.</string>
+    <string name="perm_overlay_title">Overlay Permission</string>
+    <string name="perm_overlay_desc">Used to display the floating pet overlay. Needs to be manually enabled in system settings.</string>
+    <string name="perm_battery_title">Background Activity Permission</string>
+    <string name="perm_battery_desc">To ensure the background SSE connection isn\'t killed by the system, please allow Clawd Mobile to ignore battery optimization.\n\nChinese phone brands (MIUI, ColorOS, EMUI, etc.) aggressively kill background apps — this permission prevents 3-second disconnections.</string>
+    <string name="action_skip">Skip</string>
+
+    <!-- Sessions screen -->
+    <string name="sessions_active_title">Active Sessions</string>
+    <string name="sessions_empty_title">Scan QR to start monitoring</string>
+    <string name="sessions_empty_subtitle">Go to Settings to scan or connect manually</string>
+    <string name="sessions_go_settings">Go to Settings</string>
+    <string name="sessions_tab_sessions">Sessions</string>
+    <string name="sessions_tab_devices">Devices</string>
+    <string name="sessions_tab_settings">Settings</string>
+    <string name="sessions_rename">Rename</string>
+    <string name="sessions_rename_title">Rename Session</string>
+    <string name="sessions_save">Save</string>
+    <string name="sessions_cancel">Cancel</string>
+    <string name="sessions_recent_events">Recent Events</string>
+    <string name="sessions_waiting">Waiting</string>
+    <string name="sessions_waiting_auth">Awaiting Authorization</string>
+    <string name="sessions_waiting_choice">Awaiting Choice</string>
+    <string name="sessions_action_permission">Permission</string>
+    <string name="sessions_action_choice">Choice</string>
+
+    <!-- Elicitation (AskUserQuestion) -->
+    <string name="elicitation_choose_one">Please select one option</string>
+    <string name="elicitation_choose_multiple">Please select one or more options</string>
+    <string name="elicitation_other">Other</string>
+    <string name="elicitation_submit">Submit</string>
+    <string name="elicitation_next">Next</string>
+    <string name="elicitation_previous">Previous</string>
+    <string name="elicitation_question_of">Question %1$d of %2$d</string>
+    <string name="sessions_device">Device</string>
+    <string name="sessions_device_status">Status</string>
+    <string name="sessions_device_address">Address</string>
+    <string name="sessions_device_sessions">Active Sessions</string>
+    <string name="sessions_device_transport">Transport</string>
+    <string name="sessions_relay_title">Relay service coming soon.\n\nThe relay service will support connecting to your PC via cloud relay, without needing to be on the same local network.</string>
+    <string name="sessions_relay_ok">Got it</string>
+
+    <!-- Time formatting -->
+    <string name="time_just_now">Just now</string>
+    <string name="time_seconds">%ds ago</string>
+    <string name="time_minutes">%dm ago</string>
+    <string name="time_hours">%dh ago</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_scan_connect">Scan to Connect</string>
+    <string name="settings_scan_desc">Scan the QR code displayed on your PC to connect automatically.</string>
+    <string name="settings_scan_open">Open Scanner</string>
+    <string name="settings_manual_connect">Manual Connect</string>
+    <string name="settings_manual_desc">Manually enter your PC\'s IP address, port, and token to connect.</string>
+    <string name="settings_manual_open">Enter Connection Manually</string>
+    <string name="settings_notification">Notification Settings</string>
+    <string name="settings_notification_desc">Control which types of notifications the app sends. Disabling will stop corresponding push notifications.</string>
+    <string name="settings_pet">Pet</string>
+    <string name="settings_about">About</string>
+    <string name="settings_ip_address">IP Address</string>
+    <string name="settings_port">Port</string>
+    <string name="settings_copy">Copy</string>
+    <string name="settings_disconnect">Disconnect and close pet</string>
+    <string name="settings_pet_size">Size</string>
+    <string name="settings_pet_character">Character</string>
+    <string name="settings_pet_enable">Enable Pet</string>
+    <string name="settings_pet_overlay_granted">Overlay permission (granted)</string>
+    <string name="settings_pet_overlay_needed">Overlay permission (not granted)</string>
+    <string name="settings_pet_desc">Show a cute crab pet on your screen.</string>
+    <string name="settings_notify_master">Master Notification Toggle</string>
+    <string name="settings_notify_master_desc">Allow the app to send notifications</string>
+    <string name="settings_notify_approval">Approval Notifications</string>
+    <string name="settings_notify_approval_desc">Notify when Claude requests execution permission</string>
+    <string name="settings_notify_status">Session Status Notifications</string>
+    <string name="settings_notify_status_desc">Notify on session status changes (completion, errors, etc.)</string>
+    <string name="settings_notify_alert">Alert Notifications</string>
+    <string name="settings_notify_alert_desc">Notify on events requiring immediate attention</string>
+
+    <!-- About section -->
+    <string name="about_subtitle">Your AI coding companion on mobile.</string>
+    <string name="about_version">Version</string>
+    <string name="about_repo">Repository</string>
+    <string name="about_fork">Fork Repository</string>
+    <string name="about_license">License</string>
+    <string name="about_author">Original Author</string>
+    <string name="about_author_name">Ruller_Lulu / 鹿鹿</string>
+    <string name="about_maintainer">Maintainer</string>
+    <string name="about_mobile_maintainer">Mobile Maintainer</string>
+    <string name="about_check_update">Check for Updates</string>
+
+    <!-- Manual connect screen -->
+    <string name="manual_title">Manual Connect</string>
+    <string name="manual_host_label">Desktop Address</string>
+    <string name="manual_port_label">Port</string>
+    <string name="manual_token_placeholder">32-character token</string>
+    <string name="manual_token_label">Token</string>
+    <string name="manual_connect">Connect</string>
+    <string name="manual_history">Connection History</string>
+    <string name="manual_delete">Delete</string>
+    <string name="manual_fill_required">Please fill in all connection details</string>
+
+    <!-- Certificate confirmation dialog (NavGraph) -->
+    <string name="cert_confirm_title">Certificate Confirmation</string>
+    <string name="cert_confirm_connecting_to">Connecting to %s</string>
+    <string name="cert_confirm_fingerprint">Server certificate fingerprint (SHA-256):\n%s\n\nConfirm this fingerprint matches the server?</string>
+    <string name="cert_confirm_trust">Trust and Connect</string>
+    <string name="cert_confirm_cancel">Cancel</string>
+
+    <!-- Approval labels (ApprovalSheet) -->
+    <string name="approval_label_auto_accept">Auto-accept edits</string>
+    <string name="approval_label_plan_mode">Switch to plan mode</string>
+    <string name="approval_label_always_allow">Always allow</string>
+    <string name="approval_label_allow_in">Allow %1$s in %2$s</string>
+    <string name="approval_label_always_allow_tool">Always allow: %s</string>
+
+    <!-- Settings extras -->
+    <string name="settings_pet_resize_hint">💡 Restart the overlay after resizing for changes to take effect</string>
+
+    <!-- Scan screen -->
+    <string name="scan_title">Scan QR</string>
+    <string name="scan_need_camera">Camera permission required</string>
+    <string name="scan_grant_camera">Grant Permission</string>
+    <string name="scan_qr_hint">Place QR code in the frame</string>
+</resources>

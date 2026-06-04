@@ -244,6 +244,7 @@ function handleStatePost(req, res, options) {
             const mobilePayload = {
               sessionId: sid,
               state: sessionState,
+              hookState: hookState,
               event: event,
               agentId: agentId,
               toolName: toolName || null,

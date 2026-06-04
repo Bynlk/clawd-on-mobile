@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const { EventEmitter } = require("events");
 
 const DEFAULT_MAX_CLIENTS = 10;
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 30000;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
 const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX_MESSAGES = 60;
 const MAX_HISTORY = 50;
@@ -29,7 +29,14 @@ class MobileWSServer extends EventEmitter {
 
   _handleConnection(ws, req) {
     const url = new URL(req.url, "http://localhost");
-    const token = url.searchParams.get("token");
+    // 支持两种 token 传递方式: URL 参数 或 Authorization header
+    let token = url.searchParams.get("token");
+    if (!token) {
+      const authHeader = req.headers["authorization"] || "";
+      if (authHeader.startsWith("Bearer ")) {
+        token = authHeader.slice(7);
+      }
+    }
 
     if (token !== this.token) {
       ws.close(1008, "Invalid token");
@@ -64,6 +71,12 @@ class MobileWSServer extends EventEmitter {
 
     console.log("[mobile-ws] Client connected (total: " + this.clients.size + ")");
     this.emit("client-connected", { clientId, ip: clientIp, connectedAt: now });
+
+    // 先发送 clear_sessions，让 Android 进入 syncing 状态
+    ws.send(JSON.stringify({
+      type: "clear_sessions",
+      timestamp: Date.now(),
+    }));
 
     const cacheObj = Object.fromEntries(this.sessionCache);
     const lastEntry = [...this.sessionCache.values()].reverse().find(e => e && e.state && e.state !== "idle") ||
@@ -135,6 +148,10 @@ class MobileWSServer extends EventEmitter {
         }
         client.isAlive = false;
         client.ping();
+        // 发送 JSON ping 供 Android watchdog 重置
+        try {
+          client.send(JSON.stringify({ type: "ping", timestamp: Date.now() }));
+        } catch {}
       }
     }, this.heartbeatIntervalMs);
   }
@@ -183,6 +200,15 @@ class MobileWSServer extends EventEmitter {
         lastOutput: entry.lastOutput || null,
         isReal: entry.isReal,
       };
+      // Reconcile sessionCache: patch stale badges from oneshot states.
+      // broadcastState() caches the oneshot badge (e.g. "interrupted" for error),
+      // but the snapshot computes the correct badge from the authoritative session state.
+      // Without this, newly connecting clients receive stale badges from the cache.
+      const cached = this.sessionCache.get(entry.id);
+      if (cached && cached.badge !== entry.badge) {
+        cached.badge = entry.badge;
+        cached.displayState = entry.state;
+      }
     }
     const lastSession = snapshot.sessions.find(s => s.id === snapshot.hudLastSessionId) || snapshot.sessions[0];
     const displayState = lastSession ? lastSession.state : "idle";
@@ -210,7 +236,7 @@ class MobileWSServer extends EventEmitter {
     const message = JSON.stringify({
       type: "tool_output",
       sessionId,
-      data: toolData,
+      ...toolData,  // 展平 toolName, output, event 到顶层
       timestamp: Date.now(),
     });
     this._broadcast(message);

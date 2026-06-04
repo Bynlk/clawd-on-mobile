@@ -69,7 +69,12 @@ class MobileApprovalClient {
     if (!pending) return;
     this.pending.delete(message.requestId);
     clearTimeout(pending.timer);
-    pending.resolve(message.behavior || null);
+    // 处理 suggestionIndex: "allow" + suggestionIndex -> "suggestion:N"
+    let behavior = message.behavior || null;
+    if (behavior === "allow" && Number.isFinite(message.suggestionIndex)) {
+      behavior = `suggestion:${message.suggestionIndex}`;
+    }
+    pending.resolve(behavior);
   }
 }
 
