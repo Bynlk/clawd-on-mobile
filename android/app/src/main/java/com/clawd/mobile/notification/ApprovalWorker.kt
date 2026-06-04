@@ -23,6 +23,12 @@ class ApprovalWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        // Cap retries to prevent infinite retry loops (WorkManager default has no limit)
+        if (runAttemptCount >= 3) {
+            Log.w(TAG, "Max retry count reached ($runAttemptCount), giving up")
+            return Result.failure()
+        }
+
         val requestId = inputData.getString("request_id") ?: return Result.failure()
         val decision = inputData.getString("decision") ?: return Result.failure()
         val notificationId = inputData.getInt("notification_id", -1)
@@ -30,6 +36,14 @@ class ApprovalWorker(
         return try {
             val prefsStore = PrefsStore.getInstance(applicationContext)
             val config = prefsStore.loadConfig() ?: return Result.failure()
+
+            // TOFU guard: LAN connections must have a confirmed cert fingerprint
+            // before we can safely send approval. Without it, the connection is untrusted
+            // (first TOFU not yet confirmed, or fingerprint was cleared by reset()).
+            if (config.isLan && prefsStore.getCertFingerprint() == null) {
+                Log.w(TAG, "Cannot send approval: LAN connection has no confirmed cert fingerprint (TOFU not completed)")
+                return Result.failure()
+            }
 
             val body = buildJsonObject {
                 put("id", requestId)

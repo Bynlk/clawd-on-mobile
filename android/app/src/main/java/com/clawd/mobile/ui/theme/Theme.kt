@@ -1,7 +1,6 @@
 package com.clawd.mobile.ui.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -42,7 +41,7 @@ private val LightColorScheme = lightColorScheme(
     primary = ClawdAccent,
     onPrimary = Color.White,
     primaryContainer = ClawdAccentLight,
-    onPrimaryContainer = ClawdText,
+    onPrimaryContainer = ClawdAccentDark,
     secondary = ClawdAccentDark,
     onSecondary = Color.White,
     background = ClawdBackground,
@@ -59,18 +58,18 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun ClawdMobileTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val view = LocalView.current
+    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val colorScheme = if (isDark) DarkColorScheme else LightColorScheme
 
     if (!view.isInEditMode) {
         SideEffect {
             val window = findActivity(view.context)?.window ?: return@SideEffect
-            window.statusBarColor = (if (darkTheme) ClawdBackgroundDark else ClawdBackground).toArgb()
-            window.navigationBarColor = (if (darkTheme) ClawdBackgroundDark else ClawdBackground).toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            window.statusBarColor = colorScheme.background.toArgb()
+            window.navigationBarColor = colorScheme.background.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
         }
     }
 

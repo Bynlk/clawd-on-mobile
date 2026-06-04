@@ -2,6 +2,7 @@ package com.clawd.mobile.ui.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,10 +29,16 @@ fun ClawdNavGraph() {
     val prefsStore = remember { PrefsStore.getInstance(context) }
     val statusNotifier = remember { StatusNotifier(context, prefsStore) }
 
-    val serviceManager = remember { ServiceManager(context, kotlinx.coroutines.MainScope(), prefsStore, statusNotifier) }
+    val scope = rememberCoroutineScope()
+    val serviceManager = remember { ServiceManager(context, scope, prefsStore, statusNotifier) }
 
     // Initialize: start service + acquire client + auto-reconnect
     LaunchedEffect(Unit) { serviceManager.initialize() }
+
+    // Clean up collectors when NavGraph leaves composition
+    DisposableEffect(Unit) {
+        onDispose { serviceManager.destroy() }
+    }
 
     // Re-acquire client when refreshKey changes (QR/manual scan)
     var refreshKey by remember { mutableIntStateOf(0) }
@@ -70,57 +77,78 @@ fun ClawdNavGraph() {
         )
     }
 
-    NavHost(navController = navController, startDestination = "sessions") {
-        composable("sessions") {
-            val approvalViewModel: ApprovalViewModel = viewModel(
-                key = "approval_$refreshKey",
-                factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
-            )
+    // Scaffold with SnackbarHost for error feedback
+    val snackbarHostState = remember { SnackbarHostState() }
 
-            // Wire up pending approval check + notification-tap routing
-            statusNotifier.hasPendingApprovals = { approvalViewModel.pendingRequests.value.isNotEmpty() }
-            serviceManager.onApprovalFromNotification = { request ->
-                approvalViewModel.restoreRequestFromNotification(request)
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = "sessions",
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable("sessions") {
+                val approvalViewModel: ApprovalViewModel = viewModel(
+                    key = "approval_$refreshKey",
+                    factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
+                )
+
+                // Collect error events and show Snackbar
+                LaunchedEffect(approvalViewModel) {
+                    approvalViewModel.errorEvents.collect { message ->
+                        snackbarHostState.showSnackbar(
+                            message = message,
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+
+                // Wire up pending approval check + notification-tap routing
+                statusNotifier.hasPendingApprovals = { approvalViewModel.pendingRequests.value.isNotEmpty() }
+                serviceManager.onApprovalFromNotification = { request ->
+                    approvalViewModel.restoreRequestFromNotification(request)
+                }
+
+                SessionsScreen(
+                    navController = navController,
+                    sseClient = ws,
+                    approvalViewModel = approvalViewModel,
+                    prefsStore = prefsStore
+                )
             }
-
-            SessionsScreen(
-                navController = navController,
-                sseClient = ws,
-                approvalViewModel = approvalViewModel,
-                prefsStore = prefsStore
-            )
-        }
-        composable("scan") {
-            ScanScreen(
-                onBack = { navController.popBackStack() },
-                onScanned = { config ->
-                    serviceManager.startService(config)
-                    refreshKey++
-                    navController.navigate("sessions") {
-                        popUpTo("sessions") { inclusive = true }
+            composable("scan") {
+                ScanScreen(
+                    onBack = { navController.popBackStack() },
+                    onScanned = { config ->
+                        serviceManager.startService(config)
+                        refreshKey++
+                        navController.navigate("sessions") {
+                            popUpTo("sessions") { inclusive = true }
+                        }
                     }
-                }
-            )
-        }
-        composable("manual") {
-            ManualScreen(
-                prefsStore = prefsStore,
-                onBack = { navController.popBackStack() },
-                onConnect = { config ->
-                    serviceManager.startService(config)
-                    refreshKey++
-                    navController.navigate("sessions") {
-                        popUpTo("sessions") { inclusive = true }
+                )
+            }
+            composable("manual") {
+                ManualScreen(
+                    prefsStore = prefsStore,
+                    onBack = { navController.popBackStack() },
+                    onConnect = { config ->
+                        serviceManager.startService(config)
+                        refreshKey++
+                        navController.navigate("sessions") {
+                            popUpTo("sessions") { inclusive = true }
+                        }
                     }
-                }
-            )
-        }
-        composable("settings") {
-            SettingsScreen(
-                navController = navController,
-                sseClient = ws,
-                prefsStore = prefsStore
-            )
+                )
+            }
+            composable("settings") {
+                SettingsScreen(
+                    navController = navController,
+                    sseClient = ws,
+                    prefsStore = prefsStore
+                )
+            }
         }
     }
 }

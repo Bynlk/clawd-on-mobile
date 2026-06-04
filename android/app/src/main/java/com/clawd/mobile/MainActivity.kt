@@ -5,7 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.content.pm.PackageManager
+import com.clawd.mobile.data.ConnectionConfig
 import com.clawd.mobile.data.PermissionRequestData
+import com.clawd.mobile.data.PrefsStore
+import com.clawd.mobile.service.SseService
 import kotlinx.serialization.json.Json
 import android.net.Uri
 import android.os.Build
@@ -20,11 +23,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import com.clawd.mobile.ui.components.ClawdIcons
+import dagger.hilt.android.AndroidEntryPoint
 import com.clawd.mobile.ui.components.PermissionDialog
 import com.clawd.mobile.R
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ui.navigation.ClawdNavGraph
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private val permissionQueue = mutableListOf<PermissionRequest>()
@@ -59,8 +64,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        Log.d("MainActivity", "onCreate intent=${intent?.action} extras=${intent?.extras?.keySet()} request_id=${intent?.getStringExtra("request_id")}")
+        Log.d("MainActivity", "onCreate intent=${intent?.action} data=${intent?.data} extras=${intent?.extras?.keySet()}")
         handleApprovalIntent(intent)
+        handleDeepLink(intent)
 
         // Build permission queue
         val permissions = buildList {
@@ -97,8 +103,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        Log.d("MainActivity", "onNewIntent action=${intent.action}")
+        Log.d("MainActivity", "onNewIntent action=${intent.action} data=${intent.data}")
         handleApprovalIntent(intent)
+        handleDeepLink(intent)
     }
 
     private fun handleApprovalIntent(intent: Intent?) {
@@ -111,6 +118,30 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.w("MainActivity", "Failed to deserialize request_json: ${e.message}")
         }
+    }
+
+    /**
+     * Handle clawd:// deep link.
+     * URI format: clawd://host:port/token
+     * Parses the URI, saves config, and starts the SseService.
+     */
+    private fun handleDeepLink(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme != "clawd") return
+
+        val url = uri.toString()
+        Log.d("MainActivity", "handleDeepLink: $url")
+
+        val config = ConnectionConfig.fromClawdUrl(url)
+        if (config == null) {
+            Log.w("MainActivity", "Invalid clawd:// URI: $url")
+            return
+        }
+
+        Log.d("MainActivity", "Deep link parsed: ${config.host}:${config.port}")
+        val prefsStore = PrefsStore.getInstance(this)
+        prefsStore.saveConfig(config)
+        SseService.start(this, config)
     }
 
     private fun showCurrentPermission() {

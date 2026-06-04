@@ -6,8 +6,10 @@ import android.app.NotificationManager
 import android.os.Build
 import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.overlay.SvgLoader
+import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.channels.Channel
 
+@HiltAndroidApp
 class ClawdApp : Application() {
 
     companion object {

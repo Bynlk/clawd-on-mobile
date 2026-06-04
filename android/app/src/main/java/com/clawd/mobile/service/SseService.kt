@@ -16,6 +16,8 @@ import com.clawd.mobile.data.ConnectionConfig
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
 import com.clawd.mobile.ws.SseClient
+import com.clawd.mobile.ws.StreamingClient
+import com.clawd.mobile.ws.WsClient
 import com.clawd.mobile.ws.ConnectionState
 import com.clawd.mobile.util.SafeExecutor
 import kotlinx.coroutines.*
@@ -23,7 +25,33 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
 /**
- * Foreground service managing the SSE connection to Clawd server.
+ * Foreground service managing the WebSocket connection to Clawd server.
+ *
+ * ## Lifecycle
+ * - Started via [SseService.start] with [ACTION_CONNECT] or [ACTION_DISCONNECT].
+ * - Runs as a foreground service with a persistent notification showing connection status.
+ * - Returns [START_STICKY] to be restarted by the system if killed.
+ *
+ * ## Connection Management
+ * - Uses [WsClient] (WebSocket) as the streaming transport.
+ * - The [StreamingClient] instance is created in [onStartCommand] and exposed via [getClient].
+ * - Connection state changes trigger notification updates and alert notifications
+ *   (disconnect alert, reconnect alert).
+ *
+ * ## WakeLock Management
+ * - WakeLock is held conditionally: only during active display states
+ *   (working, notification, attention, error) to save battery.
+ * - Released when display state returns to idle.
+ * - WakeLock timeout is 1 hour with 30-minute renewal checks.
+ *
+ * ## WiFi Lock
+ * - WiFi lock is held for the entire connection lifetime to prevent WiFi sleep.
+ *
+ * ## Companion Object
+ * - [SseService.start] / [SseService.stop] — static entry points.
+ * - [SseService.getClient] — returns the current [StreamingClient] instance.
+ * - [SseService.isRunning] — whether the service is currently running.
+ * - [SseService.clientReady] — flow emitting when a new client is created.
  */
 class SseService : Service() {
 
@@ -39,15 +67,16 @@ class SseService : Service() {
         @Volatile
         private var instance: SseService? = null
 
-        private val _clientReady = Channel<SseClient>(Channel.CONFLATED)
+        private val _clientReady = Channel<StreamingClient>(Channel.CONFLATED)
 
-        /** Emits when a new SseClient instance is created and ready. */
-        val clientReady: Flow<SseClient> = _clientReady.receiveAsFlow()
+        /** Emits when a new StreamingClient instance is created and ready. */
+        val clientReady: Flow<StreamingClient> = _clientReady.receiveAsFlow()
 
-        fun getClient(): SseClient? = instance?.sseClient
+        fun getClient(): StreamingClient? = instance?.sseClient
 
         fun isRunning(): Boolean = instance != null
 
+        /** Start the service with an optional new [config]. If null, reconnects with saved config. */
         fun start(context: Context, config: ConnectionConfig? = null) {
             val intent = Intent(context, SseService::class.java).apply {
                 action = ACTION_CONNECT
@@ -66,7 +95,7 @@ class SseService : Service() {
     }
 
     private val prefsStore by lazy { PrefsStore.getInstance(this) }
-    var sseClient: SseClient? = null
+    var sseClient: StreamingClient? = null
         private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var stateCollectorJob: Job? = null
@@ -76,7 +105,7 @@ class SseService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        sseClient = SseClient(prefsStore)
+        sseClient = WsClient(prefsStore)
         _clientReady.trySend(sseClient!!)
     }
 
@@ -119,7 +148,21 @@ class SseService : Service() {
         stateCollectorJob?.cancel()
         var previousState: ConnectionState? = null
         stateCollectorJob = scope.launch {
-            // WakeLock renewal: check every 30 min, re-acquire if expired
+            // WakeLock management: hold during active states, release when idle.
+            // This saves battery when the pet is idle (no tasks running).
+            launch {
+                sseClient?.displayState?.collect { displayState ->
+                    val isActive = displayState == "working" || displayState == "notification" ||
+                        displayState == "attention" || displayState == "error"
+                    if (isActive) {
+                        ensureWakeLockHeld()
+                    } else {
+                        releaseWakeLockIfHeld()
+                    }
+                }
+            }
+
+            // WakeLock renewal: re-acquire if expired while active
             launch {
                 while (isActive) {
                     delay(WAKELOCK_RENEWAL_INTERVAL_MS)
@@ -135,6 +178,7 @@ class SseService : Service() {
                     ConnectionState.RECONNECTING -> getString(R.string.status_reconnecting)
                     ConnectionState.AUTH_FAILED -> getString(R.string.status_auth_failed)
                     ConnectionState.DISCONNECTED -> getString(R.string.status_disconnected)
+                    ConnectionState.CIRCUIT_OPEN -> getString(R.string.status_circuit_open)
                 }
                 SafeExecutor.tryOrNull("WS") {
                     val nm = getSystemService(android.app.NotificationManager::class.java)
@@ -204,13 +248,8 @@ class SseService : Service() {
                 acquire()
             }
         }
-        if (wakeLock == null) {
-            val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:sse").apply {
-                setReferenceCounted(false)
-                acquire(WAKELOCK_TIMEOUT_MS)
-            }
-        }
+        // WakeLock is managed by display state collector — acquire on active, release on idle.
+        // Initial acquisition happens when the first active display state is received.
     }
 
     private fun releaseLocks() {
@@ -228,6 +267,34 @@ class SseService : Service() {
                 wl.acquire(WAKELOCK_TIMEOUT_MS)
             }
         }
+    }
+
+    /** Ensure WakeLock is held — called when display state becomes active. */
+    private fun ensureWakeLockHeld() {
+        if (wakeLock?.isHeld != true) {
+            android.util.Log.d("SseService", "Active state — acquiring WakeLock")
+            acquireWakeLock()
+        }
+    }
+
+    /** Release WakeLock if currently held — called when display state becomes idle. */
+    private fun releaseWakeLockIfHeld() {
+        wakeLock?.let { wl ->
+            if (wl.isHeld) {
+                android.util.Log.d("SseService", "Idle state — releasing WakeLock")
+                SafeExecutor.tryOrNull("SseService") { wl.release() }
+            }
+        }
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:sse").apply {
+                setReferenceCounted(false)
+            }
+        }
+        wakeLock?.acquire(WAKELOCK_TIMEOUT_MS)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

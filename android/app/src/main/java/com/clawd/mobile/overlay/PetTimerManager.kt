@@ -13,9 +13,9 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Manages:
  * - Idle timeout → sleep sequence trigger (60s, aligns PC MOUSE_SLEEP_TIMEOUT)
- * - Sleep sequence: yawning → [collapsing →] sleeping → idle animation loop
+ * - 4-stage sleep sequence: yawning → dozing → collapsing → sleeping
  * - Waking animation on activity resume
- * - Auto-return from oneshot states
+ * - 5-minute working stale timeout (aligns PC working stale protection)
  * - Reaction SVG overlay with timed restore
  *
  * Delegates state emission back to [PetStateManager] via constructor callbacks.
@@ -27,16 +27,19 @@ class PetTimerManager(
 ) {
     companion object {
         private const val TAG = "PetTimerManager"
+
+        /** Working/Thinking stale timeout — 5 minutes, aligns PC. */
+        const val WORKING_STALE_TIMEOUT_MS = 300_000L
     }
 
     private val gifGeneration = AtomicInteger(0)
     @Volatile private var idleSince: Long = 0L
     private var sleepSequenceJob: Job? = null
-    private var autoReturnJob: Job? = null
+    private var workingStaleJob: Job? = null
 
     private val character: String get() = manager.character
-    private val sleepConfig: PetStateManager.Companion.SleepConfig
-        get() = PetStateManager.SLEEP_TIMINGS[character] ?: PetStateManager.SLEEP_TIMINGS["clawd"]!!
+    private val sleepConfig: PetStateConfig.SleepConfig
+        get() = PetStateConfig.SLEEP_TIMINGS[character] ?: PetStateConfig.SLEEP_TIMINGS["clawd"]!!
 
     // ======================================================================
     //  Idle timeout → sleep
@@ -61,53 +64,47 @@ class PetTimerManager(
     }
 
     // ======================================================================
-    //  Sleep sequence (yawning → [collapsing →] sleeping → idle anim loop)
+    //  Sleep sequence (yawning → dozing → collapsing → sleeping)
     // ======================================================================
 
     /**
-     * Start the sleep animation sequence as a coroutine.
-     * Skips states that have no dedicated SVG (falls back through SvgLoader).
+     * Start the 4-stage sleep animation sequence as a coroutine.
+     * Strictly follows: Yawning → Dozing → Collapsing → Sleeping.
+     * No idle animation loop during deep sleep — aligns with PC.
      */
     fun startSleepSequence(scope: CoroutineScope) {
         if (sleepSequenceJob?.isActive == true) return
         sleepSequenceJob = scope.launch {
             val cfg = sleepConfig
 
+            // Stage 1: Yawning
             emitState(PetState.Yawning, null)
             delay(cfg.yawnMs)
             if (!isActive) return@launch
 
-            // Dozing (浅睡) — aligns with PC dozing state.
-            // Cancellable: cancelSleepSequence() cancels this job, so new sessions can wake immediately.
+            // Stage 2: Dozing (浅睡) — cancellable by new activity
             emitState(PetState.Dozing, null)
             delay(cfg.dozingMs)
             if (!isActive) return@launch
 
-            if (cfg.collapseMs > 0) {
-                emitState(PetState.Collapsing, null)
-                delay(cfg.collapseMs)
-                if (!isActive) return@launch
-            }
+            // Stage 3: Collapsing — always present (use fallback if config is 0)
+            val collapseDelay = if (cfg.collapseMs > 0) cfg.collapseMs else 2_000L
+            emitState(PetState.Collapsing, null)
+            delay(collapseDelay)
+            if (!isActive) return@launch
 
+            // Stage 4: Sleeping (deep sleep) — fully static, no idle anim loop
             emitState(PetState.Sleeping, null)
-
-            while (isActive) {
-                delay(PetStateManager.IDLE_ANIM_INTERVAL_MS)
-                if (!isActive) break
-                val idlePath = SvgLoader.pickIdleAnimation(character)
-                if (idlePath != null) {
-                    commandFlowEmit(PetStateManager.StateCommand.SvgLoad(idlePath, force = false))
-                    delay(PetStateManager.IDLE_ANIM_DISPLAY_MS)
-                }
-            }
         }
     }
 
     /**
      * Play waking animation then restore to [targetState].
+     * Starts working stale timer if target is Working/Thinking.
      */
     fun playWakingAndRestore(targetState: PetState, scope: CoroutineScope) {
         cancelSleepSequence()
+        cancelWorkingStaleTimer()
         val gen = gifGeneration.incrementAndGet()
 
         if (SvgLoader.hasSvgForState(PetState.Waking, character)) {
@@ -118,11 +115,18 @@ class PetTimerManager(
                 if (targetState.isActive) manager.setLastNonIdleState(targetState)
                 Log.d(TAG, "Waking complete → ${targetState.themeKey}")
                 emitState(targetState, null)
+                // Start working stale timer after waking into Working/Thinking
+                if (targetState == PetState.Working || targetState == PetState.Thinking) {
+                    startWorkingStaleTimer(scope)
+                }
             }
         } else {
             if (targetState.isActive) manager.setLastNonIdleState(targetState)
             Log.d(TAG, "No waking GIF, direct → ${targetState.themeKey}")
             emitState(targetState, null)
+            if (targetState == PetState.Working || targetState == PetState.Thinking) {
+                startWorkingStaleTimer(scope)
+            }
         }
     }
 
@@ -132,28 +136,31 @@ class PetTimerManager(
     }
 
     // ======================================================================
-    //  Auto-return timer (aligns with PC AUTO_RETURN_MS)
+    //  Working stale timeout (5 min, aligns PC)
     // ======================================================================
 
     /**
-     * Schedule an auto-return from a oneshot state to the resolved display state.
-     * Mirrors PC `autoReturnTimer` in state.js (applyState, line 485).
+     * Start a 5-minute working stale timer.
+     * If the pet stays in Working/Thinking for 5 min without a state change,
+     * force-return to Idle. Aligns with PC working stale protection.
      */
-    fun scheduleAutoReturn(state: PetState, scope: CoroutineScope) {
-        cancelAutoReturn()
-        val delayMs = PetStateManager.AUTO_RETURN_MS[state] ?: return
-        autoReturnJob = scope.launch {
-            delay(delayMs)
-            autoReturnJob = null
-            val resolved = manager.resolveBestState()
-            Log.d(TAG, "Auto-return from ${state.themeKey} → ${resolved.themeKey}")
-            emitState(resolved, null)
+    fun startWorkingStaleTimer(scope: CoroutineScope) {
+        cancelWorkingStaleTimer()
+        workingStaleJob = scope.launch {
+            delay(WORKING_STALE_TIMEOUT_MS)
+            workingStaleJob = null
+            val current = manager.getCurrentState()
+            if (current == PetState.Working || current == PetState.Thinking) {
+                Log.w(TAG, "Working stale timeout (5 min), forcing Idle")
+                emitState(PetState.Idle, null)
+            }
         }
     }
 
-    fun cancelAutoReturn() {
-        autoReturnJob?.cancel()
-        autoReturnJob = null
+    /** Cancel any pending working stale timer. Called on state change or reset. */
+    fun cancelWorkingStaleTimer() {
+        workingStaleJob?.cancel()
+        workingStaleJob = null
     }
 
     // ======================================================================
@@ -182,7 +189,7 @@ class PetTimerManager(
 
     fun reset() {
         cancelSleepSequence()
-        cancelAutoReturn()
+        cancelWorkingStaleTimer()
         gifGeneration.set(0)
         idleSince = 0L
     }

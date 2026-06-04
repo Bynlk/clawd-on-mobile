@@ -8,6 +8,7 @@ import com.clawd.mobile.service.SseService
 import com.clawd.mobile.util.HttpClientProvider
 import com.clawd.mobile.ws.CertFingerprintInfo
 import com.clawd.mobile.ws.SseClient
+import com.clawd.mobile.ws.StreamingClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,9 +34,9 @@ class ServiceManager(
         private const val TAG = "ServiceManager"
     }
 
-    private val _sseClient = MutableStateFlow<SseClient?>(null)
-    /** Current [SseClient], null until service starts or fallback creates one. */
-    val sseClient: StateFlow<SseClient?> = _sseClient.asStateFlow()
+    private val _sseClient = MutableStateFlow<StreamingClient?>(null)
+    /** Current [StreamingClient], null until service starts or fallback creates one. */
+    val sseClient: StateFlow<StreamingClient?> = _sseClient.asStateFlow()
 
     private val collectorJobs = mutableListOf<Job>()
 
@@ -48,7 +49,7 @@ class ServiceManager(
     // ======================================================================
 
     /**
-     * Start service, acquire [SseClient], auto-reconnect, and begin collectors.
+     * Start service, acquire [StreamingClient], auto-reconnect, and begin collectors.
      * Call once from a `LaunchedEffect(Unit)`.
      */
     suspend fun initialize() {
@@ -59,7 +60,7 @@ class ServiceManager(
     }
 
     /**
-     * Re-acquire [SseClient] after a connection change (e.g. QR/manual scan).
+     * Re-acquire [StreamingClient] after a connection change (e.g. QR/manual scan).
      * Call from a `LaunchedEffect(refreshKey)`.
      */
     suspend fun refresh() {
@@ -68,7 +69,7 @@ class ServiceManager(
         startCollectors(client)
     }
 
-    private suspend fun acquireClient(): SseClient {
+    private suspend fun acquireClient(): StreamingClient {
         SseService.getClient()?.let { ws ->
             ws.reconnect()
             return ws
@@ -88,7 +89,7 @@ class ServiceManager(
     //  Long-running collectors
     // ======================================================================
 
-    private fun startCollectors(ws: SseClient) {
+    private fun startCollectors(ws: StreamingClient) {
         collectorJobs.forEach { it.cancel() }
         collectorJobs.clear()
 
@@ -143,7 +144,7 @@ class ServiceManager(
     }
 
     /** Reject the pending TOFU certificate. */
-    fun rejectCert(ws: SseClient) {
+    fun rejectCert(ws: StreamingClient) {
         _pendingCert.value = null
         ws.disconnect()
     }

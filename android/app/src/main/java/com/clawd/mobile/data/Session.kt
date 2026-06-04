@@ -20,6 +20,8 @@ data class SessionData(
     val recentEvents: List<RecentEvent> = emptyList(),
     val lastOutput: LastOutput? = null,
     val displayState: String? = null,
+    /** Original hook state before ONESHOT collapse (e.g. "notification", "error"). Null if server doesn't send it. */
+    val hookState: String? = null,
     val isReal: Boolean = true,
     // Mobile view model — all from desktop, zero inference on Android
     val badge: String = "idle",

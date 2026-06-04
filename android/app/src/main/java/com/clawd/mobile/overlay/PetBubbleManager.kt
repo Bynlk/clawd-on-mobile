@@ -2,6 +2,7 @@ package com.clawd.mobile.overlay
 
 import android.content.Context
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
@@ -19,6 +20,7 @@ class PetBubbleManager(
     private val context: Context,
     private val windowManager: WindowManager,
     private val scope: CoroutineScope,
+    private val getPetView: () -> FloatingPetView?,
     private val onEnterApp: () -> Unit
 ) {
     companion object {
@@ -64,7 +66,8 @@ class PetBubbleManager(
 
         val newBubble = PetBubbleView(context)
         if (ws == null || connectionState == ConnectionState.DISCONNECTED
-            || connectionState == ConnectionState.AUTH_FAILED) {
+            || connectionState == ConnectionState.AUTH_FAILED
+            || connectionState == ConnectionState.CIRCUIT_OPEN) {
             newBubble.showNotConnected()
         } else if (sessions.isEmpty()) {
             newBubble.showNoSessions()
@@ -78,20 +81,22 @@ class PetBubbleManager(
             android.view.View.MeasureSpec.makeMeasureSpec(maxBubbleH, android.view.View.MeasureSpec.AT_MOST)
         )
 
-        val petX = petLayoutParams.x
-        val petY = petLayoutParams.y
-        val petW = petLayoutParams.width
         val bubbleW = newBubble.measuredWidth
         val bubbleH = newBubble.measuredHeight
         val marginPx = (BUBBLE_MARGIN_DP * density).toInt()
         val gapPx = (BUBBLE_GAP_DP * density).toInt()
 
-        var x = petX + (petW - bubbleW) / 2
+        // Use content rect (excluding transparent padding) for bubble positioning
+        val windowRect = Rect(petLayoutParams.x, petLayoutParams.y,
+            petLayoutParams.x + petLayoutParams.width, petLayoutParams.y + petLayoutParams.height)
+        val contentRect = getPetView()?.getContentRect(windowRect) ?: windowRect
+
+        var x = contentRect.centerX() - bubbleW / 2
         x = x.coerceIn(marginPx, screenW - bubbleW - marginPx)
 
-        var y = petY - bubbleH - gapPx
+        var y = contentRect.top - bubbleH - gapPx
         if (y < marginPx) {
-            y = petY + petLayoutParams.height + gapPx
+            y = contentRect.bottom + gapPx
         }
 
         val params = WindowManager.LayoutParams(

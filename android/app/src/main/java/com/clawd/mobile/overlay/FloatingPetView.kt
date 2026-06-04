@@ -305,6 +305,13 @@ class FloatingPetView @JvmOverloads constructor(
     /**
      * Cache a bitmap snapshot of the WebView content.
      * Used for pixel-level transparent click-through detection.
+     *
+     * Uses ARGB_8888 (not RGB_565) because the alpha channel is essential
+     * for transparent click-through detection.
+     *
+     * Note: LAYER_TYPE_SOFTWARE is required here — HARDWARE would break
+     * draw(canvas) pixel capture. The performance cost is negligible for
+     * a single small overlay.
      */
     internal fun cacheHitTestBitmap() {
         try {

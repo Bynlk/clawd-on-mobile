@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -39,12 +40,13 @@ import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ws.SseClient
+import com.clawd.mobile.ws.StreamingClient
 import com.clawd.mobile.ws.ConnectionState
 
 @Composable
 fun SettingsScreen(
     navController: NavController,
-    sseClient: SseClient,
+    sseClient: StreamingClient,
     prefsStore: PrefsStore
 ) {
     val connectionState by sseClient.connectionState.collectAsState()
@@ -129,7 +131,7 @@ private fun SettingsTopBar(onBack: () -> Unit) {
                 ClawdIcons.ChevronRight,
                 stringResource(R.string.settings_back),
                 tint = ClawdMutedDark,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(20.dp).graphicsLayer(rotationZ = 180f)
             )
         }
         Text(
@@ -144,7 +146,7 @@ private fun SettingsTopBar(onBack: () -> Unit) {
 // ─── Connection Info Card ─────────────────────────────────────────
 
 @Composable
-private fun ConnectionInfoCard(sseClient: SseClient) {
+private fun ConnectionInfoCard(sseClient: StreamingClient) {
     val clipboard = LocalClipboardManager.current
     val host = sseClient.currentHost ?: ""
     val port = sseClient.currentPort?.toString() ?: ""
@@ -243,13 +245,16 @@ private fun AccordionSection(
                     .weight(1f)
                     .padding(start = 10.dp)
             )
+            val rotation by androidx.compose.animation.core.animateFloatAsState(
+                if (expanded) 90f else 0f, label = "chevron"
+            )
             Icon(
                 ClawdIcons.ChevronRight,
                 null,
                 tint = ClawdFaintDark,
                 modifier = Modifier
                     .size(16.dp)
-                    .then(if (expanded) Modifier else Modifier)
+                    .graphicsLayer(rotationZ = rotation)
             )
         }
 
@@ -541,9 +546,16 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
         }
     }
 
-    // Re-check permission when section is recomposed
+    // Re-check permission and auto-start service if needed
     LaunchedEffect(Unit) {
         hasOverlayPermission = Settings.canDrawOverlays(context)
+        // Auto-start service if pref says enabled but service is not running
+        // Covers: process death, returning from permission screen
+        if (hasOverlayPermission && prefsStore.isFloatingPetEnabled() && !FloatingPetService.isRunning) {
+            enabled = true
+            val intent = Intent(context, FloatingPetService::class.java)
+            context.startForegroundService(intent)
+        }
     }
 }
 

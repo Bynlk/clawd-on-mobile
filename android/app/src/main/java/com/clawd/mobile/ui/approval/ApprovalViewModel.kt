@@ -10,9 +10,12 @@ import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
 import com.clawd.mobile.ws.SseClient
+import com.clawd.mobile.ws.StreamingClient
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -20,12 +23,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ApprovalViewModel(
     application: Application,
-    private val sseClient: SseClient
+    private val sseClient: StreamingClient
 ) : AndroidViewModel(application) {
 
     class Factory(
         private val application: Application,
-        private val sseClient: SseClient
+        private val sseClient: StreamingClient
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
@@ -46,12 +49,17 @@ class ApprovalViewModel(
     private val _notificationRequestId = MutableStateFlow<String?>(null)
     val notificationRequestId: StateFlow<String?> = _notificationRequestId
 
+    // One-shot error events for UI (Snackbar)
+    private val _errorEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val errorEvents: SharedFlow<String> = _errorEvents
+
     fun setNotificationRequestId(requestId: String) {
         Log.d("ApprovalViewModel", "setNotificationRequestId=$requestId pending=${_pendingRequests.value.size} dismissed=${recentlyDismissed.containsKey(requestId)}")
         // Restore dismissed request if user taps notification after it was auto-shown
         recentlyDismissed.remove(requestId)?.let { dismissed ->
             if (_pendingRequests.value.none { it.requestId == requestId }) {
                 Log.d("ApprovalViewModel", "Restoring dismissed request $requestId")
+                activeRequestIds.add(requestId)
                 _pendingRequests.update { it + dismissed }
                 startCountdown(dismissed)
             }
@@ -65,6 +73,7 @@ class ApprovalViewModel(
         Log.d("ApprovalViewModel", "restoreRequestFromNotification id=$requestId pending=${_pendingRequests.value.size}")
         if (_pendingRequests.value.none { it.requestId == requestId }) {
             Log.d("ApprovalViewModel", "Adding request from notification $requestId")
+            activeRequestIds.add(requestId)
             _pendingRequests.update { it + request }
             startCountdown(request)
         }
@@ -81,7 +90,7 @@ class ApprovalViewModel(
     }
     private val recentlyDismissed = ConcurrentHashMap<String, PermissionRequestData>()
 
-    private val timeoutJobs = ConcurrentHashMap<String, Job>()
+    private val activeRequestIds = ConcurrentHashMap.newKeySet<String>()
     private val countdownJobs = ConcurrentHashMap<String, Job>()
 
     init {
@@ -96,10 +105,10 @@ class ApprovalViewModel(
         resolveSessionName(sessionId, sseClient.sessions.value, prefsStore)
 
     private fun handleNewRequest(request: PermissionRequestData) {
-        Log.d("ApprovalViewModel", "handleNewRequest id=${request.requestId} tool=${request.toolName} currentPending=${_pendingRequests.value.size}")
-        // Deduplicate: SSE reconnect may re-deliver the same request
-        val requestId = request.requestId
-        if (requestId != null && _pendingRequests.value.any { it.requestId == requestId }) {
+        val requestId = request.requestId ?: return
+        Log.d("ApprovalViewModel", "handleNewRequest id=$requestId tool=${request.toolName} currentPending=${_pendingRequests.value.size}")
+        // Atomic dedup: SSE reconnect may re-deliver the same request
+        if (!activeRequestIds.add(requestId)) {
             Log.d("ApprovalViewModel", "Duplicate request ignored: $requestId")
             return
         }
@@ -121,24 +130,24 @@ class ApprovalViewModel(
     private fun startCountdown(request: PermissionRequestData) {
         val requestId = request.requestId ?: return
         val timeoutMs = request.timeout.coerceIn(10_000, 300_000) // 10s to 5min
-        val timeoutSec = (timeoutMs / 1000).toInt()
+        val deadline = System.currentTimeMillis() + timeoutMs
 
-        // Countdown ticker
+        // Single job: countdown ticker + auto-dismiss combined
         countdownJobs[requestId]?.cancel()
-        countdownJobs[requestId] = viewModelScope.launch {
-            for (sec in timeoutSec downTo 0) {
-                _countdowns.update { it + (requestId to sec) }
-                delay(1000)
+        val job = viewModelScope.launch {
+            while (true) {
+                val remainingMs = deadline - System.currentTimeMillis()
+                if (remainingMs <= 0) break
+                val remainingSec = (remainingMs / 1000).toInt()
+                _countdowns.update { it + (requestId to remainingSec) }
+                // Sleep until next second boundary (drift-free)
+                val nextTickMs = remainingMs % 1000
+                delay(if (nextTickMs > 0) nextTickMs else 1000)
             }
             _countdowns.update { it - requestId }
-        }
-
-        // Auto-dismiss on timeout (saveForRestore=true so notification tap can restore)
-        timeoutJobs[requestId]?.cancel()
-        timeoutJobs[requestId] = viewModelScope.launch {
-            delay(timeoutMs)
             removeRequest(requestId, saveForRestore = true)
         }
+        countdownJobs[requestId] = job
     }
 
     private fun removeRequest(requestId: String, saveForRestore: Boolean = false) {
@@ -152,29 +161,44 @@ class ApprovalViewModel(
         }
         _pendingRequests.update { it.filter { it.requestId != requestId } }
         _countdowns.update { it - requestId }
-        timeoutJobs.remove(requestId)?.cancel()
+        activeRequestIds.remove(requestId)
         countdownJobs.remove(requestId)?.cancel()
     }
 
     fun approve(requestId: String) {
+        if (!ensureConnected()) return
         sseClient.sendPermissionResponse(requestId, "allow")
         removeRequest(requestId, saveForRestore = false)
     }
 
     fun deny(requestId: String) {
+        if (!ensureConnected()) return
         sseClient.sendPermissionResponse(requestId, "deny")
         removeRequest(requestId, saveForRestore = false)
     }
 
     fun approveWithSuggestion(requestId: String, suggestionIndex: Int) {
+        if (!ensureConnected()) return
         sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex)
         removeRequest(requestId, saveForRestore = false)
     }
 
     fun submitElicitation(requestId: String, answers: Map<String, String>) {
+        if (!ensureConnected()) return
         val request = _pendingRequests.value.find { it.requestId == requestId }
         sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers)
         removeRequest(requestId, saveForRestore = false)
+    }
+
+    /** Returns true if connected; emits error event and returns false otherwise. */
+    private fun ensureConnected(): Boolean {
+        if (!sseClient.connectionState.value.isConnected) {
+            _errorEvents.tryEmit(getApplication<Application>().getString(
+                com.clawd.mobile.R.string.error_not_connected
+            ))
+            return false
+        }
+        return true
     }
 
     fun dismissRequest(requestId: String) {
@@ -183,7 +207,6 @@ class ApprovalViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        timeoutJobs.values.forEach { it.cancel() }
         countdownJobs.values.forEach { it.cancel() }
     }
 }

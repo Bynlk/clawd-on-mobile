@@ -26,12 +26,13 @@ import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ws.ConnectionState
 import com.clawd.mobile.ws.SseClient
+import com.clawd.mobile.ws.StreamingClient
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(
     navController: NavController,
-    sseClient: SseClient,
+    sseClient: StreamingClient,
     approvalViewModel: ApprovalViewModel,
     prefsStore: PrefsStore
 ) {
@@ -100,7 +101,11 @@ fun SessionsScreen(
                 .padding(padding)
         ) {
             // Fixed TopBar with connection status
-            FixedTopBar(isConnected = isConnected)
+            FixedTopBar(
+                isConnected = isConnected,
+                connectionState = connectionState,
+                onRetry = { sseClient.reconnect() }
+            )
 
             // Main content
             if (syncing && sessions.isEmpty()) {
@@ -115,7 +120,7 @@ fun SessionsScreen(
                         Text(stringResource(R.string.status_syncing), fontSize = 14.sp, color = ClawdFaintDark)
                     }
                 }
-            } else if (connectionState == ConnectionState.DISCONNECTED && sessions.isEmpty()) {
+            } else if ((connectionState == ConnectionState.DISCONNECTED || connectionState == ConnectionState.CIRCUIT_OPEN) && sessions.isEmpty()) {
                 Box(modifier = Modifier.weight(1f)) {
                     EmptyState(
                         onScan = { navController.navigate("settings") },
@@ -154,37 +159,27 @@ fun SessionsScreen(
             )
         }
 
-        // Devices placeholder dialog
+        // Devices bottom sheet
         if (showDevicesPlaceholder) {
-            AlertDialog(
+            ModalBottomSheet(
                 onDismissRequest = {
                     showDevicesPlaceholder = false
                     selectedTab = 0
                 },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 containerColor = ClawdSurfaceDark,
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(ClawdIcons.DeviceDesktop, null, tint = ClawdAccent, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.sessions_tab_devices), color = ClawdTextDark)
-                    }
-                },
-                text = {
-                    Text(
-                        stringResource(R.string.sessions_relay_title),
-                        fontSize = 13.sp,
-                        color = ClawdFaintDark
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            ) {
+                DevicesSheet(
+                    sseClient = sseClient,
+                    connectionState = connectionState,
+                    sessionCount = sessions.size,
+                    onClose = {
                         showDevicesPlaceholder = false
                         selectedTab = 0
-                    }) {
-                        Text(stringResource(R.string.sessions_relay_ok), color = ClawdAccent)
                     }
-                }
-            )
+                )
+            }
         }
 
         // Approval bottom sheet
@@ -215,7 +210,7 @@ fun SessionsScreen(
 // ─── Fixed TopBar ─────────────────────────────────────────────────
 
 @Composable
-private fun FixedTopBar(isConnected: Boolean) {
+private fun FixedTopBar(isConnected: Boolean, connectionState: ConnectionState = if (isConnected) ConnectionState.CONNECTED else ConnectionState.DISCONNECTED, onRetry: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -240,7 +235,7 @@ private fun FixedTopBar(isConnected: Boolean) {
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Connection status dot + text
+        // Connection status dot + text + retry button
         Box(
             modifier = Modifier
                 .size(7.dp)
@@ -254,6 +249,18 @@ private fun FixedTopBar(isConnected: Boolean) {
             color = if (isConnected) ClawdGreenBright else ClawdFaintDark,
             modifier = Modifier.padding(start = 6.dp)
         )
+        if (!isConnected && connectionState != ConnectionState.RECONNECTING && onRetry != null) {
+            IconButton(
+                onClick = onRetry,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    ClawdIcons.Refresh, null,
+                    modifier = Modifier.size(16.dp),
+                    tint = ClawdAccent
+                )
+            }
+        }
     }
 }
 
@@ -272,6 +279,134 @@ private fun SectionLabel(title: String, count: Int) {
             .padding(horizontal = 20.dp, vertical = 0.dp)
             .padding(bottom = 8.dp)
     )
+}
+
+// ─── Devices Sheet ────────────────────────────────────────────────
+
+@Composable
+private fun DevicesSheet(
+    sseClient: StreamingClient,
+    connectionState: ConnectionState,
+    sessionCount: Int,
+    onClose: () -> Unit
+) {
+    val host = sseClient.currentHost
+    val port = sseClient.currentPort
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp)
+    ) {
+        // Header
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(ClawdIcons.DeviceDesktop, null, tint = ClawdAccent, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.sessions_tab_devices),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = ClawdTextDark
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Connection info card
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = ClawdSurfaceAltDark
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // Status
+                DeviceInfoRow(
+                    label = stringResource(R.string.sessions_device_status),
+                    value = when (connectionState) {
+                        ConnectionState.CONNECTED -> stringResource(R.string.status_connected)
+                        ConnectionState.CONNECTING -> stringResource(R.string.status_connecting)
+                        ConnectionState.RECONNECTING -> stringResource(R.string.status_reconnecting)
+                        ConnectionState.AUTH_FAILED -> stringResource(R.string.status_auth_failed)
+                        ConnectionState.PENDING_CERT_CONFIRMATION -> stringResource(R.string.sessions_waiting_auth)
+                        ConnectionState.DISCONNECTED -> stringResource(R.string.status_disconnected)
+                        ConnectionState.CIRCUIT_OPEN -> stringResource(R.string.status_circuit_open)
+                    },
+                    valueColor = when (connectionState) {
+                        ConnectionState.CONNECTED -> ClawdGreenBright
+                        ConnectionState.AUTH_FAILED, ConnectionState.DISCONNECTED, ConnectionState.CIRCUIT_OPEN -> ClawdError
+                        else -> ClawdFaintDark
+                    }
+                )
+
+                if (host != null) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = ClawdBorderDark)
+                    DeviceInfoRow(
+                        label = stringResource(R.string.sessions_device_address),
+                        value = if (port != null) "$host:$port" else host
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = ClawdBorderDark)
+                DeviceInfoRow(
+                    label = stringResource(R.string.sessions_device_sessions),
+                    value = "$sessionCount"
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = ClawdBorderDark)
+                DeviceInfoRow(
+                    label = stringResource(R.string.sessions_device_transport),
+                    value = "WebSocket"
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Relay coming soon note
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            color = ClawdSurfaceAltDark
+        ) {
+            Text(
+                stringResource(R.string.sessions_relay_title),
+                fontSize = 12.sp,
+                color = ClawdFaintDark,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = onClose,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = ClawdAccent,
+                contentColor = Color.White
+            ),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text(stringResource(R.string.sessions_relay_ok), modifier = Modifier.padding(vertical = 4.dp))
+        }
+    }
+}
+
+@Composable
+private fun DeviceInfoRow(
+    label: String,
+    value: String,
+    valueColor: Color = ClawdTextDark
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 13.sp, color = ClawdMutedDark)
+        Text(value, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = valueColor)
+    }
 }
 
 // ─── Empty State ──────────────────────────────────────────────────
