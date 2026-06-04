@@ -109,6 +109,10 @@
     <string name="elicitation_previous">上一步</string>
     <string name="elicitation_question_of">第 %1$d 题，共 %2$d 题</string>
     <string name="sessions_device">设备</string>
+    <string name="sessions_device_status">状态</string>
+    <string name="sessions_device_address">地址</string>
+    <string name="sessions_device_sessions">活跃会话</string>
+    <string name="sessions_device_transport">传输协议</string>
     <string name="sessions_relay_title">未来中继服务，敬请期待。\n\n中继服务将支持通过云端中继连接 PC 端，无需处于同一局域网。</string>
     <string name="sessions_relay_ok">知道了</string>
 
