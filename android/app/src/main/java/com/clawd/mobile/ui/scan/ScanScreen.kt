@@ -112,6 +112,9 @@ private fun CameraPreview(onScanned: (ConnectionConfig) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    DisposableEffect(Unit) {
+        onDispose { cameraExecutor.shutdown() }
+    }
     var scanned by remember { mutableStateOf(false) }
 
     AndroidView(

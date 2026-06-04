@@ -4,9 +4,15 @@
 
 const WebSocket = require("ws");
 
-const RELAY_URL = process.argv[2] || "ws://localhost:7891";
-const TOKEN = process.argv[3] || "test-token";
+const RELAY_URL = process.argv[2];
+const TOKEN = process.argv[3];
 const LOCAL_TOKEN = process.argv[4] || TOKEN; // 本地 hook server token
+
+if (!RELAY_URL || !TOKEN) {
+  console.error("用法: node relay-bridge.js <relay-url> <token> [local-token]");
+  console.error("示例: node relay-bridge.js ws://your-server:7891 your-token");
+  process.exit(1);
+}
 const LOCAL_WS_URL = `ws://localhost:23333/ws?token=${LOCAL_TOKEN}`; // PC 本地 hook server
 
 let relayWs = null;

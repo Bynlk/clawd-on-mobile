@@ -95,6 +95,7 @@ class SseService : Service() {
     }
 
     private val prefsStore by lazy { PrefsStore.getInstance(this) }
+    @Volatile
     var sseClient: StreamingClient? = null
         private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())

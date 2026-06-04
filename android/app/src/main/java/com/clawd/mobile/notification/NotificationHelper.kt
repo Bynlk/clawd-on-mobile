@@ -57,6 +57,17 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // DeleteIntent — notify server when user swipes away the notification
+        val dismissIntent = Intent(context, ApprovalReceiver::class.java).apply {
+            action = ApprovalReceiver.ACTION_DISMISS
+            putExtra("request_id", requestId)
+            putExtra("notification_id", id)
+        }
+        val dismissPending = PendingIntent.getBroadcast(
+            context, id + 20000, dismissIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val name = sessionName ?: request.agentId ?: "Agent"
         val title = context.getString(R.string.notify_permission_title, name)
         val body = request.toolInputSummary ?: context.getString(R.string.notify_permission_body)
@@ -69,6 +80,7 @@ object NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(openPending)
+            .setDeleteIntent(dismissPending)
             .addAction(android.R.drawable.ic_menu_save, context.getString(R.string.action_allow), allowPending)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, context.getString(R.string.action_deny), denyPending)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
@@ -95,6 +107,17 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // DeleteIntent — notify server when user swipes away the notification
+        val dismissIntent = Intent(context, ApprovalReceiver::class.java).apply {
+            action = ApprovalReceiver.ACTION_DISMISS
+            putExtra("request_id", requestId)
+            putExtra("notification_id", id)
+        }
+        val dismissPending = PendingIntent.getBroadcast(
+            context, id + 20000, dismissIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val name = sessionName ?: request.agentId ?: "Agent"
         val title = context.getString(R.string.notify_elicitation_title, name)
         val body = request.toolInputSummary ?: context.getString(R.string.notify_elicitation_body)
@@ -107,6 +130,7 @@ object NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(openPending)
+            .setDeleteIntent(dismissPending)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .build()
 

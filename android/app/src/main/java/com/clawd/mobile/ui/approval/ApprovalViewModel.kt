@@ -9,8 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
-import com.clawd.mobile.ws.SseClient
 import com.clawd.mobile.ws.StreamingClient
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 class ApprovalViewModel(
@@ -91,6 +92,7 @@ class ApprovalViewModel(
     private val recentlyDismissed = ConcurrentHashMap<String, PermissionRequestData>()
 
     private val activeRequestIds = ConcurrentHashMap.newKeySet<String>()
+    private val respondedRequestIds = ConcurrentHashMap.newKeySet<String>()
     private val countdownJobs = ConcurrentHashMap<String, Job>()
 
     init {
@@ -162,32 +164,81 @@ class ApprovalViewModel(
         _pendingRequests.update { it.filter { it.requestId != requestId } }
         _countdowns.update { it - requestId }
         activeRequestIds.remove(requestId)
+        respondedRequestIds.add(requestId)
         countdownJobs.remove(requestId)?.cancel()
     }
 
     fun approve(requestId: String) {
         if (!ensureConnected()) return
-        sseClient.sendPermissionResponse(requestId, "allow")
-        removeRequest(requestId, saveForRestore = false)
+        if (!respondedRequestIds.add(requestId)) return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { sseClient.sendPermissionResponse(requestId, "allow") }.isSuccess
+            }
+            if (ok) {
+                removeRequest(requestId, saveForRestore = false)
+            } else {
+                respondedRequestIds.remove(requestId)
+                _errorEvents.tryEmit(getApplication<Application>().getString(
+                    com.clawd.mobile.R.string.error_send_failed
+                ))
+            }
+        }
     }
 
     fun deny(requestId: String) {
         if (!ensureConnected()) return
-        sseClient.sendPermissionResponse(requestId, "deny")
-        removeRequest(requestId, saveForRestore = false)
+        if (!respondedRequestIds.add(requestId)) return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { sseClient.sendPermissionResponse(requestId, "deny") }.isSuccess
+            }
+            if (ok) {
+                removeRequest(requestId, saveForRestore = false)
+            } else {
+                respondedRequestIds.remove(requestId)
+                _errorEvents.tryEmit(getApplication<Application>().getString(
+                    com.clawd.mobile.R.string.error_send_failed
+                ))
+            }
+        }
     }
 
     fun approveWithSuggestion(requestId: String, suggestionIndex: Int) {
         if (!ensureConnected()) return
-        sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex)
-        removeRequest(requestId, saveForRestore = false)
+        if (!respondedRequestIds.add(requestId)) return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex) }.isSuccess
+            }
+            if (ok) {
+                removeRequest(requestId, saveForRestore = false)
+            } else {
+                respondedRequestIds.remove(requestId)
+                _errorEvents.tryEmit(getApplication<Application>().getString(
+                    com.clawd.mobile.R.string.error_send_failed
+                ))
+            }
+        }
     }
 
     fun submitElicitation(requestId: String, answers: Map<String, String>) {
         if (!ensureConnected()) return
-        val request = _pendingRequests.value.find { it.requestId == requestId }
-        sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers)
-        removeRequest(requestId, saveForRestore = false)
+        if (!respondedRequestIds.add(requestId)) return
+        viewModelScope.launch {
+            val request = _pendingRequests.value.find { it.requestId == requestId }
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers) }.isSuccess
+            }
+            if (ok) {
+                removeRequest(requestId, saveForRestore = false)
+            } else {
+                respondedRequestIds.remove(requestId)
+                _errorEvents.tryEmit(getApplication<Application>().getString(
+                    com.clawd.mobile.R.string.error_send_failed
+                ))
+            }
+        }
     }
 
     /** Returns true if connected; emits error event and returns false otherwise. */

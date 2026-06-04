@@ -291,8 +291,6 @@ function handleStatePost(req, res, options) {
               tempEvents.push({ event, at: Date.now() });
             }
             const chip = deriveMobileChipFields(hookState, tempEvents);
-            console.log(`[chip-debug] hookState=${hookState} event=${event} tempLast=${JSON.stringify(tempEvents[tempEvents.length-1])} chip=${JSON.stringify(chip)}`);
-            console.log(`[mobile-increment] sid=${sid} hookState=${hookState} effectiveBadge=${effectiveBadge} chipText=${chip ? chip.text : null}`);
             // Resolve display SVG for mobile — uses the same displayHintMap
             // lookup as the desktop renderer so working/juggling/thinking
             // animations match when a hook sends display_svg.

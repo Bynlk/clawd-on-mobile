@@ -20,11 +20,19 @@ class ApprovalReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_APPROVE = "com.clawd.mobile.APPROVE"
         const val ACTION_DENY = "com.clawd.mobile.DENY"
+        const val ACTION_DISMISS = "com.clawd.mobile.DISMISS"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val requestId = intent.getStringExtra("request_id") ?: return
         val notificationId = intent.getIntExtra("notification_id", -1)
+
+        if (intent.action == ACTION_DISMISS) {
+            // Notification swiped — cancel any pending work and notify ViewModel
+            WorkManager.getInstance(context)
+                .cancelUniqueWork("${ApprovalWorker.WORK_NAME_PREFIX}$requestId")
+            return
+        }
 
         val decision = when (intent.action) {
             ACTION_APPROVE -> "allow"

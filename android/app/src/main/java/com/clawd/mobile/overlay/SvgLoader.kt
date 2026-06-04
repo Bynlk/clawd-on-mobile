@@ -458,9 +458,14 @@ object SvgLoader {
         }
     }
 
-    /** Load an HTML template from assets/html/ directory. */
+    /** Load an HTML template from assets/html/ directory. Returns empty string on failure. */
     private fun loadTemplate(context: Context, name: String): String {
-        return context.assets.open("html/$name").bufferedReader().readText()
+        return try {
+            context.assets.open("html/$name").bufferedReader().readText()
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to load template: html/$name", e)
+            ""
+        }
     }
 
     /** Check if an asset file exists in the assets directory. Thread-safe. */

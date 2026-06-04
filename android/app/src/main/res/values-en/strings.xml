@@ -22,6 +22,7 @@
     <string name="status_circuit_open">Connection failed — tap to retry</string>
     <string name="status_not_connected">Not connected</string>
     <string name="error_not_connected">Not connected to server — cannot send response</string>
+    <string name="error_send_failed">Send failed, please retry</string>
     <string name="status_syncing">Syncing…</string>
 
     <!-- Connection alerts -->
