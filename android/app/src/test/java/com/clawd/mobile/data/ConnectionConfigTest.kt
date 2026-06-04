@@ -81,12 +81,6 @@ class ConnectionConfigTest {
     }
 
     @Test
-    fun `generate correct approve url`() {
-        val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
-        assertEquals("http://192.168.1.10:23334/mobile/approve", config.approveUrl())
-    }
-
-    @Test
     fun `generate correct pair url`() {
         val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
         assertEquals("clawd://192.168.1.10:23334/abcdef1234567890abcdef1234567890", config.pairUrl())
@@ -159,12 +153,6 @@ class ConnectionConfigTest {
         // InetAddress.getByName("example.com") may throw, making isLan = false
         assertTrue(url.contains("://example.com:443/mobile/ws"))
         assertFalse(url.contains("token"))
-    }
-
-    @Test
-    fun `approveUrl uses http for lan`() {
-        val lanConfig = ConnectionConfig("192.168.1.10", 23334, "tok")
-        assertTrue(lanConfig.approveUrl().startsWith("http://"))
     }
 
     @Test

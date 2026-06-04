@@ -43,6 +43,9 @@ abstract class AbstractStreamingClient(
     /** Force-cancel the transport handle (called from [destroy]). */
     protected abstract fun cancelTransport()
 
+    /** Send a raw JSON message over the transport. */
+    abstract override fun sendMessage(json: String)
+
     // ── Shared state ─────────────────────────────────────────────────────
 
     @Volatile
@@ -140,11 +143,13 @@ abstract class AbstractStreamingClient(
     }
 
     override fun sendPermissionResponse(requestId: String, behavior: String, suggestionIndex: Int?) {
-        ApprovalSender.sendPermissionResponse(scope, config, requestId, behavior, suggestionIndex)
+        val json = ApprovalSender.buildPermissionResponseJson(requestId, behavior, suggestionIndex)
+        sendMessage(json)
     }
 
     override fun sendElicitationResponse(requestId: String, toolInput: JsonElement?, answers: Map<String, String>) {
-        ApprovalSender.sendElicitationResponse(scope, config, requestId, toolInput, answers)
+        val json = ApprovalSender.buildElicitationResponseJson(requestId, toolInput, answers)
+        sendMessage(json)
     }
 
     override fun destroy() {

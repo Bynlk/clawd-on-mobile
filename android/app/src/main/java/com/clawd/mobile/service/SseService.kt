@@ -15,7 +15,6 @@ import com.clawd.mobile.R
 import com.clawd.mobile.data.ConnectionConfig
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
-import com.clawd.mobile.ws.SseClient
 import com.clawd.mobile.ws.StreamingClient
 import com.clawd.mobile.ws.WsClient
 import com.clawd.mobile.ws.ConnectionState

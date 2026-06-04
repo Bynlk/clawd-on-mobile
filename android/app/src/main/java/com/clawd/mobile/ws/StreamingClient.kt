@@ -22,5 +22,7 @@ interface StreamingClient {
     fun setConnectionState(state: ConnectionState)
     fun sendPermissionResponse(requestId: String, behavior: String, suggestionIndex: Int? = null)
     fun sendElicitationResponse(requestId: String, toolInput: JsonElement?, answers: Map<String, String>)
+    /** Send a raw JSON message over the current transport. */
+    fun sendMessage(json: String)
     fun destroy()
 }

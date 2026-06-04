@@ -7,7 +7,6 @@ import com.clawd.mobile.notification.StatusNotifier
 import com.clawd.mobile.service.SseService
 import com.clawd.mobile.util.HttpClientProvider
 import com.clawd.mobile.ws.CertFingerprintInfo
-import com.clawd.mobile.ws.SseClient
 import com.clawd.mobile.ws.StreamingClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -69,7 +68,7 @@ class ServiceManager(
         startCollectors(client)
     }
 
-    private suspend fun acquireClient(): StreamingClient {
+    private suspend fun acquireClient(): StreamingClient? {
         SseService.getClient()?.let { ws ->
             ws.reconnect()
             return ws
@@ -81,8 +80,8 @@ class ServiceManager(
             ws.reconnect()
             return ws
         }
-        Log.w(TAG, "Service client not ready in 5s, using fallback")
-        return SseClient(prefsStore)
+        Log.w(TAG, "Service client not ready in 5s")
+        return null
     }
 
     // ======================================================================

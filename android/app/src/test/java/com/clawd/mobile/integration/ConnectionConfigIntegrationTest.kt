@@ -61,13 +61,6 @@ class ConnectionConfigIntegrationTest {
         assertTrue(ConnectionConfig("127.0.0.1", 8080, "tok").isLan)
     }
 
-    @Test
-    fun `approve url uses http for lan`() {
-        val lanConfig = ConnectionConfig("192.168.1.10", 23334, "tok")
-        assertTrue(lanConfig.approveUrl().startsWith("http://"))
-        assertTrue(lanConfig.approveUrl().endsWith("/mobile/approve"))
-    }
-
     // ── Security: host validation ──────────────────────────────────────
 
     @Test
@@ -118,11 +111,4 @@ class ConnectionConfigIntegrationTest {
         assertTrue(url.matches(Regex("^wss?://[^:]+:\\d+/mobile/ws$")))
     }
 
-    @Test
-    fun `approve url format is consistent`() {
-        val config = ConnectionConfig("192.168.1.10", 23334, "tok")
-        val url = config.approveUrl()
-
-        assertTrue(url.matches(Regex("^https?://[^:]+:\\d+/mobile/approve$")))
-    }
 }

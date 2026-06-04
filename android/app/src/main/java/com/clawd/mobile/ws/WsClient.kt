@@ -73,4 +73,14 @@ class WsClient(prefsStore: PrefsStore) : AbstractStreamingClient(prefsStore) {
         }.toString()
         ws.send(msg)
     }
+
+    override fun sendMessage(json: String) {
+        val ws = webSocket
+        if (ws == null || connectionState.value != ConnectionState.CONNECTED) {
+            Log.w(tag, "sendMessage skipped: not connected (state=${connectionState.value})")
+            return
+        }
+        val sent = ws.send(json)
+        if (!sent) Log.w(tag, "sendMessage: WebSocket buffer full, message dropped")
+    }
 }

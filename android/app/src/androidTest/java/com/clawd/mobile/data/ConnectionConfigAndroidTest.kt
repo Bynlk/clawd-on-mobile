@@ -45,12 +45,6 @@ class ConnectionConfigAndroidTest {
     }
 
     @Test
-    fun approveUrlUsesHttpForLan() {
-        val config = ConnectionConfig("192.168.1.10", 23334, "tok")
-        assertTrue(config.approveUrl().startsWith("http://"))
-    }
-
-    @Test
     fun pairUrlUsesClawdScheme() {
         val config = ConnectionConfig("192.168.1.10", 23334, "abcdef1234567890abcdef1234567890")
         assertEquals("clawd://192.168.1.10:23334/abcdef1234567890abcdef1234567890", config.pairUrl())
