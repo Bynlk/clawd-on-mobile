@@ -27,7 +27,7 @@ class SseClient(prefsStore: PrefsStore) : AbstractStreamingClient(prefsStore) {
         doConnectPreamble()
         eventSource?.cancel()
 
-        val url = cfg.streamUrl()
+        val url = cfg.sseUrl()
         Log.d(tag, "doConnect → ${cfg.streamUrlMasked()}")
 
         val request = Request.Builder()

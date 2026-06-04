@@ -77,7 +77,7 @@ class ConnectionConfigTest {
     @Test
     fun `generate correct stream url for remote`() {
         val config = ConnectionConfig("example.com", 443, "abcdef1234567890abcdef1234567890")
-        assertEquals("wss://example.com:443/mobile/ws", config.streamUrl())
+        assertEquals("ws://example.com:443/mobile/ws", config.streamUrl())
     }
 
     @Test

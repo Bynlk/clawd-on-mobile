@@ -12,12 +12,13 @@ data class ConnectionConfig(
     /** Whether the host is on a local network (no TLS required). Cached per host. */
     val isLan: Boolean get() = isLanCached(host)
 
-    private val scheme get() = if (isLan) "http" else "https"
-    private val wsScheme get() = if (isLan) "ws" else "wss"
+    // Always use plain http/ws — TLS termination is handled by reverse proxy if needed
+    fun streamUrl(): String = "ws://$host:$port/mobile/ws"
 
-    fun streamUrl(): String = "$wsScheme://$host:$port/mobile/ws"
+    /** SSE endpoint (legacy fallback). */
+    fun sseUrl(): String = "http://$host:$port/mobile/stream"
 
-    fun approveUrl(): String = "$scheme://$host:$port/mobile/approve"
+    fun approveUrl(): String = "http://$host:$port/mobile/approve"
 
     /** URL safe for logging — no token included. */
     fun streamUrlMasked(): String = streamUrl()  // already no token in URL

@@ -293,7 +293,7 @@ function startHttpServer() {
   const listenPorts = getPortCandidatesFn();
   let listenIndex = 0;
   httpServer.on("error", (err) => {
-    const bindHost = process.env.CLAWD_BIND_HOST || "127.0.0.1";
+    const bindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
     if (!activeServerPort && err.code === "EADDRINUSE" && listenIndex < listenPorts.length - 1) {
       listenIndex++;
       httpServer.listen(listenPorts[listenIndex], bindHost);
@@ -311,7 +311,7 @@ function startHttpServer() {
   httpServer.on("listening", () => {
     activeServerPort = listenPorts[listenIndex];
     writeRuntimeConfigFn(activeServerPort);
-    const logHost = process.env.CLAWD_BIND_HOST || "127.0.0.1";
+    const logHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
     console.log(`Clawd state server listening on ${logHost}:${activeServerPort}`);
     console.log(`  Mobile companion token: ${MOBILE_TOKEN.slice(0, 4)}… (set via QR scan or settings page)`);
     // Defer hook/plugin registration off the startup path. Each sync call
@@ -323,7 +323,7 @@ function startHttpServer() {
     });
   });
 
-  const bindHost = process.env.CLAWD_BIND_HOST || "127.0.0.1";
+  const bindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
   httpServer.listen(listenPorts[listenIndex], bindHost);
 }
 
@@ -493,7 +493,7 @@ function startMobileServer() {
   });
   console.log(`[mobile-ws] WebSocket endpoint at /mobile/ws on port ${MOBILE_PORT}`);
 
-  const mobileBindHost = process.env.CLAWD_BIND_HOST || "127.0.0.1";
+  const mobileBindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
   mobileHttpServer.listen(MOBILE_PORT, mobileBindHost, () => {
     mobileServerPort = MOBILE_PORT;
     console.log(`[mobile-sse] Listening on ${mobileBindHost}:${MOBILE_PORT}`);
