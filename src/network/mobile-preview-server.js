@@ -149,7 +149,7 @@ function initMobilePreviewServer(ctx) {
         const snapshot = {};
         for (const [sid, data] of sessionCache) snapshot[sid] = data;
         ws.send(buildMessage("snapshot", { sessions: snapshot }));
-      } catch {}
+      } catch (e) { console.warn("[mobile-preview] snapshot send error:", e.message); }
 
       startHeartbeat();
       ws.isAlive = true;

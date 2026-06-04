@@ -115,9 +115,9 @@ class MobileWSServer extends EventEmitter {
       try {
         const msg = JSON.parse(data);
         for (const handler of this._messageHandlers) {
-          try { handler(ws, msg); } catch {}
+          try { handler(ws, msg); } catch (e) { console.warn("[mobile-ws] message handler error:", e.message); }
         }
-      } catch {}
+      } catch (e) { console.warn("[mobile-ws] invalid message:", e.message); }
     });
 
     ws.on("close", () => {

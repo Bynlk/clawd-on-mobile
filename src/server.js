@@ -114,6 +114,34 @@ let lastClaudeHookGuardNotice = null;
 const codexOfficialTurns = new Map();
 const recentHookEvents = new Map();
 
+/**
+ * Resolve a pending mobile approval by ID.
+ * Shared by HTTP /mobile/approve and WS permission_response handlers.
+ * Returns { ok: true } on success, { ok: false, error } on failure.
+ */
+function resolveMobileApproval(id, data) {
+  if (!id) return { ok: false, error: "missing id" };
+  const decision = data.decision || data.behavior;
+  if (!decision || (decision !== "allow" && decision !== "deny")) {
+    return { ok: false, error: "need decision: allow|deny" };
+  }
+  const pending = pendingMobileApprovals.get(id);
+  if (!pending) {
+    return { ok: false, error: "request not found or expired" };
+  }
+  clearTimeout(pending.timer);
+  pendingMobileApprovals.delete(id);
+  const resolvedDecision = (decision === "allow" && Number.isFinite(data.suggestionIndex))
+    ? `suggestion:${data.suggestionIndex}`
+    : decision;
+  // Elicitation: forward updatedInput (answers) to resolvePermissionEntry
+  if (decision === "allow" && data.updatedInput && pending.entry) {
+    pending.entry.resolvedUpdatedInput = data.updatedInput;
+  }
+  try { pending.resolve(resolvedDecision); } catch (e) { console.warn("[mobile] approval resolve error:", e.message); }
+  return { ok: true };
+}
+
 function shouldDropForDnd() {
   if (typeof ctx.shouldDropForDnd === "function") {
     try {
@@ -313,6 +341,21 @@ function startHttpServer() {
     heartbeatIntervalMs: 30000,
   });
 
+  // Register WS message handler for approval responses from Android
+  mobileWS.onClientMessage((ws, msg) => {
+    if (msg.type === "permission_response" || msg.type === "elicitation_response") {
+      const result = resolveMobileApproval(msg.id || msg.requestId, msg);
+      try {
+        ws.send(JSON.stringify({
+          type: "approval_result",
+          id: msg.id || msg.requestId,
+          ...result,
+          timestamp: Date.now(),
+        }));
+      } catch (e) { console.warn("[mobile-ws] send approval_result error:", e.message); }
+    }
+  });
+
   // Load persisted connection history
   const savedHistory = savedState.connectionHistory;
   if (savedHistory) mobileWS.loadConnectionHistory(savedHistory);
@@ -329,7 +372,7 @@ function startHttpServer() {
           });
         }
       }
-    } catch {}
+    } catch (e) { console.warn("[mobile] notifyMobileState error:", e.message); }
     // Persist connection history
     saveMobileState({ connectionHistory: mobileWS.getConnectionHistory() });
   }
@@ -472,30 +515,10 @@ function startMobileServer() {
           res.end(JSON.stringify({ error: "invalid json" }));
           return;
         }
-        const { id, decision } = data;
-        if (!id || (decision !== "allow" && decision !== "deny")) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "need { id, decision: \"allow\"|\"deny\" }" }));
-          return;
-        }
-        const pending = pendingMobileApprovals.get(id);
-        if (!pending) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "request not found or expired" }));
-          return;
-        }
-        clearTimeout(pending.timer);
-        pendingMobileApprovals.delete(id);
-        const resolvedDecision = (decision === "allow" && Number.isFinite(data.suggestionIndex))
-          ? `suggestion:${data.suggestionIndex}`
-          : decision;
-        // Elicitation: forward updatedInput (answers) to resolvePermissionEntry
-        if (decision === "allow" && data.updatedInput && pending.entry) {
-          pending.entry.resolvedUpdatedInput = data.updatedInput;
-        }
-        try { pending.resolve(resolvedDecision); } catch {}
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true }));
+        const result = resolveMobileApproval(data.id, data);
+        const status = result.ok ? 200 : (result.error === "request not found or expired" ? 404 : 400);
+        res.writeHead(status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
       });
       return;
     }
