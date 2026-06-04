@@ -56,7 +56,11 @@
         <service
             android:name=".service.SseService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="persistent_ws_connection" />
+        </service>
 
         <service
             android:name=".overlay.FloatingPetService"
