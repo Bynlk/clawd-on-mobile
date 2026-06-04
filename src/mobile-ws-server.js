@@ -29,7 +29,8 @@ class MobileWSServer extends EventEmitter {
 
   _handleConnection(ws, req) {
     const url = new URL(req.url, "http://localhost");
-    // 支持两种 token 传递方式: URL 参数 或 Authorization header
+    // Token auth: URL param or Authorization header.
+    // SECURITY: ?token=xxx in URL may leak via logs/Referrer; prefer Authorization: Bearer header.
     let token = url.searchParams.get("token");
     if (!token) {
       const authHeader = req.headers["authorization"] || "";

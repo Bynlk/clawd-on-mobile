@@ -454,9 +454,14 @@ function startMobileServer() {
     res.end();
   });
 
+  let mobilePortFallback = false;
   mobileHttpServer.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      console.warn(`[mobile-ws] Port ${MOBILE_PORT} occupied, mobile server disabled`);
+    if (err.code === "EADDRINUSE" && !mobilePortFallback) {
+      mobilePortFallback = true;
+      console.warn(`[mobile-ws] Port ${MOBILE_PORT} occupied, trying ${MOBILE_PORT + 1}`);
+      mobileHttpServer.listen(MOBILE_PORT + 1, mobileBindHost);
+    } else if (err.code === "EADDRINUSE") {
+      console.warn(`[mobile-ws] Ports ${MOBILE_PORT}-${MOBILE_PORT + 1} both occupied, mobile server disabled`);
     } else {
       console.error("[mobile-ws] Server error:", err.message);
     }

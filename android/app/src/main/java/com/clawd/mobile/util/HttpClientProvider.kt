@@ -100,6 +100,7 @@ object HttpClientProvider {
             val sslContext = SSLContext.getInstance("TLS")
             sslContext.init(null, arrayOf(tofuTrustManager), SecureRandom())
             builder.sslSocketFactory(sslContext.socketFactory, tofuTrustManager)
+            // LAN: disable hostname verification (TOFU trust model — user confirms fingerprint)
             builder.hostnameVerifier(HostnameVerifier { _, _ -> true })
         } else {
             // Non-LAN: apply certificate pinning if fingerprint is configured

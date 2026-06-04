@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <!--
-        Allow cleartext for LAN connections.
-        The server runs plain HTTP on LAN; the app uses http:// for isLan hosts
-        and https:// for non-LAN hosts (see ConnectionConfig.scheme).
+        Allow cleartext for LAN connections only.
+        The server runs plain ws:// on LAN; non-LAN connections are enforced
+        at the OkHttp layer (see HttpClientProvider).
         Android's <domain> matching is hostname-based (no CIDR), so we use
         base-config cleartext=true since LAN IPs are dynamic.
+        SECURITY: This is intentionally permissive for LAN use. Non-LAN
+        connections are protected by OkHttp's strict TLS verification.
     -->
     <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
