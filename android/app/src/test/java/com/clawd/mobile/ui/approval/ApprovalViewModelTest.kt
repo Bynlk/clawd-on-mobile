@@ -1,6 +1,7 @@
 package com.clawd.mobile.ui.approval
 
 import android.app.Application
+import android.os.SystemClock
 import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.data.SessionData
@@ -54,6 +55,12 @@ class ApprovalViewModelTest {
         mockkObject(NotificationHelper)
         every { NotificationHelper.showApprovalNotification(any(), any(), any()) } just Runs
         every { NotificationHelper.showElicitationNotification(any(), any(), any()) } just Runs
+
+        // Mock SystemClock.elapsedRealtime() — returns 0 by default in JVM tests,
+        // which causes countdown loops to hang forever. Return a huge value so
+        // deadline overflows and countdown exits immediately.
+        mockkStatic(SystemClock::class)
+        every { SystemClock.elapsedRealtime() } returns Long.MAX_VALUE / 2
 
         permissionRequestsFlow = MutableSharedFlow(extraBufferCapacity = 16)
         sessionsFlow = MutableStateFlow(emptyMap())
