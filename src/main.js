@@ -2945,7 +2945,6 @@ registerSettingsIpc({
   getMobileToken,
   getHookServerPort,
   QRCode: require("qrcode"),
-  getMobileWS: () => mobileWS,
 });
 
 registerSessionIpc({
@@ -2969,7 +2968,7 @@ registerSessionIpc({
       console.warn("Clawd: failed to pin Session HUD:", result.message);
     }
   },
-  getMobileWS: () => mobileWS,
+  getMobileWS,
 });
 
 function createWindow() {
