@@ -60,29 +60,16 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp)
         ) {
-            // Connection info (when connected)
-            if (isConnected) {
-                ConnectionInfoCard(sseClient)
-                Spacer(modifier = Modifier.height(12.dp))
-            }
+            // Connection status card (always visible)
+            ConnectionStatusCard(
+                isConnected = isConnected,
+                sseClient = sseClient,
+                onScan = { navController.navigate("scan") },
+                onManual = { navController.navigate("manual") }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Accordion sections
-            AccordionSection(
-                title = stringResource(R.string.settings_scan_connect),
-                icon = ClawdIcons.QrCode,
-                defaultExpanded = false
-            ) {
-                ScanSection(onScan = { navController.navigate("scan") })
-            }
-
-            AccordionSection(
-                title = stringResource(R.string.settings_manual_connect),
-                icon = ClawdIcons.DeviceDesktop,
-                defaultExpanded = false
-            ) {
-                ManualSection(onManual = { navController.navigate("manual") })
-            }
-
             AccordionSection(
                 title = stringResource(R.string.settings_notification),
                 icon = ClawdIcons.Bell,
@@ -141,10 +128,17 @@ private fun SettingsTopBar(onBack: () -> Unit) {
 // ─── Connection Info Card ─────────────────────────────────────────
 
 @Composable
-private fun ConnectionInfoCard(sseClient: StreamingClient) {
+private fun ConnectionStatusCard(
+    isConnected: Boolean,
+    sseClient: StreamingClient,
+    onScan: () -> Unit,
+    onManual: () -> Unit
+) {
     val clipboard = LocalClipboardManager.current
-    val host = sseClient.currentHost ?: ""
-    val port = sseClient.currentPort?.toString() ?: ""
+    val borderColor = if (isConnected) ClawdGreenBorder else ClawdBorderDark
+    val dotColor = if (isConnected) ClawdGreenBright else ClawdFaintDark
+    val statusText = if (isConnected) stringResource(R.string.status_connected) else stringResource(R.string.status_not_connected)
+    val statusColor = if (isConnected) ClawdGreenBright else ClawdFaintDark
 
     Card(
         modifier = Modifier
@@ -152,27 +146,62 @@ private fun ConnectionInfoCard(sseClient: StreamingClient) {
             .padding(horizontal = 14.dp, vertical = 4.dp),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = ClawdSurfaceDark),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdGreenBorder)
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, borderColor)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Status dot + text
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(7.dp)
                         .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(ClawdGreenBright)
+                        .background(dotColor)
                 )
                 Text(
-                    stringResource(R.string.status_connected),
+                    statusText,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
-                    color = ClawdGreenBright,
+                    color = statusColor,
                     modifier = Modifier.padding(start = 6.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(10.dp))
-            CopyableRow(stringResource(R.string.settings_ip_address), host) { clipboard.setText(AnnotatedString(host)) }
-            CopyableRow(stringResource(R.string.settings_port), port) { clipboard.setText(AnnotatedString(port)) }
+
+            if (isConnected) {
+                // Connected: show IP + port
+                val host = sseClient.currentHost ?: ""
+                val port = sseClient.currentPort?.toString() ?: ""
+                Spacer(modifier = Modifier.height(10.dp))
+                CopyableRow(stringResource(R.string.settings_ip_address), host) { clipboard.setText(AnnotatedString(host)) }
+                CopyableRow(stringResource(R.string.settings_port), port) { clipboard.setText(AnnotatedString(port)) }
+            } else {
+                // Disconnected: show scan + manual buttons
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onScan,
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(ClawdIcons.QrCode, null, modifier = Modifier.size(16.dp), tint = ClawdMutedDark)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.settings_scan_open), color = ClawdMutedDark, fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = onManual,
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(ClawdIcons.DeviceDesktop, null, modifier = Modifier.size(16.dp), tint = ClawdMutedDark)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.settings_manual_open), color = ClawdMutedDark, fontSize = 12.sp)
+                    }
+                }
+            }
         }
     }
 }
@@ -272,48 +301,6 @@ private fun AccordionSection(
                 }
             }
         }
-    }
-}
-
-// ─── Scan Section ─────────────────────────────────────────────────
-
-@Composable
-private fun ScanSection(onScan: () -> Unit) {
-    Text(
-        stringResource(R.string.settings_scan_desc),
-        fontSize = 12.sp,
-        color = ClawdFaintDark,
-        modifier = Modifier.padding(bottom = 12.dp)
-    )
-    OutlinedButton(
-        onClick = onScan,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Icon(ClawdIcons.QrCode, null, modifier = Modifier.size(18.dp), tint = ClawdMutedDark)
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(stringResource(R.string.settings_scan_open), color = ClawdMutedDark)
-    }
-}
-
-// ─── Manual Section ───────────────────────────────────────────────
-
-@Composable
-private fun ManualSection(onManual: () -> Unit) {
-    Text(
-        stringResource(R.string.settings_manual_desc),
-        fontSize = 12.sp,
-        color = ClawdFaintDark,
-        modifier = Modifier.padding(bottom = 12.dp)
-    )
-    OutlinedButton(
-        onClick = onManual,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(stringResource(R.string.settings_manual_open), color = ClawdMutedDark)
     }
 }
 
