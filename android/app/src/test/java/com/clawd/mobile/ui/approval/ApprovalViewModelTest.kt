@@ -1,7 +1,6 @@
 package com.clawd.mobile.ui.approval
 
 import android.app.Application
-import android.os.SystemClock
 import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.data.SessionData
@@ -14,7 +13,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -26,8 +24,9 @@ import org.junit.Test
 /**
  * Unit tests for [ApprovalViewModel].
  *
- * SystemClock.elapsedRealtime() is mocked with an incrementing counter so
- * the countdown loop sees time advancing and exits after one iteration.
+ * Uses UnconfinedTestDispatcher so coroutines execute eagerly (no advanceUntilIdle needed).
+ * SystemClock.elapsedRealtime() returns 0 so countdown computes remainingMs = timeout (positive).
+ * The countdown loop runs but we don't wait for it — tests check state immediately.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ApprovalViewModelTest {
@@ -38,11 +37,6 @@ class ApprovalViewModelTest {
     private lateinit var permissionRequestsFlow: MutableSharedFlow<PermissionRequestData>
     private lateinit var sessionsFlow: MutableStateFlow<Map<String, SessionData>>
     private lateinit var connectionStateFlow: MutableStateFlow<ConnectionState>
-
-    // Incrementing counter for SystemClock.elapsedRealtime() mock.
-    // First call returns 0 (deadline calc), subsequent calls return large value
-    // so the countdown loop exits immediately.
-    private var elapsedCounter = 0L
 
     @Before
     fun setUp() {
@@ -56,15 +50,6 @@ class ApprovalViewModelTest {
         mockkObject(NotificationHelper)
         every { NotificationHelper.showApprovalNotification(any(), any(), any()) } just Runs
         every { NotificationHelper.showElicitationNotification(any(), any(), any()) } just Runs
-
-        // Mock SystemClock with incrementing counter:
-        // Call 0: returns 0 (deadline = 0 + timeout)
-        // Call 1+: returns Long.MAX_VALUE/2 (remainingMs = deadline - huge = negative → exit)
-        elapsedCounter = 0
-        mockkStatic(SystemClock::class)
-        every { SystemClock.elapsedRealtime() } answers {
-            if (elapsedCounter++ == 0L) 0L else Long.MAX_VALUE / 2
-        }
 
         permissionRequestsFlow = MutableSharedFlow(extraBufferCapacity = 16)
         sessionsFlow = MutableStateFlow(emptyMap())
@@ -143,7 +128,6 @@ class ApprovalViewModelTest {
 
         assertNotNull(vm.countdowns.value["cd2"])
         vm.approve("cd2")
-        advanceUntilIdle()
         assertNull(vm.countdowns.value["cd2"])
     }
 
@@ -156,7 +140,6 @@ class ApprovalViewModelTest {
         assertEquals(1, vm.pendingRequests.value.size)
 
         vm.approve("app1")
-        advanceUntilIdle()
 
         verify { streamingClient.sendPermissionResponse("app1", "allow", null) }
         assertTrue(vm.pendingRequests.value.isEmpty())
@@ -168,7 +151,6 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "den1"))
 
         vm.deny("den1")
-        advanceUntilIdle()
 
         verify { streamingClient.sendPermissionResponse("den1", "deny", null) }
         assertTrue(vm.pendingRequests.value.isEmpty())
@@ -180,7 +162,6 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "sug1"))
 
         vm.approveWithSuggestion("sug1", 2)
-        advanceUntilIdle()
 
         verify { streamingClient.sendPermissionResponse("sug1", "allow", 2) }
         assertTrue(vm.pendingRequests.value.isEmpty())
@@ -192,7 +173,6 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "no-restore"))
 
         vm.approve("no-restore")
-        advanceUntilIdle()
 
         // Should NOT be restorable via notification
         vm.setNotificationRequestId("no-restore")
@@ -260,7 +240,6 @@ class ApprovalViewModelTest {
             if (vm.pendingRequests.value.size > beforeSize) restoredCount++
             // Clean up so next iteration starts fresh
             vm.approve("evict$i")
-            advanceUntilIdle()
         }
         assertTrue("At most 20 should be restorable, but $restoredCount were", restoredCount <= 20)
         assertTrue("At least some should be restorable", restoredCount > 0)
@@ -349,7 +328,6 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "multi3"))
 
         vm.approve("multi2")
-        advanceUntilIdle()
 
         assertEquals(2, vm.pendingRequests.value.size)
         assertTrue(vm.pendingRequests.value.any { it.requestId == "multi1" })
