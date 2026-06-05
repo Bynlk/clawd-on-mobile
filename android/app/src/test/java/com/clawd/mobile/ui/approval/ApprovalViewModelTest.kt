@@ -14,7 +14,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -91,16 +90,6 @@ class ApprovalViewModelTest {
         agentId = "claude",
         toolInputSummary = "ls -la",
     )
-
-    // Helper: emit request and advance past countdown so it doesn't interfere
-    private fun kotlinx.coroutines.test.TestScope.emitAndAdvancePastCountdown(
-        request: PermissionRequestData
-    ) {
-        permissionRequestsFlow.emit(request)
-        advanceUntilIdle() // process emit + start countdown
-        advanceTimeBy(60_000) // advance past countdown deadline
-        advanceUntilIdle() // process countdown completion + removeRequest
-    }
 
     // ── 1. Deduplication ──────────────────────────────────────────────
 
