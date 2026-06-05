@@ -529,18 +529,21 @@ function registerSettingsIpc(options = {}) {
   handle("settings:mobile-connection-info", async () => {
     try {
       const mobileWS = options.getMobileWS ? options.getMobileWS() : null;
-      if (!mobileWS) return { status: "error", message: "Mobile server not available" };
+      if (!mobileWS) { console.warn("[settings-ipc] mobileWS is null"); return { status: "error", message: "Mobile server not available" }; }
       const port = mobileWS._port;
       const tok = mobileWS.token;
       if (!Number.isInteger(port) || port <= 0 || typeof tok !== "string" || !tok) {
+        console.log("[settings-ipc] mobile server starting, port:", port, "hasToken:", !!tok);
         return { status: "starting", message: "Mobile server is starting" };
       }
       const lanIp = mobileWS.getLocalIP();
       const pairUrl = `clawd://${lanIp}:${port}/${tok}`;
       const pwaUrl = `http://${lanIp}:${port}/mobile/?token=${tok}`;
       const clients = mobileWS.getClientInfoList();
+      console.log("[settings-ipc] mobile info ready, lanIp:", lanIp, "port:", port);
       return { status: "ok", port, token: tok, lanIp, pairUrl, pwaUrl, clients };
     } catch (err) {
+      console.warn("[settings-ipc] mobile info error:", err && err.message);
       return { status: "error", message: (err && err.message) || String(err) };
     }
   });
@@ -549,8 +552,13 @@ function registerSettingsIpc(options = {}) {
   handle("settings:generate-qr", async (text) => {
     try {
       const QRCode = options.QRCode || require("qrcode");
-      return await QRCode.toDataURL(text, { width: 200, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
+      if (!QRCode) { console.warn("[settings-ipc] QRCode library not available"); return null; }
+      if (!text) { console.warn("[settings-ipc] generate-qr called with empty text"); return null; }
+      const dataUrl = await QRCode.toDataURL(text, { width: 200, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
+      console.log("[settings-ipc] QR generated, dataUrl length:", dataUrl ? dataUrl.length : 0);
+      return dataUrl;
     } catch (err) {
+      console.warn("[settings-ipc] QR generation failed:", err && err.message);
       return null;
     }
   });
