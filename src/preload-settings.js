@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   confirmRemoveTheme: (themeId) =>
     ipcRenderer.invoke("settings:confirm-remove-theme", themeId),
   getMobileConnectionInfo: () => ipcRenderer.invoke("settings:mobile-connection-info"),
+  generateQr: (text) => ipcRenderer.invoke("settings:generate-qr", text),
   onChanged: (cb) => {
     if (typeof cb === "function") listeners.add(cb);
   },

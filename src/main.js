@@ -1172,7 +1172,6 @@ const _stateCtx = {
     if (telegramCompanion) {
       try { telegramCompanion.onSnapshot(snapshot); } catch {}
     }
-    if (_lanWss) { try { _lanWss.onSnapshot(); } catch {} }
   },
   onSessionRemoved: (sessionId) => {
     const ws = getMobileWS();
@@ -1534,17 +1533,6 @@ _serverCtx.removePendingPermission = function(permEntry, reason) {
   }
   return result;
 };
-
-// ── LAN WebSocket bridge for PWA mobile clients (lazy-loaded) ──
-let _lanWss = null;
-if (_settingsController.get("mobilePreviewEnabled") === true) {
-  const { initMobilePreviewServer } = require("./network/mobile-preview-server");
-  _lanWss = initMobilePreviewServer({
-    sessions,
-    getSettingsSnapshot: () => _settingsController.getSnapshot(),
-    isEnabled: () => _settingsController.get("mobilePreviewEnabled") === true,
-  });
-}
 
 function updateLog(msg) {
   if (!updateDebugLog) return;
@@ -2771,21 +2759,6 @@ _settingsController.subscribeKey("tgApproval", () => {
   if (suppressTelegramApprovalSidecarSync > 0) return;
   queueTelegramApprovalSidecarSync("settings");
 });
-_settingsController.subscribeKey("mobilePreviewEnabled", async (enabled) => {
-  if (enabled) {
-    if (!_lanWss) {
-      const { initMobilePreviewServer } = require("./network/mobile-preview-server");
-      _lanWss = initMobilePreviewServer({
-        sessions,
-        getSettingsSnapshot: () => _settingsController.getSnapshot(),
-        isEnabled: () => _settingsController.get("mobilePreviewEnabled") === true,
-      });
-    }
-    await _lanWss.start();
-  } else if (_lanWss) {
-    _lanWss.cleanup();
-  }
-});
 
 animationOverridesMain = createSettingsAnimationOverridesMain({
   app,
@@ -2972,7 +2945,7 @@ registerSettingsIpc({
   getMobileToken,
   getHookServerPort,
   QRCode: require("qrcode"),
-  getLanWsServer: () => _lanWss,
+  getMobileWS: () => mobileWS,
 });
 
 registerSessionIpc({
@@ -2996,7 +2969,7 @@ registerSessionIpc({
       console.warn("Clawd: failed to pin Session HUD:", result.message);
     }
   },
-  getLanWsServer: () => _lanWss,
+  getMobileWS: () => mobileWS,
 });
 
 function createWindow() {
@@ -3129,7 +3102,6 @@ function createWindow() {
   startMainTick();
   startHttpServer();
   startMobileServer();
-  if (_settingsController.get("mobilePreviewEnabled") === true) _lanWss.start();
   startStaleCleanup();
   // Wait for renderer to be ready before sending initial state
   // If hooks arrived during startup, respect them instead of forcing idle
@@ -3432,7 +3404,6 @@ if (!gotTheLock) {
     if (hardwareBuddyAdapter) hardwareBuddyAdapter.stop();
     _perm.cleanup();
     _server.cleanup();
-    if (_lanWss) _lanWss.cleanup();
     _updateBubble.cleanup();
     _state.cleanup();
     _tick.cleanup();

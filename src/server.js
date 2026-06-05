@@ -432,26 +432,13 @@ function broadcastHookEvent(eventData) {
 function startMobileServer() {
   const MOBILE_PORT = 23334;
   mobileHttpServer = createHttpServer((req, res) => {
-    // WebSocket upgrade on /mobile/ws is handled by wsServerMobile below
-
-    if (req.method === "OPTIONS") {
-      const corsOrigin = getAllowedCorsOrigin(req);
-      if (!corsOrigin) {
-        res.writeHead(403);
-        res.end();
-        return;
-      }
-      res.writeHead(204, {
-        "Access-Control-Allow-Origin": corsOrigin,
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      });
-      res.end();
-      return;
+    // All HTTP requests go through MobileWSServer.handleRequest (token-protected)
+    if (mobileWS) {
+      mobileWS.handleRequest(req, res);
+    } else {
+      res.writeHead(503);
+      res.end("Server not ready");
     }
-
-    res.writeHead(404);
-    res.end();
   });
 
   let mobilePortFallback = false;
@@ -467,21 +454,24 @@ function startMobileServer() {
     }
   });
 
-  // Add WebSocket support on mobile port at /mobile/ws
+  // WebSocket: /mobile/ws (Android) and /ws (PWA)
   const WebSocket = require("ws");
-  const wsServerMobile = new WebSocket.Server({ server: mobileHttpServer, path: "/mobile/ws" });
-  wsServerMobile.on("connection", (ws, req) => {
-    if (mobileWS) {
-      mobileWS._handleConnection(ws, req);
-    } else {
-      ws.close(1013, "Server not ready");
-    }
+  const wsAndroid = new WebSocket.Server({ server: mobileHttpServer, path: "/mobile/ws" });
+  wsAndroid.on("connection", (ws, req) => {
+    if (mobileWS) mobileWS._handleConnection(ws, req);
+    else ws.close(1013, "Server not ready");
+  });
+  const wsPwa = new WebSocket.Server({ server: mobileHttpServer, path: "/ws" });
+  wsPwa.on("connection", (ws, req) => {
+    if (mobileWS) mobileWS._handleConnection(ws, req);
+    else ws.close(1013, "Server not ready");
   });
   console.log(`[mobile-ws] WebSocket endpoint at /mobile/ws on port ${MOBILE_PORT}`);
 
   const mobileBindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
   mobileHttpServer.listen(MOBILE_PORT, mobileBindHost, () => {
     mobileServerPort = MOBILE_PORT;
+    if (mobileWS) mobileWS.setPort(MOBILE_PORT);
     console.log(`[mobile-ws] Listening on ${mobileBindHost}:${MOBILE_PORT}`);
   });
 }

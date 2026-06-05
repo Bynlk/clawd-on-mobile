@@ -1,5 +1,8 @@
 const WebSocket = require("ws");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 const { EventEmitter } = require("events");
 
 const DEFAULT_MAX_CLIENTS = 10;
@@ -7,6 +10,18 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
 const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX_MESSAGES = 60;
 const MAX_HISTORY = 50;
+
+const PWA_DIR = path.resolve(__dirname, "../pwa");
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json",
+};
 
 class MobileWSServer extends EventEmitter {
   constructor(httpServer, options) {
@@ -344,16 +359,67 @@ class MobileWSServer extends EventEmitter {
     return false;
   }
 
+  // ── HTTP: PWA static files + API (all token-protected) ──
+
+  getLocalIP() {
+    const ifaces = os.networkInterfaces();
+    const wlan = /WLAN|Wi-?Fi|Wireless|无线/i;
+    for (const n of Object.keys(ifaces)) {
+      if (wlan.test(n)) { for (const i of ifaces[n]) { if (i.family === "IPv4" && !i.internal) return i.address; } }
+    }
+    for (const n of Object.keys(ifaces)) {
+      for (const i of ifaces[n]) { if (i.family === "IPv4" && !i.internal) return i.address; }
+    }
+    return "127.0.0.1";
+  }
+
+  _extractToken(req) {
+    try {
+      const u = new URL(req.url, "http://localhost");
+      const t = u.searchParams.get("token");
+      if (t) return t;
+    } catch {}
+    const h = req.headers["authorization"] || "";
+    return h.startsWith("Bearer ") ? h.slice(7) : null;
+  }
+
+  handleRequest(req, res) {
+    const reqToken = this._extractToken(req);
+    if (!reqToken || reqToken !== this.token) {
+      res.writeHead(401, { "Content-Type": "text/html; charset=utf-8" });
+      res.end('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Clawd</title><style>body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.box{text-align:center;max-width:400px;padding:2rem}h1{font-size:1.5rem}p{color:#a0a0a0}</style></head><body><div class="box"><h1>\u{1f512} 需要连接信息</h1><p>请在 Clawd 桌面端「设置 → 移动端」获取带 Token 的链接。</p></div></body></html>');
+      return;
+    }
+    let urlPath;
+    try { urlPath = new URL(req.url, "http://localhost").pathname; } catch { res.writeHead(400); res.end(); return; }
+    if (urlPath === "/api/connection-info") {
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-cache" });
+      res.end(JSON.stringify({ status: "ok", port: this._port || null, lanIp: this.getLocalIP(), token: this.token, clientCount: this.getClientCount() }));
+      return;
+    }
+    if (urlPath === "/mobile/" || urlPath === "/mobile") urlPath = "/mobile/index.html";
+    if (!urlPath.startsWith("/mobile/")) { res.writeHead(404); res.end(); return; }
+    const rel = urlPath.slice("/mobile/".length);
+    const filePath = path.join(PWA_DIR, rel);
+    if (!filePath.startsWith(PWA_DIR)) { res.writeHead(403); res.end(); return; }
+    const ext = path.extname(filePath).toLowerCase();
+    fs.readFile(filePath, (err, data) => {
+      if (err) { res.writeHead(404); res.end(); return; }
+      let content = data;
+      if (ext === ".html") content = Buffer.from(data.toString("utf-8").replace("<head>", '<head><meta name="clawd-token" content="' + this.token + '">'));
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600" });
+      res.end(content);
+    });
+  }
+
+  setPort(port) { this._port = port; }
+
   close() {
     this._stopHeartbeat();
-    for (const client of this.clients) {
-      client.close(1001, "Server shutting down");
-    }
+    for (const client of this.clients) { client.close(1001, "Server shutting down"); }
     this.clients.clear();
     this.clientMeta.clear();
-    for (const [, ext] of this.externalClients) {
-      if (ext.res) { try { ext.res.end(); } catch {} }
-    }
+    for (const [, ext] of this.externalClients) { if (ext.res) { try { ext.res.end(); } catch {} } }
     this.externalClients.clear();
     this.wss.close();
   }

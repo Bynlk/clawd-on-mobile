@@ -525,40 +525,33 @@ function registerSettingsIpc(options = {}) {
     });
   }
 
-  // LAN connection info (upstream)
+  // Mobile connection info — unified from MobileWSServer
   handle("settings:mobile-connection-info", async () => {
     try {
-      const lanWsServer = options.getLanWsServer ? options.getLanWsServer() : null;
-      if (!lanWsServer) return { status: "error", message: "LAN bridge not available" };
-      const port = lanWsServer.getPort();
-      const tok = lanWsServer.getToken();
+      const mobileWS = options.getMobileWS ? options.getMobileWS() : null;
+      if (!mobileWS) return { status: "error", message: "Mobile server not available" };
+      const port = mobileWS._port;
+      const tok = mobileWS.token;
       if (!Number.isInteger(port) || port <= 0 || typeof tok !== "string" || !tok) {
-        return { status: "starting", message: "LAN bridge is starting" };
+        return { status: "starting", message: "Mobile server is starting" };
       }
-      const os = require("os");
-      let lanIp = "127.0.0.1";
-      const interfaces = os.networkInterfaces();
-      const wlanPattern = /WLAN|Wi-?Fi|Wireless|无线/i;
-      for (const name of Object.keys(interfaces)) {
-        if (wlanPattern.test(name)) {
-          for (const iface of interfaces[name]) {
-            if (iface.family === "IPv4" && !iface.internal) { lanIp = iface.address; break; }
-          }
-          if (lanIp !== "127.0.0.1") break;
-        }
-      }
-      if (lanIp === "127.0.0.1") {
-        for (const name of Object.keys(interfaces)) {
-          for (const iface of interfaces[name]) {
-            if (iface.family === "IPv4" && !iface.internal) { lanIp = iface.address; break; }
-          }
-          if (lanIp !== "127.0.0.1") break;
-        }
-      }
-      const pairUrl = `http://${lanIp}:${port}/mobile/?host=${lanIp}&port=${port}&token=${tok}`;
-      return { status: "ok", port, token: tok, lanIp, pairUrl };
+      const lanIp = mobileWS.getLocalIP();
+      const pairUrl = `clawd://${lanIp}:${port}/${tok}`;
+      const pwaUrl = `http://${lanIp}:${port}/mobile/?token=${tok}`;
+      const clients = mobileWS.getClientInfoList();
+      return { status: "ok", port, token: tok, lanIp, pairUrl, pwaUrl, clients };
     } catch (err) {
       return { status: "error", message: (err && err.message) || String(err) };
+    }
+  });
+
+  // QR code generation
+  handle("settings:generate-qr", async (text) => {
+    try {
+      const QRCode = options.QRCode || require("qrcode");
+      return await QRCode.toDataURL(text, { width: 200, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
+    } catch (err) {
+      return null;
     }
   });
 
