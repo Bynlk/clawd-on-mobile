@@ -3496,25 +3496,7 @@ html, body {
   opacity: 0.8;
 }
 
-/* Mobile Companion Tab */
-#mobile-qr-container {
-  transition: background 0.2s ease;
-}
-
-#mobile-qr-image {
-  image-rendering: pixelated;
-}
-
-#mobile-device-list:empty::after {
-  content: attr(data-empty);
-  display: block;
-  padding: 16px;
-  text-align: center;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-/* === Mobile Tab (upstream) === */
+/* === Mobile Tab === */
 .mobile-info-loading {
   color: var(--text-secondary);
   font-size: 13px;

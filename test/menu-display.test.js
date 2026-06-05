@@ -39,6 +39,7 @@ function buildBaseCtx(overrides = {}) {
     isQuitting: false,
     getMiniMode: () => false,
     getMiniTransitioning: () => false,
+    getDisableMiniMode: () => false,
     getActiveThemeCapabilities: () => ({ miniMode: true }),
     openDashboard: () => {},
     openSettingsWindow: () => {},
@@ -64,6 +65,56 @@ function buildBaseCtx(overrides = {}) {
 }
 
 describe("menu send-to-display", () => {
+  it("disables mini entry when mini mode is disabled while keeping exit available", () => {
+    const fakeElectron = {
+      app: { quit: () => {}, setActivationPolicy: () => {}, dock: { show: () => {}, hide: () => {} } },
+      BrowserWindow: function BrowserWindow() {},
+      Menu: {
+        buildFromTemplate(template) {
+          return { template };
+        },
+      },
+      Tray: function Tray() {},
+      nativeImage: {
+        createFromPath() {
+          return {
+            resize() { return this; },
+            setTemplateImage() {},
+          };
+        },
+      },
+      screen: {
+        getAllDisplays: () => [{ id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 } }],
+        getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+        getDisplayNearestPoint: () => ({ id: 1 }),
+      },
+    };
+    const initMenu = loadMenuWithElectron(fakeElectron);
+    const calls = [];
+
+    const ctx = buildBaseCtx({
+      getDisableMiniMode: () => true,
+      enterMiniViaMenu: () => calls.push("enter"),
+      exitMiniMode: () => calls.push("exit"),
+    });
+    const menu = initMenu(ctx);
+
+    menu.buildContextMenu();
+    const disabledMiniItem = ctx.contextMenu.template[0];
+    assert.strictEqual(disabledMiniItem.label, "Mini Mode");
+    assert.strictEqual(disabledMiniItem.enabled, false);
+    disabledMiniItem.click();
+    assert.deepStrictEqual(calls, []);
+
+    ctx.getMiniMode = () => true;
+    menu.buildContextMenu();
+    const exitMiniItem = ctx.contextMenu.template[0];
+    assert.strictEqual(exitMiniItem.label, "Exit Mini Mode");
+    assert.strictEqual(exitMiniItem.enabled, true);
+    exitMiniItem.click();
+    assert.deepStrictEqual(calls, ["exit"]);
+  });
+
   it("uses shared proportional sizing and repositions floating bubbles even when follow is off", () => {
     const displays = [
       {

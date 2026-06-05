@@ -15,6 +15,7 @@
     "sessionHudShowElapsed",
     "sessionHudCleanupDetached",
     "allowEdgePinning",
+    "disableMiniMode",
     "keepSizeAcrossDisplays",
     "manageClaudeHooksAutomatically",
     "openAtLogin",
@@ -104,6 +105,11 @@
         key: "allowEdgePinning",
         labelKey: "rowAllowEdgePinning",
         descKey: "rowAllowEdgePinningDesc",
+      }),
+      helpers.buildSwitchRow({
+        key: "disableMiniMode",
+        labelKey: "rowDisableMiniMode",
+        descKey: "rowDisableMiniModeDesc",
       }),
       helpers.buildSwitchRow({
         key: "keepSizeAcrossDisplays",

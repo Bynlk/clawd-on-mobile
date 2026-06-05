@@ -239,6 +239,39 @@ describe("settings-effect-router", () => {
     ]);
   });
 
+  it("exits current mini mode when mini mode is disabled", () => {
+    const { calls, emit } = createHarness({
+      routerOptions: {
+        getMiniMode: () => true,
+        exitMiniMode: () => calls.push(["exitMiniMode"]),
+      },
+    });
+
+    emit({ disableMiniMode: true });
+
+    assert.deepStrictEqual(calls, [
+      ["updateMirrors", { disableMiniMode: true }],
+      ["exitMiniMode"],
+      ["rebuildAllMenus"],
+    ]);
+  });
+
+  it("does not enter mini mode when mini mode is re-enabled", () => {
+    const { calls, emit } = createHarness({
+      routerOptions: {
+        getMiniMode: () => false,
+        exitMiniMode: () => calls.push(["exitMiniMode"]),
+      },
+    });
+
+    emit({ disableMiniMode: false });
+
+    assert.deepStrictEqual(calls, [
+      ["updateMirrors", { disableMiniMode: false }],
+      ["rebuildAllMenus"],
+    ]);
+  });
+
   it("rebuilds menus only once for menu-affecting keys", () => {
     const { calls, emit } = createHarness();
 

@@ -1721,6 +1721,34 @@ describe("buildSessionSnapshot", () => {
     assert.strictEqual(snapshot.hudLastTitle, "done-project");
   });
 
+  it("dedupes local Codex sessions that share one agent process across display and HUD", () => {
+    api.sessions.set("codex:old", rawSession("working", {
+      updatedAt: 1000,
+      sourcePid: pid,
+      agentPid: pid,
+      pidReachable: true,
+      cwd: "/tmp/current-project",
+      agentId: "codex",
+      recentEvents: [{ event: "PreToolUse", state: "working", at: 900 }],
+    }));
+    api.sessions.set("codex:new", rawSession("idle", {
+      updatedAt: 2000,
+      sourcePid: pid,
+      agentPid: pid,
+      pidReachable: true,
+      cwd: "/tmp/current-project",
+      agentId: "codex",
+      recentEvents: [{ event: "Stop", state: "attention", at: 1900 }],
+    }));
+
+    const snapshot = api.buildSessionSnapshot();
+    assert.strictEqual(api.resolveDisplayState(), "idle");
+    assert.strictEqual(snapshot.sessions.find((s) => s.id === "codex:old").hiddenFromHud, true);
+    assert.strictEqual(snapshot.sessions.find((s) => s.id === "codex:new").hiddenFromHud, false);
+    assert.strictEqual(snapshot.hudTotalNonIdle, 1);
+    assert.strictEqual(snapshot.hudLastSessionId, "codex:new");
+  });
+
   it("hides detached ended idle sessions from HUD aggregates when auto-clear is enabled and source is dead", () => {
     api.cleanup();
     api = require("../src/state")(makeCtx({

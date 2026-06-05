@@ -42,6 +42,9 @@
     "uninstall:codex-debug-hooks": "node hooks/codex-debug-install.js --uninstall",
     "install:hermes-plugin": "node hooks/hermes-install.js",
     "uninstall:hermes-plugin": "node hooks/hermes-install.js --uninstall",
+    "install:qoder-hooks": "node hooks/qoder-install.js",
+    "uninstall:qoder-hooks": "node hooks/qoder-install.js --uninstall",
+    "cleanup:integrations": "node hooks/cleanup-integrations.js --apply",
     "register-protocol:dev": "node launch.js --register-protocol"
   },
   "keywords": [
@@ -136,7 +139,8 @@
       "hooks/**/*",
       "extensions/**/*",
       "agents/**/*",
-      "themes/**/*"
+      "themes/**/*",
+      "pwa/**/*"
     ],
     "asarUnpack": [
       "assets/svg/**/*",

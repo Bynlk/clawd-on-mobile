@@ -37,6 +37,7 @@ function registerPetInteractionIpc(options = {}) {
     "repositionFloatingBubbles"
   );
   const exitMiniMode = requiredDependency(options.exitMiniMode, "exitMiniMode");
+  const getDisableMiniMode = options.getDisableMiniMode || (() => false);
   const getFocusableLocalHudSessionIds = requiredDependency(
     options.getFocusableLocalHudSessionIds,
     "getFocusableLocalHudSessionIds"
@@ -93,7 +94,7 @@ function registerPetInteractionIpc(options = {}) {
   on("drag-end", () => {
     try {
       if (!isMiniMode() && !isMiniTransitioning()) {
-        checkMiniModeSnap();
+        if (!getDisableMiniMode()) checkMiniModeSnap();
         if (isMiniMode() || isMiniTransitioning()) return;
         if (hasPetWindow()) {
           const virtualBounds = getPetWindowBounds();

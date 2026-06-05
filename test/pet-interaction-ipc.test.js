@@ -30,6 +30,7 @@ function createHarness(overrides = {}) {
   const state = {
     miniMode: false,
     miniTransitioning: false,
+    disableMiniMode: false,
     hasPetWindow: true,
     keepSizeAcrossDisplays: false,
     currentState: "idle",
@@ -72,6 +73,7 @@ function createHarness(overrides = {}) {
     scheduleHwndRecovery: () => calls.push(["scheduleHwndRecovery"]),
     repositionFloatingBubbles: () => calls.push(["repositionFloatingBubbles"]),
     exitMiniMode: () => calls.push(["exitMiniMode"]),
+    getDisableMiniMode: () => state.disableMiniMode,
     getFocusableLocalHudSessionIds: () => state.focusableIds,
     focusLog: (message) => calls.push(["focusLog", message]),
     showDashboard: () => calls.push(["showDashboard"]),
@@ -215,6 +217,25 @@ test("pet interaction IPC skips drag-end clamp when mini snap starts", () => {
 
   assert.deepStrictEqual(calls, [
     ["checkMiniModeSnap"],
+    ["setDragLocked", false],
+    ["clearDragSnapshot"],
+  ]);
+});
+
+test("pet interaction IPC disables mini snap without skipping drag-end cleanup", () => {
+  const { ipcMain, calls, state } = createHarness({
+    state: { disableMiniMode: true },
+  });
+
+  ipcMain.send("drag-end");
+
+  assert.deepStrictEqual(calls, [
+    ["computeDragEndBounds", state.petWindowBounds, state.currentPixelSize],
+    ["applyPetWindowBounds", state.clampedBounds],
+    ["reassertWinTopmost"],
+    ["scheduleHwndRecovery"],
+    ["syncHitWin"],
+    ["repositionFloatingBubbles"],
     ["setDragLocked", false],
     ["clearDragSnapshot"],
   ]);

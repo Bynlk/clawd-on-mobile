@@ -5,7 +5,6 @@ const assert = require("node:assert");
 
 const {
   deriveSessionBadge,
-  deriveMobileChipFields,
   isSessionInProgress,
   buildSessionSnapshot,
   getActiveSessionAliasKeys,
@@ -367,6 +366,34 @@ describe("state-session-snapshot builder", () => {
     assert.strictEqual(snapshot.hudLastSessionId, "idle-local");
   });
 
+  it("hides older local Codex sessions that share one agent process from HUD", () => {
+    const snapshot = buildSessionSnapshot(new Map([
+      ["codex:old", session("working", {
+        agentId: "codex",
+        agentPid: 4242,
+        updatedAt: 1000,
+        cwd: "/repo/old",
+      })],
+      ["codex:new", session("idle", {
+        agentId: "codex",
+        agentPid: 4242,
+        updatedAt: 2000,
+        cwd: "/repo/new",
+        recentEvents: [{ event: "Stop", state: "attention", at: 1900 }],
+      })],
+    ]), {
+      statePriority: STATE_PRIORITY,
+      getAgentIconUrl: () => null,
+    });
+
+    assert.strictEqual(snapshot.sessions.find((entry) => entry.id === "codex:old").hiddenFromHud, true);
+    assert.strictEqual(snapshot.sessions.find((entry) => entry.id === "codex:new").hiddenFromHud, false);
+    assert.strictEqual(snapshot.hudTotalNonIdle, 1);
+    assert.strictEqual(snapshot.hudLastSessionId, "codex:new");
+    assert.deepStrictEqual(snapshot.orderedIds, ["codex:new", "codex:old"]);
+    assert.deepStrictEqual(snapshot.groups, [{ host: "", ids: ["codex:new", "codex:old"] }]);
+  });
+
   it("snapshot signatures include visible fields but ignore icon URL churn", () => {
     const base = buildSessionSnapshot(new Map([
       ["s1", session("working", {
@@ -444,135 +471,5 @@ describe("state-session-snapshot builder", () => {
     const base = buildSessionSnapshot(baseSessions, { statePriority: STATE_PRIORITY, getAgentIconUrl: () => null });
     const flagged = buildSessionSnapshot(flaggedSessions, { statePriority: STATE_PRIORITY, getAgentIconUrl: () => null });
     assert.notStrictEqual(sessionSnapshotSignature(base), sessionSnapshotSignature(flagged));
-  });
-});
-
-describe("deriveMobileChipFields", () => {
-  // ── Non-oneshot active states ──────────────────────────────────────
-
-  it("returns working chip for working state", () => {
-    const result = deriveMobileChipFields("working", []);
-    assert.deepStrictEqual(result, { text: "工作中", color: "#22c55e" });
-  });
-
-  it("returns thinking chip for thinking state", () => {
-    const result = deriveMobileChipFields("thinking", []);
-    assert.deepStrictEqual(result, { text: "思考中", color: "#6366f1" });
-  });
-
-  it("returns juggling chip for juggling state", () => {
-    const result = deriveMobileChipFields("juggling", []);
-    assert.deepStrictEqual(result, { text: "多任务", color: "#d97706" });
-  });
-
-  it("returns error chip for error state", () => {
-    const result = deriveMobileChipFields("error", []);
-    assert.deepStrictEqual(result, { text: "错误", color: "#ef4444" });
-  });
-
-  it("returns notification chip for notification state", () => {
-    const result = deriveMobileChipFields("notification", []);
-    assert.deepStrictEqual(result, { text: "通知", color: "#d97706" });
-  });
-
-  it("returns attention chip for attention state", () => {
-    const result = deriveMobileChipFields("attention", []);
-    assert.deepStrictEqual(result, { text: "需要关注", color: "#b45309" });
-  });
-
-  it("returns sweeping chip for sweeping state", () => {
-    const result = deriveMobileChipFields("sweeping", []);
-    assert.deepStrictEqual(result, { text: "清理中", color: "#a1a1aa" });
-  });
-
-  it("returns carrying chip for carrying state", () => {
-    const result = deriveMobileChipFields("carrying", []);
-    assert.deepStrictEqual(result, { text: "搬运中", color: "#a1a1aa" });
-  });
-
-  // ── Idle state (non-oneshot) ──────────────────────────────────────
-
-  it("returns null for idle state with no events", () => {
-    assert.strictEqual(deriveMobileChipFields("idle", []), null);
-  });
-
-  it("returns null for idle state with non-chip events", () => {
-    assert.strictEqual(deriveMobileChipFields("idle", [{ event: "PreToolUse" }]), null);
-  });
-
-  // ── Oneshot states ────────────────────────────────────────────────
-
-  it("returns event chip for oneshot state with Stop event", () => {
-    const result = deriveMobileChipFields("attention", [{ event: "Stop" }]);
-    assert.deepStrictEqual(result, { text: "已完成", color: "#71717a" });
-  });
-
-  it("returns event chip for oneshot state with event_msg:task_complete", () => {
-    const result = deriveMobileChipFields("attention", [{ event: "event_msg:task_complete" }]);
-    assert.deepStrictEqual(result, { text: "已完成", color: "#71717a" });
-  });
-
-  it("returns state chip fallback for oneshot state with no matching event", () => {
-    const result = deriveMobileChipFields("attention", [{ event: "PreToolUse" }]);
-    assert.deepStrictEqual(result, { text: "需要关注", color: "#b45309" });
-  });
-
-  it("returns state chip fallback for oneshot state with empty events", () => {
-    const result = deriveMobileChipFields("error", []);
-    // error is oneshot AND in ACTIVE_CHIP_MAP, so returns ACTIVE_CHIP_MAP["error"]
-    assert.deepStrictEqual(result, { text: "错误", color: "#ef4444" });
-  });
-
-  it("returns error chip for oneshot state with error event", () => {
-    const result = deriveMobileChipFields("idle", [{ event: "StopFailure" }]);
-    assert.deepStrictEqual(result, { text: "出错", color: "#ef4444" });
-  });
-
-  it("returns error chip for oneshot state with ApiError event", () => {
-    const result = deriveMobileChipFields("idle", [{ event: "ApiError" }]);
-    assert.deepStrictEqual(result, { text: "出错", color: "#ef4444" });
-  });
-
-  it("returns error chip for oneshot state with PostToolUseFailure event", () => {
-    const result = deriveMobileChipFields("idle", [{ event: "PostToolUseFailure" }]);
-    assert.deepStrictEqual(result, { text: "出错", color: "#ef4444" });
-  });
-
-  // ── Event-based chip for active non-oneshot states ────────────────
-
-  it("returns event chip for active state with PermissionRequest event", () => {
-    const result = deriveMobileChipFields("working", [{ event: "PermissionRequest" }]);
-    assert.deepStrictEqual(result, { text: "等待中", color: "#d97706" });
-  });
-
-  it("returns event chip for active state with Elicitation event", () => {
-    const result = deriveMobileChipFields("working", [{ event: "Elicitation" }]);
-    assert.deepStrictEqual(result, { text: "等待中", color: "#d97706" });
-  });
-
-  it("returns event chip for active state with WorktreeCreate event", () => {
-    const result = deriveMobileChipFields("working", [{ event: "WorktreeCreate" }]);
-    assert.deepStrictEqual(result, { text: "工作树", color: "#60a5fa" });
-  });
-
-  it("returns state chip when event is not in EVENT_CHIP_MAP", () => {
-    const result = deriveMobileChipFields("working", [{ event: "PreToolUse" }]);
-    assert.deepStrictEqual(result, { text: "工作中", color: "#22c55e" });
-  });
-
-  // ── Multiple events: uses last event ──────────────────────────────
-
-  it("uses last event for chip derivation", () => {
-    const result = deriveMobileChipFields("working", [
-      { event: "PreToolUse" },
-      { event: "PermissionRequest" },
-    ]);
-    assert.deepStrictEqual(result, { text: "等待中", color: "#d97706" });
-  });
-
-  // ── Unknown state ─────────────────────────────────────────────────
-
-  it("returns null for unknown non-oneshot state", () => {
-    assert.strictEqual(deriveMobileChipFields("unknown_state", []), null);
   });
 });

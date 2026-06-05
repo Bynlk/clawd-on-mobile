@@ -3,6 +3,10 @@
 const path = require("path");
 const { sessionAliasKey } = require("./session-alias");
 const { getSessionFocusTarget } = require("./session-focus");
+const {
+  buildLatestLocalCodexProcessIds,
+  isSupersededLocalCodexProcessSession,
+} = require("./state-session-dedupe");
 const { readCodexThreadName } = require("../hooks/codex-session-index");
 
 const EVENT_LABEL_KEYS = {
@@ -31,65 +35,9 @@ const EVENT_LABEL_KEYS = {
 // PostCompact intentionally excluded (#406): compaction finishing is not turn
 // completion, so it must not raise the "done" badge.
 const DONE_EVENTS = new Set(["Stop", "event_msg:task_complete"]);
-const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 
 function isDoneEvent(event) {
   return DONE_EVENTS.has(event);
-}
-
-const BADGE_DOT_COLORS = {
-  running: "#16a34a",
-  interrupted: "#d97706",
-  done: "#71717a",
-  idle: "#52525b",
-};
-
-const ACTIVE_CHIP_MAP = {
-  working: { text: "工作中", color: "#22c55e" },
-  juggling: { text: "多任务", color: "#d97706" },
-  thinking: { text: "思考中", color: "#6366f1" },
-  notification: { text: "通知", color: "#d97706" },
-  attention: { text: "需要关注", color: "#b45309" },
-  error: { text: "错误", color: "#ef4444" },
-  sweeping: { text: "清理中", color: "#a1a1aa" },
-  carrying: { text: "搬运中", color: "#a1a1aa" },
-};
-
-const EVENT_CHIP_MAP = {
-  Stop: { text: "已完成", color: "#71717a" },
-  PostCompact: { text: "已完成", color: "#71717a" },
-  "event_msg:task_complete": { text: "已完成", color: "#71717a" },
-  PreCompact: { text: "压缩中", color: "#71717a" },
-  PreCompress: { text: "压缩中", color: "#71717a" },
-  PermissionRequest: { text: "等待中", color: "#d97706" },
-  Elicitation: { text: "等待中", color: "#d97706" },
-  Notification: { text: "等待中", color: "#d97706" },
-  WorktreeCreate: { text: "工作树", color: "#60a5fa" },
-};
-
-const ERROR_EVENTS = new Set(["StopFailure", "PostToolUseFailure", "ApiError"]);
-
-function deriveMobileChipFields(state, recentEvents) {
-  const lastEvent = recentEvents.length ? recentEvents[recentEvents.length - 1] : null;
-  const lastEventName = lastEvent && lastEvent.event ? lastEvent.event : null;
-  const isOneshot = ONESHOT_STATES.has(state);
-  const effectiveState = isOneshot ? "idle" : state;
-  if (effectiveState === "idle") {
-    if (ERROR_EVENTS.has(lastEventName)) {
-      return { text: "出错", color: "#ef4444" };
-    }
-    // ONESHOT states: check event-based chip first (e.g. Stop → "已完成"),
-    // then fall back to state-based chip (e.g. attention → "需要关注").
-    if (isOneshot) {
-      if (lastEventName && EVENT_CHIP_MAP[lastEventName]) return EVENT_CHIP_MAP[lastEventName];
-      return ACTIVE_CHIP_MAP[state] || null;
-    }
-    return null;
-  }
-  if (lastEventName && EVENT_CHIP_MAP[lastEventName]) {
-    return EVENT_CHIP_MAP[lastEventName];
-  }
-  return ACTIVE_CHIP_MAP[effectiveState] || null;
 }
 
 const SESSION_TITLE_CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]+/g;
@@ -222,26 +170,23 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
   const rawEvent = latestEvent && latestEvent.event ? latestEvent.event : null;
   const eventAt = Number(latestEvent && latestEvent.at);
   const badge = deriveSessionBadge(session);
-  const state = (session && session.state) || "idle";
-  const isReal = state !== "idle" ||
-    recentEvents.some(e => e && e.event && e.event !== "SessionStart");
   const getAgentIconUrl = typeof options.getAgentIconUrl === "function"
     ? options.getAgentIconUrl
     : () => null;
-  const hiddenFromHud = shouldAutoClearDetachedSession(session, badge, options);
+  const state = (session && session.state) || "idle";
+  const hiddenFromHud = shouldAutoClearDetachedSession(session, badge, options)
+    || isSupersededLocalCodexProcessSession(id, session, options.latestLocalCodexProcessIds);
   const focusTarget = session && !session.headless && state !== "sleeping" && !hiddenFromHud
     ? getSessionFocusTarget({ ...(session || {}), id }, {
       osPlatform: options.focusHostPlatform || options.osPlatform,
     })
     : { canFocus: false, type: null, url: null };
-  const chip = deriveMobileChipFields(state, recentEvents);
   return {
     id,
     agentId: (session && session.agentId) || null,
     iconUrl: getAgentIconUrl(session && session.agentId),
     state,
     badge,
-    isReal,
     hiddenFromHud,
     hasAlias: !!(alias && typeof alias.title === "string" && alias.title),
     sessionTitle: getEffectiveSessionTitle(id, session, options),
@@ -272,15 +217,6 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
     // Lifecycle flag for the Dashboard "Mark read" button visibility (PR2).
     // ackedAt stays internal — only the boolean reaches renderers.
     requiresCompletionAck: !!(session && session.requiresCompletionAck === true),
-    // Mobile view model — all fields pre-computed, Android maps directly
-    recentEvents,
-    lastOutput: (session && session.lastOutput) || null,
-    mobile: {
-      chipText: chip ? chip.text : null,
-      chipColor: chip ? chip.color : null,
-      dotColor: BADGE_DOT_COLORS[badge] || BADGE_DOT_COLORS.idle,
-      isVisible: state !== "sleeping" && !(session && session.headless),
-    },
   };
 }
 
@@ -296,8 +232,12 @@ function buildSessionSnapshot(sessions, options = {}) {
   const sessionAliases = options.sessionAliases && typeof options.sessionAliases === "object"
     ? options.sessionAliases
     : {};
+  const latestLocalCodexProcessIds = buildLatestLocalCodexProcessIds(sessions);
   for (const [id, session] of normalizeSessionsIterable(sessions)) {
-    entries.push(buildSessionSnapshotEntry(id, session, sessionAliases, options));
+    entries.push(buildSessionSnapshotEntry(id, session, sessionAliases, {
+      ...options,
+      latestLocalCodexProcessIds,
+    }));
   }
 
   const dashboardEntries = entries.slice().sort(sessionUpdatedAtComparator);
@@ -387,8 +327,6 @@ function sessionSnapshotSignature(snapshot) {
       lastEventRawEvent: entry.lastEvent ? entry.lastEvent.rawEvent : null,
       lastEventAt: entry.lastEvent ? entry.lastEvent.at : null,
       requiresCompletionAck: !!entry.requiresCompletionAck,
-      recentEventsCount: Array.isArray(entry.recentEvents) ? entry.recentEvents.length : 0,
-      lastOutputAt: entry.lastOutput && entry.lastOutput.at ? entry.lastOutput.at : null,
     })),
   });
 }
@@ -400,8 +338,6 @@ module.exports = {
   sessionUpdatedAt,
   isSessionInProgress,
   deriveSessionBadge,
-  deriveMobileChipFields,
-  BADGE_DOT_COLORS,
   shouldAutoClearDetachedSession,
   getSessionAliasEntry,
   getEffectiveSessionTitle,

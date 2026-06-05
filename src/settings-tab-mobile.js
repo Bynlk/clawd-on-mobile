@@ -1,236 +1,157 @@
+"use strict";
+
 (function initSettingsTabMobile(root) {
-  "use strict";
+  const MOBILE_INFO_RETRY_MS = 200;
+  const MOBILE_INFO_MAX_RETRIES = 10;
 
-  var helpers, state, runtime, ops;
-  var qrDataUrl = null;
-  var lastKnownIp = null;
+  let runtime = null;
+  let helpers = null;
+  let state = null;
+  let infoContainer = null;
+  let changeListenerRegistered = false;
 
-  function t(key) { return helpers.t(key); }
-
-  function init(core) {
-    helpers = core.helpers;
-    state = core.state;
-    runtime = core.runtime;
-    ops = core.ops;
-    core.tabs["mobile"] = { render: render, patchInPlace: patchInPlace, onExit: onExit };
+  function t(key) {
+    return helpers.t(key);
   }
 
-  var _pollTimer = null;
-
-  function render(parent) {
-    // 标题
-    var title = document.createElement("h1");
-    title.textContent = t("mobileTitle");
-    parent.appendChild(title);
-
-    // Section 1: QR 码
-    parent.appendChild(buildQrSection());
-
-    // Section 2: 连接状态
-    parent.appendChild(buildStatusSection());
-
-
-    // 加载 QR 码和状态
-    loadQrCode();
-    loadStatus();
-
-    // Poll device list every 5 seconds
-    clearInterval(_pollTimer);
-    _pollTimer = setInterval(loadStatus, 5000);
+  function escapeHtml(str) {
+    return helpers.escapeHtml(str);
   }
 
-  function buildQrSection() {
-    var rows = [];
-
-    // QR 码容器
-    var qrRow = document.createElement("div");
-    qrRow.className = "row";
-    qrRow.style.flexDirection = "column";
-    qrRow.style.alignItems = "center";
-    qrRow.style.padding = "24px 16px";
-
-    var qrContainer = document.createElement("div");
-    qrContainer.id = "mobile-qr-container";
-    qrContainer.style.cssText = "background:#fff;border-radius:12px;padding:16px;display:inline-block;margin-bottom:16px;";
-
-    var qrImg = document.createElement("img");
-    qrImg.id = "mobile-qr-image";
-    qrImg.style.cssText = "display:block;width:200px;height:200px;";
-    qrImg.alt = "QR Code";
-    qrContainer.appendChild(qrImg);
-
-    var info = document.createElement("div");
-    info.id = "mobile-connection-info";
-    info.style.cssText = "font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--text-secondary);text-align:center;word-break:break-all;max-width:320px;line-height:1.8;";
-    info.textContent = t("mobileLoading");
-
-    qrRow.appendChild(qrContainer);
-    qrRow.appendChild(info);
-    rows.push(qrRow);
-
-    return helpers.buildSection(t("mobileQrSection"), rows);
+  function fetchMobileInfo() {
+    if (!window.settingsAPI || typeof window.settingsAPI.getMobileConnectionInfo !== "function") {
+      return Promise.resolve(null);
+    }
+    return window.settingsAPI.getMobileConnectionInfo().catch(() => null);
   }
 
-  function buildStatusSection() {
-    var rows = [];
-
-    // 状态行
-    var statusRow = document.createElement("div");
-    statusRow.className = "row";
-    var statusText = document.createElement("div");
-    statusText.className = "row-text";
-    statusText.innerHTML = '<div class="row-label">' + helpers.escapeHtml(t("mobileWsStatus")) + '</div><div class="row-desc" id="mobile-ws-status">--</div>';
-    statusRow.appendChild(statusText);
-    rows.push(statusRow);
-
-    // 设备数行
-    var countRow = document.createElement("div");
-    countRow.className = "row";
-    var countText = document.createElement("div");
-    countText.className = "row-text";
-    countText.innerHTML = '<div class="row-label">' + helpers.escapeHtml(t("mobileConnectedDevices")) + '</div><div class="row-desc" id="mobile-device-count">0</div>';
-    countRow.appendChild(countText);
-    rows.push(countRow);
-
-    // 设备列表
-    var listRow = document.createElement("div");
-    listRow.className = "row";
-    listRow.style.flexDirection = "column";
-    listRow.style.padding = "0";
-    var deviceList = document.createElement("div");
-    deviceList.id = "mobile-device-list";
-    deviceList.style.cssText = "width:100%;max-height:200px;overflow-y:auto;";
-    listRow.appendChild(deviceList);
-    rows.push(listRow);
-
-    return helpers.buildSection(t("mobileStatusSection"), rows);
+  function isReadyMobileInfo(info) {
+    return !!(
+      info
+      && info.status === "ok"
+      && Number.isInteger(info.port)
+      && info.port > 0
+      && typeof info.token === "string"
+      && info.token
+      && typeof info.lanIp === "string"
+      && info.lanIp
+    );
   }
 
+  function renderConnectionInfo(container, attempt = 0) {
+    container.innerHTML = "";
+    const snapshot = (state && state.snapshot) || {};
+    const enabled = snapshot.mobilePreviewEnabled === true;
+    if (!enabled) {
+      container.innerHTML = `<p class="mobile-info-loading">${escapeHtml(t("mobileDisabled") || "Enable the toggle above to start the LAN bridge.")}</p>`;
+      return;
+    }
 
-  // === QR 码加载 ===
+    container.innerHTML = `<div class="mobile-info-loading">${escapeHtml(t("mobileLoading") || "Loading...")}</div>`;
 
-  function loadQrCode() {
-    if (!window.settingsAPI) return;
-    var qrPromise = window.settingsAPI.mobileGetQrDataUrl ? window.settingsAPI.mobileGetQrDataUrl() : Promise.resolve(null);
-
-    qrPromise.then(function(result) {
-      var img = document.getElementById("mobile-qr-image");
-      if (!img) return;
-      if (result && result.dataUrl) {
-        img.src = result.dataUrl;
-      } else {
-        showQrFallback();
+    fetchMobileInfo().then((info) => {
+      if (!container.parentNode) return;
+      if (!isReadyMobileInfo(info)) {
+        if (
+          attempt < MOBILE_INFO_MAX_RETRIES
+          && info
+          && (info.status === "starting" || info.status === "ok")
+        ) {
+          setTimeout(() => {
+            if (container.parentNode) renderConnectionInfo(container, attempt + 1);
+          }, MOBILE_INFO_RETRY_MS);
+          return;
+        }
+        container.innerHTML = `<p class="mobile-info-error">${escapeHtml(t("mobileError") || "Unable to load connection info.")}</p>`;
+        return;
       }
-    }).catch(function() {
-      showQrFallback();
+
+      let html = '';
+
+      // Connection details
+      html += '<div class="mobile-conn-details">';
+      html += `<div class="mobile-conn-row"><span class="mobile-conn-label">LAN IP</span><span class="mobile-conn-value">${escapeHtml(info.lanIp)}</span>`;
+      html += `<button class="mobile-copy-btn" data-copy="${escapeHtml(info.lanIp)}">Copy</button></div>`;
+      html += `<div class="mobile-conn-row"><span class="mobile-conn-label">Port</span><span class="mobile-conn-value">${info.port}</span>`;
+      html += `<button class="mobile-copy-btn" data-copy="${String(info.port)}">Copy</button></div>`;
+      html += `<div class="mobile-conn-row"><span class="mobile-conn-label">Token</span><span class="mobile-conn-value mobile-token">${escapeHtml(info.token)}</span>`;
+      html += `<button class="mobile-copy-btn" data-copy="${escapeHtml(info.token)}">Copy</button></div>`;
+
+      // Pair URL
+      if (info.pairUrl) {
+        html += `<div class="mobile-conn-row"><span class="mobile-conn-label">URL</span><span class="mobile-conn-value mobile-pair-url">${escapeHtml(info.pairUrl)}</span>`;
+        html += `<button class="mobile-copy-btn" data-copy="${escapeHtml(info.pairUrl)}">Copy</button></div>`;
+      }
+
+      html += '</div>';
+
+      container.innerHTML = html;
+
+      // Copy button handlers
+      container.querySelectorAll(".mobile-copy-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const text = btn.getAttribute("data-copy");
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(() => {
+              btn.textContent = "Copied!";
+              setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+            });
+          }
+        });
+      });
     });
   }
 
-  // === 状态加载 ===
+  function renderMobileTab(container, core) {
+    runtime = core.runtime;
+    helpers = core.helpers;
+    state = core.state;
 
-  function loadStatus() {
-    if (!window.settingsAPI || !window.settingsAPI.mobileGetStatus) return;
-    window.settingsAPI.mobileGetStatus().then(function(status) {
-      if (!status) return;
+    const section = document.createElement("div");
+    section.className = "settings-tab-section";
 
-      // IP 变化时刷新 QR 码
-      if (status.ip && status.ip !== lastKnownIp) {
-        lastKnownIp = status.ip;
-        loadQrCode();
-      }
+    // Title & description
+    const title = document.createElement("h3");
+    title.textContent = t("mobileTitle") || "Mobile / PWA";
+    section.appendChild(title);
 
-      // 更新连接信息
-      var info = document.getElementById("mobile-connection-info");
-      if (info && status.ip && status.port) {
-        var copyStyle = "margin-left:6px;padding:1px 6px;font-size:10px;border:1px solid var(--row-border);border-radius:4px;background:var(--bg);color:var(--text-secondary);cursor:pointer;";
-        info.innerHTML =
-          '<div>IP: ' + helpers.escapeHtml(status.ip) + ' <button class="copy-btn" data-copy="' + helpers.escapeHtml(status.ip) + '" style="' + copyStyle + '">Copy</button></div>' +
-          '<div>Port: ' + helpers.escapeHtml(String(status.port)) + ' <button class="copy-btn" data-copy="' + helpers.escapeHtml(String(status.port)) + '" style="' + copyStyle + '">Copy</button></div>' +
-          (status.token ? '<div>Token: ' + helpers.escapeHtml(status.token) + ' <button class="copy-btn" data-copy="' + helpers.escapeHtml(status.token) + '" style="' + copyStyle + '">Copy</button></div>' : '');
-        info.querySelectorAll(".copy-btn").forEach(function(btn) {
-          btn.addEventListener("click", function() {
-            navigator.clipboard.writeText(btn.getAttribute("data-copy"));
-            btn.textContent = "OK";
-            setTimeout(function() { btn.textContent = "Copy"; }, 1000);
-          });
-        });
-      }
+    const desc = document.createElement("p");
+    desc.className = "settings-tab-desc";
+    desc.textContent = t("mobileDesc") || "Connect your phone to monitor sessions remotely.";
+    section.appendChild(desc);
 
-      // 更新状态
-      updateStatusDisplay(status);
-    }).catch(function() {});
-  }
+    // Enable toggle
+    section.appendChild(helpers.buildSwitchRow({
+      key: "mobilePreviewEnabled",
+      labelKey: "mobileToggle",
+      descKey: "mobileToggleDesc",
+    }));
 
-  function updateStatusDisplay(status) {
-    var statusEl = document.getElementById("mobile-ws-status");
-    if (statusEl) {
-      statusEl.textContent = status.enabled ? (status.clients && status.clients.length > 0 ? "Connected" : "Listening") : "Disabled";
-    }
+    // Connection info (re-renders on toggle)
+    infoContainer = document.createElement("div");
+    infoContainer.id = "mobile-connection-info";
+    section.appendChild(infoContainer);
 
-    var countEl = document.getElementById("mobile-device-count");
-    if (countEl) {
-      countEl.textContent = status.clients ? status.clients.length : 0;
-    }
+    container.appendChild(section);
 
-    var listEl = document.getElementById("mobile-device-list");
-    if (listEl && status.clients) {
-      renderDeviceList(listEl, status.clients);
-    }
+    renderConnectionInfo(infoContainer);
 
-  }
-
-  function renderDeviceList(listEl, clients) {
-    if (clients.length === 0) {
-      listEl.innerHTML = '<div style="padding:12px 16px;color:var(--text-tertiary);font-size:12px;text-align:center;">No devices connected</div>';
-      return;
-    }
-    listEl.innerHTML = clients.map(function(c) {
-      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid var(--row-border);font-size:12px;">' +
-        '<span>' + helpers.escapeHtml(c.ip || "--") + '</span>' +
-        '<span style="color:var(--text-tertiary)">' + formatTime(c.connectedAt) + '</span>' +
-        '</div>';
-    }).join("");
-  }
-
-  function showQrFallback() {
-    var img = document.getElementById("mobile-qr-image");
-    if (img) img.style.display = "none";
-    var container = document.getElementById("mobile-qr-container");
-    if (container) {
-      container.style.cssText = "background:var(--bg);border-radius:12px;padding:24px;text-align:center;font-family:monospace;font-size:11px;word-break:break-all;max-width:240px;";
-      container.textContent = "QR code unavailable";
+    // Re-render connection info when toggle changes
+    if (!changeListenerRegistered && window.settingsAPI && typeof window.settingsAPI.onChanged === "function") {
+      changeListenerRegistered = true;
+      window.settingsAPI.onChanged((evt) => {
+        if (evt && evt.changes && Object.prototype.hasOwnProperty.call(evt.changes, "mobilePreviewEnabled")) {
+          if (infoContainer) renderConnectionInfo(infoContainer);
+        }
+      });
     }
   }
 
-  // === 状态更新 (from settings-changed broadcast) ===
-
-  function patchInPlace(changes) {
-    // 更新连接状态
-    var statusEl = document.getElementById("mobile-ws-status");
-    if (statusEl && changes.mobileStatus) {
-      statusEl.textContent = changes.mobileStatus;
-    }
-    // 更新设备列表
-    var countEl = document.getElementById("mobile-device-count");
-    var listEl = document.getElementById("mobile-device-list");
-    if (changes.mobileClients && countEl && listEl) {
-      var clients = changes.mobileClients;
-      countEl.textContent = clients.length;
-      renderDeviceList(listEl, clients);
-    }
-    return false;
+  function init(core) {
+    runtime = core.runtime;
+    helpers = core.helpers;
+    core.tabs["mobile"] = { render: renderMobileTab };
   }
 
-  function onExit() {
-    clearInterval(_pollTimer);
-    _pollTimer = null;
-  }
-
-  function formatTime(ts) {
-    if (!ts) return "--";
-    var d = new Date(ts);
-    return d.getHours().toString().padStart(2, "0") + ":" + d.getMinutes().toString().padStart(2, "0");
-  }
-
-  root.ClawdSettingsTabMobile = { init: init };
+  root.ClawdSettingsTabMobile = { init };
 })(globalThis);

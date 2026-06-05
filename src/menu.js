@@ -40,11 +40,16 @@ module.exports = function initMenu(ctx) {
   function buildMiniModeMenuItem() {
     const miniSupported = isMiniSupported();
     const inMiniMode = ctx.getMiniMode();
+    const miniDisabled = typeof ctx.getDisableMiniMode === "function" && ctx.getDisableMiniMode();
     return {
       label: inMiniMode ? t("exitMiniMode") : t("miniMode"),
       enabled: !ctx.getMiniTransitioning()
-        && (inMiniMode || (miniSupported && !(ctx.doNotDisturb && !inMiniMode))),
-      click: () => inMiniMode ? ctx.exitMiniMode() : ctx.enterMiniViaMenu(),
+        && (inMiniMode || (!miniDisabled && miniSupported && !(ctx.doNotDisturb && !inMiniMode))),
+      click: () => {
+        if (inMiniMode) return ctx.exitMiniMode();
+        if (miniDisabled) return undefined;
+        return ctx.enterMiniViaMenu();
+      },
     };
   }
 

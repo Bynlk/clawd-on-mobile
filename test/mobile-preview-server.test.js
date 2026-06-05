@@ -178,10 +178,38 @@ describe("Mobile Preview Server", () => {
     assert.ok(snapshot.timestamp > 0);
     assert.ok(snapshot.sessions.s1);
     assert.strictEqual(snapshot.sessions.s1.state, "working");
+    assert.strictEqual(snapshot.sessions.s1.agentId, "claude-code");
     assert.strictEqual(snapshot.sessions.s1.title, "Session s1");
     assert.strictEqual(snapshot.sessions.s1.basename, "project");
+    assert.strictEqual(typeof snapshot.sessions.s1.updatedAt, "number");
 
     client.close();
+    await new Promise((r) => setTimeout(r, 100));
+  });
+
+  it("keeps agentId separate when a session has no title", async () => {
+    sessions.set("s-titleless", {
+      state: "working",
+      agentId: "codex",
+      cwd: "/home/user/titleless",
+      sessionTitle: null,
+      updatedAt: Date.now(),
+      recentEvents: [],
+    });
+    server.onSnapshot();
+
+    const client = connectClient(port, token);
+    await waitForOpen(client.ws);
+    const snapshot = await client.waitFor("snapshot");
+
+    assert.ok(snapshot.sessions["s-titleless"]);
+    assert.strictEqual(snapshot.sessions["s-titleless"].agentId, "codex");
+    assert.strictEqual(snapshot.sessions["s-titleless"].title, null);
+    assert.strictEqual(typeof snapshot.sessions["s-titleless"].updatedAt, "number");
+
+    client.close();
+    sessions.delete("s-titleless");
+    server.onSnapshot();
     await new Promise((r) => setTimeout(r, 100));
   });
 

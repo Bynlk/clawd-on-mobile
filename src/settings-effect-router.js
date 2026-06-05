@@ -17,6 +17,7 @@ const MENU_AFFECTING_KEYS = new Set([
   "theme",
   "size",
   "sessionAliases",
+  "disableMiniMode",
 ]);
 
 function requiredDependency(value, name) {
@@ -67,6 +68,8 @@ function createSettingsEffectRouter(options = {}) {
   const syncSessionHudVisibility = options.syncSessionHudVisibility || noop;
   const handleSessionHudPinnedChanged = options.handleSessionHudPinnedChanged || noop;
   const reclampPetAfterEdgePinningChange = options.reclampPetAfterEdgePinningChange || noop;
+  const exitMiniMode = options.exitMiniMode || noop;
+  const getMiniMode = options.getMiniMode || (() => false);
   const rebuildAllMenus = options.rebuildAllMenus || noop;
   const reconcilePowerSaveBlocker = options.reconcilePowerSaveBlocker || noop;
 
@@ -228,6 +231,9 @@ function createSettingsEffectRouter(options = {}) {
         "Clawd: allowEdgePinning re-clamp failed:",
         reclampPetAfterEdgePinningChange
       );
+    }
+    if ("disableMiniMode" in changes && changes.disableMiniMode && getMiniMode()) {
+      safeCall(logWarn, "Clawd: disableMiniMode exit failed:", exitMiniMode);
     }
 
     // 3. Menu rebuild: only for menu-affecting keys to avoid thrashing on
