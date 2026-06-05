@@ -44,6 +44,9 @@ class PetStateManager(
     private val sessionsFlow: StateFlow<Map<String, SessionData>>,
 ) {
 
+    /** Sleep timeout in ms. 0 = never sleep. Set by FloatingPetService from PrefsStore. */
+    var sleepTimeoutMs: Long = IDLE_SLEEP_TIMEOUT_MS
+
     // ======================================================================
     //  Unified command type — single pipe output
     // ======================================================================

@@ -55,9 +55,10 @@ class PetTimerManager(
             idleSince = now
             Log.d(TAG, "Idle timeout started")
         }
-        if (now - idleSince >= PetStateManager.IDLE_SLEEP_TIMEOUT_MS) {
+        val timeout = manager.sleepTimeoutMs
+        if (timeout > 0 && now - idleSince >= timeout) {
             if (!manager.getCurrentState().isSleepSequence) {
-                Log.d(TAG, "Idle timeout reached (${PetStateManager.IDLE_SLEEP_TIMEOUT_MS}ms), starting sleep sequence")
+                Log.d(TAG, "Idle timeout reached (${timeout}ms), starting sleep sequence")
                 startSleepSequence(scope)
             }
         }

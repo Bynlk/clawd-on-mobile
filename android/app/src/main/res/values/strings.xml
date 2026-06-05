@@ -143,6 +143,11 @@
     <string name="settings_pet_recenter">回到屏幕中央</string>
     <string name="settings_pet_click_through">透明区域点击穿透</string>
     <string name="settings_pet_click_through_desc">点击宠物透明部分时穿透到下层应用</string>
+    <string name="settings_pet_sleep_timeout">空闲进入睡眠</string>
+    <string name="settings_pet_sleep_30s">30秒</string>
+    <string name="settings_pet_sleep_1min">1分钟</string>
+    <string name="settings_pet_sleep_5min">5分钟</string>
+    <string name="settings_pet_sleep_never">不睡眠</string>
     <string name="toast_recentered">宠物已回到屏幕中央</string>
     <string name="toast_disconnected">桌宠已关闭</string>
     <string name="settings_pet_size">大小</string>

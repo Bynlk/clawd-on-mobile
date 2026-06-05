@@ -32,7 +32,9 @@ class FloatingPetService : Service() {
         const val ACTION_PET_SIZE = "com.clawd.mobile.PET_SIZE_CHANGED"
         const val ACTION_PET_CHARACTER = "com.clawd.mobile.PET_CHARACTER_CHANGED"
         const val ACTION_PET_RECENTER = "com.clawd.mobile.PET_RECENTER"
+        const val ACTION_PET_SLEEP_TIMEOUT = "com.clawd.mobile.PET_SLEEP_TIMEOUT"
         const val ACTION_DISCONNECT = "com.clawd.mobile.ACTION_DISCONNECT"
+        const val EXTRA_SLEEP_SEC = "sleep_sec"
         const val EXTRA_SIZE_DP = "size_dp"
         const val EXTRA_CHARACTER = "character"
         private const val NOTIFICATION_ID = 9001
@@ -85,6 +87,7 @@ class FloatingPetService : Service() {
         val sessionsFlow = SseService.getClient()?.sessions
             ?: kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
         stateManager = PetStateManager(character, sessionsFlow)
+        stateManager.sleepTimeoutMs = prefsStore.getSleepTimeoutSec().toLong() * 1000L
 
         startForeground(NOTIFICATION_ID, buildNotification())
         loadPrefs()
@@ -362,6 +365,11 @@ class FloatingPetService : Service() {
                         Log.d(TAG, "Recenter pet to screen center")
                         windowController?.recenterToScreen()
                     }
+                    ACTION_PET_SLEEP_TIMEOUT -> {
+                        val sec = intent.getIntExtra(EXTRA_SLEEP_SEC, 60)
+                        stateManager.sleepTimeoutMs = sec.toLong() * 1000L
+                        Log.d(TAG, "Sleep timeout changed to ${sec}s")
+                    }
                 }
             }
         }
@@ -369,6 +377,7 @@ class FloatingPetService : Service() {
             addAction(ACTION_PET_SIZE)
             addAction(ACTION_PET_CHARACTER)
             addAction(ACTION_PET_RECENTER)
+            addAction(ACTION_PET_SLEEP_TIMEOUT)
         }
         ContextCompat.registerReceiver(this, broadcastReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }

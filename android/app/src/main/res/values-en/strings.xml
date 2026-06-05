@@ -143,6 +143,11 @@
     <string name="settings_pet_recenter">Recenter on screen</string>
     <string name="settings_pet_click_through">Transparent tap-through</string>
     <string name="settings_pet_click_through_desc">Taps on transparent pet areas pass through to apps below</string>
+    <string name="settings_pet_sleep_timeout">Idle sleep timeout</string>
+    <string name="settings_pet_sleep_30s">30s</string>
+    <string name="settings_pet_sleep_1min">1min</string>
+    <string name="settings_pet_sleep_5min">5min</string>
+    <string name="settings_pet_sleep_never">Never</string>
     <string name="toast_recentered">Pet recentered</string>
     <string name="toast_disconnected">Pet disconnected</string>
     <string name="settings_pet_size">Size</string>

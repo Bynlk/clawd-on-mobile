@@ -25,6 +25,7 @@ class PrefsStore private constructor(context: Context) {
         private const val KEY_PET_CX = "pet_content_cx"
         private const val KEY_PET_CY = "pet_content_cy"
         private const val KEY_CLICK_THROUGH = "pet_click_through"
+        private const val KEY_SLEEP_TIMEOUT = "pet_sleep_timeout_sec"
         private const val PREFS_ENCRYPTED = "clawd_prefs_encrypted"
         private const val PREFS_LEGACY = "clawd_prefs"
         private const val KEY_MIGRATED = "_migrated_v1"
@@ -153,6 +154,10 @@ class PrefsStore private constructor(context: Context) {
 
     fun isClickThroughEnabled(): Boolean = prefs.getBoolean(KEY_CLICK_THROUGH, true)
     fun setClickThroughEnabled(v: Boolean) { prefs.edit().putBoolean(KEY_CLICK_THROUGH, v).apply() }
+
+    /** Sleep timeout in seconds. 0 = never sleep. Default 60s. */
+    fun getSleepTimeoutSec(): Int = prefs.getInt(KEY_SLEEP_TIMEOUT, 60)
+    fun setSleepTimeoutSec(v: Int) { prefs.edit().putInt(KEY_SLEEP_TIMEOUT, v).apply() }
 
     fun getPetContentCx(defaultCx: Float): Float = prefs.getFloat(KEY_PET_CX, defaultCx)
     fun getPetContentCy(defaultCy: Float): Float = prefs.getFloat(KEY_PET_CY, defaultCy)

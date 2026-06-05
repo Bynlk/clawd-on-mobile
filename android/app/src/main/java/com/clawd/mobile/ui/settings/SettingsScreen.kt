@@ -509,6 +509,43 @@ private fun FloatingPetSection(prefsStore: PrefsStore, snackbarHostState: Snackb
             clickThrough = it
             prefsStore.setClickThroughEnabled(it)
         }
+
+        // Sleep timeout
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(stringResource(R.string.settings_pet_sleep_timeout), fontSize = 13.sp, color = ClawdTextDark)
+        Spacer(modifier = Modifier.height(6.dp))
+        var sleepSec by remember { mutableIntStateOf(prefsStore.getSleepTimeoutSec()) }
+        val options = listOf(30, 60, 300, 0)
+        val labels = listOf(
+            stringResource(R.string.settings_pet_sleep_30s),
+            stringResource(R.string.settings_pet_sleep_1min),
+            stringResource(R.string.settings_pet_sleep_5min),
+            stringResource(R.string.settings_pet_sleep_never)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            options.forEachIndexed { i, sec ->
+                FilterChip(
+                    selected = sleepSec == sec,
+                    onClick = {
+                        sleepSec = sec
+                        prefsStore.setSleepTimeoutSec(sec)
+                        context.sendBroadcast(
+                            Intent(FloatingPetService.ACTION_PET_SLEEP_TIMEOUT)
+                                .putExtra(FloatingPetService.EXTRA_SLEEP_SEC, sec)
+                                .setPackage(context.packageName)
+                        )
+                    },
+                    label = { Text(labels[i], fontSize = 11.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = ClawdAccent,
+                        selectedLabelColor = Color.White
+                    )
+                )
+            }
+        }
     }
 
     // Re-check permission and auto-start service if needed
