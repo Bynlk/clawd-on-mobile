@@ -8,6 +8,7 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.WindowManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -376,30 +377,62 @@ class FloatingPetView @JvmOverloads constructor(
     //  Touch handling
     // ======================================================================
 
-    /**
-     * Transparent click-through: ACTION_DOWN checks pixel alpha.
-     * Transparent → return false (pass through to windows below).
-     * Opaque → delegate to gestureDetector.
-     */
+    /** Whether transparent area taps pass through to apps below. Set by FloatingPetService. */
+    var clickThroughEnabled = true
+
+    private var transparentTouchStart = false
+
+    /** Set by FloatingPetService for FLAG_NOT_TOUCHABLE toggling. */
+    var windowManagerForTouch: WindowManager? = null
+    var overlayLayoutParams: WindowManager.LayoutParams? = null
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         try {
             if (event.action == MotionEvent.ACTION_DOWN) {
-                if (!isTouchOnContent(event.x, event.y)) {
-                    return false // Transparent region — click through
-                }
+                transparentTouchStart = clickThroughEnabled && !isTouchOnContent(event.x, event.y)
             }
+
+            // Always let gesture detector process all events (drag must always work)
             val handled = gestureDetector?.onTouchEvent(event) ?: super.onTouchEvent(event)
+
             if (event.action == MotionEvent.ACTION_UP) {
                 val wasDragging = gestureHandler?.isDragging == true
                 onTouchUp?.invoke(event)
                 if (wasDragging) {
                     onDragEnd?.invoke()
                 }
+                // Click-through: only trigger on tap (not drag) on transparent pixels
+                if (!wasDragging && transparentTouchStart) {
+                    setWindowTouchable(false)
+                    postDelayed({ setWindowTouchable(true) }, 300)
+                }
+                transparentTouchStart = false
             }
+            if (event.action == MotionEvent.ACTION_CANCEL) {
+                transparentTouchStart = false
+            }
+
             return handled
         } catch (e: Exception) {
             Log.w(TAG, "onTouchEvent error", e)
             return super.onTouchEvent(event)
+        }
+    }
+
+    private fun setWindowTouchable(touchable: Boolean) {
+        val wm = windowManagerForTouch ?: return
+        val lp = overlayLayoutParams ?: return
+        val changed = if (touchable) {
+            val had = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0
+            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            had
+        } else {
+            val had = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            had
+        }
+        if (changed) {
+            try { wm.updateViewLayout(this, lp) } catch (_: Exception) {}
         }
     }
 }

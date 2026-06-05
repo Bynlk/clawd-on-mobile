@@ -324,6 +324,9 @@ class FloatingPetService : Service() {
             windowController?.snapToEdge()
             windowController?.updateTouchRegion()
         }
+        petView!!.windowManagerForTouch = windowManager
+        petView!!.overlayLayoutParams = layoutParams
+        petView!!.clickThroughEnabled = prefsStore.isClickThroughEnabled()
 
         windowManager?.addView(petView!!, layoutParams)
         Log.d(TAG, "Pet view added at x=$savedX, y=$savedY, size=$sizePx")

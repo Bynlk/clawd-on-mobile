@@ -497,6 +497,18 @@ private fun FloatingPetSection(prefsStore: PrefsStore, snackbarHostState: Snackb
                 )
             }
         }
+
+        // Click-through toggle
+        Spacer(modifier = Modifier.height(14.dp))
+        var clickThrough by remember { mutableStateOf(prefsStore.isClickThroughEnabled()) }
+        NotifyToggle(
+            stringResource(R.string.settings_pet_click_through),
+            stringResource(R.string.settings_pet_click_through_desc),
+            clickThrough
+        ) {
+            clickThrough = it
+            prefsStore.setClickThroughEnabled(it)
+        }
     }
 
     // Re-check permission and auto-start service if needed
