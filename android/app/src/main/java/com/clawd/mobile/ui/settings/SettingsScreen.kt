@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,7 +43,8 @@ import com.clawd.mobile.ws.ConnectionState
 fun SettingsScreen(
     navController: NavController,
     sseClient: StreamingClient,
-    prefsStore: PrefsStore
+    prefsStore: PrefsStore,
+    snackbarHostState: SnackbarHostState? = null
 ) {
     val connectionState by sseClient.connectionState.collectAsState()
     val isConnected = connectionState == ConnectionState.CONNECTED
@@ -83,7 +85,7 @@ fun SettingsScreen(
                 icon = ClawdIcons.Pet,
                 defaultExpanded = true
             ) {
-                FloatingPetSection(prefsStore = prefsStore)
+                FloatingPetSection(prefsStore = prefsStore, snackbarHostState = snackbarHostState)
             }
 
             AccordionSection(
@@ -337,8 +339,9 @@ private fun NotificationSection(prefsStore: PrefsStore) {
 // ─── Floating Pet Section ─────────────────────────────────────────
 
 @Composable
-private fun FloatingPetSection(prefsStore: PrefsStore) {
+private fun FloatingPetSection(prefsStore: PrefsStore, snackbarHostState: SnackbarHostState? = null) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var enabled by remember { mutableStateOf(prefsStore.isFloatingPetEnabled()) }
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
@@ -399,23 +402,46 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
         )
     }
 
-    // Disconnect button
+    // Action buttons
     if (enabled) {
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = {
-                enabled = false
-                prefsStore.setFloatingPetEnabled(false)
-                context.startService(
-                    Intent(context, FloatingPetService::class.java)
-                        .setAction(FloatingPetService.ACTION_DISCONNECT)
-                )
-            },
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.fillMaxWidth()
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(stringResource(R.string.settings_disconnect), color = ClawdFaintDark, fontSize = 13.sp)
+            OutlinedButton(
+                onClick = {
+                    context.sendBroadcast(
+                        Intent(FloatingPetService.ACTION_PET_RECENTER).setPackage(context.packageName)
+                    )
+                    snackbarHostState?.let { sb ->
+                        scope.launch { sb.showSnackbar(context.getString(R.string.toast_recentered), duration = SnackbarDuration.Short) }
+                    }
+                },
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(stringResource(R.string.settings_pet_recenter), color = ClawdFaintDark, fontSize = 12.sp)
+            }
+            OutlinedButton(
+                onClick = {
+                    enabled = false
+                    prefsStore.setFloatingPetEnabled(false)
+                    context.startService(
+                        Intent(context, FloatingPetService::class.java)
+                            .setAction(FloatingPetService.ACTION_DISCONNECT)
+                    )
+                    snackbarHostState?.let { sb ->
+                        scope.launch { sb.showSnackbar(context.getString(R.string.toast_disconnected), duration = SnackbarDuration.Short) }
+                    }
+                },
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(stringResource(R.string.settings_disconnect), color = ClawdFaintDark, fontSize = 12.sp)
+            }
         }
     }
 

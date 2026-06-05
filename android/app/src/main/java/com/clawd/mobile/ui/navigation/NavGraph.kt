@@ -146,7 +146,8 @@ fun ClawdNavGraph() {
                 SettingsScreen(
                     navController = navController,
                     sseClient = ws,
-                    prefsStore = prefsStore
+                    prefsStore = prefsStore,
+                    snackbarHostState = snackbarHostState
                 )
             }
         }

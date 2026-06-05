@@ -140,6 +140,9 @@
     <string name="settings_port">Port</string>
     <string name="settings_copy">Copy</string>
     <string name="settings_disconnect">Disconnect and close pet</string>
+    <string name="settings_pet_recenter">Recenter on screen</string>
+    <string name="toast_recentered">Pet recentered</string>
+    <string name="toast_disconnected">Pet disconnected</string>
     <string name="settings_pet_size">Size</string>
     <string name="settings_pet_character">Character</string>
     <string name="settings_pet_enable">Enable Pet</string>

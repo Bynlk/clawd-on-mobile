@@ -140,6 +140,9 @@
     <string name="settings_port">端口</string>
     <string name="settings_copy">复制</string>
     <string name="settings_disconnect">断开连接并关闭桌宠</string>
+    <string name="settings_pet_recenter">回到屏幕中央</string>
+    <string name="toast_recentered">宠物已回到屏幕中央</string>
+    <string name="toast_disconnected">桌宠已关闭</string>
     <string name="settings_pet_size">大小</string>
     <string name="settings_pet_character">角色</string>
     <string name="settings_pet_enable">启用桌宠</string>

@@ -98,23 +98,51 @@ class PetWindowController(
     fun snapToEdge() {
         val petView = getPetView() ?: return
         val lp = layoutParams
-        val density = context.resources.displayMetrics.density
         val screenW = context.resources.displayMetrics.widthPixels
         val screenH = context.resources.displayMetrics.heightPixels
-        val marginPx = (EDGE_MARGIN_DP * density).toInt()
 
         val windowRect = android.graphics.Rect(lp.x, lp.y, lp.x + lp.width, lp.y + lp.height)
         val contentRect = petView.getContentRect(windowRect)
 
-        // Only adjust if content rect differs from window rect
+        // No insets → allow free positioning
         if (contentRect == windowRect) return
 
-        if (contentRect.left < marginPx) lp.x += marginPx - contentRect.left
-        if (contentRect.right > screenW - marginPx) lp.x -= contentRect.right - (screenW - marginPx)
-        if (contentRect.top < marginPx) lp.y += marginPx - contentRect.top
-        if (contentRect.bottom > screenH - marginPx) lp.y -= contentRect.bottom - (screenH - marginPx)
+        // Left/right/bottom: full pull-back. Top: allow half the content above screen.
+        var adjusted = false
+        val contentH = contentRect.height()
+        if (contentRect.left < 0) { lp.x -= contentRect.left; adjusted = true }
+        if (contentRect.right > screenW) { lp.x -= contentRect.right - screenW; adjusted = true }
+        if (contentRect.bottom > screenH) { lp.y -= contentRect.bottom - screenH; adjusted = true }
+        if (contentRect.top < -(contentH / 2)) {
+            lp.y -= contentRect.top + contentH / 2
+            adjusted = true
+        }
+
+        if (adjusted) {
+            SafeExecutor.tryOrNull(TAG) { windowManager.updateViewLayout(petView, lp) }
+        }
+    }
+
+    /**
+     * Move the pet's visible content center to the screen center.
+     */
+    fun recenterToScreen() {
+        val petView = getPetView() ?: return
+        val lp = layoutParams
+        val screenW = context.resources.displayMetrics.widthPixels
+        val screenH = context.resources.displayMetrics.heightPixels
+
+        val windowRect = android.graphics.Rect(lp.x, lp.y, lp.x + lp.width, lp.y + lp.height)
+        val contentRect = petView.getContentRect(windowRect)
+
+        val contentCenterOffsetX = contentRect.centerX() - lp.x
+        val contentCenterOffsetY = contentRect.centerY() - lp.y
+
+        lp.x = screenW / 2 - contentCenterOffsetX
+        lp.y = screenH / 2 - contentCenterOffsetY
 
         SafeExecutor.tryOrNull(TAG) { windowManager.updateViewLayout(petView, lp) }
+        savePosition(com.clawd.mobile.data.PrefsStore.getInstance(context))
     }
 
     /**

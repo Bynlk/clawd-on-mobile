@@ -31,6 +31,7 @@ class FloatingPetService : Service() {
         private const val TAG = "FloatingPetService"
         const val ACTION_PET_SIZE = "com.clawd.mobile.PET_SIZE_CHANGED"
         const val ACTION_PET_CHARACTER = "com.clawd.mobile.PET_CHARACTER_CHANGED"
+        const val ACTION_PET_RECENTER = "com.clawd.mobile.PET_RECENTER"
         const val ACTION_DISCONNECT = "com.clawd.mobile.ACTION_DISCONNECT"
         const val EXTRA_SIZE_DP = "size_dp"
         const val EXTRA_CHARACTER = "character"
@@ -354,12 +355,17 @@ class FloatingPetService : Service() {
                         Log.d(TAG, "Character changed to $character")
                         reloadGif()
                     }
+                    ACTION_PET_RECENTER -> {
+                        Log.d(TAG, "Recenter pet to screen center")
+                        windowController?.recenterToScreen()
+                    }
                 }
             }
         }
         val filter = IntentFilter().apply {
             addAction(ACTION_PET_SIZE)
             addAction(ACTION_PET_CHARACTER)
+            addAction(ACTION_PET_RECENTER)
         }
         ContextCompat.registerReceiver(this, broadcastReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
