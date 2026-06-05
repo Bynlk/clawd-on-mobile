@@ -67,6 +67,9 @@ class FloatingPetView @JvmOverloads constructor(
     /** Drag end callback (set by Service, used to save position). */
     var onDragEnd: (() -> Unit)? = null
 
+    /** Touch region update callback (set by Service, called after bitmap cache refresh). */
+    var onTouchRegionUpdate: (() -> Unit)? = null
+
     /** Touch up callback (set by Service, used for gesture-handler drag-end detection). */
     var onTouchUp: ((MotionEvent) -> Unit)? = null
 
@@ -288,6 +291,7 @@ class FloatingPetView @JvmOverloads constructor(
                         onContentReady?.invoke(0f, 0f, w, h)
                         readVisualInsets()
                         cacheHitTestBitmap()
+                        onTouchRegionUpdate?.invoke()
                     } else if (attempt < 5) {
                         postDelayed({ tryQuery(attempt + 1) }, 100)
                     }

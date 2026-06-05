@@ -245,9 +245,8 @@ class FloatingPetService : Service() {
         val screenW = resources.displayMetrics.widthPixels
         val screenH = resources.displayMetrics.heightPixels
 
-        val marginPx = (16 * density).toInt()
-        val defaultCx = screenW - sizePx / 2f - marginPx
-        val defaultCy = screenH - sizePx / 2f - marginPx
+        val defaultCx = screenW / 2f
+        val defaultCy = screenH / 2f
         val savedCx = prefsStore.getPetContentCx(defaultCx)
         val savedCy = prefsStore.getPetContentCy(defaultCy)
         val savedX = (savedCx - sizePx / 2f).toInt()
@@ -263,7 +262,8 @@ class FloatingPetService : Service() {
             sizePx, sizePx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.LEFT
@@ -304,6 +304,9 @@ class FloatingPetService : Service() {
             },
             onDoubleTap = {
                 stateManager.triggerClickReaction()
+            },
+            onTripleTap = {
+                stateManager.triggerEasterEgg()
             }
         )
         petView!!.gestureDetector = gestureHandler!!.gestureDetector
@@ -327,11 +330,15 @@ class FloatingPetService : Service() {
             windowController?.snapToEdge()
             windowController?.updateTouchRegion()
         }
+        petView!!.onTouchRegionUpdate = {
+            windowController?.updateTouchRegion()
+        }
         petView!!.windowManagerForTouch = windowManager
         petView!!.overlayLayoutParams = layoutParams
         petView!!.clickThroughEnabled = prefsStore.isClickThroughEnabled()
 
         windowManager?.addView(petView!!, layoutParams)
+        petView!!.post { petView!!.cacheHitTestBitmap() }
         Log.d(TAG, "Pet view added at x=$savedX, y=$savedY, size=$sizePx")
     }
 

@@ -17,12 +17,17 @@ class PetGestureHandler(
     private val onDragStart: () -> Unit,
     private val onDragEnd: () -> Unit,
     private val onSingleTap: () -> Unit,
-    private val onDoubleTap: (MotionEvent) -> Unit
+    private val onDoubleTap: (MotionEvent) -> Unit,
+    private val onTripleTap: () -> Unit = {}
 ) {
     companion object {
         private const val TAG = "PetGestureHandler"
         private const val DRAG_THRESHOLD_SQ_PX = 100
+        private const val TRIPLE_TAP_TIMEOUT_MS = 600L
     }
+
+    private var tapCount = 0
+    private var lastTapTime = 0L
 
     private var initialX = 0
     private var initialY = 0
@@ -44,6 +49,7 @@ class PetGestureHandler(
         }
 
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            tapCount = 0
             Log.d(TAG, "Single tap → toggleBubble")
             onSingleTap()
             return true
@@ -53,8 +59,19 @@ class PetGestureHandler(
             // Fires on second tap DOWN — before onSingleTapConfirmed resolves.
             // Returning true consumes the event, preventing single-tap from also firing.
             if (e.action == MotionEvent.ACTION_DOWN) {
-                Log.d(TAG, "Double tap → reaction")
-                onDoubleTap(e)
+                val now = System.currentTimeMillis()
+                if (tapCount >= 2 && now - lastTapTime < TRIPLE_TAP_TIMEOUT_MS) {
+                    // Third tap within timeout → triple tap!
+                    Log.d(TAG, "Triple tap → Easter egg")
+                    tapCount = 0
+                    onTripleTap()
+                } else {
+                    // Second tap → double tap reaction
+                    Log.d(TAG, "Double tap → reaction")
+                    tapCount = 2
+                    lastTapTime = now
+                    onDoubleTap(e)
+                }
             }
             return true
         }

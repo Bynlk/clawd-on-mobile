@@ -1,8 +1,8 @@
 "use strict";
 
 (function initSettingsTabMobile(root) {
-  const RETRY_MS = 200;
-  const MAX_RETRIES = 10;
+  const RETRY_MS = 500;
+  const MAX_RETRIES = 20;
 
   let runtime = null;
   let helpers = null;
@@ -279,11 +279,16 @@
     // Load info and render all sections
     loadAndRender(qrContainer, pwaSection, infoContainer);
 
-    // Periodically refresh device list
+    // Periodically refresh device list and QR code (if not yet rendered)
     setInterval(() => {
-      if (infoContainer && infoContainer.parentNode) {
-        fetchInfo().then((info) => renderInfoSection(infoContainer, info, 0));
-      }
+      if (!infoContainer || !infoContainer.parentNode) return;
+      fetchInfo().then((info) => {
+        renderInfoSection(infoContainer, info, 0);
+        // Re-render QR if it was cleared (server started late)
+        if (isReady(info) && qrContainer.childElementCount === 0) {
+          renderQrSection(qrContainer, info);
+        }
+      });
     }, 5000);
   }
 

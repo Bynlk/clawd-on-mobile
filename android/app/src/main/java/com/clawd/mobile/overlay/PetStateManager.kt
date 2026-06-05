@@ -557,6 +557,17 @@ class PetStateManager(
     }
 
     /**
+     * Trigger a triple-tap Easter egg: plays the attention (happy) SVG for 3 seconds.
+     * Guard: skipped during sleep sequence.
+     */
+    fun triggerEasterEgg() {
+        if (currentState.isSleepSequence) return
+        val path = SvgLoader.resolveSvgAsset(PetState.Attention, 0, character) ?: return
+        Log.d(TAG, "Easter egg: $path")
+        activeScope?.let { timerManager.loadReactionAndRestore(path, 3000L, it) }
+    }
+
+    /**
      * Trigger a drag-start reaction (looping SVG, no auto-restore).
      * Call [restoreFromDragReaction] when drag ends.
      * Guard: skipped during sleep sequence.
