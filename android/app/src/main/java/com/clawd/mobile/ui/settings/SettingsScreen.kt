@@ -8,10 +8,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -98,7 +94,7 @@ fun SettingsScreen(
             AccordionSection(
                 title = stringResource(R.string.settings_pet),
                 icon = ClawdIcons.Pet,
-                defaultExpanded = false
+                defaultExpanded = true
             ) {
                 FloatingPetSection(prefsStore = prefsStore)
             }
@@ -289,18 +285,15 @@ private fun ScanSection(onScan: () -> Unit) {
         color = ClawdFaintDark,
         modifier = Modifier.padding(bottom = 12.dp)
     )
-    Button(
+    OutlinedButton(
         onClick = onScan,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = ClawdAccent,
-            contentColor = Color.White
-        ),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, ClawdBorderDark),
         shape = RoundedCornerShape(10.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Icon(ClawdIcons.QrCode, null, modifier = Modifier.size(18.dp))
+        Icon(ClawdIcons.QrCode, null, modifier = Modifier.size(18.dp), tint = ClawdMutedDark)
         Spacer(modifier = Modifier.width(8.dp))
-        Text(stringResource(R.string.settings_scan_open))
+        Text(stringResource(R.string.settings_scan_open), color = ClawdMutedDark)
     }
 }
 
@@ -442,9 +435,6 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
     // Size slider
     if (enabled) {
         Spacer(modifier = Modifier.height(12.dp))
-        var sizeText by remember { mutableStateOf(sizeDp.toString()) }
-
-        // Size slider + input field
         Text(stringResource(R.string.settings_pet_size), fontSize = 13.sp, color = ClawdTextDark)
         Spacer(modifier = Modifier.height(4.dp))
         Row(
@@ -455,7 +445,6 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
                 value = sizeDp.toFloat(),
                 onValueChange = { sizeDp = it.toInt() },
                 onValueChangeFinished = {
-                    sizeText = sizeDp.toString()
                     prefsStore.setPetSizeDp(sizeDp)
                     context.sendBroadcast(
                         Intent(FloatingPetService.ACTION_PET_SIZE)
@@ -464,58 +453,10 @@ private fun FloatingPetSection(prefsStore: PrefsStore) {
                 },
                 valueRange = 32f..128f,
                 modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(
-                    thumbColor = ClawdAccent,
-                    activeTrackColor = ClawdAccent
-                )
+                colors = SliderDefaults.colors(thumbColor = ClawdAccent, activeTrackColor = ClawdAccent)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
-                    .width(60.dp)
-                    .height(36.dp)
-                    .border(0.5.dp, ClawdBorderDark, RoundedCornerShape(8.dp))
-                    .background(ClawdSurfaceAltDark, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                BasicTextField(
-                    value = sizeText,
-                    onValueChange = { newValue ->
-                        sizeText = newValue.filter { it.isDigit() }
-                        val parsed = sizeText.toIntOrNull()
-                        if (parsed != null) {
-                            val clamped = parsed.coerceIn(32, 128)
-                            sizeDp = clamped
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = LocalTextStyle.current.copy(
-                        fontSize = 13.sp,
-                        color = ClawdTextDark,
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done
-                    ),
-                    singleLine = true
-                )
-            }
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("dp", fontSize = 12.sp, color = ClawdFaintDark)
-        }
-
-        Text(
-            text = stringResource(R.string.settings_pet_resize_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp)
-        )
-
-        // Sync slider → text field
-        LaunchedEffect(sizeDp) {
-            sizeText = sizeDp.toString()
+            Text("$sizeDp dp", fontSize = 12.sp, color = ClawdFaintDark, modifier = Modifier.width(48.dp))
         }
 
         // Character selector
@@ -617,13 +558,13 @@ private fun AboutSection() {
         android.util.Log.w("Settings", "BuildConfig access failed", e)
         "?"
     }
-    AboutRow(stringResource(R.string.about_version), "v$versionName")
-    AboutRow(stringResource(R.string.about_repo), "https://github.com/rullerzhou-afk/clawd-on-desk")
-    AboutRow(stringResource(R.string.about_fork), "https://github.com/Bynlk/clawd-on-desk")
-    AboutRow(stringResource(R.string.about_license), "AGPL-3.0 · © 2026 Ruller_Lulu")
-    AboutRow(stringResource(R.string.about_author), stringResource(R.string.about_author_name))
-    AboutRow(stringResource(R.string.about_maintainer), "@rullerzhou-afk, @YOIMIYA66")
-    AboutRow(stringResource(R.string.about_mobile_maintainer), "@Bynlk")
+    AboutRow(stringResource(R.string.about_version), "v$versionName", ClawdIcons.Activity)
+    AboutRow(stringResource(R.string.about_repo), "https://github.com/rullerzhou-afk/clawd-on-desk", ClawdIcons.Folder)
+    AboutRow(stringResource(R.string.about_fork), "https://github.com/Bynlk/clawd-on-desk", ClawdIcons.Folder)
+    AboutRow(stringResource(R.string.about_license), "AGPL-3.0 · © 2026 Ruller_Lulu", ClawdIcons.Shield)
+    AboutRow(stringResource(R.string.about_author), stringResource(R.string.about_author_name), ClawdIcons.Robot)
+    AboutRow(stringResource(R.string.about_maintainer), "@rullerzhou-afk, @YOIMIYA66", ClawdIcons.Pencil)
+    AboutRow(stringResource(R.string.about_mobile_maintainer), "@Bynlk", ClawdIcons.Pencil)
 
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedButton(
@@ -642,16 +583,18 @@ private fun AboutSection() {
 }
 
 @Composable
-private fun AboutRow(label: String, value: String) {
+private fun AboutRow(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
     val clipboard = LocalClipboardManager.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { clipboard.setText(AnnotatedString(value)) }
-            .padding(vertical = 5.dp),
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = 12.sp, color = ClawdFaintDark, modifier = Modifier.width(100.dp))
+        Icon(icon, null, tint = ClawdFaintDark, modifier = Modifier.size(14.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(label, fontSize = 12.sp, color = ClawdFaintDark, modifier = Modifier.width(80.dp))
         Text(value, fontSize = 12.sp, color = ClawdTextDark, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
         Icon(ClawdIcons.Checks, null, tint = ClawdFaintDark.copy(alpha = 0.5f), modifier = Modifier.size(12.dp))
     }
