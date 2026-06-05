@@ -56,11 +56,11 @@ class ApprovalViewModelTest {
         every { NotificationHelper.showApprovalNotification(any(), any(), any()) } just Runs
         every { NotificationHelper.showElicitationNotification(any(), any(), any()) } just Runs
 
-        // Mock SystemClock.elapsedRealtime() — returns 0 by default in JVM tests,
-        // which causes countdown loops to hang forever. Return a huge value so
-        // deadline overflows and countdown exits immediately.
+        // Mock SystemClock.elapsedRealtime() — JVM returns 0, causing countdown
+        // to compute huge remaining and hang. Start at 0, tests that need
+        // countdown expiry can set it to a large value.
         mockkStatic(SystemClock::class)
-        every { SystemClock.elapsedRealtime() } returns Long.MAX_VALUE / 2
+        every { SystemClock.elapsedRealtime() } returns 0L
 
         permissionRequestsFlow = MutableSharedFlow(extraBufferCapacity = 16)
         sessionsFlow = MutableStateFlow(emptyMap())
