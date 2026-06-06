@@ -78,14 +78,20 @@
 
   function generateQr(text) {
     if (!qrImg || !text) return;
-    if (window.settingsAPI && typeof window.settingsAPI.generateQr === "function") {
-      window.settingsAPI.generateQr(text).then((dataUrl) => {
-        if (qrImg && dataUrl) {
-          qrImg.src = dataUrl;
-          qrImg.style.display = "";
-        }
-      }).catch(() => {});
+    if (!window.settingsAPI || typeof window.settingsAPI.generateQr !== "function") {
+      console.error("[QR] settingsAPI.generateQr not available");
+      return;
     }
+    window.settingsAPI.generateQr(text).then((dataUrl) => {
+      if (dataUrl && qrImg) {
+        qrImg.src = dataUrl;
+        qrImg.style.display = "";
+      } else {
+        console.error("[QR] generateQr returned:", dataUrl);
+      }
+    }).catch((err) => {
+      console.error("[QR] generateQr failed:", err);
+    });
   }
 
   // ── Section 2: PWA Toggle ──

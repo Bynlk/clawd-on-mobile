@@ -546,8 +546,12 @@ function registerSettingsIpc(options = {}) {
   handle("settings:generate-qr", async (text) => {
     try {
       const QRCode = options.QRCode || require("qrcode");
-      return await QRCode.toDataURL(text, { width: 200, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
+      if (!QRCode) { console.error("[IPC] QRCode lib missing"); return null; }
+      const result = await QRCode.toDataURL(text, { width: 200, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
+      console.log("[IPC] QR generated, len:", result ? result.length : 0);
+      return result;
     } catch (err) {
+      console.error("[IPC] QR error:", err.message);
       return null;
     }
   });
