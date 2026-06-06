@@ -432,6 +432,8 @@ function broadcastHookEvent(eventData) {
 function startMobileServer() {
   const MOBILE_PORT = 23334;
   mobileHttpServer = createHttpServer((req, res) => {
+    // Skip WebSocket upgrade requests — handled by ws library's upgrade listener
+    if (req.headers.upgrade && /websocket/i.test(req.headers.upgrade)) return;
     // All HTTP requests go through MobileWSServer.handleRequest (token-protected)
     if (mobileWS) {
       mobileWS.handleRequest(req, res);
