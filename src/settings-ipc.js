@@ -542,16 +542,16 @@ function registerSettingsIpc(options = {}) {
     }
   });
 
-  // QR code generation
-  handle("settings:generate-qr", async (text) => {
+  // QR code generation (note: first arg is IPC event, second is the text)
+  handle("settings:generate-qr", async (_event, text) => {
     try {
-      if (typeof text !== "string" || !text) return { error: "text is " + typeof text + ": " + String(text) };
+      if (typeof text !== "string" || !text) return { error: "text is " + typeof text };
       const QRCode = options.QRCode || require("qrcode");
       if (!QRCode) return { error: "QRCode library not loaded" };
       const result = await QRCode.toDataURL(text, { width: 200, margin: 2, color: { dark: "#000000", light: "#ffffff" } });
       return { dataUrl: result };
     } catch (err) {
-      return { error: err && err.message, text: typeof text + ":" + String(text).substring(0, 50) };
+      return { error: err && err.message };
     }
   });
 
