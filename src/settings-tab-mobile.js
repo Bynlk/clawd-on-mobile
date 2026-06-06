@@ -76,18 +76,13 @@
   }
 
   function generateQr(text) {
-    if (!qrImg || !text) { console.log("[mobile-tab] generateQr skipped:", !qrImg ? "no img" : "no text"); return; }
+    if (!qrImg || !text) return;
     if (window.settingsAPI && typeof window.settingsAPI.generateQr === "function") {
-      console.log("[mobile-tab] calling generateQr, text length:", text.length);
       window.settingsAPI.generateQr(text).then((dataUrl) => {
-        console.log("[mobile-tab] generateQr result:", dataUrl ? "dataUrl length " + dataUrl.length : "null");
         if (qrImg && dataUrl) qrImg.src = dataUrl;
-      }).catch((err) => {
-        console.warn("[mobile-tab] generateQr error:", err);
+      }).catch(() => {
         if (qrImg) qrImg.style.display = "none";
       });
-    } else {
-      console.warn("[mobile-tab] settingsAPI.generateQr not available");
     }
   }
 
@@ -299,16 +294,13 @@
   function loadAndRender(qrContainer, pwaContainer, infoContainer, attempt) {
     attempt = attempt || 0;
     fetchInfo().then((info) => {
-      console.log("[mobile-tab] loadAndRender attempt:", attempt, "info:", info ? info.status : "null");
       if (isReady(info)) {
-        console.log("[mobile-tab] info ready, rendering QR. pairUrl:", info.pairUrl ? info.pairUrl.substring(0, 30) + "..." : "missing");
         renderQrSection(qrContainer, info);
         renderPwaSection(pwaContainer, info);
         renderInfoSection(infoContainer, info, 0);
       } else if (attempt < MAX_RETRIES) {
         setTimeout(() => loadAndRender(qrContainer, pwaContainer, infoContainer, attempt + 1), RETRY_MS);
       } else {
-        console.log("[mobile-tab] max retries reached, clearing QR container");
         qrContainer.innerHTML = "";
         renderPwaSection(pwaContainer, null);
         renderInfoSection(infoContainer, null, 0);
