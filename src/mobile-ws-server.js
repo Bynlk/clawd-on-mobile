@@ -108,11 +108,8 @@ class MobileWSServer extends EventEmitter {
 
     ws.isAlive = true;
 
-    ws.on("pong", () => {
-      ws.isAlive = true;
-    });
-
     ws.on("message", (data) => {
+      ws.isAlive = true; // any message from client = still alive
       const meta = this.clientMeta.get(ws);
       if (!meta) return;
       const now = Date.now();
@@ -163,8 +160,7 @@ class MobileWSServer extends EventEmitter {
           continue;
         }
         client.isAlive = false;
-        client.ping();
-        // 发送 JSON ping 供 Android watchdog 重置
+        // JSON ping for Android watchdog (OkHttp rejects ws protocol-level ping frames)
         try {
           client.send(JSON.stringify({ type: "ping", timestamp: Date.now() }));
         } catch {}
