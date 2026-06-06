@@ -456,12 +456,12 @@ function startMobileServer() {
 
   // WebSocket: /mobile/ws (Android) and /ws (PWA)
   const WebSocket = require("ws");
-  const wsAndroid = new WebSocket.Server({ server: mobileHttpServer, path: "/mobile/ws" });
+  const wsAndroid = new WebSocket.Server({ server: mobileHttpServer, path: "/mobile/ws", perMessageDeflate: false });
   wsAndroid.on("connection", (ws, req) => {
     if (mobileWS) mobileWS._handleConnection(ws, req);
     else ws.close(1013, "Server not ready");
   });
-  const wsPwa = new WebSocket.Server({ server: mobileHttpServer, path: "/ws" });
+  const wsPwa = new WebSocket.Server({ server: mobileHttpServer, path: "/ws", perMessageDeflate: false });
   wsPwa.on("connection", (ws, req) => {
     if (mobileWS) mobileWS._handleConnection(ws, req);
     else ws.close(1013, "Server not ready");

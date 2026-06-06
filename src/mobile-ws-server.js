@@ -30,7 +30,7 @@ class MobileWSServer extends EventEmitter {
     this.maxClients = options.maxClients || DEFAULT_MAX_CLIENTS;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs || DEFAULT_HEARTBEAT_INTERVAL_MS;
 
-    this.wss = new WebSocket.Server({ server: httpServer, path: "/ws" });
+    this.wss = new WebSocket.Server({ server: httpServer, path: "/ws", perMessageDeflate: false });
     this.clients = new Set();
     this.sessionCache = new Map();
     this.clientMeta = new Map();
