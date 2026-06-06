@@ -46,12 +46,13 @@
     label.textContent = t("mobileQrTitle") || "Android 扫码连接";
     box.appendChild(label);
 
-    // QR image
+    // QR image (hidden until data URL is ready)
     const qrWrap = document.createElement("div");
     qrWrap.className = "mobile-qr-wrap";
     qrImg = document.createElement("img");
     qrImg.className = "mobile-qr-img";
     qrImg.alt = "QR Code";
+    qrImg.style.display = "none";
     qrWrap.appendChild(qrImg);
     box.appendChild(qrWrap);
 
@@ -72,23 +73,18 @@
     container.appendChild(box);
 
     // Generate QR code via IPC
-    console.log("[mobile] renderQrSection calling generateQr, pairUrl:", info.pairUrl ? info.pairUrl.substring(0, 30) + "..." : "MISSING");
     generateQr(info.pairUrl);
   }
 
   function generateQr(text) {
-    if (!qrImg || !text) { console.log("[mobile] generateQr skipped: qrImg=" + !!qrImg + " text=" + !!text); return; }
+    if (!qrImg || !text) return;
     if (window.settingsAPI && typeof window.settingsAPI.generateQr === "function") {
-      console.log("[mobile] calling settingsAPI.generateQr...");
       window.settingsAPI.generateQr(text).then((dataUrl) => {
-        console.log("[mobile] generateQr result:", dataUrl ? "dataUrl(len=" + dataUrl.length + ")" : "null");
-        if (qrImg && dataUrl) qrImg.src = dataUrl;
-      }).catch((err) => {
-        console.error("[mobile] generateQr error:", err);
-        if (qrImg) qrImg.style.display = "none";
-      });
-    } else {
-      console.warn("[mobile] settingsAPI.generateQr not available");
+        if (qrImg && dataUrl) {
+          qrImg.src = dataUrl;
+          qrImg.style.display = "";
+        }
+      }).catch(() => {});
     }
   }
 
@@ -300,7 +296,6 @@
   function loadAndRender(qrContainer, pwaContainer, infoContainer, attempt) {
     attempt = attempt || 0;
     fetchInfo().then((info) => {
-      console.log("[mobile] attempt=" + attempt + " status=" + (info ? info.status : "null") + " port=" + (info ? info.port : "?") + " pairUrl=" + (info && info.pairUrl ? "yes" : "no"));
       if (isReady(info)) {
         renderQrSection(qrContainer, info);
         renderPwaSection(pwaContainer, info);
@@ -312,8 +307,6 @@
         renderPwaSection(pwaContainer, null);
         renderInfoSection(infoContainer, null, 0);
       }
-    }).catch((err) => {
-      console.error("[mobile] loadAndRender error:", err);
     });
   }
 
