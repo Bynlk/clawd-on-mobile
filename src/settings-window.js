@@ -231,6 +231,12 @@ function createSettingsWindowRuntime(options = {}) {
     if (typeof options.onBeforeCreate === "function") options.onBeforeCreate();
     settingsWindow = new BrowserWindow(opts);
     const createdWindow = settingsWindow;
+    // F12 to toggle dev tools
+    createdWindow.webContents.on("before-input-event", (_event, input) => {
+      if (input.key === "F12" && input.type === "keyDown") {
+        createdWindow.webContents.toggleDevTools();
+      }
+    });
     if (isWin && typeof createdWindow.setAppDetails === "function") {
       const taskbarDetails = getTaskbarDetails();
       if (taskbarDetails && taskbarDetails.appIconPath) {
