@@ -82,15 +82,15 @@
       console.error("[QR] settingsAPI.generateQr not available");
       return;
     }
-    window.settingsAPI.generateQr(text).then((dataUrl) => {
-      if (dataUrl && qrImg) {
-        qrImg.src = dataUrl;
+    window.settingsAPI.generateQr(text).then((res) => {
+      if (res && res.dataUrl && qrImg) {
+        qrImg.src = res.dataUrl;
         qrImg.style.display = "";
       } else {
-        console.error("[QR] generateQr returned:", dataUrl);
+        console.error("[QR] generateQr failed:", res && res.error ? res.error : JSON.stringify(res));
       }
     }).catch((err) => {
-      console.error("[QR] generateQr failed:", err);
+      console.error("[QR] generateQr exception:", err);
     });
   }
 
