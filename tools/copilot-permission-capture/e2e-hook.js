@@ -93,7 +93,7 @@ const scenarios = [
     serverResponder(req, body, res) {
       res.writeHead(200, {
         "Content-Type": "application/json",
-        "x-clawd-server": "clawd-on-desk",
+        "x-clawd-server": "clawd-on-mobile",
       });
       res.end(JSON.stringify({ behavior: "allow" }));
     },
@@ -105,7 +105,7 @@ const scenarios = [
     serverResponder(req, body, res) {
       res.writeHead(200, {
         "Content-Type": "application/json",
-        "x-clawd-server": "clawd-on-desk",
+        "x-clawd-server": "clawd-on-mobile",
       });
       res.end(JSON.stringify({ behavior: "deny", message: "Blocked by Clawd" }));
     },
@@ -115,7 +115,7 @@ const scenarios = [
     name: "3. Clawd returns 204 no-decision",
     payload: SAMPLE_PAYLOAD,
     serverResponder(req, body, res) {
-      res.writeHead(204, { "x-clawd-server": "clawd-on-desk" });
+      res.writeHead(204, { "x-clawd-server": "clawd-on-mobile" });
       res.end();
     },
     expect: { exitCode: 0, stdout: "" },

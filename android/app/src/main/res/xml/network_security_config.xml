@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <!--
-        Allow cleartext for LAN connections only.
-        The server runs plain ws:// on LAN; non-LAN connections are enforced
-        at the OkHttp layer (see HttpClientProvider).
-        Android's <domain> matching is hostname-based (no CIDR), so we use
-        base-config cleartext=true since LAN IPs are dynamic.
-        SECURITY: This is intentionally permissive for LAN use. Non-LAN
-        connections are protected by OkHttp's strict TLS verification.
+        Default: deny cleartext. Non-LAN connections use wss:// with system
+        trust anchors (see HttpClientProvider, ConnectionConfig.streamUrl()).
+
+        LAN connections use ws:// (plain text) because the server runs without
+        TLS on local networks. Android's <domain> matching is hostname-based
+        and cannot express CIDR ranges, so we cannot whitelist dynamic LAN IPs
+        here. Instead, cleartext is allowed at the OkHttp layer only when
+        ConnectionConfig.isLan == true.
+
+        SECURITY NOTE: This config permits cleartext globally to support
+        LAN-only ws:// connections. The OkHttp layer enforces wss:// for
+        non-LAN hosts. If the app ever needs stricter network-level enforcement,
+        consider switching to a VPN-service or nsc domain-based approach.
     -->
     <base-config cleartextTrafficPermitted="true">
         <trust-anchors>

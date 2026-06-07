@@ -32,6 +32,7 @@ class MessageParser {
             "session_deleted" -> parseSessionDeleted(obj, timestamp)
             "permission_request" -> parsePermissionRequest(obj, timestamp)
             "reaction" -> parseReaction(obj, timestamp)
+            "disconnect" -> ParsedMessage.Disconnect(timestamp)
             else -> ParsedMessage.Unknown(type, timestamp)
         }
     }

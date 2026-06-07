@@ -164,13 +164,19 @@ class ApprovalViewModel(
         activeRequestIds.remove(requestId)
         respondedRequestIds.add(requestId)
         countdownJobs.remove(requestId)?.cancel()
+        // Cancel the system notification so it doesn't linger in the tray
+        runCatching {
+            val nid = requestId.hashCode() and 0x7FFFFFFF
+            NotificationHelper.cancelNotification(getApplication(), nid)         // approval
+            NotificationHelper.cancelNotification(getApplication(), nid + 1)    // elicitation
+        }
     }
 
     fun approve(requestId: String) {
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "allow") }.isSuccess
+            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "allow") }.getOrDefault(false)
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -186,7 +192,7 @@ class ApprovalViewModel(
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "deny") }.isSuccess
+            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "deny") }.getOrDefault(false)
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -202,7 +208,7 @@ class ApprovalViewModel(
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex) }.isSuccess
+            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex) }.getOrDefault(false)
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -219,7 +225,7 @@ class ApprovalViewModel(
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
             val request = _pendingRequests.value.find { it.requestId == requestId }
-            val ok = runCatching { sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers) }.isSuccess
+            val ok = runCatching { sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers) }.getOrDefault(false)
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {

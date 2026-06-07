@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.map
  * and other derived properties that were previously inlined in the Composable.
  *
  * Note: Not yet @HiltViewModel because [StreamingClient] is created at runtime
- * by SseService. Once DI is fully migrated, this can use @Inject constructor.
+ * by WsConnectionService. Once DI is fully migrated, this can use @Inject constructor.
  */
 class SessionsViewModel(
     private val sseClient: StreamingClient,

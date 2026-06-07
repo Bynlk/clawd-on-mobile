@@ -4,7 +4,7 @@ import android.util.Log
 import com.clawd.mobile.ClawdApp
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.StatusNotifier
-import com.clawd.mobile.service.SseService
+import com.clawd.mobile.service.WsConnectionService
 import com.clawd.mobile.util.HttpClientProvider
 import com.clawd.mobile.ws.CertFingerprintInfo
 import com.clawd.mobile.ws.StreamingClient
@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Manages [SseService] lifecycle, client acquisition, TOFU certificate
+ * Manages [WsConnectionService] lifecycle, client acquisition, TOFU certificate
  * handling, notification updates, and auto-reconnect.
  *
  * Extracted from [ClawdNavGraph] so the composable only owns routing.
@@ -52,7 +52,7 @@ class ServiceManager(
      * Call once from a `LaunchedEffect(Unit)`.
      */
     suspend fun initialize() {
-        SseService.start(context)
+        WsConnectionService.start(context)
         val client = acquireClient()
         _sseClient.value = client
         if (client != null) startCollectors(client)
@@ -69,12 +69,12 @@ class ServiceManager(
     }
 
     private suspend fun acquireClient(): StreamingClient? {
-        SseService.getClient()?.let { ws ->
+        WsConnectionService.getClient()?.let { ws ->
             ws.reconnect()
             return ws
         }
         val ws = withTimeoutOrNull(5_000L) {
-            SseService.clientReady.first()
+            WsConnectionService.clientReady.first()
         }
         if (ws != null) {
             ws.reconnect()
@@ -131,7 +131,7 @@ class ServiceManager(
     /** Start or restart the service with an optional new [config][com.clawd.mobile.data.ConnectionConfig]. */
     fun startService(config: com.clawd.mobile.data.ConnectionConfig? = null) {
         config?.let { prefsStore.saveConfig(it) }
-        SseService.start(context, config)
+        WsConnectionService.start(context, config)
     }
 
     /** Trust the pending TOFU certificate. */

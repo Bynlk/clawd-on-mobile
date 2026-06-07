@@ -116,33 +116,6 @@ class PetStateManager(
             else -> 0
         }
 
-        /** Remove entries from [consumedDoneSessions] older than [DONE_SESSION_TTL_MS]. */
-        internal fun cleanupExpiredDoneSessions(consumedDoneSessions: java.util.concurrent.ConcurrentHashMap<String, Long>) {
-            val now = System.currentTimeMillis()
-            val expired = consumedDoneSessions.entries
-                .filter { now - it.value > DONE_SESSION_TTL_MS }
-                .map { it.key }
-            expired.forEach { consumedDoneSessions.remove(it) }
-        }
-
-        /** Remove entries from [consumedInterruptedSessions] older than [DONE_SESSION_TTL_MS]. */
-        internal fun cleanupExpiredInterrupted(consumedInterruptedSessions: java.util.concurrent.ConcurrentHashMap<String, Long>) {
-            val now = System.currentTimeMillis()
-            val expired = consumedInterruptedSessions.entries
-                .filter { now - it.value > DONE_SESSION_TTL_MS }
-                .map { it.key }
-            expired.forEach { consumedInterruptedSessions.remove(it) }
-        }
-
-        /** Remove entries from [consumedNotificationSessions] older than [DONE_SESSION_TTL_MS]. */
-        internal fun cleanupExpiredNotifications(consumedNotificationSessions: java.util.concurrent.ConcurrentHashMap<String, Long>) {
-            val now = System.currentTimeMillis()
-            val expired = consumedNotificationSessions.entries
-                .filter { now - it.value > DONE_SESSION_TTL_MS }
-                .map { it.key }
-            expired.forEach { consumedNotificationSessions.remove(it) }
-        }
-
         /**
          * Resolve the dominant display state from visible sessions.
          * Excludes sleep-sequence states (they are locally managed).
@@ -153,23 +126,21 @@ class PetStateManager(
          */
         internal fun resolveDisplayState(
             visible: List<SessionData>,
-            consumedDoneSessions: java.util.concurrent.ConcurrentHashMap<String, Long>,
-            consumedInterruptedSessions: java.util.concurrent.ConcurrentHashMap<String, Long> = java.util.concurrent.ConcurrentHashMap(),
-            consumedNotificationSessions: java.util.concurrent.ConcurrentHashMap<String, Long> = java.util.concurrent.ConcurrentHashMap()
+            consumedDoneSessions: TimedConsumeSet,
+            consumedInterruptedSessions: TimedConsumeSet = TimedConsumeSet(DONE_SESSION_TTL_MS),
+            consumedNotificationSessions: TimedConsumeSet = TimedConsumeSet(DONE_SESSION_TTL_MS)
         ): PetState {
             var best: PetState = PetState.Idle
             for (session in visible) {
                 val state = when {
                     session.displayState == "notification" -> {
-                        // Notification is a one-shot reaction: consume per session, skip if already fired
-                        val sid = session.sessionId
-                        if (sid != null && !consumedNotificationSessions.containsKey(sid)) {
-                            consumedNotificationSessions[sid] = System.currentTimeMillis()
-                            cleanupExpiredNotifications(consumedNotificationSessions)
-                            PetState.Notification
-                        } else {
-                            PetState.Idle  // already consumed
-                        }
+                        // Notification persists until displayState changes (PC-aligned).
+                        // Do NOT consume — the server keeps displayState="notification"
+                        // while permission is pending, and we must keep showing it.
+                        // Clean up any stale consume entry so the next notification
+                        // for this session isn't suppressed after an approval cycle.
+                        session.sessionId?.let { consumedNotificationSessions.remove(it) }
+                        PetState.Notification
                     }
                     session.displayState != null && session.displayState != "idle" ->
                         PetState.fromString(session.displayState)
@@ -177,16 +148,12 @@ class PetStateManager(
                         val sid = session.sessionId
                         // hookState distinguishes notification from error when both share badge="interrupted"
                         if (session.hookState == "notification") {
-                            if (sid != null && !consumedNotificationSessions.containsKey(sid)) {
-                                consumedNotificationSessions[sid] = System.currentTimeMillis()
-                                cleanupExpiredNotifications(consumedNotificationSessions)
+                            if (sid != null && consumedNotificationSessions.tryConsume(sid)) {
                                 PetState.Notification
                             } else {
                                 PetState.Idle
                             }
-                        } else if (sid != null && !consumedInterruptedSessions.containsKey(sid)) {
-                            consumedInterruptedSessions[sid] = System.currentTimeMillis()
-                            cleanupExpiredInterrupted(consumedInterruptedSessions)
+                        } else if (sid != null && consumedInterruptedSessions.tryConsume(sid)) {
                             PetState.Error  // 只触发一次
                         } else {
                             PetState.Idle  // 已消费
@@ -194,9 +161,7 @@ class PetStateManager(
                     }
                     session.badge == "done" -> {
                         val sid = session.sessionId
-                        if (sid != null && !consumedDoneSessions.containsKey(sid)) {
-                            consumedDoneSessions[sid] = System.currentTimeMillis()
-                            cleanupExpiredDoneSessions(consumedDoneSessions)
+                        if (sid != null && consumedDoneSessions.tryConsume(sid)) {
                             PetState.Attention  // 只触发一次
                         } else {
                             PetState.Idle  // 已消费
@@ -234,9 +199,9 @@ class PetStateManager(
 
     @Volatile private var lastNonIdleState: PetState = PetState.Idle
     private var prevBadge: MutableMap<String, String> = java.util.concurrent.ConcurrentHashMap()
-    private val consumedDoneSessions = java.util.concurrent.ConcurrentHashMap<String, Long>()  // sessionId → consumedAt (epoch ms)
-    private val consumedInterruptedSessions = java.util.concurrent.ConcurrentHashMap<String, Long>()  // sessionId → consumedAt (epoch ms)
-    private val consumedNotificationSessions = java.util.concurrent.ConcurrentHashMap<String, Long>()  // sessionId → consumedAt (epoch ms)
+    private val consumedDoneSessions = TimedConsumeSet(DONE_SESSION_TTL_MS)
+    private val consumedInterruptedSessions = TimedConsumeSet(DONE_SESSION_TTL_MS)
+    private val consumedNotificationSessions = TimedConsumeSet(DONE_SESSION_TTL_MS)
     private var wsCollectorJob: Job? = null
     @Volatile private var activeScope: CoroutineScope? = null
     private val sessionMutex = Mutex()
@@ -347,16 +312,13 @@ class PetStateManager(
         }
 
         if (bestState == PetState.Notification) {
-            // Notification is a one-shot reaction overlay (aligns PC behavior).
-            // Play notification SVG for REACTION_DISPLAY_MS, then restore to actual best state.
+            // Notification persists while displayState stays "notification" (PC-aligned).
+            // The server keeps displayState="notification" while permission is pending;
+            // when resolved, displayState changes and resolveDisplayState returns a different state.
             timerManager.cancelSleepSequence()
             timerManager.resetIdleTimer()
-            val notifSvg = NOTIFICATION_REACTIONS[character]
-                ?: resolvedSvg?.let { "svg/$character/$it" }
-            if (notifSvg != null) {
-                Log.d(TAG, "Notification reaction: $notifSvg")
-                timerManager.loadReactionAndRestore(notifSvg, REACTION_DISPLAY_MS, scope)
-            }
+            lastNonIdleState = bestState
+            emitState(bestState, resolvedSvg)
         } else if (bestState.isActive) {
             // Active state — wake from sleep or update directly
             timerManager.cancelSleepSequence()

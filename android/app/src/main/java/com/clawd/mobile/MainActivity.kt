@@ -8,7 +8,7 @@ import android.content.pm.PackageManager
 import com.clawd.mobile.data.ConnectionConfig
 import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
-import com.clawd.mobile.service.SseService
+import com.clawd.mobile.service.WsConnectionService
 import kotlinx.serialization.json.Json
 import android.net.Uri
 import android.os.Build
@@ -123,7 +123,7 @@ class MainActivity : ComponentActivity() {
     /**
      * Handle clawd:// deep link.
      * URI format: clawd://host:port/token
-     * Parses the URI, saves config, and starts the SseService.
+     * Parses the URI, saves config, and starts the WsConnectionService.
      */
     private fun handleDeepLink(intent: Intent?) {
         val uri = intent?.data ?: return
@@ -141,7 +141,7 @@ class MainActivity : ComponentActivity() {
         Log.d("MainActivity", "Deep link parsed: ${config.host}:${config.port}")
         val prefsStore = PrefsStore.getInstance(this)
         prefsStore.saveConfig(config)
-        SseService.start(this, config)
+        WsConnectionService.start(this, config)
     }
 
     private fun showCurrentPermission() {

@@ -10,8 +10,66 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
 const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX_MESSAGES = 60;
 const MAX_HISTORY = 50;
+const SESSION_CACHE_MAX_SIZE = 200;
+const SESSION_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const PWA_DIR = path.resolve(__dirname, "../pwa");
+
+// Mobile chip/dot field derivation — mirrors state-session-snapshot.js logic
+// for snapshot entries that lack a `mobile` sub-object.
+const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
+const BADGE_DOT_COLORS = {
+  running: "#3b82f6",
+  interrupted: "#d97706",
+  done: "#71717a",
+  idle: "#52525b",
+};
+const ACTIVE_CHIP_MAP = {
+  working: { text: "工作中", color: "#3b82f6" },
+  thinking: { text: "思考中", color: "#8b5cf6" },
+  juggling: { text: "多任务", color: "#f59e0b" },
+  notification: { text: "通知", color: "#d97706" },
+  attention: { text: "需要关注", color: "#d97706" },
+  error: { text: "错误", color: "#ef4444" },
+  sweeping: { text: "清理中", color: "#a1a1aa" },
+  carrying: { text: "搬运中", color: "#a1a1aa" },
+};
+const EVENT_CHIP_MAP = {
+  Stop: { text: "已完成", color: "#22c55e" },
+  StopFailure: { text: "出错", color: "#ef4444" },
+  SubagentStart: { text: "子任务", color: "#60a5fa" },
+  SubagentStop: { text: "子任务完成", color: "#22c55e" },
+  PermissionRequest: { text: "需要权限", color: "#d97706" },
+  Elicitation: { text: "等待中", color: "#d97706" },
+  Notification: { text: "等待中", color: "#d97706" },
+  WorktreeCreate: { text: "工作树", color: "#60a5fa" },
+};
+const ERROR_EVENTS = new Set(["StopFailure", "PostToolUseFailure", "ApiError"]);
+
+/** Derive mobile chip fields from a snapshot entry (no `mobile` sub-object). */
+function buildMobileFields(entry) {
+  const state = entry.state || "idle";
+  const recentEvents = Array.isArray(entry.recentEvents) ? entry.recentEvents : [];
+  const lastEvent = recentEvents.length ? recentEvents[recentEvents.length - 1] : null;
+  const lastEventName = lastEvent && lastEvent.event ? lastEvent.event : null;
+  const isOneshot = ONESHOT_STATES.has(state);
+  const effectiveState = isOneshot ? "idle" : state;
+
+  let chip = null;
+  if (effectiveState === "idle") {
+    if (ERROR_EVENTS.has(lastEventName)) chip = { text: "出错", color: "#ef4444" };
+    else if (isOneshot) chip = (lastEventName && EVENT_CHIP_MAP[lastEventName]) || ACTIVE_CHIP_MAP[state] || null;
+  } else {
+    chip = (lastEventName && EVENT_CHIP_MAP[lastEventName]) || ACTIVE_CHIP_MAP[effectiveState] || null;
+  }
+
+  return {
+    chipText: chip ? chip.text : null,
+    chipColor: chip ? chip.color : null,
+    dotColor: BADGE_DOT_COLORS[entry.badge] || BADGE_DOT_COLORS.idle,
+    isVisible: !entry.headless && state !== "sleeping" && !entry.hiddenFromHud,
+  };
+}
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -30,7 +88,9 @@ class MobileWSServer extends EventEmitter {
     this.maxClients = options.maxClients || DEFAULT_MAX_CLIENTS;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs || DEFAULT_HEARTBEAT_INTERVAL_MS;
 
-    this.wss = new WebSocket.Server({ server: httpServer, path: "/ws", perMessageDeflate: false });
+    // NOTE: WebSocket.Server is now created externally in startMobileServer()
+    // and registered via attachWSS(). No internal WS server is created here.
+    this.wss = null;
     this.clients = new Set();
     this.sessionCache = new Map();
     this.clientMeta = new Map();
@@ -38,8 +98,12 @@ class MobileWSServer extends EventEmitter {
     this._messageHandlers = new Set();
     this.connectionHistory = [];
     this.externalClients = new Map();
+  }
 
-    this.wss.on("connection", (ws, req) => this._handleConnection(ws, req));
+  /** Attach an externally-created WebSocket.Server. */
+  attachWSS(wss) {
+    this.wss = wss;
+    wss.on("connection", (ws, req) => this._handleConnection(ws, req));
   }
 
   _handleConnection(ws, req) {
@@ -175,12 +239,34 @@ class MobileWSServer extends EventEmitter {
     }
   }
 
+  /** Evict stale and oversized session cache entries to prevent unbounded memory growth. */
+  _evictSessionCache() {
+    if (this.sessionCache.size <= SESSION_CACHE_MAX_SIZE) return;
+    const now = Date.now();
+    // First pass: remove expired entries
+    for (const [id, entry] of this.sessionCache) {
+      if (entry._cachedAt && now - entry._cachedAt > SESSION_CACHE_TTL_MS) {
+        this.sessionCache.delete(id);
+      }
+    }
+    // If still over limit, remove oldest entries
+    if (this.sessionCache.size > SESSION_CACHE_MAX_SIZE) {
+      const entries = [...this.sessionCache.entries()]
+        .sort((a, b) => (a[1]._cachedAt || 0) - (b[1]._cachedAt || 0));
+      const toRemove = entries.length - SESSION_CACHE_MAX_SIZE;
+      for (let i = 0; i < toRemove; i++) {
+        this.sessionCache.delete(entries[i][0]);
+      }
+    }
+  }
+
   broadcastState(sessionId, stateData) {
     const isReal = (stateData.state && stateData.state !== "idle") ||
       (Array.isArray(stateData.recentEvents) &&
         stateData.recentEvents.some(e => e && e.event && e.event !== "SessionStart"));
     const enriched = { ...stateData, isReal, updatedAt: Date.now() };
-    this.sessionCache.set(sessionId, enriched);
+    this.sessionCache.set(sessionId, { ...enriched, _cachedAt: Date.now() });
+    this._evictSessionCache();
     const message = JSON.stringify({
       type: "state",
       sessionId,
@@ -195,15 +281,18 @@ class MobileWSServer extends EventEmitter {
   broadcastSessionSnapshot(snapshot) {
     const sessionsMap = {};
     for (const entry of snapshot.sessions) {
-      if (!entry.mobile || entry.mobile.isVisible === false) continue;
+      // buildSessionSnapshotEntry() does not produce a `mobile` sub-object,
+      // so derive the mobile-specific fields from the entry itself.
+      const mobile = entry.mobile || buildMobileFields(entry);
+      if (mobile.isVisible === false) continue;
       sessionsMap[entry.id] = {
         sessionId: entry.id,
         displayState: entry.state,
         badge: entry.badge,
-        chipText: entry.mobile.chipText,
-        chipColor: entry.mobile.chipColor,
-        dotColor: entry.mobile.dotColor,
-        isVisible: entry.mobile.isVisible,
+        chipText: mobile.chipText,
+        chipColor: mobile.chipColor,
+        dotColor: mobile.dotColor,
+        isVisible: mobile.isVisible,
         displayTitle: entry.displayTitle,
         cwd: entry.cwd || null,
         updatedAt: entry.updatedAt,
@@ -211,6 +300,8 @@ class MobileWSServer extends EventEmitter {
         recentEvents: entry.recentEvents || [],
         lastOutput: entry.lastOutput || null,
         isReal: entry.isReal,
+        resolvedSvg: entry.resolvedSvg || null,
+        hookState: entry.hookState || null,
       };
       // Reconcile sessionCache: patch stale badges from oneshot states.
       // broadcastState() caches the oneshot badge (e.g. "interrupted" for error),
@@ -417,7 +508,7 @@ class MobileWSServer extends EventEmitter {
     this.clientMeta.clear();
     for (const [, ext] of this.externalClients) { if (ext.res) { try { ext.res.end(); } catch {} } }
     this.externalClients.clear();
-    this.wss.close();
+    if (this.wss) this.wss.close();
   }
 
   _broadcast(message) {

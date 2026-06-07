@@ -3,7 +3,7 @@ const http = require("http");
 const os = require("os");
 const path = require("path");
 
-const CLAWD_SERVER_ID = "clawd-on-desk";
+const CLAWD_SERVER_ID = "clawd-on-mobile";
 const CLAWD_SERVER_HEADER = "x-clawd-server";
 const DEFAULT_SERVER_PORT = 23333;
 const SERVER_PORT_COUNT = 5;
@@ -567,7 +567,7 @@ function isClawdOrElectronPath(value) {
   // a legitimate Node living under a parent folder whose name happens to
   // contain "Clawd" or "Electron".
   const base = path.win32.basename(norm);
-  return base.includes("clawd on desk") || base === "electron.exe";
+  return base.includes("clawd on mobile") || base === "electron.exe";
 }
 
 function validateWindowsNodeCandidate(value) {

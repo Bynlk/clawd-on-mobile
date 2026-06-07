@@ -22,7 +22,7 @@ from urllib.error import URLError
 
 AGENT_ID = "hermes"
 CLAWD_SERVER_HEADER = "x-clawd-server"
-CLAWD_SERVER_ID = "clawd-on-desk"
+CLAWD_SERVER_ID = "clawd-on-mobile"
 SERVER_PORTS = (23333, 23334, 23335, 23336, 23337)
 POST_TIMEOUT_SECONDS = 0.25
 PERMISSION_POST_TIMEOUT_SECONDS = 600.0

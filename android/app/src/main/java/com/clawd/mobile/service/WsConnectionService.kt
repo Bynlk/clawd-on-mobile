@@ -5,6 +5,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.IBinder
 import android.os.PowerManager
@@ -27,7 +31,7 @@ import kotlinx.coroutines.flow.*
  * Foreground service managing the WebSocket connection to Clawd server.
  *
  * ## Lifecycle
- * - Started via [SseService.start] with [ACTION_CONNECT] or [ACTION_DISCONNECT].
+ * - Started via [WsConnectionService.start] with [ACTION_CONNECT] or [ACTION_DISCONNECT].
  * - Runs as a foreground service with a persistent notification showing connection status.
  * - Returns [START_STICKY] to be restarted by the system if killed.
  *
@@ -41,18 +45,18 @@ import kotlinx.coroutines.flow.*
  * - WakeLock is held conditionally: only during active display states
  *   (working, notification, attention, error) to save battery.
  * - Released when display state returns to idle.
- * - WakeLock timeout is 1 hour with 30-minute renewal checks.
+ * - WakeLock timeout is 1 hour with 25-minute renewal checks.
  *
  * ## WiFi Lock
  * - WiFi lock is held for the entire connection lifetime to prevent WiFi sleep.
  *
  * ## Companion Object
- * - [SseService.start] / [SseService.stop] — static entry points.
- * - [SseService.getClient] — returns the current [StreamingClient] instance.
- * - [SseService.isRunning] — whether the service is currently running.
- * - [SseService.clientReady] — flow emitting when a new client is created.
+ * - [WsConnectionService.start] / [WsConnectionService.stop] — static entry points.
+ * - [WsConnectionService.getClient] — returns the current [StreamingClient] instance.
+ * - [WsConnectionService.isRunning] — whether the service is currently running.
+ * - [WsConnectionService.clientReady] — flow emitting when a new client is created.
  */
-class SseService : Service() {
+class WsConnectionService : Service() {
 
     companion object {
         const val CHANNEL_SERVICE = "clawd_service"
@@ -61,10 +65,10 @@ class SseService : Service() {
         const val ACTION_DISCONNECT = "com.clawd.mobile.DISCONNECT"
 
         private const val WAKELOCK_TIMEOUT_MS = 60 * 60 * 1000L       // 1 hour
-        private const val WAKELOCK_RENEWAL_INTERVAL_MS = 30 * 60 * 1000L  // 30 minutes
+        private const val WAKELOCK_RENEWAL_INTERVAL_MS = 25 * 60 * 1000L  // 25 minutes (< 1h timeout to prevent expiry gap)
 
         @Volatile
-        private var instance: SseService? = null
+        private var instance: WsConnectionService? = null
 
         private val _clientReady = Channel<StreamingClient>(Channel.CONFLATED)
 
@@ -77,7 +81,7 @@ class SseService : Service() {
 
         /** Start the service with an optional new [config]. If null, reconnects with saved config. */
         fun start(context: Context, config: ConnectionConfig? = null) {
-            val intent = Intent(context, SseService::class.java).apply {
+            val intent = Intent(context, WsConnectionService::class.java).apply {
                 action = ACTION_CONNECT
                 config?.let {
                     putExtra("use_new_config", true)
@@ -87,7 +91,7 @@ class SseService : Service() {
         }
 
         fun stop(context: Context) {
-            context.startService(Intent(context, SseService::class.java).apply {
+            context.startService(Intent(context, WsConnectionService::class.java).apply {
                 action = ACTION_DISCONNECT
             })
         }
@@ -101,6 +105,9 @@ class SseService : Service() {
     private var stateCollectorJob: Job? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastNetworkReconnectMs = 0L
+    private val networkDebounceMs = 3000L // Debounce network callbacks to avoid concurrent connections
 
     override fun onCreate() {
         super.onCreate()
@@ -185,15 +192,15 @@ class SseService : Service() {
                     nm.notify(NOTIFICATION_ID, buildNotification(status))
 
                     // Alert notifications for connection state changes
-                    val alertOpenIntent = Intent(this@SseService, MainActivity::class.java).apply {
+                    val alertOpenIntent = Intent(this@WsConnectionService, MainActivity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     }
                     if (previousState == ConnectionState.CONNECTED && state == ConnectionState.DISCONNECTED) {
                         val alertPending = PendingIntent.getActivity(
-                            this@SseService, "conn:disconnect".hashCode(), alertOpenIntent,
+                            this@WsConnectionService, "conn:disconnect".hashCode(), alertOpenIntent,
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                         )
-                        val alert = NotificationCompat.Builder(this@SseService, NotificationHelper.CHANNEL_ALERT)
+                        val alert = NotificationCompat.Builder(this@WsConnectionService, NotificationHelper.CHANNEL_ALERT)
                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                             .setContentTitle(getString(R.string.alert_disconnect_title))
                             .setContentText(getString(R.string.alert_disconnect_text))
@@ -205,10 +212,10 @@ class SseService : Service() {
                     }
                     if (previousState == ConnectionState.RECONNECTING && state == ConnectionState.CONNECTED) {
                         val alertPending = PendingIntent.getActivity(
-                            this@SseService, "conn:reconnect".hashCode(), alertOpenIntent,
+                            this@WsConnectionService, "conn:reconnect".hashCode(), alertOpenIntent,
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                         )
-                        val alert = NotificationCompat.Builder(this@SseService, NotificationHelper.CHANNEL_ALERT)
+                        val alert = NotificationCompat.Builder(this@WsConnectionService, NotificationHelper.CHANNEL_ALERT)
                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                             .setContentTitle(getString(R.string.alert_reconnect_title))
                             .setContentText(getString(R.string.alert_reconnect_text))
@@ -243,13 +250,35 @@ class SseService : Service() {
     private fun acquireLocks() {
         if (wifiLock == null) {
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "clawd:sse").apply {
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "clawd:sse").apply {
                 setReferenceCounted(false)
                 acquire()
             }
         }
         // WakeLock is managed by display state collector — acquire on active, release on idle.
         // Initial acquisition happens when the first active display state is received.
+
+        // Register network change callback for instant WiFi switch detection
+        if (networkCallback == null) {
+            val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (now - lastNetworkReconnectMs < networkDebounceMs) {
+                        android.util.Log.d("WsConnectionService", "Network available — debounced (${now - lastNetworkReconnectMs}ms ago)")
+                        return
+                    }
+                    lastNetworkReconnectMs = now
+                    android.util.Log.d("WsConnectionService", "Network available — triggering reconnect")
+                    (sseClient as? com.clawd.mobile.ws.WsClient)?.reconnectOnNetworkChange()
+                }
+            }
+            networkCallback = callback
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            cm.registerNetworkCallback(request, callback)
+        }
     }
 
     private fun releaseLocks() {
@@ -257,13 +286,20 @@ class SseService : Service() {
         wifiLock = null
         SafeExecutor.tryOrNull("WS") { wakeLock?.release() }
         wakeLock = null
+        networkCallback?.let { cb ->
+            SafeExecutor.tryOrNull("WsConnectionService") {
+                val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                cm.unregisterNetworkCallback(cb)
+            }
+        }
+        networkCallback = null
     }
 
     /** Re-acquire WakeLock if it expired (called periodically by renewal coroutine). */
     private fun renewWakeLock() {
         wakeLock?.let { wl ->
             if (!wl.isHeld) {
-                android.util.Log.d("SseService", "WakeLock expired, re-acquiring")
+                android.util.Log.d("WsConnectionService", "WakeLock expired, re-acquiring")
                 wl.acquire(WAKELOCK_TIMEOUT_MS)
             }
         }
@@ -272,7 +308,7 @@ class SseService : Service() {
     /** Ensure WakeLock is held — called when display state becomes active. */
     private fun ensureWakeLockHeld() {
         if (wakeLock?.isHeld != true) {
-            android.util.Log.d("SseService", "Active state — acquiring WakeLock")
+            android.util.Log.d("WsConnectionService", "Active state — acquiring WakeLock")
             acquireWakeLock()
         }
     }
@@ -281,8 +317,8 @@ class SseService : Service() {
     private fun releaseWakeLockIfHeld() {
         wakeLock?.let { wl ->
             if (wl.isHeld) {
-                android.util.Log.d("SseService", "Idle state — releasing WakeLock")
-                SafeExecutor.tryOrNull("SseService") { wl.release() }
+                android.util.Log.d("WsConnectionService", "Idle state — releasing WakeLock")
+                SafeExecutor.tryOrNull("WsConnectionService") { wl.release() }
             }
         }
     }

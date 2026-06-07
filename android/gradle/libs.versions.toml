@@ -7,6 +7,7 @@ activityCompose = "1.9.3"
 navigationCompose = "2.8.5"
 lifecycleRuntime = "2.8.7"
 okhttp = "4.12.0"
+nvWebsocketClient = "2.14"
 kotlinxSerialization = "1.7.3"
 cameraX = "1.4.1"
 zxing = "3.5.3"
@@ -44,6 +45,7 @@ lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-kt
 # HTTP / SSE
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-sse = { group = "com.squareup.okhttp3", name = "okhttp-sse", version.ref = "okhttp" }
+nv-websocket-client = { group = "com.neovisionaries", name = "nv-websocket-client", version.ref = "nvWebsocketClient" }
 
 # Serialization
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }

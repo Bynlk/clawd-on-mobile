@@ -36,13 +36,13 @@ function getDefaultThemesRoot(platform = process.platform, env = process.env, ho
   const pathApi = platform === "win32" ? path.win32 : path.posix;
   if (platform === "win32") {
     const appData = env.APPDATA || pathApi.join(homeDir, "AppData", "Roaming");
-    return pathApi.join(appData, "clawd-on-desk", "themes");
+    return pathApi.join(appData, "clawd-on-mobile", "themes");
   }
   if (platform === "darwin") {
-    return pathApi.join(homeDir, "Library", "Application Support", "clawd-on-desk", "themes");
+    return pathApi.join(homeDir, "Library", "Application Support", "clawd-on-mobile", "themes");
   }
   const configHome = env.XDG_CONFIG_HOME || pathApi.join(homeDir, ".config");
-  return pathApi.join(configHome, "clawd-on-desk", "themes");
+  return pathApi.join(configHome, "clawd-on-mobile", "themes");
 }
 
 function parseArgs(argv) {

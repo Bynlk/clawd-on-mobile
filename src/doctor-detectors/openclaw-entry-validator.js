@@ -41,7 +41,7 @@ function validateOpenClawEntry(entry, options = {}) {
     return { ok: false, reason: "manifest-corrupt" };
   }
 
-  if (!manifest || manifest.id !== "clawd-on-desk") return { ok: false, reason: "manifest-id-mismatch" };
+  if (!manifest || manifest.id !== "clawd-on-mobile") return { ok: false, reason: "manifest-id-mismatch" };
   if (!manifest.activation || manifest.activation.onStartup !== true) {
     return { ok: false, reason: "manifest-missing-on-startup" };
   }

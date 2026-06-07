@@ -14,10 +14,10 @@
     FileClose $0
   clawd_node_cleanup_home_done:
 
-  IfFileExists "$INSTDIR\Clawd on Desk.exe" 0 clawd_node_cleanup_done
+  IfFileExists "$INSTDIR\Clawd on Mobile.exe" 0 clawd_node_cleanup_done
   IfFileExists "$INSTDIR\resources\app.asar.unpacked\hooks\cleanup-integrations.js" 0 clawd_node_cleanup_done
     System::Call 'Kernel32::SetEnvironmentVariable(t, t)i("ELECTRON_RUN_AS_NODE", "1").r0'
-    nsExec::ExecToLog '"$INSTDIR\Clawd on Desk.exe" "$INSTDIR\resources\app.asar.unpacked\hooks\cleanup-integrations.js" --apply --user-home "$1" --source nsis --fail-open'
+    nsExec::ExecToLog '"$INSTDIR\Clawd on Mobile.exe" "$INSTDIR\resources\app.asar.unpacked\hooks\cleanup-integrations.js" --apply --user-home "$1" --source nsis --fail-open'
     Pop $0
     System::Call 'Kernel32::SetEnvironmentVariable(t, t)i("ELECTRON_RUN_AS_NODE", "").r0'
   clawd_node_cleanup_done:

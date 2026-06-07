@@ -17,7 +17,7 @@ import androidx.core.app.NotificationCompat
 import com.clawd.mobile.ClawdApp
 import com.clawd.mobile.R
 import com.clawd.mobile.data.PrefsStore
-import com.clawd.mobile.service.SseService
+import com.clawd.mobile.service.WsConnectionService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -84,7 +84,7 @@ class FloatingPetService : Service() {
         Log.d(TAG, "onCreate")
 
         prefsStore = PrefsStore.getInstance(this)
-        val sessionsFlow = SseService.getClient()?.sessions
+        val sessionsFlow = WsConnectionService.getClient()?.sessions
             ?: kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
         stateManager = PetStateManager(character, sessionsFlow)
         stateManager.sleepTimeoutMs = prefsStore.getSleepTimeoutSec().toLong() * 1000L
@@ -117,6 +117,7 @@ class FloatingPetService : Service() {
             stateManager.reset()
             commandCollectorJob?.cancel()
             windowController?.removeView()
+            petView?.destroy()
             windowController = null
             petView = null
             showFloatingWindow()
@@ -136,6 +137,8 @@ class FloatingPetService : Service() {
         unregisterBroadcastReceiver()
         windowController?.savePosition(prefsStore)
         windowController?.removeView()
+        petView?.destroy()
+        petView = null
         super.onDestroy()
     }
 
@@ -160,7 +163,7 @@ class FloatingPetService : Service() {
             }
             // Collect SSE reaction events from server
             launch {
-                SseService.getClient()?.reactions?.collect { svg ->
+                WsConnectionService.getClient()?.reactions?.collect { svg ->
                     val path = "svg/$character/$svg"
                     stateManager.loadReaction(path)
                 }

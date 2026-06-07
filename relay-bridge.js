@@ -19,6 +19,10 @@ let relayWs = null;
 let localWs = null;
 let reconnectTimer = null;
 let lastSnapshotSent = 0; // 上次发送 snapshot 的时间
+let reconnectDelay = 5000; // 初始重连延迟 5s
+const RECONNECT_MAX_DELAY = 60000; // 最大重连延迟 60s
+const messageBuffer = []; // 本地重连期间缓存的手机消息
+const MESSAGE_BUFFER_MAX = 50;
 
 function connectToRelay() {
   const url = `${RELAY_URL}?token=${TOKEN}&role=pc`;
@@ -32,6 +36,8 @@ function connectToRelay() {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
+    // Reset backoff on successful connection
+    reconnectDelay = 5000;
     // 连接中继后立即连接本地 hook server
     connectToLocal();
   });
@@ -48,29 +54,19 @@ function connectToRelay() {
 
     console.log("[bridge] 📥 收到手机消息，转发到本地");
 
-    // 收到手机消息时，如果距离上次 snapshot 超过 5 秒，重新获取
-    const now = Date.now();
-    if (now - lastSnapshotSent > 5000) {
-      console.log("[bridge] 🔄 重新获取 snapshot...");
-      if (localWs) { localWs.close(); localWs = null; }
-      setTimeout(() => connectToLocal(), 300);
-      lastSnapshotSent = now;
-    }
-
     if (localWs && localWs.readyState === WebSocket.OPEN) {
       localWs.send(data);
     } else {
+      // 本地未连接时，缓存消息（上限 MESSAGE_BUFFER_MAX）
+      if (messageBuffer.length < MESSAGE_BUFFER_MAX) {
+        messageBuffer.push(data);
+      }
       connectToLocal();
-      setTimeout(() => {
-        if (localWs && localWs.readyState === WebSocket.OPEN) {
-          localWs.send(data);
-        }
-      }, 500);
     }
   });
 
   relayWs.on("close", () => {
-    console.log("[bridge] ❌ 中继连接断开，5秒后重连...");
+    console.log(`[bridge] ❌ 中继连接断开，${reconnectDelay / 1000}秒后重连...`);
     scheduleReconnect();
   });
 
@@ -87,6 +83,17 @@ function connectToLocal() {
 
   localWs.on("open", () => {
     console.log("[bridge] ✅ 已连接本地 hook server");
+    // Flush buffered messages from reconnection window
+    if (messageBuffer.length > 0) {
+      console.log(`[bridge] 📤 刷出 ${messageBuffer.length} 条缓存消息`);
+      for (const buffered of messageBuffer) {
+        if (localWs && localWs.readyState === WebSocket.OPEN) {
+          localWs.send(buffered);
+        }
+      }
+      messageBuffer.length = 0;
+    }
+    lastSnapshotSent = Date.now();
   });
 
   localWs.on("message", (data) => {
@@ -114,7 +121,9 @@ function scheduleReconnect() {
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectToRelay();
-  }, 5000);
+  }, reconnectDelay);
+  // Exponential backoff with jitter, capped at RECONNECT_MAX_DELAY
+  reconnectDelay = Math.min(reconnectDelay * 2 * (0.5 + Math.random()), RECONNECT_MAX_DELAY);
 }
 
 // 启动

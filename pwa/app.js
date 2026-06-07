@@ -173,7 +173,7 @@
       var self = this;
       var connected = false;
       this.ws.onopen = function() { self._closingIntentionally = false; connected = true; self.retryCount = 0; self.reconnectDelay = 1000; self._setState("connected"); log("Connected"); showToast("已连接到桌面端", "success"); };
-      this.ws.onmessage = function(event) { try { var msg = JSON.parse(event.data); if (self.onMessage) self.onMessage(msg); } catch {} };
+      this.ws.onmessage = function(event) { try { var msg = JSON.parse(event.data); if (msg.type === "ping") { self.send({ type: "pong", timestamp: msg.timestamp }); } if (self.onMessage) self.onMessage(msg); } catch {} };
       this.ws.onclose = function(event) {
         if (self._closingIntentionally) return;
         if (event.code === 1008) { self._setState("auth_failed"); log("Auth failed"); showToast("认证失败", "error"); return; }

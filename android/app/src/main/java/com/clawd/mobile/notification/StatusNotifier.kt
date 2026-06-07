@@ -26,8 +26,9 @@ class StatusNotifier(private val context: Context, private val prefsStore: Prefs
     /** Per-session badge tracking for completion notifications */
     private val lastBadge = ConcurrentHashMap<String, String>()
 
-    /** Set by NavGraph to check if there are pending approval requests */
-    var hasPendingApprovals: () -> Boolean = { false }
+    /** Set by NavGraph to check if there are pending approval requests.
+     *  Default to true so alert notifications still fire when NavGraph hasn't composed yet. */
+    var hasPendingApprovals: () -> Boolean = { true }
 
     /** Resolve display name: custom > displayTitle > agentId > sessionId */
     private fun resolveName(sessionId: String, data: SessionData): String {

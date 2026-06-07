@@ -54,7 +54,7 @@
         </receiver>
 
         <service
-            android:name=".service.SseService"
+            android:name=".service.WsConnectionService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property

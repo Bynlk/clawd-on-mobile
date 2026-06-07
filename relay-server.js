@@ -65,6 +65,7 @@ wss.on("connection", (ws, req) => {
 
   // 转发消息
   ws.on("message", (data) => {
+    ws.isAlive = true; // 任何消息 = 客户端存活
     const peerWs = pair[peer];
     if (peerWs && peerWs.readyState === peerWs.OPEN) {
       peerWs.send(data);
@@ -89,12 +90,12 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-// 心跳检测 (30秒，发送 JSON ping 供 Android watchdog 重置)
+// 心跳检测 (30秒，仅发 JSON ping — OkHttp 不支持协议级 ping 帧)
 setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) return ws.terminate();
     ws.isAlive = false;
-    ws.ping();
+    // 不调用 ws.ping() — OkHttp 会因 "Control frames must be final" 拒绝协议级 ping
     try {
       ws.send(JSON.stringify({ type: "ping", timestamp: Date.now() }));
     } catch {}

@@ -204,6 +204,12 @@
 
     <!-- Settings extras -->
     <string name="settings_pet_resize_hint">💡 Restart the overlay after resizing for changes to take effect</string>
+    <string name="settings_debug_log">Connection Log</string>
+    <string name="settings_debug_log_desc">Detailed connection logs for troubleshooting.</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_copy_all">Copy All</string>
+    <string name="action_clear">Clear</string>
+    <string name="settings_no_log">No logs</string>
 
     <!-- Scan screen -->
     <string name="scan_title">Scan QR</string>

@@ -7,7 +7,7 @@ const path = require("path");
 const childProcess = require("child_process");
 const { asarUnpackedPath, writeJsonAtomic, writeJsonAtomicWithBackup } = require("./json-utils");
 
-const PLUGIN_ID = "clawd-on-desk";
+const PLUGIN_ID = "clawd-on-mobile";
 const PLUGIN_DIR_NAME = "openclaw-plugin";
 const DEFAULT_STATE_DIR = path.join(os.homedir(), ".openclaw");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_STATE_DIR, "openclaw.json");

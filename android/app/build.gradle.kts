@@ -88,6 +88,8 @@ dependencies {
     // HTTP / SSE
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
+    // WebSocket client (replaces OkHttp WebSocket — OkHttp 4.12.0 has frame parsing bug)
+    implementation(libs.nv.websocket.client)
 
     // Serialization
     implementation(libs.kotlinx.serialization.json)

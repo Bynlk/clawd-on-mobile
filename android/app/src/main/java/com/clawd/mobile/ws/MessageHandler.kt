@@ -28,6 +28,7 @@ class MessageHandler(
     private val reactions: MutableSharedFlow<String>,
     private val scope: CoroutineScope,
     private val messageParser: MessageParser,
+    private val sendPong: (String) -> Unit,
 ) {
     /**
      * Parse and dispatch a raw message string.
@@ -39,7 +40,12 @@ class MessageHandler(
         Log.d(tag, "message type=${parsed::class.simpleName}")
 
         when (parsed) {
-            is ParsedMessage.Ping -> return false  // server heartbeat, watchdog already reset in caller
+            is ParsedMessage.Ping -> {
+                // Respond to server heartbeat so it knows we're alive.
+                // Without this, the server terminates us after ~60s of silence.
+                sendPong("""{"type":"pong","timestamp":${parsed.timestamp}}""")
+                return false
+            }
             is ParsedMessage.Connected -> { /* handshake confirmed */ }
             is ParsedMessage.ClearSessions -> {
                 Log.d(tag, "clear_sessions → syncing=true, sessions cleared")
@@ -98,6 +104,12 @@ class MessageHandler(
                     Log.d(tag, "reaction svg=$svg")
                     scope.launch { reactions.emit(svg) }
                 }
+            }
+
+            is ParsedMessage.Disconnect -> {
+                Log.w(tag, "Server sent disconnect — triggering reconnect")
+                // Let the transport layer handle reconnection via onTransportClosed/onTransportFailure
+                return false
             }
 
             is ParsedMessage.Unknown -> { /* ignore unknown types */ }

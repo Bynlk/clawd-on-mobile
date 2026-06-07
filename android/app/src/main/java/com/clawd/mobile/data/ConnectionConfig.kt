@@ -12,8 +12,10 @@ data class ConnectionConfig(
     /** Whether the host is on a local network (no TLS required). Cached per host. */
     val isLan: Boolean get() = isLanCached(host)
 
-    // Always use plain ws — TLS termination is handled by reverse proxy if needed
-    fun streamUrl(): String = "ws://$host:$port/mobile/ws"
+    fun streamUrl(): String {
+        val scheme = if (isLan) "ws" else "wss"
+        return "$scheme://$host:$port/mobile/ws"
+    }
 
     /** URL safe for logging — no token included. */
     fun streamUrlMasked(): String = streamUrl()  // already no token in URL

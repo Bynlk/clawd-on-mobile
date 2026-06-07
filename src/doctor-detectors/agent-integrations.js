@@ -1349,7 +1349,7 @@ function checkOpenClawPluginMode(descriptor, options) {
   const pluginConfig = settings
     && settings.plugins
     && settings.plugins.entries
-    && settings.plugins.entries[descriptor.pluginId || "clawd-on-desk"];
+    && settings.plugins.entries[descriptor.pluginId || "clawd-on-mobile"];
   if (pluginConfig && pluginConfig.enabled === false) {
     return makeDetail(descriptor, "not-connected", {
       level: "warning",
@@ -1395,7 +1395,7 @@ function readJsonIfPresent(fsImpl, filePath) {
 function isPiManagedMarker(value) {
   return !!(
     value
-    && value.app === "clawd-on-desk"
+    && value.app === "clawd-on-mobile"
     && value.integration === "pi"
     && value.managed === true
   );

@@ -8,7 +8,7 @@ import coreModule from "./pi-extension-core.js";
 
 const core = ((coreModule as any).default || coreModule) as any;
 
-const CLAWD_SERVER_ID = "clawd-on-desk";
+const CLAWD_SERVER_ID = "clawd-on-mobile";
 const CLAWD_SERVER_HEADER = "x-clawd-server";
 const STATE_PATH = "/state";
 const DEFAULT_SERVER_PORT = 23333;

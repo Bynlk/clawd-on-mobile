@@ -22,7 +22,7 @@
 // code. Never writes to stdout for "capture" mode — Copilot parses stdout as
 // hook decision JSON.
 //
-// debug.log default: %APPDATA%/clawd-on-desk/debug.log (Windows). Override
+// debug.log default: %APPDATA%/clawd-on-mobile/debug.log (Windows). Override
 // with CLAWD_COPILOT_HOOK_DEBUG_PATH.
 
 const fs = require("fs");
@@ -35,7 +35,7 @@ function resolveDebugPath() {
   }
   const appData = process.env.APPDATA
     || path.join(os.homedir(), "AppData", "Roaming");
-  return path.join(appData, "clawd-on-desk", "debug.log");
+  return path.join(appData, "clawd-on-mobile", "debug.log");
 }
 
 function appendLog(mode, stdinRaw, extra) {

@@ -456,18 +456,20 @@ function startMobileServer() {
     }
   });
 
-  // WebSocket: /mobile/ws (Android) and /ws (PWA)
+  // WebSocket: single server, manual upgrade for /mobile/ws (Android) and /ws (PWA)
   const WebSocket = require("ws");
-  const wsAndroid = new WebSocket.Server({ server: mobileHttpServer, path: "/mobile/ws", perMessageDeflate: false });
-  wsAndroid.on("connection", (ws, req) => {
-    if (mobileWS) mobileWS._handleConnection(ws, req);
-    else ws.close(1013, "Server not ready");
+  const wss = new WebSocket.Server({ noServer: true, perMessageDeflate: false, autoPong: false });
+  mobileHttpServer.on("upgrade", (req, socket, head) => {
+    const urlPath = (require("url").parse(req.url || "").pathname || "");
+    if (urlPath === "/mobile/ws" || urlPath === "/ws") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    } else {
+      socket.destroy();
+    }
   });
-  const wsPwa = new WebSocket.Server({ server: mobileHttpServer, path: "/ws", perMessageDeflate: false });
-  wsPwa.on("connection", (ws, req) => {
-    if (mobileWS) mobileWS._handleConnection(ws, req);
-    else ws.close(1013, "Server not ready");
-  });
+  if (mobileWS) mobileWS.attachWSS(wss);
   console.log(`[mobile-ws] WebSocket endpoint at /mobile/ws on port ${MOBILE_PORT}`);
 
   const mobileBindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";

@@ -314,7 +314,7 @@ function postToClawd(urlPath, body, logTag) {
         debugLog(`POST[${reqId}] ${logTag} port=${port} status=${res.status} header=${header} elapsed=${elapsed}ms`);
         // Port range is unprivileged so another app could answer — require the
         // Clawd identity header before trusting the response.
-        if (header === "clawd-on-desk") {
+        if (header === "clawd-on-mobile") {
           _cachedPort = port;
           try { await res.text(); } catch {}
           debugLog(`POST[${reqId}] ${logTag} OK port=${port}`);

@@ -263,7 +263,7 @@ function handleStatePost(req, res, options) {
             stopHookActive,
             ...(agentIdentity.defaulted ? { agentIdDefaulted: true } : {}),
           });
-          if (mobileWS && event !== "SubagentStop") {
+          if (mobileWS) {
             const session = ctx.sessions ? ctx.sessions.get(sid) : null;
             const recentEvents = (session && Array.isArray(session.recentEvents))
               ? session.recentEvents

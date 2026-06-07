@@ -1,7 +1,7 @@
 {
-  "id": "clawd-on-desk",
-  "name": "Clawd on Desk",
-  "description": "Forward OpenClaw lifecycle and tool-state events to Clawd on Desk.",
+  "id": "clawd-on-mobile",
+  "name": "Clawd on Mobile",
+  "description": "Forward OpenClaw lifecycle and tool-state events to Clawd.",
   "activation": {
     "onStartup": true
   },

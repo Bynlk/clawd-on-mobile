@@ -62,6 +62,8 @@ class ApprovalViewModelTest {
         every { streamingClient.permissionRequests } returns permissionRequestsFlow
         every { streamingClient.sessions } returns sessionsFlow
         every { streamingClient.connectionState } returns connectionStateFlow
+        every { streamingClient.sendPermissionResponse(any(), any(), any()) } returns true
+        every { streamingClient.sendElicitationResponse(any(), any(), any()) } returns true
     }
 
     @After

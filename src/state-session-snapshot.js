@@ -265,6 +265,8 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
       rawEvent,
       at: Number.isFinite(eventAt) ? eventAt : 0,
     } : null,
+    recentEvents,
+    hookState: (session && session.hookState) || null,
     // Lifecycle flag for the Dashboard "Mark read" button visibility (PR2).
     // ackedAt stays internal — only the boolean reaches renderers.
     requiresCompletionAck: !!(session && session.requiresCompletionAck === true),
@@ -377,6 +379,7 @@ function sessionSnapshotSignature(snapshot) {
       lastEventLabelKey: entry.lastEvent ? entry.lastEvent.labelKey : null,
       lastEventRawEvent: entry.lastEvent ? entry.lastEvent.rawEvent : null,
       lastEventAt: entry.lastEvent ? entry.lastEvent.at : null,
+      hookState: entry.hookState || null,
       requiresCompletionAck: !!entry.requiresCompletionAck,
     })),
   });

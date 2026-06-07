@@ -4,7 +4,7 @@
 // Install Clawd's Hermes Agent plugin without mutating Hermes config.yaml.
 //
 // Hermes config is YAML and user-owned. The only supported activation path in
-// this installer is `hermes plugins enable clawd-on-desk`; if the CLI is not
+// this installer is `hermes plugins enable clawd-on-mobile`; if the CLI is not
 // available, we copy the managed plugin files and report a repairable error.
 
 const fs = require("fs");
@@ -13,7 +13,7 @@ const os = require("os");
 const { spawnSync } = require("child_process");
 const { asarUnpackedPath } = require("./json-utils");
 
-const PLUGIN_ID = "clawd-on-desk";
+const PLUGIN_ID = "clawd-on-mobile";
 const PLUGIN_SOURCE_DIR_NAME = "hermes-plugin";
 const MANAGED_PLUGIN_FILES = ["plugin.yaml", "__init__.py"];
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".hermes");
@@ -352,7 +352,7 @@ function registerHermesPlugin(options = {}) {
     console.log(`Clawd Hermes plugin -> ${base.pluginDir}`);
     console.log(`  Installed: ${installed}, updated: ${updated}, skipped: ${skipped}`);
     if (results.length > 1) console.log(`  Profiles synced: ${results.length - 1}`);
-    console.log("  Enabled: clawd-on-desk");
+    console.log("  Enabled: clawd-on-mobile");
   }
 
   return {

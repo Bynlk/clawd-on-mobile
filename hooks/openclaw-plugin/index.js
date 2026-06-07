@@ -3,7 +3,7 @@ import { request } from "http";
 import { homedir } from "os";
 import { join } from "path";
 
-export const PLUGIN_ID = "clawd-on-desk";
+export const PLUGIN_ID = "clawd-on-mobile";
 export const AGENT_ID = "openclaw";
 export const STOP_DEBOUNCE_MS = 1500;
 
@@ -356,7 +356,7 @@ function postJsonToPort(port, payload) {
       },
       timeout: POST_TIMEOUT_MS,
     }, (res) => {
-      const isClawd = res.headers["x-clawd-server"] === "clawd-on-desk";
+      const isClawd = res.headers["x-clawd-server"] === "clawd-on-mobile";
       res.resume();
       res.on("end", () => finish(isClawd));
     });

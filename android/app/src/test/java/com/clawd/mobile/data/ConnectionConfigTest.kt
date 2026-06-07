@@ -77,7 +77,8 @@ class ConnectionConfigTest {
     @Test
     fun `generate correct stream url for remote`() {
         val config = ConnectionConfig("example.com", 443, "abcdef1234567890abcdef1234567890")
-        assertEquals("ws://example.com:443/mobile/ws", config.streamUrl())
+        // example.com is non-LAN → wss://
+        assertEquals("wss://example.com:443/mobile/ws", config.streamUrl())
     }
 
     @Test
@@ -145,12 +146,11 @@ class ConnectionConfigTest {
     }
 
     @Test
-    fun `stream url uses https for non-lan`() {
+    fun `stream url uses wss for non-lan`() {
         val config = ConnectionConfig("example.com", 443, "abcdef1234567890abcdef1234567890")
         // isLan will be false for example.com (DNS lookup fails in test, returns false)
         val url = config.streamUrl()
-        // The scheme depends on InetAddress resolution — in unit tests without network,
-        // InetAddress.getByName("example.com") may throw, making isLan = false
+        assertTrue("Expected wss:// for non-LAN, got: $url", url.startsWith("wss://"))
         assertTrue(url.contains("://example.com:443/mobile/ws"))
         assertFalse(url.contains("token"))
     }

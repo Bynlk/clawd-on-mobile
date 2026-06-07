@@ -51,6 +51,10 @@ sealed class ParsedMessage {
         override val timestamp: Long,
     ) : ParsedMessage()
 
+    data class Disconnect(
+        override val timestamp: Long,
+    ) : ParsedMessage()
+
     data class Unknown(
         val type: String,
         override val timestamp: Long,

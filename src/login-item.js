@@ -20,7 +20,7 @@ const os = require("os");
 const path = require("path");
 
 const AUTOSTART_DIR = path.join(os.homedir(), ".config", "autostart");
-const AUTOSTART_FILE = path.join(AUTOSTART_DIR, "clawd-on-desk.desktop");
+const AUTOSTART_FILE = path.join(AUTOSTART_DIR, "clawd-on-mobile.desktop");
 
 function getLoginItemSettings({ isPackaged, openAtLogin, execPath, appPath }) {
   if (isPackaged) return { openAtLogin };
@@ -48,7 +48,7 @@ function linuxSetOpenAtLogin(enable, { execCmd } = {}) {
       [
         "[Desktop Entry]",
         "Type=Application",
-        "Name=Clawd on Desk",
+        "Name=Clawd on Mobile",
         `Exec=${execCmd}`,
         "Hidden=false",
         "NoDisplay=false",

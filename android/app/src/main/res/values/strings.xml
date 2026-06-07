@@ -204,6 +204,12 @@
 
     <!-- Settings extras -->
     <string name="settings_pet_resize_hint">💡 调整大小后需关闭再开启悬浮窗生效</string>
+    <string name="settings_debug_log">连接日志</string>
+    <string name="settings_debug_log_desc">连接过程的详细日志，用于排查问题。</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_copy_all">复制全部</string>
+    <string name="action_clear">清除</string>
+    <string name="settings_no_log">暂无日志</string>
 
     <!-- Scan screen -->
     <string name="scan_title">扫码配对</string>

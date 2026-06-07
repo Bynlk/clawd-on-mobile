@@ -103,7 +103,8 @@ object HttpClientProvider {
             // LAN: disable hostname verification (TOFU trust model — user confirms fingerprint)
             builder.hostnameVerifier(HostnameVerifier { _, _ -> true })
         } else {
-            // Non-LAN: apply certificate pinning if fingerprint is configured
+            // Non-LAN: enforce TLS with system trust anchors.
+            // If a fingerprint is pinned, add OkHttp CertificatePinner on top.
             val fp = _fingerprint
             if (fp != null) {
                 Log.d(TAG, "Applying cert pinning for ${config.host}")
@@ -112,8 +113,9 @@ object HttpClientProvider {
                     .build()
                 builder.certificatePinner(pinner)
             } else {
-                Log.w(TAG, "Non-LAN connection to ${config.host} without cert pinning")
+                Log.d(TAG, "Non-LAN connection to ${config.host} using system trust (no pin)")
             }
+            // Uses platform default SSLSocketFactory + HostnameVerifier — no bypass.
         }
 
         return builder.build()

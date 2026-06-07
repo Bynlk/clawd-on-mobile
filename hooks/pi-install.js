@@ -8,7 +8,7 @@ const childProcess = require("child_process");
 const { asarUnpackedPath, writeJsonAtomic } = require("./json-utils");
 const { resolveNodeBin } = require("./server-config");
 
-const EXTENSION_DIR_NAME = "clawd-on-desk";
+const EXTENSION_DIR_NAME = "clawd-on-mobile";
 const EXTENSION_FILE = "index.ts";
 const CORE_FILE = "pi-extension-core.js";
 const MARKER_FILE = ".clawd-managed.json";
@@ -62,7 +62,7 @@ function readJsonIfPresent(filePath, fsImpl = fs) {
 function isManagedMarker(value) {
   return !!(
     value
-    && value.app === "clawd-on-desk"
+    && value.app === "clawd-on-mobile"
     && value.integration === "pi"
     && value.managed === true
   );
@@ -70,7 +70,7 @@ function isManagedMarker(value) {
 
 function buildMarker() {
   return {
-    app: "clawd-on-desk",
+    app: "clawd-on-mobile",
     integration: "pi",
     managed: true,
     version: 1,

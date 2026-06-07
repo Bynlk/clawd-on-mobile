@@ -4,12 +4,12 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.clawd.mobile.service.SseService
+import com.clawd.mobile.service.WsConnectionService
 import com.clawd.mobile.util.ApprovalSender
 
 /**
  * Handles approval/denial responses in the background via WorkManager.
- * Sends via WebSocket through [SseService.getClient].
+ * Sends via WebSocket through [WsConnectionService.getClient].
  * Falls back to [Result.retry] if the service is not running.
  */
 class ApprovalWorker(
@@ -28,7 +28,7 @@ class ApprovalWorker(
         val decision = inputData.getString("decision") ?: return Result.failure()
         val notificationId = inputData.getInt("notification_id", -1)
 
-        val client = SseService.getClient()
+        val client = WsConnectionService.getClient()
         if (client == null) {
             Log.w(TAG, "Service not running, will retry")
             return Result.retry()
@@ -36,7 +36,11 @@ class ApprovalWorker(
 
         return try {
             val json = ApprovalSender.buildPermissionResponseJson(requestId, decision)
-            client.sendMessage(json)
+            val sent = client.sendMessage(json)
+            if (!sent) {
+                Log.w(TAG, "sendMessage returned false (buffer full or disconnected), will retry")
+                return Result.retry()
+            }
 
             if (notificationId >= 0) {
                 NotificationHelper.cancelNotification(applicationContext, notificationId)

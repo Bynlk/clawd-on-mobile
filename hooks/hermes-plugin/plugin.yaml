@@ -1,7 +1,7 @@
-name: clawd-on-desk
+name: clawd-on-mobile
 version: "0.2.0"
 description: "Forward Hermes Agent lifecycle and tool state events to Clawd."
-author: "Clawd on Desk"
+author: "Bynlk"
 
 hooks:
   - on_session_start
