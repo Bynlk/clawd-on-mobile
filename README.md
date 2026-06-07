@@ -8,16 +8,10 @@
 <p align="center">
   <a href="README.zh-CN.md">中文版</a>
   ·
-  <a href="README.zh-TW.md">繁體中文</a>
-  ·
-  <a href="README.ko-KR.md">한국어</a>
-  ·
-  <a href="README.ja-JP.md">日本語</a>
-  ·
   <a href="README-desk.md">🖥️ Desktop</a>
 </p>
 <p align="center">
-  <sub>🌏 Don't see your language? <a href="https://github.com/Bynlk/clawd-on-mobile/pulls">Open a PR</a> to add one.</sub>
+  <sub>🌏 More languages coming soon. <a href="https://github.com/Bynlk/clawd-on-mobile/pulls">Open a PR</a> to contribute translations.</sub>
 </p>
 <p align="center">
   <a href="https://github.com/Bynlk/clawd-on-mobile/releases"><img src="https://img.shields.io/github/v/release/Bynlk/clawd-on-mobile" alt="Version"></a>
@@ -64,7 +58,7 @@ A native Android client built with Kotlin and Jetpack Compose, connecting to the
 - **Background Resilience** — foreground service with WiFi lock, conditional WakeLock, and automatic reconnection (exponential backoff + circuit breaker)
 - **TOFU Certificate Verification** — Trust-On-First-Use for secure LAN connections
 - **Encrypted Storage** — connection credentials secured with AES-256-GCM (EncryptedSharedPreferences)
-- **i18n** — English, Simplified Chinese, Traditional Chinese, Korean, Japanese
+- **i18n** — Chinese-English bilingual with in-app language switcher (more languages expanding)
 
 > 📖 **Detailed documentation**: [android/README.md](android/README.md) — architecture, state machine, communication protocol, project structure
 

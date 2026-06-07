@@ -8,14 +8,10 @@
 <p align="center">
   <a href="README.md">English</a>
   ·
-  <a href="README.zh-TW.md">繁體中文</a>
-  ·
-  <a href="README.ko-KR.md">한국어</a>
-  ·
-  <a href="README.ja-JP.md">日本語</a>
-  ·
   <a href="README-desk.zh-CN.md">🖥️ 桌面端</a>
 </p>
+<p align="center">
+  <sub>🌏 更多语言支持扩展中，欢迎 <a href="https://github.com/Bynlk/clawd-on-mobile/pulls">提交 PR</a> 贡献翻译。</sub>
 <p align="center">
   <a href="https://github.com/Bynlk/clawd-on-mobile/releases"><img src="https://img.shields.io/github/v/release/Bynlk/clawd-on-mobile" alt="Version"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-lightgrey" alt="Platform">
@@ -61,7 +57,7 @@
 - **后台稳定** — 前台服务 + WiFi 锁 + 条件 WakeLock + 自动重连（指数退避 + 熔断器）
 - **TOFU 证书验证** — Trust-On-First-Use 机制保障局域网连接安全
 - **加密存储** — 连接凭据使用 AES-256-GCM 加密（EncryptedSharedPreferences）
-- **多语言** — 英文、简体中文、繁体中文、韩文、日文
+- **多语言** — 中英双语，支持 App 内切换（更多语言扩展中）
 
 > 📖 **详细文档**: [android/README.md](android/README.md) — 架构设计、状态机、通信协议、项目结构
 

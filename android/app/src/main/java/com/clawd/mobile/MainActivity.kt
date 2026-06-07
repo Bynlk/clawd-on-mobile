@@ -3,8 +3,10 @@ package com.clawd.mobile
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.util.Log
 import android.content.pm.PackageManager
+import java.util.Locale
 import com.clawd.mobile.data.ConnectionConfig
 import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
@@ -31,6 +33,15 @@ import com.clawd.mobile.ui.navigation.ClawdNavGraph
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: Context) {
+        val lang = PrefsStore.getInstance(newBase).getLanguage()
+        val locale = Locale.forLanguageTag(lang)
+        val config = Configuration(newBase.resources.configuration)
+        config.setLocale(locale)
+        val context = newBase.createConfigurationContext(config)
+        super.attachBaseContext(context)
+    }
 
     private val permissionQueue = mutableListOf<PermissionRequest>()
     private var currentPermissionIndex = 0

@@ -216,4 +216,10 @@
     <string name="scan_need_camera">Camera permission required</string>
     <string name="scan_grant_camera">Grant Permission</string>
     <string name="scan_qr_hint">Place QR code in the frame</string>
+
+    <!-- Language settings -->
+    <string name="settings_language">Language</string>
+    <string name="settings_language_desc">Choose the app display language. Takes effect immediately.</string>
+    <string name="settings_language_zh">中文</string>
+    <string name="settings_language_en">English</string>
 </resources>

@@ -216,4 +216,10 @@
     <string name="scan_need_camera">需要摄像头权限</string>
     <string name="scan_grant_camera">授予权限</string>
     <string name="scan_qr_hint">将 QR 码放入框内</string>
+
+    <!-- Language settings -->
+    <string name="settings_language">语言</string>
+    <string name="settings_language_desc">选择 App 显示语言，切换后立即生效。</string>
+    <string name="settings_language_zh">中文</string>
+    <string name="settings_language_en">English</string>
 </resources>

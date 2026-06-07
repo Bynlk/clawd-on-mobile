@@ -26,6 +26,7 @@ class PrefsStore private constructor(context: Context) {
         private const val KEY_PET_CY = "pet_content_cy"
         private const val KEY_CLICK_THROUGH = "pet_click_through"
         private const val KEY_SLEEP_TIMEOUT = "pet_sleep_timeout_sec"
+        private const val KEY_LANGUAGE = "app_language"
         private const val PREFS_ENCRYPTED = "clawd_prefs_encrypted"
         private const val PREFS_LEGACY = "clawd_prefs"
         private const val KEY_MIGRATED = "_migrated_v1"
@@ -188,4 +189,9 @@ class PrefsStore private constructor(context: Context) {
         if (v.isNullOrBlank()) prefs.edit().remove("cert_fingerprint").apply()
         else prefs.edit().putString("cert_fingerprint", v).apply()
     }
+
+    // Language / i18n
+    /** Returns language tag: "zh" (default) or "en". */
+    fun getLanguage(): String = prefs.getString(KEY_LANGUAGE, "zh") ?: "zh"
+    fun setLanguage(v: String) { prefs.edit().putString(KEY_LANGUAGE, v).apply() }
 }

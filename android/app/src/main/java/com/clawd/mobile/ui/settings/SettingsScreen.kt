@@ -54,6 +54,14 @@ fun SettingsScreen(
 
             // Accordion sections
             AccordionSection(
+                title = stringResource(R.string.settings_language),
+                icon = ClawdIcons.Activity,
+                defaultExpanded = false
+            ) {
+                LanguageSection(prefsStore = prefsStore)
+            }
+
+            AccordionSection(
                 title = stringResource(R.string.settings_notification),
                 icon = ClawdIcons.Bell,
                 defaultExpanded = false
