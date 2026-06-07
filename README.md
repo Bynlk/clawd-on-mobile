@@ -186,12 +186,19 @@ Clawd on Mobile is a community-driven project. Bug reports, feature ideas, and p
 
 This is a fork of [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desktop) by [@rullerzhou-afk](https://github.com/rullerzhou-afk). All original desktop features are preserved, with the addition of an Android companion app by [@Bynlk](https://github.com/Bynlk).
 
-### Maintainers
+### Maintainers (Desktop)
 
 <table>
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · creator</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />maintainer</sub></a></td>
+  </tr>
+</table>
+
+### Android Companion Maintainer
+
+<table>
+  <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />Android dev</sub></a></td>
   </tr>
 </table>

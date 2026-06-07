@@ -184,12 +184,19 @@ Clawd on Mobile 是一個社群驅動的專案。歡迎提 Bug、提需求、提
 
 本專案 Fork 自 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desktop)，原作者 [@rullerzhou-afk](https://github.com/rullerzhou-afk)。所有桌面端功能均已保留，並由 [@Bynlk](https://github.com/Bynlk) 新增了 Android 伴侶應用。
 
-### 維護者
+### 維護者（桌面端）
 
 <table>
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · 建立者</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />維護者</sub></a></td>
+  </tr>
+</table>
+
+### Android 伴侶應用維護者
+
+<table>
+  <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />Android 開發</sub></a></td>
   </tr>
 </table>

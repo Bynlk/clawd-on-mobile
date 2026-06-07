@@ -184,12 +184,19 @@ Clawd on Mobile은 커뮤니티 주도 프로젝트입니다. 버그 리포트, 
 
 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desktop)의 Fork이며, 원작자 [@rullerzhou-afk](https://github.com/rullerzhou-afk). 모든 데스크톱 기능이 보존되어 있으며, [@Bynlk](https://github.com/Bynlk)이 Android 컴패니언 앱을 추가했습니다.
 
-### 메인테이너
+### 메인테이너 (데스크톱)
 
 <table>
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · 제작자</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />메인테이너</sub></a></td>
+  </tr>
+</table>
+
+### Android 컴패니언 메인테이너
+
+<table>
+  <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />Android 개발</sub></a></td>
   </tr>
 </table>
