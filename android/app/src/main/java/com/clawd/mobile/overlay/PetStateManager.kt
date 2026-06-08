@@ -482,7 +482,9 @@ class PetStateManager(
         if (target != null && target.isActive && !target.isSleepSequence) {
             // If the target state is still the best (or better), restore it.
             // If sessions moved to a higher-priority state, use that instead.
-            val restoreTo = if (bestState.priority >= target.priority) bestState else target
+            // If bestState is Idle (no active sessions), always use Idle —
+            // don't restore to a working state when the task is done.
+            val restoreTo = if (bestState.isIdleLike || bestState.priority >= target.priority) bestState else target
             Log.d(TAG, "Oneshot: restoring to ${restoreTo.themeKey} (saved=${target.themeKey}, best=${bestState.themeKey})")
             emitState(restoreTo)
         } else {
