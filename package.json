@@ -1,6 +1,6 @@
 {
   "name": "clawd-on-mobile",
-  "version": "1.0.0",
+  "version": "0.9.0",
   "description": "Clawd on Mobile — Android companion for Clawd on Desk, with desktop pet features.",
   "main": "src/main.js",
   "scripts": {
