@@ -4,7 +4,10 @@ const {
   CLAWD_SERVER_HEADER,
   CLAWD_SERVER_ID,
 } = require("../hooks/server-config");
-const { CODEX_OFFICIAL_HOOK_SOURCE } = require("./server-codex-official-turns");
+const {
+  CODEX_OFFICIAL_HOOK_SOURCE,
+  CODEX_SESSION_ROLE_SUBAGENT,
+} = require("./server-codex-official-turns");
 const {
   truncateDeep,
   normalizePermissionSuggestions,
@@ -73,10 +76,15 @@ function shouldMuteCodexNativeNotificationSound(ctx) {
   return ctx.isCodexNativeNotificationSoundEnabled() === false;
 }
 
-function isHeadlessSession(ctx, sessionId) {
-  if (!ctx || !ctx.sessions || typeof ctx.sessions.get !== "function") return false;
-  const session = ctx.sessions.get(sessionId);
-  return !!(session && session.headless);
+function isHeadlessPermissionRequest(ctx, sessionId, data) {
+  if (ctx && ctx.sessions && typeof ctx.sessions.get === "function") {
+    const session = ctx.sessions.get(sessionId);
+    if (session && session.headless) return true;
+  }
+  if (data && data.headless === true) return true;
+  return !!(data
+    && data.agent_id === "codex"
+    && data.codex_session_role === CODEX_SESSION_ROLE_SUBAGENT);
 }
 
 function arePermissionBubblesEnabled(ctx) {
@@ -345,7 +353,7 @@ function handlePermissionPost(req, res, options) {
           return;
         }
 
-        if (isHeadlessSession(ctx, sessionId)) {
+        if (isHeadlessPermissionRequest(ctx, sessionId, data)) {
           recordRequestHookEvent.accepted();
           ctx.permLog(`opencode headless session=${sessionId} → silent drop, TUI fallback — request=${requestId}`);
           return;
@@ -454,7 +462,7 @@ function handlePermissionPost(req, res, options) {
           return;
         }
 
-        if (isHeadlessSession(ctx, sessionId)) {
+        if (isHeadlessPermissionRequest(ctx, sessionId, data)) {
           recordRequestHookEvent.accepted();
           ctx.permLog(`codex headless session=${sessionId} -> no decision, native prompt fallback (tool=${toolName})`);
           sendCodexPermissionNoDecision(res);
@@ -566,7 +574,7 @@ function handlePermissionPost(req, res, options) {
           return;
         }
 
-        if (isHeadlessSession(ctx, sessionId)) {
+        if (isHeadlessPermissionRequest(ctx, sessionId, data)) {
           recordRequestHookEvent.accepted();
           ctx.permLog(`qwen headless session=${sessionId} -> no decision, native prompt fallback (tool=${toolName})`);
           sendQwenCodePermissionNoDecision(res);
@@ -672,7 +680,7 @@ function handlePermissionPost(req, res, options) {
           return;
         }
 
-        if (isHeadlessSession(ctx, sessionId)) {
+        if (isHeadlessPermissionRequest(ctx, sessionId, data)) {
           recordRequestHookEvent.accepted();
           ctx.permLog(`copilot headless session=${sessionId} -> no decision, native prompt fallback (tool=${toolName})`);
           sendCopilotPermissionNoDecision(res);
@@ -787,7 +795,7 @@ function handlePermissionPost(req, res, options) {
           return;
         }
 
-        if (isHeadlessSession(ctx, sessionId)) {
+        if (isHeadlessPermissionRequest(ctx, sessionId, data)) {
           recordRequestHookEvent.accepted();
           ctx.permLog(`hermes headless session=${sessionId} -> no decision, native fallback (tool=${toolName})`);
           sendHermesPermissionNoDecision(res);

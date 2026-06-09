@@ -130,7 +130,8 @@ const SCHEMA = {
   // Headless sessions are also stopped before that chokepoint, but their
   // downstream fallback is agent-specific: Claude/CodeBuddy auto-deny, while
   // Codex/Qwen/Copilot/Hermes return no-decision and opencode silently falls
-  // back to its TUI prompt.
+  // back to its TUI prompt. Codex subagent permission payloads are treated as
+  // headless even if no prior session-state event has populated the runtime map.
   //
   // `ephemeral: true` — this field is runtime-only. It is NOT written to disk
   // by save(), and load()/validate() force it back to the default. So enabling
