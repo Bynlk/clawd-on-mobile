@@ -2461,6 +2461,82 @@ describe("Stop completion gate (#406)", () => {
   });
 });
 
+describe("Headless Stop debounce default (#449)", () => {
+  let api, ctx, soundsPlayed, savedDebounceEnv;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    // This group exercises the built-in defaults — make sure no env override
+    // from the host shell leaks in.
+    savedDebounceEnv = process.env.CLAWD_COMPLETION_DEBOUNCE_MS;
+    delete process.env.CLAWD_COMPLETION_DEBOUNCE_MS;
+    soundsPlayed = [];
+    ctx = makeCtx({
+      processKill: () => true,
+      playSound: (name) => soundsPlayed.push(name),
+    });
+    api = require("../src/state")(ctx);
+  });
+  afterEach(() => {
+    api.cleanup();
+    mock.timers.reset();
+    if (savedDebounceEnv === undefined) delete process.env.CLAWD_COMPLETION_DEBOUNCE_MS;
+    else process.env.CLAWD_COMPLETION_DEBOUNCE_MS = savedDebounceEnv;
+  });
+
+  it("headless Stop is held; the orchestrator's next prompt suppresses the celebration", () => {
+    update(api, { id: "h1", state: "attention", event: "Stop", headless: true });
+    assert.strictEqual(api.sessions.get("h1").state, "working", "held during the window");
+    assert.deepStrictEqual(soundsPlayed, [], "no celebration on the mid-task Stop");
+    mock.timers.tick(500); // Claudian-style continuation lands inside the window
+    update(api, { id: "h1", state: "thinking", event: "UserPromptSubmit", headless: true });
+    mock.timers.tick(5000); // well past the original window
+    assert.strictEqual(api.sessions.get("h1").state, "thinking");
+    assert.ok(!soundsPlayed.includes("complete"), "a continued Stop must not celebrate");
+  });
+
+  it("headless Stop with a quiet window celebrates after the 2s default", () => {
+    update(api, { id: "h1", state: "attention", event: "Stop", headless: true });
+    mock.timers.tick(1999);
+    assert.deepStrictEqual(soundsPlayed, [], "still inside the default window");
+    mock.timers.tick(1); // 2000ms — the turn really ended
+    assert.strictEqual(api.sessions.get("h1").state, "idle");
+    assert.strictEqual(api.getCurrentState(), "attention");
+    assert.ok(soundsPlayed.includes("complete"), "a real headless completion celebrates");
+    assert.strictEqual(api.deriveSessionBadge(api.sessions.get("h1")), "done");
+  });
+
+  it("interactive (non-headless) Stop still celebrates immediately by default", () => {
+    update(api, { id: "i1", state: "attention", event: "Stop" });
+    assert.strictEqual(api.getCurrentState(), "attention");
+    assert.ok(soundsPlayed.includes("complete"));
+  });
+
+  it("the headless flag persists — a later Stop without the flag still debounces", () => {
+    update(api, { id: "h1", state: "thinking", event: "UserPromptSubmit", headless: true });
+    update(api, { id: "h1", state: "attention", event: "Stop" }); // flag omitted on this event
+    assert.strictEqual(api.sessions.get("h1").state, "working", "held via persisted headless flag");
+    mock.timers.tick(2000);
+    assert.ok(soundsPlayed.includes("complete"), "quiet window still promotes");
+  });
+
+  it("CLAWD_COMPLETION_DEBOUNCE_MS=0 disables the headless default too", () => {
+    process.env.CLAWD_COMPLETION_DEBOUNCE_MS = "0";
+    update(api, { id: "h1", state: "attention", event: "Stop", headless: true });
+    assert.strictEqual(api.getCurrentState(), "attention");
+    assert.ok(soundsPlayed.includes("complete"), "explicit 0 keeps the old immediate behavior");
+  });
+
+  it("an explicit CLAWD_COMPLETION_DEBOUNCE_MS overrides the headless default window", () => {
+    process.env.CLAWD_COMPLETION_DEBOUNCE_MS = "100";
+    update(api, { id: "h1", state: "attention", event: "Stop", headless: true });
+    mock.timers.tick(99);
+    assert.deepStrictEqual(soundsPlayed, [], "inside the overridden window");
+    mock.timers.tick(1);
+    assert.ok(soundsPlayed.includes("complete"), "overridden window promotes, not the 2s default");
+  });
+});
+
 describe("deriveSessionBadge", () => {
   let api;
   beforeEach(() => { api = require("../src/state")(makeCtx()); });

@@ -94,16 +94,23 @@ const COMPLETION_CANCEL_EVENTS = new Set([
   "SubagentStart", "SubagentStop", "PreCompact", "PostCompact",
   "PermissionRequest", "Elicitation", "StopFailure", "ApiError", "SessionEnd",
 ]);
-function getCompletionDebounceMs() {
+// #449: headless sessions (claude -p / Agent SDK hosts such as Obsidian-
+// Claudian) end every intermediate orchestrator step with a REAL Stop and
+// submit the next step right after, so each step celebrated. The follow-up
+// UserPromptSubmit lands within hook-spawn latency (~0.3s) of the Stop, so a
+// 2s quiet window absorbs it; a genuinely final Stop just celebrates 2s late.
+const HEADLESS_COMPLETION_DEBOUNCE_MS = 2000;
+function getCompletionDebounceMs(headless) {
   const raw = process.env.CLAWD_COMPLETION_DEBOUNCE_MS;
   const n = Number.parseInt(raw, 10);
-  // Opt-in, default 0 = celebrate immediately on Stop. The field gates
-  // (PostCompact / background_tasks / session_crons / stop_hook_active) already
-  // suppress the common false completions with zero delay; the debounce only
-  // adds value for the rare third-party Stop-hook veto, so it is off by default
-  // and users who actually hit that can set CLAWD_COMPLETION_DEBOUNCE_MS > 0.
+  // Explicit env override wins for every session kind (0 = fully off).
   if (Number.isFinite(n) && n >= 0 && n <= 10000) return n;
-  return 0;
+  // Interactive default stays 0 = celebrate immediately on Stop. The field
+  // gates (PostCompact / background_tasks / session_crons / stop_hook_active)
+  // already suppress the common false completions with zero delay; a terminal
+  // user otherwise wants the celebration the instant the turn ends. Headless
+  // sessions default to the #449 window above.
+  return headless ? HEADLESS_COMPLETION_DEBOUNCE_MS : 0;
 }
 let lastSessionSnapshotSignature = null;
 let lastSessionSnapshot = null;
@@ -995,8 +1002,7 @@ function updateSessionFocusMetadata(sessionId, opts = {}) {
 // "working" and only celebrate if no forward-progress event for the session
 // arrives within the window — this catches a third-party Stop hook that vetoes
 // the stop (Claude keeps going) without us ever seeing the veto.
-function scheduleCompletionDebounce(sessionId) {
-  const debounceMs = getCompletionDebounceMs();
+function scheduleCompletionDebounce(sessionId, debounceMs) {
   const existing = pendingCompletionTimers.get(sessionId);
   if (existing) clearTimeout(existing);
   const timer = setTimeout(() => {
@@ -1223,7 +1229,7 @@ function updateSession(sessionId, state, event, opts = {}) {
     cancelCompletionDebounce(sessionId, "stop-superseded");
     const liveWork =
       backgroundTasksCount > 0 || sessionCronsCount > 0 || stopHookActive === true;
-    const debounceMs = getCompletionDebounceMs();
+    const debounceMs = getCompletionDebounceMs(srcHeadless);
     if (liveWork || debounceMs > 0) {
       // Hold the Stop as "working" and DROP the event to null so recentEvents
       // keeps NO "Stop" tail while held. Why null and not "Stop": deriveSessionBadge
@@ -1241,7 +1247,7 @@ function updateSession(sessionId, state, event, opts = {}) {
         );
         // liveWork never auto-promotes; a later plain Stop (no bg work) will.
       } else {
-        scheduleCompletionDebounce(sessionId);
+        scheduleCompletionDebounce(sessionId, debounceMs);
       }
     }
     // debounceMs <= 0 && !liveWork → keep "attention" (immediate celebration).
