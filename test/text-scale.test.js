@@ -3,16 +3,18 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
 const {
-  NO_ZOOM_PARTITION,
   TEXT_SCALE_MIN,
   TEXT_SCALE_MAX,
   TEXT_SCALE_DEFAULT,
   TEXT_SCALE_STEP,
+  TEXT_SCALE_MAX_DISPLAY_ENTRIES,
   isValidTextScale,
   clampTextScale,
   scaleWidth,
   scaleHeight,
   applyZoomToWindow,
+  resolveTextScaleForKey,
+  normalizeTextScaleByDisplay,
   textScaleToUiPercent,
   uiPercentToTextScale,
 } = require("../src/text-scale");
@@ -87,39 +89,91 @@ describe("text-scale slider mapping", () => {
     assert.strictEqual(uiPercentToTextScale(NaN), TEXT_SCALE_DEFAULT);
   });
 
-  it("exposes step and partition constants", () => {
+  it("exposes the step constant", () => {
     assert.strictEqual(TEXT_SCALE_STEP, 0.05);
-    assert.strictEqual(typeof NO_ZOOM_PARTITION, "string");
-    assert.ok(NO_ZOOM_PARTITION.length > 0);
-    assert.ok(!NO_ZOOM_PARTITION.startsWith("persist:"), "must stay in-memory");
+  });
+});
+
+describe("per-display resolution", () => {
+  it("prefers the display entry and falls back to the legacy global", () => {
+    const map = { "1": 1.35, "2": 0.9 };
+    assert.strictEqual(resolveTextScaleForKey(map, 1.1, "1"), 1.35);
+    assert.strictEqual(resolveTextScaleForKey(map, 1.1, "2"), 0.9);
+    assert.strictEqual(resolveTextScaleForKey(map, 1.1, "3"), 1.1);
+    assert.strictEqual(resolveTextScaleForKey(map, 1.1, null), 1.1);
+    assert.strictEqual(resolveTextScaleForKey(null, 1.1, "1"), 1.1);
+  });
+
+  it("clamps both entry and fallback values", () => {
+    assert.strictEqual(resolveTextScaleForKey({ "1": 99 }, 1, "1"), TEXT_SCALE_MAX);
+    assert.strictEqual(resolveTextScaleForKey({}, NaN, "1"), TEXT_SCALE_DEFAULT);
+  });
+
+  it("normalizes the map: drops invalid keys/values and caps entries", () => {
+    const normalized = normalizeTextScaleByDisplay({
+      "1": 1.35,
+      "": 1.2,
+      "2": 99,
+      "3": "1.2",
+      "4": 0.8,
+    });
+    assert.deepStrictEqual(normalized, { "1": 1.35, "4": 0.8 });
+
+    const oversized = {};
+    for (let i = 0; i < TEXT_SCALE_MAX_DISPLAY_ENTRIES + 5; i++) oversized[`d${i}`] = 1.2;
+    assert.strictEqual(
+      Object.keys(normalizeTextScaleByDisplay(oversized)).length,
+      TEXT_SCALE_MAX_DISPLAY_ENTRIES,
+    );
+
+    assert.deepStrictEqual(normalizeTextScaleByDisplay(null), {});
+    assert.deepStrictEqual(normalizeTextScaleByDisplay([1.2]), {});
   });
 });
 
 describe("applyZoomToWindow", () => {
   function makeWindow({ destroyed = false, throws = false } = {}) {
-    const calls = [];
+    const factorCalls = [];
+    const jsCalls = [];
     return {
-      calls,
+      factorCalls,
+      jsCalls,
       isDestroyed: () => destroyed,
       webContents: {
+        isDestroyed: () => false,
         setZoomFactor(factor) {
           if (throws) throw new Error("boom");
-          calls.push(factor);
+          factorCalls.push(factor);
+        },
+        executeJavaScript(code) {
+          jsCalls.push(code);
+          return Promise.resolve();
         },
       },
     };
   }
 
-  it("sets the clamped factor on a live window", () => {
+  it("neutralizes the shared zoom map and injects root CSS zoom", () => {
     const win = makeWindow();
     assert.strictEqual(applyZoomToWindow(win, 1.25), true);
-    assert.deepStrictEqual(win.calls, [1.25]);
+    assert.deepStrictEqual(win.factorCalls, [1]);
+    assert.deepStrictEqual(win.jsCalls, ['document.documentElement.style.zoom = "1.25"']);
   });
 
-  it("still sets explicitly at the default scale", () => {
+  it("memoizes per webContents and re-injects only on a changed value", () => {
+    const win = makeWindow();
+    applyZoomToWindow(win, 1.25);
+    applyZoomToWindow(win, 1.25);
+    assert.strictEqual(win.jsCalls.length, 1);
+    applyZoomToWindow(win, 1.4);
+    assert.strictEqual(win.jsCalls.length, 2);
+    assert.strictEqual(win.jsCalls[1], 'document.documentElement.style.zoom = "1.4"');
+  });
+
+  it("still injects explicitly at the default scale", () => {
     const win = makeWindow();
     assert.strictEqual(applyZoomToWindow(win, 1), true);
-    assert.deepStrictEqual(win.calls, [1]);
+    assert.deepStrictEqual(win.jsCalls, ['document.documentElement.style.zoom = "1"']);
   });
 
   it("is safe on destroyed/missing windows and swallows setter errors", () => {

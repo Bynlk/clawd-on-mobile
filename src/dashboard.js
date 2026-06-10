@@ -193,9 +193,17 @@ module.exports = function initDashboard(ctx) {
     dashboardWindow = new BrowserWindow(opts);
     dashboardWindow.setMenuBarVisibility(false);
     dashboardWindow.loadFile(path.join(__dirname, "dashboard.html"));
+    // textScale is per-display: re-resolve after the user drags the window
+    // somewhere else (debounced — "move" fires continuously during drags).
+    let moveTextScaleTimer = null;
+    dashboardWindow.on("move", () => {
+      if (moveTextScaleTimer) clearTimeout(moveTextScaleTimer);
+      moveTextScaleTimer = scheduleLater(() => {
+        moveTextScaleTimer = null;
+        applyTextScaleToWindow();
+      }, 350);
+    });
     dashboardWindow.webContents.once("did-finish-load", () => {
-      // Explicit even though same-origin propagation usually covers it — a
-      // stale partition-persisted factor must never win over prefs.
       applyZoomToWindow(dashboardWindow, getTextScale());
       sendI18n();
       sendSnapshot();

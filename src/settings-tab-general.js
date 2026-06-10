@@ -4,6 +4,7 @@
   const GENERAL_IN_PLACE_KEYS = new Set([
     "size",
     "textScale",
+    "textScaleByDisplay",
     "soundMuted",
     "flashTaskbarOnComplete",
     "flashIntervalMs",
@@ -1377,10 +1378,17 @@
     const readout = row.querySelector(".text-scale-readout");
     readout.title = t("textScaleResetTitle");
 
-    function readSnapshotPercent() {
-      const v = state.snapshot && typeof state.snapshot.textScale === "number"
-        ? state.snapshot.textScale : 1;
-      return Math.round(v * 100);
+    // textScale is per-display; the committed value for the display this
+    // window sits on lives main-side, so sync is an IPC round-trip rather
+    // than a snapshot read.
+    function syncFromContext() {
+      if (!window.settingsAPI || typeof window.settingsAPI.getTextScaleContext !== "function") return;
+      Promise.resolve(window.settingsAPI.getTextScaleContext()).then((context) => {
+        const pct = context && Number.isFinite(Number(context.percent))
+          ? Number(context.percent)
+          : 100;
+        paint(Math.min(TEXT_SCALE_UI_MAX, Math.max(TEXT_SCALE_UI_MIN, Math.round(pct))));
+      }).catch(() => {});
     }
 
     function paint(pct) {
@@ -1419,16 +1427,16 @@
     }
 
     function commit(pct) {
-      window.settingsAPI.update("textScale", pct / 100).then((result) => {
+      window.settingsAPI.command("setTextScaleForDisplay", { value: pct / 100 }).then((result) => {
         if (!result || result.status !== "ok") {
           const msg = (result && result.message) || "unknown error";
           rollbackPreview();
-          paint(readSnapshotPercent());
+          syncFromContext();
           ops.showToast(t("toastSaveFailed") + msg, { error: true });
         }
       }).catch(() => {
         rollbackPreview();
-        paint(readSnapshotPercent());
+        syncFromContext();
       });
     }
 
@@ -1450,12 +1458,13 @@
       commit(TEXT_SCALE_UI_DEFAULT);
     });
 
-    paint(readSnapshotPercent());
+    paint(TEXT_SCALE_UI_DEFAULT);
+    syncFromContext();
 
     state.mountedControls.textScale = {
       row,
       syncValueFromSnapshot() {
-        paint(readSnapshotPercent());
+        syncFromContext();
       },
       dispose() {
         rollbackPreview();
@@ -1465,6 +1474,9 @@
     return row;
   }
 
+  // = prefsSizeToUi(9): the prefs `size` default is "P:9" (see src/prefs.js).
+  const SIZE_UI_DEFAULT = 30;
+
   function buildSizeSliderRow() {
     const row = document.createElement("div");
     row.className = "row";
@@ -1473,53 +1485,23 @@
         `<span class="row-label"></span>` +
         `<span class="row-desc"></span>` +
       `</div>` +
-      `<div class="row-control size-control">` +
-        `<div class="size-slider-wrap">` +
-          `<div class="size-bubble"></div>` +
-          `<input type="range" class="size-slider" min="${helpers.SIZE_UI_MIN}" max="${helpers.SIZE_UI_MAX}" step="1" />` +
-        `</div>` +
-        `<div class="size-ticks"></div>` +
+      `<div class="row-control volume-control size-control">` +
+        `<input type="range" class="volume-slider size-slider" min="${helpers.SIZE_UI_MIN}" max="${helpers.SIZE_UI_MAX}" step="1" />` +
+        `<button type="button" class="volume-readout text-scale-readout size-readout"></button>` +
       `</div>`;
     row.querySelector(".row-label").textContent = t("rowSize");
     row.querySelector(".row-desc").textContent = t("rowSizeDesc");
 
     const control = row.querySelector(".size-control");
-    const sliderWrap = row.querySelector(".size-slider-wrap");
     const slider = row.querySelector(".size-slider");
-    const bubble = row.querySelector(".size-bubble");
-    const ticksEl = row.querySelector(".size-ticks");
-    const tickMarks = [];
-
-    function readThumbDiameterPx() {
-      const raw = window.getComputedStyle(slider).getPropertyValue("--size-slider-thumb-diameter");
-      const parsed = parseFloat(raw);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : helpers.SIZE_SLIDER_THUMB_DIAMETER;
-    }
-
-    function getSliderAnchorPx(ui) {
-      return helpers.getSizeSliderAnchorPx({
-        value: ui,
-        min: helpers.SIZE_UI_MIN,
-        max: helpers.SIZE_UI_MAX,
-        sliderWidth: slider.clientWidth,
-        thumbDiameter: readThumbDiameterPx(),
-      });
-    }
-
-    function repositionScaleGeometry(ui) {
-      const anchorPx = getSliderAnchorPx(ui);
-      bubble.style.left = `${anchorPx}px`;
-      for (const tick of tickMarks) {
-        tick.element.style.left = `${getSliderAnchorPx(tick.value)}px`;
-      }
-    }
+    const readout = row.querySelector(".size-readout");
+    readout.title = t("rowSizeResetTitle");
 
     function applyLocalValue(ui) {
       const pct = helpers.sizeUiToPct(ui);
       slider.value = String(ui);
-      slider.style.setProperty("--size-fill", `${pct}%`);
-      bubble.textContent = `${ui}%`;
-      repositionScaleGeometry(ui);
+      slider.style.setProperty("--volume-fill", `${pct}%`);
+      readout.textContent = `${ui}%`;
     }
 
     function setDragging(nextDragging, pending = state.transientUiState.size.pending) {
@@ -1531,21 +1513,6 @@
       state.transientUiState.size.draftUi === null ? readers.readSizeUiFromSnapshot() : state.transientUiState.size.draftUi;
     applyLocalValue(initial);
     setDragging(state.transientUiState.size.dragging, state.transientUiState.size.pending);
-
-    for (const v of helpers.SIZE_TICK_VALUES) {
-      const mark = document.createElement("span");
-      mark.className = "size-tick";
-      mark.dataset.value = String(v);
-      const dot = document.createElement("span");
-      dot.className = "size-tick-dot";
-      const label = document.createElement("span");
-      label.className = "size-tick-label";
-      label.textContent = String(v);
-      mark.appendChild(dot);
-      mark.appendChild(label);
-      ticksEl.appendChild(mark);
-      tickMarks.push({ value: v, element: mark });
-    }
 
     const controller = helpers.createSizeSliderController({
       readSnapshotUi: readers.readSizeUiFromSnapshot,
@@ -1569,29 +1536,9 @@
     state.mountedControls.size = {
       row,
       syncFromSnapshot: (options) => controller.syncFromSnapshot(options),
-      dispose: () => {
-        if (resizeObserver) resizeObserver.disconnect();
-        window.removeEventListener("resize", handleGeometryRefresh);
-        return controller.dispose();
-      },
+      dispose: () => controller.dispose(),
     };
     controller.syncFromSnapshot();
-
-    function handleGeometryRefresh() {
-      const currentUi =
-        state.transientUiState.size.draftUi === null ? readers.readSizeUiFromSnapshot() : state.transientUiState.size.draftUi;
-      repositionScaleGeometry(currentUi);
-    }
-
-    let resizeObserver = null;
-    if (typeof ResizeObserver === "function") {
-      resizeObserver = new ResizeObserver(() => {
-        handleGeometryRefresh();
-      });
-      resizeObserver.observe(sliderWrap);
-    }
-    window.addEventListener("resize", handleGeometryRefresh);
-    handleGeometryRefresh();
 
     slider.addEventListener("pointerdown", () => { void controller.pointerDown(); });
     slider.addEventListener("pointerup", () => { void controller.pointerUp(); });
@@ -1602,6 +1549,9 @@
     });
     slider.addEventListener("change", () => {
       void controller.change(Number(slider.value));
+    });
+    readout.addEventListener("click", () => {
+      void controller.change(SIZE_UI_DEFAULT);
     });
 
     return row;
@@ -1689,7 +1639,7 @@
     if (keys.length === 0) return false;
     if (!keys.every((key) => GENERAL_IN_PLACE_KEYS.has(key))) return false;
     if (keys.includes("size") && !ops.syncMountedSizeControl({ fromBroadcast: true })) return false;
-    if (keys.includes("textScale")) {
+    if (keys.includes("textScale") || keys.includes("textScaleByDisplay")) {
       const tc = state.mountedControls.textScale;
       if (!tc || !document.body.contains(tc.row)) return false;
     }
@@ -1726,7 +1676,7 @@
       }
     }
     for (const key of keys) {
-      if (key === "size" || key === "soundVolume" || key === "textScale") continue;
+      if (key === "size" || key === "soundVolume" || key === "textScale" || key === "textScaleByDisplay") continue;
       if (BUBBLE_POLICY_KEYS.has(key)) {
         const meta = state.mountedControls.bubblePolicyControls.get(key);
         if (!meta || !document.body.contains(meta.row)) return false;
@@ -1739,7 +1689,7 @@
     }
     for (const key of keys) {
       if (key === "size") continue;
-      if (key === "textScale") {
+      if (key === "textScale" || key === "textScaleByDisplay") {
         state.mountedControls.textScale.syncValueFromSnapshot();
         continue;
       }

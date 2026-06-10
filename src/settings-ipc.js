@@ -125,6 +125,8 @@ function registerSettingsIpc(options = {}) {
     || (() => ({ status: "error", message: "text scale preview unavailable" }));
   const endTextScalePreview = options.endTextScalePreview
     || (() => ({ status: "error", message: "text scale preview unavailable" }));
+  const getTextScaleContext = options.getTextScaleContext
+    || (() => ({ percent: 100 }));
   const getAllAgents = requiredDependency(options.getAllAgents, "getAllAgents");
   const checkForUpdates = options.checkForUpdates || (() => {});
   const getHardwareBuddyStatus = options.getHardwareBuddyStatus || (() => null);
@@ -203,6 +205,10 @@ function registerSettingsIpc(options = {}) {
     return previewTextScale(n);
   });
   handle("settings:end-text-scale-preview", () => endTextScalePreview());
+  // textScale is per-display; the renderer can't resolve its own display, so
+  // the slider asks main for the committed value of the display the settings
+  // window currently sits on.
+  handle("settings:get-text-scale-context", () => getTextScaleContext());
   handle("settings:get-preview-sound-url", () => {
     try { return themeLoader.getPreviewSoundUrl(); }
     catch { return null; }

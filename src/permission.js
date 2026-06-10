@@ -590,6 +590,10 @@ function repositionBubbles() {
   for (let i = 0; i < layoutPermissions.length; i++) {
     const perm = layoutPermissions[i];
     if (perm.bubble && !perm.bubble.isDestroyed() && bounds[i]) {
+      // Re-resolve zoom here too: the pet may have crossed onto a display
+      // with a different textScale (applyZoomToWindow memoizes, so this is
+      // a no-op when nothing changed).
+      applyZoomToWindow(perm.bubble, scale);
       perm.bubble.setBounds(bounds[i]);
     }
   }

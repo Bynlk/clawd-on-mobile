@@ -2178,6 +2178,50 @@ describe("importAnimationOverrides command", () => {
   });
 });
 
+describe("setTextScaleForDisplay command", () => {
+  it("writes the entry for the resolved display and keeps other displays", () => {
+    const r = commandRegistry.setTextScaleForDisplay({ value: 1.35 }, {
+      snapshot: { textScaleByDisplay: { "2": 1.2 } },
+      resolveTextScaleDisplayKey: () => "1",
+    });
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(r.commit, { textScaleByDisplay: { "1": 1.35, "2": 1.2 } });
+  });
+
+  it("overwrites an existing entry for the same display", () => {
+    const r = commandRegistry.setTextScaleForDisplay({ value: 1 }, {
+      snapshot: { textScaleByDisplay: { "1": 1.35 } },
+      resolveTextScaleDisplayKey: () => "1",
+    });
+    assert.deepStrictEqual(r.commit, { textScaleByDisplay: { "1": 1 } });
+  });
+
+  it("falls back to the legacy global without display context", () => {
+    const r = commandRegistry.setTextScaleForDisplay({ value: 1.25 }, { snapshot: {} });
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(r.commit, { textScale: 1.25 });
+  });
+
+  it("never evicts the entry being written when the map is at capacity", () => {
+    const full = {};
+    for (let i = 0; i < 16; i++) full[`d${i}`] = 1.2;
+    const r = commandRegistry.setTextScaleForDisplay({ value: 1.4 }, {
+      snapshot: { textScaleByDisplay: full },
+      resolveTextScaleDisplayKey: () => "fresh",
+    });
+    assert.strictEqual(r.commit.textScaleByDisplay.fresh, 1.4);
+    assert.strictEqual(Object.keys(r.commit.textScaleByDisplay).length, 16);
+  });
+
+  it("rejects out-of-range and non-numeric values", () => {
+    const deps = { snapshot: {}, resolveTextScaleDisplayKey: () => "1" };
+    assert.strictEqual(commandRegistry.setTextScaleForDisplay({ value: 0.5 }, deps).status, "error");
+    assert.strictEqual(commandRegistry.setTextScaleForDisplay({ value: 2 }, deps).status, "error");
+    assert.strictEqual(commandRegistry.setTextScaleForDisplay({ value: "abc" }, deps).status, "error");
+    assert.strictEqual(commandRegistry.setTextScaleForDisplay(null, deps).status, "error");
+  });
+});
+
 describe("version validator", () => {
   it("accepts the current version", () => {
     const r = updateRegistry.version(prefs.CURRENT_VERSION, { snapshot: prefs.getDefaults() });

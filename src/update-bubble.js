@@ -256,6 +256,9 @@ module.exports = function initUpdateBubble(ctx) {
 
   function repositionUpdateBubble() {
     if (!bubble || bubble.isDestroyed()) return;
+    // Re-resolve zoom: the pet may have crossed onto a display with a
+    // different textScale (memoized — no-op when unchanged).
+    applyZoomToWindow(bubble, getTextScale());
     const bounds = computeBounds();
     if (bounds) bubble.setBounds(bounds);
   }

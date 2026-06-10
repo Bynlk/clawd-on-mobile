@@ -5,7 +5,6 @@ const defaultPath = require("path");
 const { pathToFileURL } = require("url");
 const defaultAnimationCycle = require("./animation-cycle");
 const { ANIMATION_OVERRIDES_EXPORT_VERSION } = require("./settings-actions");
-const { NO_ZOOM_PARTITION } = require("./text-scale");
 
 const ANIMATION_OVERRIDE_ASSET_EXTS = new Set([".svg", ".gif", ".apng", ".png", ".webp", ".jpg", ".jpeg"]);
 const ANIMATION_OVERRIDE_PREVIEW_POSTER_SIZE = { width: 176, height: 144 };
@@ -369,9 +368,6 @@ function createSettingsAnimationOverridesMain(options = {}) {
         backgroundThrottling: false,
         nodeIntegration: false,
         contextIsolation: true,
-        // Poster captures must stay 1:1 regardless of the textScale zoom that
-        // default-partition file:// windows share.
-        partition: NO_ZOOM_PARTITION,
       },
     });
     animationOverridePreviewPosterWindow.on("closed", () => {

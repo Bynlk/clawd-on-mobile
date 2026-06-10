@@ -269,9 +269,19 @@ function createSettingsWindowRuntime(options = {}) {
     createdWindow.loadFile(settingsHtmlPath);
     if (createdWindow.webContents && typeof createdWindow.webContents.once === "function") {
       createdWindow.webContents.once("did-finish-load", () => {
-        // Explicit even though same-origin propagation usually covers it — a
-        // stale partition-persisted factor must never win over prefs.
         applyZoomToWindow(createdWindow, getTextScale());
+      });
+    }
+    // textScale is per-display: re-resolve after the user drags the window
+    // somewhere else (debounced — "move" fires continuously during drags).
+    if (typeof createdWindow.on === "function") {
+      let moveTextScaleTimer = null;
+      createdWindow.on("move", () => {
+        if (moveTextScaleTimer) clearScheduled(moveTextScaleTimer);
+        moveTextScaleTimer = scheduleTimer(() => {
+          moveTextScaleTimer = null;
+          applyTextScaleToWindow();
+        }, 350);
       });
     }
     let didShowCreatedWindow = false;

@@ -41,6 +41,7 @@ const {
   TEXT_SCALE_MIN,
   TEXT_SCALE_MAX,
   TEXT_SCALE_DEFAULT,
+  normalizeTextScaleByDisplay,
 } = require("./text-scale");
 
 const CURRENT_VERSION = 9;
@@ -187,13 +188,20 @@ const SCHEMA = {
   // proportional pixel-size recomputation. The pet keeps its current
   // window size; the size slider still works (per-display proportional).
   keepSizeAcrossDisplays: { type: "boolean", default: false },
-  // Global zoom factor for text windows (bubbles, HUD, dashboard, settings,
-  // resume input). The pet itself scales via `size`; its windows live in the
-  // no-zoom partition so this factor never reaches them.
+  // Text-window zoom (bubbles, HUD, dashboard, settings, resume input). The
+  // pet itself scales via `size` and is never zoomed. `textScale` is the
+  // global default; `textScaleByDisplay` overrides it per display id (the
+  // slider writes the entry for the display the settings window sits on, via
+  // the setTextScaleForDisplay command).
   textScale: {
     type: "number",
     default: TEXT_SCALE_DEFAULT,
     validate: (v) => Number.isFinite(v) && v >= TEXT_SCALE_MIN && v <= TEXT_SCALE_MAX,
+  },
+  textScaleByDisplay: {
+    type: "object",
+    defaultFactory: () => ({}),
+    normalize: normalizeTextScaleByDisplay,
   },
   shortcuts: {
     type: "object",

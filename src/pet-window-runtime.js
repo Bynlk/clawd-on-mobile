@@ -1,7 +1,6 @@
 "use strict";
 
 const createPetGeometryMain = require("./pet-geometry-main");
-const { NO_ZOOM_PARTITION } = require("./text-scale");
 const {
   computeLooseClamp,
   getDisplayInsets,
@@ -451,9 +450,6 @@ function createPetWindowRuntime(options = {}) {
       webPreferences: {
         preload: optionsArg.preloadPath,
         backgroundThrottling: false,
-        // Pet pixels must never inherit the textScale zoom that file:// text
-        // windows share via Chromium's per-origin zoom map.
-        partition: NO_ZOOM_PARTITION,
         additionalArguments: [
           "--theme-config=" + JSON.stringify(optionsArg.themeConfig),
         ],
@@ -484,6 +480,16 @@ function createPetWindowRuntime(options = {}) {
 
     if (isWin) renderWin.setAlwaysOnTop(true, topmostLevel);
     renderWin.loadFile(optionsArg.loadFilePath);
+    // file:// zoom propagates partition-wide and persists across restarts;
+    // builds that briefly used setZoomFactor for textScale may have left a
+    // non-1 factor behind. Reset it from the first window to load so the pet
+    // (and, via propagation, every file:// page) renders 1:1 — textScale uses
+    // per-document CSS zoom instead and never touches this map.
+    if (renderWin.webContents && typeof renderWin.webContents.once === "function") {
+      renderWin.webContents.once("did-finish-load", () => {
+        try { renderWin.webContents.setZoomFactor(1); } catch {}
+      });
+    }
     applyPetWindowBounds(optionsArg.initialVirtualBounds);
     renderWin.showInactive();
     keepOutOfTaskbar(renderWin);
@@ -526,9 +532,6 @@ function createPetWindowRuntime(options = {}) {
       webPreferences: {
         preload: optionsArg.preloadPath,
         backgroundThrottling: false,
-        // Hit-test geometry is aligned to the pet; keep it out of the shared
-        // file:// zoom map (see NO_ZOOM_PARTITION in text-scale.js).
-        partition: NO_ZOOM_PARTITION,
         additionalArguments: [
           "--hit-theme-config=" + JSON.stringify(optionsArg.hitThemeConfig),
           "--hit-platform=" + process.platform,

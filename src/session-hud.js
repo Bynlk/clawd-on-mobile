@@ -622,6 +622,9 @@ module.exports = function initSessionHud(ctx) {
       hideSessionHud();
       return;
     }
+    // Re-resolve zoom: the pet may have crossed onto a display with a
+    // different textScale (memoized — no-op when unchanged).
+    applyZoomToWindow(win, getTextScale());
     hudFlippedAbove = !!computed.flippedAbove;
     win.setBounds(computed.bounds);
     if (options.sendSnapshot !== false) sendSnapshot(snapshot);

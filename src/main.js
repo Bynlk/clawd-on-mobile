@@ -1,5 +1,5 @@
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, clipboard, webContents, session } = require("electron");
-const { clampTextScale, scaleWidth, scaleHeight, NO_ZOOM_PARTITION } = require("./text-scale");
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, clipboard } = require("electron");
+const { clampTextScale, scaleWidth, scaleHeight, resolveTextScaleForKey } = require("./text-scale");
 const path = require("path");
 const fs = require("fs");
 const { EventEmitter } = require("events");
@@ -248,6 +248,7 @@ const _settingsController = createSettingsController({
   injectedDeps: {
     installAutoStart: _installAutoStartHook,
     uninstallAutoStart: _uninstallAutoStartHook,
+    resolveTextScaleDisplayKey: () => getSettingsDisplayKey(),
     syncClaudeHooksNow: () => {
       const { registerHooksAsync } = require("../hooks/install.js");
       return registerHooksAsync({ silent: true, autoStart: autoStartWithClaude, port: getHookServerPort() });
@@ -449,7 +450,7 @@ const settingsWindowRuntime = createSettingsWindowRuntime({
   path,
   getPetWindowBounds: () => getPetWindowBounds(),
   getNearestWorkArea: (cx, cy) => getNearestWorkArea(cx, cy),
-  getTextScale: () => getEffectiveTextScale(),
+  getTextScale: () => effectiveTextScaleForKey(getSettingsDisplayKey()),
   onBeforeCreate: () => bumpAnimationOverridePreviewPosterGeneration(),
   onBeforeClosed: () => {
     bumpAnimationOverridePreviewPosterGeneration();
@@ -689,42 +690,56 @@ let allowEdgePinningCached = _settingsController.get("allowEdgePinning");
 let disableMiniModeCached = _settingsController.get("disableMiniMode");
 let keepSizeAcrossDisplaysCached = _settingsController.get("keepSizeAcrossDisplays");
 let textScale = _settingsController.get("textScale");
-// Transient slider-drag override: applied to live windows but never written to
-// the store. Cleared on commit (mirror setter) or rollback (endTextScalePreview).
-let textScalePreviewValue = null;
+let textScaleByDisplay = _settingsController.get("textScaleByDisplay");
+// Transient slider-drag override for ONE display — the one the settings
+// window sits on (what you see is what you tune). Applied to live windows but
+// never written to the store; cleared on commit (mirror setters) or rollback
+// (endTextScalePreview).
+let textScalePreview = null; // { key: string, value: number }
 
-function getEffectiveTextScale() {
-  return clampTextScale(textScalePreviewValue == null ? textScale : textScalePreviewValue);
+function getDisplayKeyForBounds(bounds) {
+  if (!bounds) return null;
+  try {
+    const display = screen.getDisplayMatching(bounds);
+    return display && display.id != null ? String(display.id) : null;
+  } catch {
+    return null;
+  }
 }
 
-// The whole textScale cascade for live windows: zoom every default-partition
-// file:// page (same-origin propagation makes this near-idempotent), let the
-// resizable windows raise their minimums, then re-lay-out HUD + bubbles with
-// the scaled widths. Fixed-width windows pick the new width up from their
-// reposition paths; the resume input reads the scale at creation.
-function applyTextScaleNow(options = {}) {
-  const scale = getEffectiveTextScale();
-  // While the settings slider is dragging, leave the settings window itself
-  // alone: zooming the page mid-drag moves the slider under the pointer and
-  // makes the drag wobble. It catches up on commit/rollback.
-  const skipSettingsWindow = !!options.skipSettingsWindow;
-  let settingsWin = null;
-  try { settingsWin = skipSettingsWindow ? settingsWindowRuntime.getWindow() : null; } catch {}
-  let noZoomSession = null;
-  try { noZoomSession = session.fromPartition(NO_ZOOM_PARTITION); } catch {}
-  let liveContents = [];
-  try { liveContents = webContents.getAllWebContents(); } catch {}
-  for (const wc of liveContents) {
-    try {
-      if (!wc || wc.isDestroyed()) continue;
-      if (noZoomSession && wc.session === noZoomSession) continue;
-      if (settingsWin && !settingsWin.isDestroyed() && wc === settingsWin.webContents) continue;
-      if (!String(wc.getURL() || "").startsWith("file:")) continue;
-      wc.setZoomFactor(scale);
-    } catch {}
+function getPetDisplayKey() {
+  try { return getDisplayKeyForBounds(getPetWindowBounds()); } catch { return null; }
+}
+
+function getWindowDisplayKey(win) {
+  if (!win || typeof win.isDestroyed !== "function" || win.isDestroyed()) return null;
+  try { return getDisplayKeyForBounds(win.getBounds()); } catch { return null; }
+}
+
+function getSettingsDisplayKey() {
+  return getWindowDisplayKey(settingsWindowRuntime.getWindow()) || getPetDisplayKey();
+}
+
+function effectiveTextScaleForKey(key) {
+  if (textScalePreview && key && textScalePreview.key === key) {
+    return clampTextScale(textScalePreview.value);
   }
+  return resolveTextScaleForKey(textScaleByDisplay, textScale, key);
+}
+
+// Pet-anchored floating windows (permission bubbles, update bubble, session
+// HUD) all read the scale of whichever display the pet is on right now.
+function getTextScaleForPetWindows() {
+  return effectiveTextScaleForKey(getPetDisplayKey());
+}
+
+// textScale changed (commit, preview tick, or display change): the resizable
+// windows re-zoom themselves against their own display, and the pet-anchored
+// floating windows re-resolve scale + re-inject zoom inside their reposition
+// paths (applyZoomToWindow memoizes, so this is cheap to call broadly).
+function applyTextScaleNow() {
   try {
-    if (!skipSettingsWindow && settingsWindowRuntime && typeof settingsWindowRuntime.applyTextScaleToWindow === "function") {
+    if (settingsWindowRuntime && typeof settingsWindowRuntime.applyTextScaleToWindow === "function") {
       settingsWindowRuntime.applyTextScaleToWindow();
     }
   } catch (err) {
@@ -742,14 +757,19 @@ function applyTextScaleNow(options = {}) {
 
 function previewTextScale(value) {
   const n = Number(value);
-  textScalePreviewValue = Number.isFinite(n) ? clampTextScale(n) : null;
-  applyTextScaleNow({ skipSettingsWindow: true });
+  if (!Number.isFinite(n)) {
+    textScalePreview = null;
+  } else {
+    const key = getSettingsDisplayKey();
+    textScalePreview = key ? { key, value: clampTextScale(n) } : null;
+  }
+  applyTextScaleNow();
   return { status: "ok" };
 }
 
 function endTextScalePreview() {
-  if (textScalePreviewValue == null) return { status: "ok", noop: true };
-  textScalePreviewValue = null;
+  if (!textScalePreview) return { status: "ok", noop: true };
+  textScalePreview = null;
   applyTextScaleNow();
   return { status: "ok" };
 }
@@ -1074,7 +1094,7 @@ const _permCtx = {
   getNearestWorkArea,
   getHitRectScreen,
   getHudReservedOffset: () => getSessionHudReservedOffset(),
-  getTextScale: () => getEffectiveTextScale(),
+  getTextScale: () => getTextScaleForPetWindows(),
   guardAlwaysOnTop,
   reapplyMacVisibility,
   isAgentPermissionsEnabled: (agentId) =>
@@ -1146,7 +1166,7 @@ const _updateBubbleCtx = {
   getUpdateBubbleAnchorRect,
   getHitRectScreen,
   getHudReservedOffset: () => getSessionHudReservedOffset(),
-  getTextScale: () => getEffectiveTextScale(),
+  getTextScale: () => getTextScaleForPetWindows(),
   guardAlwaysOnTop,
   reapplyMacVisibility,
 };
@@ -1458,7 +1478,9 @@ const _dashboard = require("./dashboard")({
   getPetWindowBounds,
   getNearestWorkArea,
   getSettingsWindow: () => settingsWindowRuntime.getWindow(),
-  getTextScale: () => getEffectiveTextScale(),
+  getTextScale: () => effectiveTextScaleForKey(
+    getWindowDisplayKey(_dashboard ? _dashboard.getWindow() : null) || getPetDisplayKey()
+  ),
   iconPath: settingsWindowRuntime.getIconPath(),
 });
 showDashboard = _dashboard.showDashboard;
@@ -1481,7 +1503,7 @@ const _sessionHud = require("./session-hud")({
   getHitRectScreen,
   getSessionHudAnchorRect,
   getNearestWorkArea,
-  getTextScale: () => getEffectiveTextScale(),
+  getTextScale: () => getTextScaleForPetWindows(),
   guardAlwaysOnTop,
   reapplyMacVisibility,
   onReservedOffsetChange: () => repositionFloatingBubbles(),
@@ -2494,7 +2516,7 @@ function showResumeInput(t) {
   return new Promise((resolve) => {
     // data: URL — outside the file:// zoom map, so the scale is baked into the
     // window size and an inline body zoom instead.
-    const resumeScale = getEffectiveTextScale();
+    const resumeScale = getTextScaleForPetWindows();
     const inputWin = new BrowserWindow({
       width: scaleWidth(420, resumeScale),
       height: scaleHeight(180, resumeScale),
@@ -2729,7 +2751,8 @@ const SETTINGS_MIRROR_SETTERS = {
   soundMuted: (v) => { soundMuted = v; }, soundVolume: (v) => { soundVolume = v; }, lowPowerIdleMode: (v) => { lowPowerIdleMode = v; },
   keepAwakeWhileWorking: (v) => { keepAwakeWhileWorking = v; },
   allowEdgePinning: (v) => { allowEdgePinningCached = v; }, disableMiniMode: (v) => { disableMiniModeCached = v; }, keepSizeAcrossDisplays: (v) => { keepSizeAcrossDisplaysCached = v; },
-  textScale: (v) => { textScale = v; textScalePreviewValue = null; },
+  textScale: (v) => { textScale = v; textScalePreview = null; },
+  textScaleByDisplay: (v) => { textScaleByDisplay = v; textScalePreview = null; },
 };
 
 function updateSettingsMirrors(changes) { for (const [key, value] of Object.entries(changes)) if (SETTINGS_MIRROR_SETTERS[key]) SETTINGS_MIRROR_SETTERS[key](value); }
@@ -2965,6 +2988,11 @@ registerSettingsIpc({
   isValidSizePreviewKey,
   previewTextScale,
   endTextScalePreview,
+  getTextScaleContext: () => ({
+    percent: Math.round(
+      resolveTextScaleForKey(textScaleByDisplay, textScale, getSettingsDisplayKey()) * 100
+    ),
+  }),
   sendToRenderer,
   getDoNotDisturb: () => doNotDisturb,
   getSoundMuted: () => soundMuted,
@@ -3169,6 +3197,21 @@ function createWindow() {
   screen.on("display-metrics-changed", () => petWindowRuntime.handleDisplayMetricsChanged());
   screen.on("display-removed", () => petWindowRuntime.handleDisplayRemoved());
   screen.on("display-added", () => petWindowRuntime.handleDisplayAdded());
+
+  // textScale is per-display: when the topology changes, window→display
+  // mappings (and therefore effective scales) can change wholesale. Debounced
+  // because these events arrive in bursts during reconnects.
+  let textScaleTopologyTimer = null;
+  const reapplyTextScaleAfterTopologyChange = () => {
+    if (textScaleTopologyTimer) clearTimeout(textScaleTopologyTimer);
+    textScaleTopologyTimer = setTimeout(() => {
+      textScaleTopologyTimer = null;
+      applyTextScaleNow();
+    }, 400);
+  };
+  screen.on("display-metrics-changed", reapplyTextScaleAfterTopologyChange);
+  screen.on("display-removed", reapplyTextScaleAfterTopologyChange);
+  screen.on("display-added", reapplyTextScaleAfterTopologyChange);
 }
 
 // Read primary display safely — getPrimaryDisplay() can also throw during

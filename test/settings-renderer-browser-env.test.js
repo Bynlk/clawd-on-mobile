@@ -9,6 +9,7 @@ const vm = require("node:vm");
 const SRC_DIR = path.join(__dirname, "..", "src");
 const SETTINGS_HTML = path.join(SRC_DIR, "settings.html");
 const SETTINGS_CSS = path.join(SRC_DIR, "settings.css");
+const SETTINGS_TAB_GENERAL = path.join(SRC_DIR, "settings-tab-general.js");
 const SETTINGS_RENDERER = path.join(SRC_DIR, "settings-renderer.js");
 const SETTINGS_UI_CORE = path.join(SRC_DIR, "settings-ui-core.js");
 const SETTINGS_ANIM_OVERRIDES_MERGE = path.join(SRC_DIR, "settings-anim-overrides-merge.js");
@@ -2303,25 +2304,34 @@ describe("settings renderer browser environment", () => {
     assert.ok(!i18nSource.includes('doctorOpenLogOpened: "デバッグログを開きました。"'));
   });
 
-  it("does not animate the size bubble's horizontal position", () => {
+  it("unifies the size slider on the simple volume-style control (no floating bubble, no ticks)", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    const match = css.match(/\.size-bubble\s*\{([\s\S]*?)\n\}/);
-    assert.ok(match, "settings.css should define a .size-bubble rule");
-    assert.ok(!/transition:\s*left\b/.test(match[1]));
-    assert.ok(/transition:\s*transform 0\.14s ease,\s*box-shadow 0\.18s ease;/.test(match[1]));
+    const tabSource = fs.readFileSync(SETTINGS_TAB_GENERAL, "utf8");
+    // Old floating-bubble/tick design must be fully gone.
+    assert.ok(!/\.size-bubble/.test(css));
+    assert.ok(!/\.size-ticks/.test(css));
+    assert.ok(!/\.size-slider-wrap/.test(css));
+    assert.ok(!/size-bubble/.test(tabSource));
+    assert.ok(!/size-ticks/.test(tabSource));
+    // The size row reuses the volume-style classes plus its preview-session
+    // drag affordances.
+    assert.ok(/volume-control size-control/.test(tabSource));
+    assert.ok(/volume-slider size-slider/.test(tabSource));
+    assert.ok(/\.size-control\.dragging \.volume-slider::-webkit-slider-thumb/.test(css));
+    assert.ok(/\.size-control\.pending \.volume-slider\s*\{[\s\S]*cursor:\s*ew-resize;/.test(css));
   });
 
-  it("renders the size bubble tail as a separated double-layer callout instead of overlapping the pill", () => {
+  it("makes both percent readouts clickable reset buttons", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    assert.ok(/--size-bubble-tail-size:\s*4px;/.test(css));
-    assert.ok(/--size-bubble-tail-inner-size:\s*3px;/.test(css));
-    assert.ok(/--size-bubble-tail-gap:\s*1px;/.test(css));
-    assert.ok(/padding-top:\s*29px;/.test(css));
-    assert.ok(/\.size-bubble\s*\{[\s\S]*top:\s*6px;[\s\S]*border-radius:\s*9px;[\s\S]*padding:\s*0 7px;[\s\S]*line-height:\s*1\.2;[\s\S]*\}/.test(css));
-    assert.ok(/\.size-bubble::before,\s*\.size-bubble::after\s*\{/.test(css));
-    assert.ok(/\.size-bubble::before\s*\{[\s\S]*top:\s*calc\(100%\s*\+\s*var\(--size-bubble-tail-gap\)\);[\s\S]*border-top:\s*var\(--size-bubble-tail-size\)\s+solid\s+var\(--accent\);[\s\S]*\}/.test(css));
-    assert.ok(/\.size-bubble::after\s*\{[\s\S]*top:\s*calc\(100%\s*\+\s*var\(--size-bubble-tail-gap\)\);[\s\S]*border-top:\s*var\(--size-bubble-tail-inner-size\)\s+solid\s+var\(--panel-bg\);[\s\S]*\}/.test(css));
-    assert.ok(!/\.size-bubble::after\s*\{[\s\S]*margin-top:\s*-1px;/.test(css));
+    const tabSource = fs.readFileSync(SETTINGS_TAB_GENERAL, "utf8");
+    assert.ok(/\.text-scale-readout\s*\{[\s\S]*cursor:\s*pointer;/.test(css));
+    // Size readout resets the pet to the prefs default (P:9 → 30 on the UI scale).
+    assert.ok(/SIZE_UI_DEFAULT = 30/.test(tabSource));
+    assert.ok(/controller\.change\(SIZE_UI_DEFAULT\)/.test(tabSource));
+    assert.ok(/rowSizeResetTitle/.test(tabSource));
+    // Text-size readout resets to 100% via the per-display command.
+    assert.ok(/setTextScaleForDisplay/.test(tabSource));
+    assert.ok(/textScaleResetTitle/.test(tabSource));
   });
 
   it("uses transform-based Settings switch motion with a calmer shared timing", () => {
@@ -2814,11 +2824,10 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(calls.length, 0);
   });
 
-  it("adds hover affordance to General size and volume sliders", () => {
+  it("adds hover affordance to General sliders via the shared volume-style classes", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    assert.ok(/\.size-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/.test(css));
     assert.ok(/\.volume-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/.test(css));
-    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.size-slider:hover::-webkit-slider-thumb,[\s\S]*\.volume-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*none;/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.volume-slider:hover::-webkit-slider-thumb,[\s\S]*\.size-control\.dragging \.volume-slider::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*none;/.test(css));
   });
 
   it("describes notification bubble seconds as an auto-close upper bound instead of a guaranteed visible duration", () => {

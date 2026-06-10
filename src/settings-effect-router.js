@@ -176,10 +176,10 @@ function createSettingsEffectRouter(options = {}) {
     if ("bubbleFollowPet" in changes) {
       safeCall(logWarn, "Clawd: repositionFloatingBubbles failed:", repositionFloatingBubbles);
     }
-    if ("textScale" in changes) {
-      // applyTextScale owns the whole cascade: zoom on live text windows,
-      // fixed-width window resize, and bubble/HUD repositioning.
-      safeCall(logWarn, "Clawd: applyTextScale failed:", applyTextScale, changes.textScale);
+    if ("textScale" in changes || "textScaleByDisplay" in changes) {
+      // applyTextScale owns the whole cascade: per-display zoom on live text
+      // windows, fixed-width window resize, and bubble/HUD repositioning.
+      safeCall(logWarn, "Clawd: applyTextScale failed:", applyTextScale);
     }
     if ("sessionHudPinned" in changes) {
       // Pinned transitions are handled inside session-hud.js so the visible
