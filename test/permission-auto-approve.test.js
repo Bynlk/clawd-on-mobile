@@ -2,6 +2,7 @@
 //
 // When the toggle is on, showPermissionBubble must resolve the entry as
 // "allow" and return BEFORE constructing a BrowserWindow — that early return
+// is also what lets this test run without a real Electron window.
 // The DND / per-agent / headless gates live earlier in the route (server-
 // route-permission.js), so they still win: by the time showPermissionBubble
 // runs, a gated request never reaches it. Headless fallback is deliberately
