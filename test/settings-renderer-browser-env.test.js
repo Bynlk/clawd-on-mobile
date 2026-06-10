@@ -2347,9 +2347,10 @@ describe("settings renderer browser environment", () => {
     // …and must not repaint to the committed value mid-drag (the preview
     // itself triggers pokes via applyTextScaleNow).
     assert.ok(/previewLive = true;/.test(tabSource));
-    // Both preview exits clear the flag: commit (change) and rollback (blur).
+    // Preview exits clear the flag: manual pointer release, commit (change),
+    // and rollback (blur).
     // (Lookbehind excludes the `let previewLive = false;` declaration.)
-    assert.strictEqual((tabSource.match(/(?<!let )previewLive = false;/g) || []).length, 2);
+    assert.strictEqual((tabSource.match(/(?<!let )previewLive = false;/g) || []).length, 3);
     // Full re-renders must dispose the row (unsubscribe + roll back a
     // stranded transient preview) — see clearMountedControls.
     assert.ok(/unsubscribeContextChanged\(\);/.test(tabSource));
@@ -2362,6 +2363,70 @@ describe("settings renderer browser environment", () => {
     const mainSource = fs.readFileSync(MAIN_PROCESS, "utf8");
     assert.ok(/onBeforeClosed: \(\) => \{[^}]*endTextScalePreview\(\);/.test(mainSource),
       "settings onBeforeClosed must end a live text-scale preview");
+  });
+
+  it("keeps text-scale pointer drags stable while the Settings page live-zooms", async () => {
+    const previewCalls = [];
+    const commandCalls = [];
+    const harness = loadGeneralTabForTest({
+      snapshot: makeGeneralSnapshot(),
+      settingsAPI: {
+        getTextScaleContext: () => Promise.resolve({ percent: 100 }),
+        previewTextScale: (value) => {
+          previewCalls.push(value);
+          return Promise.resolve({ status: "ok" });
+        },
+        endTextScalePreview: () => Promise.resolve({ status: "ok" }),
+        command: (action, payload) => {
+          commandCalls.push({ action, payload });
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+    harness.renderContent();
+    await Promise.resolve();
+
+    const slider = harness.content.querySelector(".text-scale-slider");
+    assert.ok(slider);
+    let rect = { left: 100, width: 240, top: 0, height: 28, right: 340, bottom: 28 };
+    slider.getBoundingClientRect = () => rect;
+
+    slider.dispatchEvent({
+      type: "pointerdown",
+      pointerId: 1,
+      button: 0,
+      isPrimary: true,
+      screenX: 160,
+      clientX: 160,
+      bubbles: false,
+    });
+
+    // Simulate the Settings page live-zooming wider after the first preview.
+    // The manual pointer math must keep using the pointerdown geometry above:
+    // screenX 145 is 95% on the original 240px track, but would be ~90% if the
+    // now-wider track were used mid-drag.
+    rect = { left: 100, width: 384, top: 0, height: 45, right: 484, bottom: 45 };
+    slider.dispatchEvent({
+      type: "pointermove",
+      pointerId: 1,
+      screenX: 145,
+      clientX: 145,
+      bubbles: false,
+    });
+    assert.strictEqual(slider.value, "95");
+    assert.strictEqual(previewCalls.at(-1), 0.95);
+
+    slider.dispatchEvent({
+      type: "pointerup",
+      pointerId: 1,
+      screenX: 145,
+      clientX: 145,
+      bubbles: false,
+    });
+    await Promise.resolve();
+
+    assert.strictEqual(commandCalls.at(-1).action, "setTextScaleForDisplay");
+    assert.strictEqual(commandCalls.at(-1).payload.value, 0.95);
   });
 
   it("makes both percent readouts clickable reset buttons", () => {

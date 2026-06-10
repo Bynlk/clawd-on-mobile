@@ -1376,6 +1376,7 @@
 
     const slider = row.querySelector(".text-scale-slider");
     const readout = row.querySelector(".text-scale-readout");
+    const control = row.querySelector(".text-scale-control");
     readout.title = t("textScaleResetTitle");
 
     // textScale is per-display; the committed value for the display this
@@ -1396,6 +1397,14 @@
       const fill = ((pct - TEXT_SCALE_UI_MIN) / (TEXT_SCALE_UI_MAX - TEXT_SCALE_UI_MIN)) * 100;
       slider.style.setProperty("--volume-fill", `${fill}%`);
       readout.textContent = `${pct}%`;
+    }
+
+    function snapTextScalePct(raw) {
+      const n = Number(raw);
+      const base = Number.isFinite(n) ? n : TEXT_SCALE_UI_DEFAULT;
+      const stepped = TEXT_SCALE_UI_MIN
+        + Math.round((base - TEXT_SCALE_UI_MIN) / TEXT_SCALE_UI_STEP) * TEXT_SCALE_UI_STEP;
+      return Math.min(TEXT_SCALE_UI_MAX, Math.max(TEXT_SCALE_UI_MIN, stepped));
     }
 
     // True from the first drag tick until commit (change) or rollback (blur).
@@ -1445,17 +1454,147 @@
       });
     }
 
-    slider.addEventListener("input", () => {
+    let pointerDrag = null;
+    let suppressNativeChange = null;
+
+    function stopNativePointer(ev) {
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      if (ev && typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+      else if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+    }
+
+    function capturePointerDrag(ev) {
+      const rect = typeof slider.getBoundingClientRect === "function"
+        ? slider.getBoundingClientRect()
+        : null;
+      const width = rect && Number.isFinite(Number(rect.width)) && Number(rect.width) > 0
+        ? Number(rect.width)
+        : 240;
+      const rectLeft = rect && Number.isFinite(Number(rect.left)) ? Number(rect.left) : 0;
+      const screenX = Number(ev && ev.screenX);
+      const clientX = Number(ev && ev.clientX);
+      const left = Number.isFinite(screenX) && Number.isFinite(clientX)
+        ? screenX - (clientX - rectLeft)
+        : rectLeft;
+      return {
+        pointerId: ev && ev.pointerId,
+        left,
+        width,
+      };
+    }
+
+    function pointerMatchesDrag(ev) {
+      if (!pointerDrag) return false;
+      if (pointerDrag.pointerId === undefined || pointerDrag.pointerId === null) return true;
+      return ev && ev.pointerId === pointerDrag.pointerId;
+    }
+
+    function textScalePctFromPointer(ev) {
+      if (!pointerDrag) return Number(slider.value);
+      const screenX = Number(ev && ev.screenX);
+      const clientX = Number(ev && ev.clientX);
+      if (!Number.isFinite(screenX) && !Number.isFinite(clientX)) {
+        return snapTextScalePct(slider.value);
+      }
+      const x = Number.isFinite(screenX)
+        ? screenX
+        : (Number.isFinite(clientX) ? clientX : pointerDrag.left);
+      const normalized = Math.max(0, Math.min(1, (x - pointerDrag.left) / pointerDrag.width));
+      return snapTextScalePct(TEXT_SCALE_UI_MIN + normalized * (TEXT_SCALE_UI_MAX - TEXT_SCALE_UI_MIN));
+    }
+
+    function previewPointerPct(pct) {
+      const nextPct = snapTextScalePct(pct);
+      if (Number(slider.value) !== nextPct) {
+        paint(nextPct);
+        sendPreview(nextPct);
+      }
+      return nextPct;
+    }
+
+    function markNativeChangeSuppressed(pct) {
+      suppressNativeChange = { pct: snapTextScalePct(pct), until: Date.now() + 500 };
+    }
+
+    function shouldSuppressNativeChange() {
+      if (!suppressNativeChange) return false;
+      if (Date.now() > suppressNativeChange.until) {
+        suppressNativeChange = null;
+        return false;
+      }
+      if (Number(slider.value) === suppressNativeChange.pct) {
+        suppressNativeChange = null;
+        return true;
+      }
+      return false;
+    }
+
+    function beginPointerDrag(ev) {
+      if (ev && ev.isPrimary === false) return;
+      if (ev && ev.button !== undefined && ev.button !== 0) return;
+      pointerDrag = capturePointerDrag(ev);
       previewLive = true;
-      const pct = Number(slider.value);
+      if (control) control.classList.add("dragging");
+      try {
+        if (typeof slider.focus === "function") slider.focus({ preventScroll: true });
+        if (typeof slider.setPointerCapture === "function" && ev && ev.pointerId !== undefined) {
+          slider.setPointerCapture(ev.pointerId);
+        }
+      } catch {}
+      stopNativePointer(ev);
+      previewPointerPct(textScalePctFromPointer(ev));
+    }
+
+    function movePointerDrag(ev) {
+      if (!pointerMatchesDrag(ev)) return;
+      stopNativePointer(ev);
+      previewPointerPct(textScalePctFromPointer(ev));
+    }
+
+    function finishPointerDrag(ev, { commitValue }) {
+      if (!pointerMatchesDrag(ev)) return false;
+      stopNativePointer(ev);
+      const finalPct = previewPointerPct(textScalePctFromPointer(ev));
+      try {
+        if (typeof slider.releasePointerCapture === "function" && pointerDrag.pointerId !== undefined) {
+          slider.releasePointerCapture(pointerDrag.pointerId);
+        }
+      } catch {}
+      pointerDrag = null;
+      if (control) control.classList.remove("dragging");
+      previewLive = false;
+      if (commitValue) {
+        markNativeChangeSuppressed(finalPct);
+        commit(finalPct);
+      } else {
+        rollbackPreview();
+        syncFromContext();
+      }
+      return true;
+    }
+
+    slider.addEventListener("pointerdown", beginPointerDrag);
+    slider.addEventListener("pointermove", movePointerDrag);
+    slider.addEventListener("pointerup", (ev) => {
+      finishPointerDrag(ev, { commitValue: true });
+    });
+    slider.addEventListener("pointercancel", (ev) => {
+      finishPointerDrag(ev, { commitValue: false });
+    });
+    slider.addEventListener("input", () => {
+      if (pointerDrag) return;
+      previewLive = true;
+      const pct = snapTextScalePct(slider.value);
       paint(pct);
       sendPreview(pct);
     });
     slider.addEventListener("change", () => {
+      if (shouldSuppressNativeChange()) return;
       previewLive = false;
-      commit(Number(slider.value));
+      commit(snapTextScalePct(slider.value));
     });
     slider.addEventListener("blur", () => {
+      if (pointerDrag) return;
       // A real edit already committed via change (which clears the preview in
       // the main process); this only rolls back an abandoned preview.
       previewLive = false;

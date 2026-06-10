@@ -853,11 +853,15 @@ html, body {
 
 /* ── Size slider (volume-style; drag/pending affordances from the preview
    session controller) ── */
-.size-control.dragging .volume-slider::-webkit-slider-thumb {
+.size-control.dragging .volume-slider::-webkit-slider-thumb,
+.text-scale-control.dragging .volume-slider::-webkit-slider-thumb {
   transform: scale(1.14);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
 }
 .size-control.pending .volume-slider {
+  cursor: ew-resize;
+}
+.text-scale-control.dragging .volume-slider {
   cursor: ew-resize;
 }
 
@@ -950,6 +954,9 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .volume-slider:hover::-webkit-slider-thumb,
   .size-control.dragging .volume-slider::-webkit-slider-thumb {
+    transform: none;
+  }
+  .text-scale-control.dragging .volume-slider::-webkit-slider-thumb {
     transform: none;
   }
 }
