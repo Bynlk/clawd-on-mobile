@@ -143,6 +143,7 @@ internal fun FloatingPetSection(prefsStore: PrefsStore, snackbarHostState: Snack
                     prefsStore.setPetSizeDp(sizeDp)
                     context.sendBroadcast(
                         Intent(FloatingPetService.ACTION_PET_SIZE)
+                            .setPackage(context.packageName)
                             .putExtra(FloatingPetService.EXTRA_SIZE_DP, sizeDp)
                     )
                 },
