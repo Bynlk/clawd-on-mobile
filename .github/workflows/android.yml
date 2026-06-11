@@ -1,14 +1,6 @@
 name: Android Build
 
 on:
-  push:
-    branches: [main, "feat/**"]
-    paths:
-      - "android/**"
-  pull_request:
-    branches: [main]
-    paths:
-      - "android/**"
   workflow_dispatch:
     inputs:
       skip_tests:
