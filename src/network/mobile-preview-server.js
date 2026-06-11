@@ -62,6 +62,7 @@ function loadOrCreateTokenState(tokenPath, nowFn) {
         previous: raw.previous || null,
         graceUntil: typeof raw.graceUntil === "number" ? raw.graceUntil : null,
         rotatedAt: typeof raw.rotatedAt === "number" ? raw.rotatedAt : nowFn(),
+        rotationPending: typeof raw.rotationPending === "boolean" ? raw.rotationPending : false,
       };
       // Backward compat: rewrite file if it was in old { token } format
       if (raw.rotatedAt === undefined) atomicWrite(tokenPath, state);
@@ -69,7 +70,7 @@ function loadOrCreateTokenState(tokenPath, nowFn) {
     }
   } catch {}
   const token = crypto.randomBytes(16).toString("hex");
-  const state = { token, previous: null, graceUntil: null, rotatedAt: nowFn() };
+  const state = { token, previous: null, graceUntil: null, rotatedAt: nowFn(), rotationPending: false };
   atomicWrite(tokenPath, state);
   return state;
 }
@@ -122,15 +123,22 @@ function initMobilePreviewServer(ctx) {
   }
 
   function scheduleRotation() {
+    if (tokenState.rotationPending) return;
     if (rotationTimer) clearTimeout(rotationTimer);
     const msUntilRotate = Math.max(0, (tokenState.rotatedAt + ROTATION_INTERVAL_MS) - now());
     rotationTimer = setTimeout(() => {
-      performRotation();
-      scheduleRotation(); // schedule next
+      if (clients.size > 0) {
+        performRotation();
+      } else {
+        tokenState.rotationPending = true;
+        atomicWrite(tokenPath, tokenState);
+      }
+      scheduleRotation(); // schedule next (if rotationPending, early-exits)
     }, msUntilRotate);
   }
 
   function regenerateToken() {
+    tokenState.rotationPending = false;
     const newToken = crypto.randomBytes(16).toString("hex");
     tokenState.previous = null;      // no grace — old token dies now
     tokenState.graceUntil = null;
@@ -239,6 +247,13 @@ function initMobilePreviewServer(ctx) {
       const clientId = crypto.randomBytes(8).toString("hex");
       const clientIp = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
       clientMeta.set(ws, { messageCount: 0, windowStart: Date.now(), clientId, ip: clientIp, lastPong: Date.now() });
+
+      // If a rotation was pending and this client has the current token, rotate now
+      if (tokenState.rotationPending && clientToken === tokenState.token) {
+        tokenState.rotationPending = false;
+        performRotation();
+        scheduleRotation(); // arm the next 24h timer
+      }
 
       // Send snapshot on connect
       try {
