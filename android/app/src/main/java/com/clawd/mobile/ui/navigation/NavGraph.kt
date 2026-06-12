@@ -35,6 +35,17 @@ fun ClawdNavGraph() {
     // Initialize: start service + acquire client + auto-reconnect
     LaunchedEffect(Unit) { serviceManager.initialize() }
 
+    LaunchedEffect(Unit) {
+        if (prefsStore.isFloatingPetEnabled()
+            && android.provider.Settings.canDrawOverlays(context)
+            && !com.clawd.mobile.overlay.FloatingPetService.isRunning
+        ) {
+            context.startForegroundService(
+                android.content.Intent(context, com.clawd.mobile.overlay.FloatingPetService::class.java)
+            )
+        }
+    }
+
     // Clean up collectors when NavGraph leaves composition
     DisposableEffect(Unit) {
         onDispose { serviceManager.destroy() }
