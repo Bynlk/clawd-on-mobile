@@ -242,8 +242,10 @@ test("a throwing diagnostic log does not fail the fetch (best-effort)", async ()
 
 test("resolveProxy timeout: fetch still proceeds, no proxy log emitted", async () => {
   const { ses, calls } = makeFakeSession();
-  let resolveProbe;
-  ses.resolveProxy = () => new Promise((resolve) => { resolveProbe = resolve; });
+  let probeTimer = null;
+  ses.resolveProxy = () => new Promise((resolve) => {
+    probeTimer = setTimeout(() => resolve("DIRECT"), 50);
+  });
   const { log, entries } = makeLog();
   const transport = createTelegramFetchTransport({
     tokenStore: fakeTokenStore(), sessionFactory: () => ses, env: {}, log, resolveTimeoutMs: 5,
@@ -255,6 +257,6 @@ test("resolveProxy timeout: fetch still proceeds, no proxy log emitted", async (
     assert.equal(calls.fetch.length, 1);
     assert.ok(!entries.some((e) => e.message === "telegram proxy resolved"), "no proxy log on resolve timeout");
   } finally {
-    if (resolveProbe) resolveProbe("DIRECT");
+    if (probeTimer) clearTimeout(probeTimer);
   }
 });
