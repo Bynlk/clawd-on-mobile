@@ -7,11 +7,17 @@ const http = require("http");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { initMobilePreviewServer, PROTOCOL_VERSION } = require("../src/network/mobile-preview-server");
+const {
+  initMobilePreviewServer,
+  PROTOCOL_VERSION,
+} = require("../src/network/mobile-preview-server");
 
 function waitForMessage(ws, type, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timeout waiting for ${type}`)), timeoutMs);
+    const timer = setTimeout(
+      () => reject(new Error(`Timeout waiting for ${type}`)),
+      timeoutMs,
+    );
     const handler = (data) => {
       try {
         const msg = JSON.parse(data);
@@ -48,19 +54,39 @@ function connectClient(port, token) {
       const existing = messages.find((m) => m.type === type);
       if (existing) return Promise.resolve(existing);
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`Timeout waiting for ${type}`)), timeoutMs);
-        waiters.push({ type, resolve: (msg) => { clearTimeout(timer); resolve(msg); } });
+        const timer = setTimeout(
+          () => reject(new Error(`Timeout waiting for ${type}`)),
+          timeoutMs,
+        );
+        waiters.push({
+          type,
+          resolve: (msg) => {
+            clearTimeout(timer);
+            resolve(msg);
+          },
+        });
       });
     },
-    close() { ws.close(); },
+    close() {
+      ws.close();
+    },
   };
 }
 
 function waitForOpen(ws, timeoutMs = 3000) {
   return new Promise((resolve, reject) => {
-    if (ws.readyState === WebSocket.OPEN) { resolve(); return; }
-    const timer = setTimeout(() => reject(new Error("Timeout waiting for open")), timeoutMs);
-    ws.once("open", () => { clearTimeout(timer); resolve(); });
+    if (ws.readyState === WebSocket.OPEN) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(
+      () => reject(new Error("Timeout waiting for open")),
+      timeoutMs,
+    );
+    ws.once("open", () => {
+      clearTimeout(timer);
+      resolve();
+    });
   });
 }
 
@@ -69,8 +95,14 @@ function waitForPort(getPortFn, timeoutMs = 5000) {
     const start = Date.now();
     const check = () => {
       const p = getPortFn();
-      if (typeof p === "number" && p > 0) { resolve(p); return; }
-      if (Date.now() - start > timeoutMs) { reject(new Error("Timeout waiting for port")); return; }
+      if (typeof p === "number" && p > 0) {
+        resolve(p);
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        reject(new Error("Timeout waiting for port"));
+        return;
+      }
       setTimeout(check, 50);
     };
     check();
@@ -79,19 +111,28 @@ function waitForPort(getPortFn, timeoutMs = 5000) {
 
 function httpGet(port, pathStr) {
   return new Promise((resolve, reject) => {
-    http.get({ hostname: "127.0.0.1", port, path: pathStr }, (res) => {
-      let body = "";
-      res.setEncoding("utf8");
-      res.on("data", (chunk) => { body += chunk; });
-      res.on("end", () => resolve({ status: res.statusCode, body, headers: res.headers }));
-    }).on("error", reject);
+    http
+      .get({ hostname: "127.0.0.1", port, path: pathStr }, (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () =>
+          resolve({ status: res.statusCode, body, headers: res.headers }),
+        );
+      })
+      .on("error", reject);
   });
 }
 
 function waitForClose(ws, timeoutMs = 3000) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(null), timeoutMs);
-    ws.on("close", (code) => { clearTimeout(timer); resolve(code); });
+    ws.on("close", (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
   });
 }
 
@@ -131,7 +172,9 @@ describe("Mobile Preview Server", () => {
     server.cleanup();
     sessions.clear();
     pendingPermissions = [];
-    try { fs.rmSync(tmpTokenDir, { recursive: true }); } catch {}
+    try {
+      fs.rmSync(tmpTokenDir, { recursive: true });
+    } catch {}
   });
 
   it("protocol version is v1", () => {
@@ -221,7 +264,10 @@ describe("Mobile Preview Server", () => {
     assert.ok(snapshot.sessions["s-titleless"]);
     assert.strictEqual(snapshot.sessions["s-titleless"].agentId, "codex");
     assert.strictEqual(snapshot.sessions["s-titleless"].title, null);
-    assert.strictEqual(typeof snapshot.sessions["s-titleless"].updatedAt, "number");
+    assert.strictEqual(
+      typeof snapshot.sessions["s-titleless"].updatedAt,
+      "number",
+    );
 
     client.close();
     sessions.delete("s-titleless");
@@ -287,7 +333,9 @@ describe("Token Rotation", () => {
   after(() => {
     server.cleanup();
     sessions.clear();
-    try { fs.rmSync(tmpTokenDir, { recursive: true }); } catch {}
+    try {
+      fs.rmSync(tmpTokenDir, { recursive: true });
+    } catch {}
   });
 
   it("grace-period acceptance: old token accepted within grace window", async () => {
@@ -464,7 +512,10 @@ describe("Token Rotation", () => {
     assert.strictEqual(persisted.token, oldToken);
     assert.strictEqual(persisted.previous, null);
     assert.strictEqual(persisted.graceUntil, null);
-    assert.ok(persisted.rotatedAt > 0, "rotatedAt should be set to current time on migration");
+    assert.ok(
+      persisted.rotatedAt > 0,
+      "rotatedAt should be set to current time on migration",
+    );
 
     // Should connect fine
     const client = connectClient(port, loadedToken);
@@ -582,7 +633,10 @@ describe("Token Rotation", () => {
     assert.strictEqual(initial.token, freshToken);
     assert.strictEqual(initial.previous, null);
     assert.strictEqual(initial.graceUntil, null);
-    assert.ok(initial.rotatedAt > 0, "rotatedAt should be set to current time on creation");
+    assert.ok(
+      initial.rotatedAt > 0,
+      "rotatedAt should be set to current time on creation",
+    );
 
     // Regenerate
     const newToken = server.regenerateToken();
@@ -603,7 +657,10 @@ describe("Token Rotation", () => {
 
     // Write a legacy M1 format file (bare { token }, no rotatedAt)
     const legacyToken = "face0ff0".repeat(4);
-    fs.writeFileSync(tokenFile, JSON.stringify({ token: legacyToken }, null, 2));
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify({ token: legacyToken }, null, 2),
+    );
 
     server = initMobilePreviewServer({
       sessions,
@@ -616,10 +673,16 @@ describe("Token Rotation", () => {
     await new Promise((r) => setTimeout(r, 300));
 
     const tokenAfter = server.getToken();
-    assert.strictEqual(tokenBefore, legacyToken,
-      "token should be the legacy token on startup");
-    assert.strictEqual(tokenAfter, legacyToken,
-      "token must not change after brief wait — no immediate rotation");
+    assert.strictEqual(
+      tokenBefore,
+      legacyToken,
+      "token should be the legacy token on startup",
+    );
+    assert.strictEqual(
+      tokenAfter,
+      legacyToken,
+      "token must not change after brief wait — no immediate rotation",
+    );
 
     await new Promise((r) => setTimeout(r, 100));
   });
@@ -652,15 +715,21 @@ describe("Token Rotation", () => {
     // Should receive token_rotate with the new token
     const rotateMsg = await client.waitFor("token_rotate");
     assert.strictEqual(rotateMsg.newToken, newToken);
-    assert.ok(rotateMsg.expiresAt > Date.now(), "expiresAt should be in the future");
+    assert.ok(
+      rotateMsg.expiresAt > Date.now(),
+      "expiresAt should be in the future",
+    );
 
     // Send ack back
     client.ws.send(JSON.stringify({ type: "token_rotate_ack" }));
 
     // Wait through a heartbeat cycle — client should NOT be kicked
     await new Promise((r) => setTimeout(r, 1500));
-    assert.strictEqual(client.ws.readyState, WebSocket.OPEN,
-      "client should stay connected after acking the rotation");
+    assert.strictEqual(
+      client.ws.readyState,
+      WebSocket.OPEN,
+      "client should stay connected after acking the rotation",
+    );
 
     client.close();
     await new Promise((r) => setTimeout(r, 100));
@@ -681,19 +750,28 @@ describe("Rotate-on-use", () => {
 
   after(() => {
     sessions.clear();
-    try { fs.rmSync(tmpTokenDir, { recursive: true }); } catch {}
+    try {
+      fs.rmSync(tmpTokenDir, { recursive: true });
+    } catch {}
   });
 
   it("24h expiry with no clients → rotationPending persisted to disk", async () => {
     const testToken = "aabbccdd".repeat(4);
     // rotatedAt far in the past → timer fires immediately
-    fs.writeFileSync(tokenFile, JSON.stringify({
-      token: testToken,
-      previous: null,
-      graceUntil: null,
-      rotatedAt: 1,
-      rotationPending: false,
-    }, null, 2));
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify(
+        {
+          token: testToken,
+          previous: null,
+          graceUntil: null,
+          rotatedAt: 1,
+          rotationPending: false,
+        },
+        null,
+        2,
+      ),
+    );
 
     const server = initMobilePreviewServer({ sessions, tokenPath: tokenFile });
     await server.start();
@@ -701,10 +779,16 @@ describe("Rotate-on-use", () => {
     await new Promise((r) => setTimeout(r, 500));
 
     const persisted = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
-    assert.strictEqual(persisted.rotationPending, true,
-      "rotationPending should be true when timer fires with no clients");
-    assert.strictEqual(persisted.token, testToken,
-      "token should NOT have changed — no rotation happened");
+    assert.strictEqual(
+      persisted.rotationPending,
+      true,
+      "rotationPending should be true when timer fires with no clients",
+    );
+    assert.strictEqual(
+      persisted.token,
+      testToken,
+      "token should NOT have changed — no rotation happened",
+    );
 
     server.cleanup();
     await new Promise((r) => setTimeout(r, 200));
@@ -713,13 +797,20 @@ describe("Rotate-on-use", () => {
   it("rotationPending=true + client connects → receives token_rotate", async () => {
     const testToken = "11223344".repeat(4);
     const setupRotatedAt = Date.now();
-    fs.writeFileSync(tokenFile, JSON.stringify({
-      token: testToken,
-      previous: null,
-      graceUntil: null,
-      rotatedAt: setupRotatedAt,
-      rotationPending: true,
-    }, null, 2));
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify(
+        {
+          token: testToken,
+          previous: null,
+          graceUntil: null,
+          rotatedAt: setupRotatedAt,
+          rotationPending: true,
+        },
+        null,
+        2,
+      ),
+    );
 
     const server = initMobilePreviewServer({ sessions, tokenPath: tokenFile });
     const port = await server.start();
@@ -728,17 +819,32 @@ describe("Rotate-on-use", () => {
     await waitForOpen(client.ws);
     const rotateMsg = await client.waitFor("token_rotate");
     assert.ok(rotateMsg.newToken, "should receive new token");
-    assert.notStrictEqual(rotateMsg.newToken, testToken, "new token should differ");
-    assert.ok(rotateMsg.expiresAt > Date.now(), "expiresAt should be in the future");
+    assert.notStrictEqual(
+      rotateMsg.newToken,
+      testToken,
+      "new token should differ",
+    );
+    assert.ok(
+      rotateMsg.expiresAt > Date.now(),
+      "expiresAt should be in the future",
+    );
 
     // rotationPending should be cleared on disk
     const persisted = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
-    assert.strictEqual(persisted.rotationPending, false,
-      "rotationPending should be false after on-connect rotation");
-    assert.strictEqual(persisted.token, rotateMsg.newToken,
-      "persisted token should be the new token");
-    assert.ok(persisted.rotatedAt >= setupRotatedAt,
-      "rotatedAt should be updated by on-connect rotation for next 24h timer");
+    assert.strictEqual(
+      persisted.rotationPending,
+      false,
+      "rotationPending should be false after on-connect rotation",
+    );
+    assert.strictEqual(
+      persisted.token,
+      rotateMsg.newToken,
+      "persisted token should be the new token",
+    );
+    assert.ok(
+      persisted.rotatedAt > setupRotatedAt,
+      "rotatedAt should be strictly newer after on-connect rotation",
+    );
 
     client.close();
     server.cleanup();
@@ -747,13 +853,20 @@ describe("Rotate-on-use", () => {
 
   it("rotationPending=true + regenerateToken → clears pending flag", async () => {
     const testToken = "55667788".repeat(4);
-    fs.writeFileSync(tokenFile, JSON.stringify({
-      token: testToken,
-      previous: null,
-      graceUntil: null,
-      rotatedAt: Date.now(),
-      rotationPending: true,
-    }, null, 2));
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify(
+        {
+          token: testToken,
+          previous: null,
+          graceUntil: null,
+          rotatedAt: Date.now(),
+          rotationPending: true,
+        },
+        null,
+        2,
+      ),
+    );
 
     const server = initMobilePreviewServer({ sessions, tokenPath: tokenFile });
     await server.start();
@@ -762,10 +875,16 @@ describe("Rotate-on-use", () => {
     assert.notStrictEqual(newToken, testToken);
 
     const persisted = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
-    assert.strictEqual(persisted.rotationPending, false,
-      "rotationPending should be cleared by regenerateToken");
-    assert.strictEqual(persisted.token, newToken,
-      "persisted token should be the regenerated token");
+    assert.strictEqual(
+      persisted.rotationPending,
+      false,
+      "rotationPending should be cleared by regenerateToken",
+    );
+    assert.strictEqual(
+      persisted.token,
+      newToken,
+      "persisted token should be the regenerated token",
+    );
 
     server.cleanup();
     await new Promise((r) => setTimeout(r, 200));
@@ -773,13 +892,20 @@ describe("Rotate-on-use", () => {
 
   it("server restart with rotationPending=true → no timer, waits for connection", async () => {
     const testToken = "99aabbcc".repeat(4);
-    fs.writeFileSync(tokenFile, JSON.stringify({
-      token: testToken,
-      previous: null,
-      graceUntil: null,
-      rotatedAt: Date.now(),
-      rotationPending: true,
-    }, null, 2));
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify(
+        {
+          token: testToken,
+          previous: null,
+          graceUntil: null,
+          rotatedAt: Date.now(),
+          rotationPending: true,
+        },
+        null,
+        2,
+      ),
+    );
 
     const server = initMobilePreviewServer({ sessions, tokenPath: tokenFile });
     const port = await server.start();
@@ -788,8 +914,11 @@ describe("Rotate-on-use", () => {
     await new Promise((r) => setTimeout(r, 500));
 
     const beforeConnect = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
-    assert.strictEqual(beforeConnect.token, testToken,
-      "token should not change before a client connects");
+    assert.strictEqual(
+      beforeConnect.token,
+      testToken,
+      "token should not change before a client connects",
+    );
 
     // Now connect — rotation should happen on-connect
     const client = connectClient(port, testToken);
@@ -805,13 +934,20 @@ describe("Rotate-on-use", () => {
 
   it("pending rotation + multiple clients → all receive token_rotate", async () => {
     const testToken = "ddeeff00".repeat(4);
-    fs.writeFileSync(tokenFile, JSON.stringify({
-      token: testToken,
-      previous: null,
-      graceUntil: null,
-      rotatedAt: Date.now(),
-      rotationPending: true,
-    }, null, 2));
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify(
+        {
+          token: testToken,
+          previous: null,
+          graceUntil: null,
+          rotatedAt: Date.now(),
+          rotationPending: true,
+        },
+        null,
+        2,
+      ),
+    );
 
     const server = initMobilePreviewServer({ sessions, tokenPath: tokenFile });
     const port = await server.start();
@@ -826,12 +962,149 @@ describe("Rotate-on-use", () => {
 
     assert.ok(rotate1.newToken, "client1 should receive new token");
     assert.ok(rotate2.newToken, "client2 should receive new token");
-    assert.strictEqual(rotate1.newToken, rotate2.newToken,
-      "both clients should receive the same new token");
+    assert.strictEqual(
+      rotate1.newToken,
+      rotate2.newToken,
+      "both clients should receive the same new token",
+    );
 
     client1.close();
     client2.close();
     server.cleanup();
     await new Promise((r) => setTimeout(r, 200));
+  });
+
+  it("24h timer fires with frozen clients (stale lastPong) → rotationPending, not immediate rotation", async () => {
+    const testToken = "aabbccdd".repeat(4);
+    const ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify(
+        {
+          token: testToken,
+          previous: null,
+          graceUntil: null,
+          rotatedAt: Date.now() - ROTATION_INTERVAL_MS + 300,
+          rotationPending: false,
+        },
+        null,
+        2,
+      ),
+    );
+
+    const server = initMobilePreviewServer({
+      sessions,
+      tokenPath: tokenFile,
+      clientTimeoutMs: 100,
+    });
+    let client;
+    try {
+      const port = await server.start();
+      client = connectClient(port, testToken);
+      await waitForOpen(client.ws);
+      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 200));
+      const persisted = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
+      assert.strictEqual(
+        persisted.rotationPending,
+        true,
+        "rotationPending should be true when all clients have stale lastPong",
+      );
+      assert.strictEqual(
+        persisted.token,
+        testToken,
+        "token should NOT have changed — frozen clients should not trigger rotation",
+      );
+    } finally {
+      if (client) client.close();
+      server.cleanup();
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  });
+
+  it("24h timer fires with active client → performs rotation immediately", async () => {
+    const testToken = "aabbccdd".repeat(4);
+    const ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify(
+        {
+          token: testToken,
+          previous: null,
+          graceUntil: null,
+          rotatedAt: Date.now() - ROTATION_INTERVAL_MS + 300,
+          rotationPending: false,
+        },
+        null,
+        2,
+      ),
+    );
+
+    const server = initMobilePreviewServer({ sessions, tokenPath: tokenFile });
+    let client;
+    try {
+      const port = await server.start();
+      client = connectClient(port, testToken);
+      await waitForOpen(client.ws);
+      const rotateMsg = await client.waitFor("token_rotate");
+      assert.ok(rotateMsg.newToken, "should receive new token");
+      assert.notStrictEqual(
+        rotateMsg.newToken,
+        testToken,
+        "new token should differ",
+      );
+      const persisted = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
+      assert.strictEqual(
+        persisted.rotationPending,
+        false,
+        "rotationPending should remain false when rotation was performed",
+      );
+      assert.strictEqual(
+        persisted.token,
+        rotateMsg.newToken,
+        "persisted token should be the new token",
+      );
+    } finally {
+      if (client) client.close();
+      server.cleanup();
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  });
+
+  it("rotationPending=true + invalid token connect → pending stays unchanged", async () => {
+    const testToken = "aabbccdd".repeat(4);
+    fs.writeFileSync(
+      tokenFile,
+      JSON.stringify(
+        {
+          token: testToken,
+          previous: null,
+          graceUntil: null,
+          rotatedAt: Date.now(),
+          rotationPending: true,
+        },
+        null,
+        2,
+      ),
+    );
+
+    const server = initMobilePreviewServer({ sessions, tokenPath: tokenFile });
+    let client;
+    try {
+      const port = await server.start();
+      const badToken = "badbadbad".repeat(4);
+      client = connectClient(port, badToken);
+      await new Promise((r) => setTimeout(r, 500));
+      const persisted = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
+      assert.strictEqual(
+        persisted.rotationPending,
+        true,
+        "rotationPending should stay true when invalid token connects",
+      );
+    } finally {
+      if (client) client.close();
+      server.cleanup();
+      await new Promise((r) => setTimeout(r, 300));
+    }
   });
 });

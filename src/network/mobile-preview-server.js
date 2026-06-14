@@ -20,7 +20,7 @@ const CLIENT_TIMEOUT_MS = 90000;
 const RATE_WINDOW_MS = 60000;
 const RATE_MAX = 60;
 const MAX_CLIENTS = 10;
-const GRACE_PERIOD_MS = 5 * 60 * 1000;          // 5 minutes
+const GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
 const ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const PWA_DIR = path.resolve(__dirname, "../../pwa");
@@ -56,13 +56,20 @@ function atomicWrite(tokenPath, state) {
 function loadOrCreateTokenState(tokenPath, nowFn) {
   try {
     const raw = JSON.parse(fs.readFileSync(tokenPath, "utf8"));
-    if (raw && typeof raw.token === "string" && /^[a-f0-9]{32,64}$/.test(raw.token)) {
+    if (
+      raw &&
+      typeof raw.token === "string" &&
+      /^[a-f0-9]{32,64}$/.test(raw.token)
+    ) {
       const state = {
         token: raw.token,
         previous: raw.previous || null,
         graceUntil: typeof raw.graceUntil === "number" ? raw.graceUntil : null,
         rotatedAt: typeof raw.rotatedAt === "number" ? raw.rotatedAt : nowFn(),
-        rotationPending: typeof raw.rotationPending === "boolean" ? raw.rotationPending : false,
+        rotationPending:
+          typeof raw.rotationPending === "boolean"
+            ? raw.rotationPending
+            : false,
       };
       // Backward compat: rewrite file if it was in old { token } format
       if (raw.rotatedAt === undefined) atomicWrite(tokenPath, state);
@@ -70,23 +77,38 @@ function loadOrCreateTokenState(tokenPath, nowFn) {
     }
   } catch {}
   const token = crypto.randomBytes(16).toString("hex");
-  const state = { token, previous: null, graceUntil: null, rotatedAt: nowFn(), rotationPending: false };
+  const state = {
+    token,
+    previous: null,
+    graceUntil: null,
+    rotatedAt: nowFn(),
+    rotationPending: false,
+  };
   atomicWrite(tokenPath, state);
   return state;
 }
 
 function buildMessage(type, payload) {
-  return JSON.stringify({ version: PROTOCOL_VERSION, type, timestamp: Date.now(), ...payload });
+  return JSON.stringify({
+    version: PROTOCOL_VERSION,
+    type,
+    timestamp: Date.now(),
+    ...payload,
+  });
 }
 
 function isPathInside(parent, child) {
   const relative = path.relative(parent, child);
-  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    relative === "" ||
+    (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 function initMobilePreviewServer(ctx) {
   const tokenPath = (ctx && ctx.tokenPath) || TOKEN_PATH;
   const now = () => (ctx && ctx.now && ctx.now()) || Date.now();
+  const clientTimeoutMs = (ctx && ctx.clientTimeoutMs) || CLIENT_TIMEOUT_MS;
   const tokenState = loadOrCreateTokenState(tokenPath, now);
   const clients = new Set();
   const clientMeta = new Map();
@@ -116,18 +138,31 @@ function initMobilePreviewServer(ctx) {
     for (const meta of clientMeta.values()) {
       meta.pendingRotationAcks = (meta.pendingRotationAcks || 0) + 1;
     }
-    broadcast(buildMessage("token_rotate", {
-      newToken: tokenState.token,
-      expiresAt: tokenState.graceUntil,
-    }));
+    broadcast(
+      buildMessage("token_rotate", {
+        newToken: tokenState.token,
+        expiresAt: tokenState.graceUntil,
+      }),
+    );
+  }
+
+  function hasActiveClients() {
+    const nowMs = Date.now();
+    for (const meta of clientMeta.values()) {
+      if (nowMs - meta.lastPong < clientTimeoutMs) return true;
+    }
+    return false;
   }
 
   function scheduleRotation() {
     if (tokenState.rotationPending) return;
     if (rotationTimer) clearTimeout(rotationTimer);
-    const msUntilRotate = Math.max(0, (tokenState.rotatedAt + ROTATION_INTERVAL_MS) - now());
+    const msUntilRotate = Math.max(
+      0,
+      tokenState.rotatedAt + ROTATION_INTERVAL_MS - now(),
+    );
     rotationTimer = setTimeout(() => {
-      if (clients.size > 0) {
+      if (hasActiveClients()) {
         performRotation();
       } else {
         tokenState.rotationPending = true;
@@ -140,14 +175,16 @@ function initMobilePreviewServer(ctx) {
   function regenerateToken() {
     tokenState.rotationPending = false;
     const newToken = crypto.randomBytes(16).toString("hex");
-    tokenState.previous = null;      // no grace — old token dies now
+    tokenState.previous = null; // no grace — old token dies now
     tokenState.graceUntil = null;
     tokenState.token = newToken;
     tokenState.rotatedAt = now();
     atomicWrite(tokenPath, tokenState);
     // Kick all connected clients (they have stale tokens)
     for (const c of clients) {
-      try { c.close(1008, "Token regenerated"); } catch {}
+      try {
+        c.close(1008, "Token regenerated");
+      } catch {}
     }
     clients.clear();
     clientMeta.clear();
@@ -186,25 +223,51 @@ function initMobilePreviewServer(ctx) {
 
   function serveStatic(req, res) {
     let urlPath;
-    try { urlPath = new URL(req.url, "http://localhost").pathname; } catch { res.writeHead(400); res.end(); return; }
+    try {
+      urlPath = new URL(req.url, "http://localhost").pathname;
+    } catch {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
 
     // API endpoint for connection info (M1: no token — must come from Settings page or URL params)
     if (urlPath === "/api/connection-info") {
       const ready = Number.isInteger(activePort) && activePort > 0;
-      const info = { status: ready ? "ok" : "starting", port: ready ? activePort : null, lanIp: getLocalIP() };
-      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-cache" });
+      const info = {
+        status: ready ? "ok" : "starting",
+        port: ready ? activePort : null,
+        lanIp: getLocalIP(),
+      };
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+      });
       res.end(JSON.stringify(info));
       return;
     }
 
-    if (urlPath === "/mobile/" || urlPath === "/mobile") urlPath = "/mobile/index.html";
-    if (!urlPath.startsWith("/mobile/")) { res.writeHead(404); res.end(); return; }
+    if (urlPath === "/mobile/" || urlPath === "/mobile")
+      urlPath = "/mobile/index.html";
+    if (!urlPath.startsWith("/mobile/")) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
     const rel = urlPath.slice("/mobile/".length);
     const filePath = path.join(PWA_DIR, rel);
-    if (!isPathInside(PWA_DIR, filePath)) { res.writeHead(403); res.end(); return; }
+    if (!isPathInside(PWA_DIR, filePath)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
     const ext = path.extname(filePath).toLowerCase();
     fs.readFile(filePath, (err, data) => {
-      if (err) { res.writeHead(404); res.end(); return; }
+      if (err) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
       res.writeHead(200, {
         "Content-Type": MIME[ext] || "application/octet-stream",
         "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=3600",
@@ -218,18 +281,30 @@ function initMobilePreviewServer(ctx) {
     wss = new WebSocket.Server({ server: httpServer, path: "/ws" });
 
     wss.on("connection", (ws, req) => {
-      if (closed) { ws.close(1001, "Server shutting down"); return; }
+      if (closed) {
+        ws.close(1001, "Server shutting down");
+        return;
+      }
 
       let url;
-      try { url = new URL(req.url, "http://localhost"); } catch { ws.close(1008, "Bad request"); return; }
+      try {
+        url = new URL(req.url, "http://localhost");
+      } catch {
+        ws.close(1008, "Bad request");
+        return;
+      }
 
       // Token validation with grace-period support
       const clientToken = url.searchParams.get("token");
       let graceAccepted = false;
       if (clientToken !== tokenState.token) {
         // Check grace period for previous token
-        if (tokenState.previous && clientToken === tokenState.previous
-            && tokenState.graceUntil !== null && now() < tokenState.graceUntil) {
+        if (
+          tokenState.previous &&
+          clientToken === tokenState.previous &&
+          tokenState.graceUntil !== null &&
+          now() < tokenState.graceUntil
+        ) {
           // Accept via grace — client hasn't acked the rotation yet
           graceAccepted = true;
         } else {
@@ -246,7 +321,13 @@ function initMobilePreviewServer(ctx) {
       clients.add(ws);
       const clientId = crypto.randomBytes(8).toString("hex");
       const clientIp = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
-      clientMeta.set(ws, { messageCount: 0, windowStart: Date.now(), clientId, ip: clientIp, lastPong: Date.now() });
+      clientMeta.set(ws, {
+        messageCount: 0,
+        windowStart: Date.now(),
+        clientId,
+        ip: clientIp,
+        lastPong: Date.now(),
+      });
 
       // If a rotation was pending and this client has the current token, rotate now
       if (tokenState.rotationPending && clientToken === tokenState.token) {
@@ -270,10 +351,12 @@ function initMobilePreviewServer(ctx) {
         const meta = clientMeta.get(ws);
         if (meta) meta.pendingRotationAcks = 1;
         try {
-          ws.send(buildMessage("token_rotate", {
-            newToken: tokenState.token,
-            expiresAt: tokenState.graceUntil,
-          }));
+          ws.send(
+            buildMessage("token_rotate", {
+              newToken: tokenState.token,
+              expiresAt: tokenState.graceUntil,
+            }),
+          );
         } catch {}
       }
       ws.isAlive = true;
@@ -288,27 +371,36 @@ function initMobilePreviewServer(ctx) {
         const meta = clientMeta.get(ws);
         if (!meta) return;
         const nowMs = Date.now();
-        if (nowMs - meta.windowStart > RATE_WINDOW_MS) { meta.messageCount = 0; meta.windowStart = nowMs; }
-      if (++meta.messageCount > RATE_MAX) { ws.close(1008, "Rate limit"); return; }
-      // Handle token_rotate_ack — purely informational, no state change
-      try {
-        const parsed = JSON.parse(data);
-        if (parsed && parsed.type === "token_rotate_ack") {
-          meta.pendingRotationAcks = 0;
-          console.log(`[mobile-preview] token_rotate_ack from ${meta.ip}`);
+        if (nowMs - meta.windowStart > RATE_WINDOW_MS) {
+          meta.messageCount = 0;
+          meta.windowStart = nowMs;
+        }
+        if (++meta.messageCount > RATE_MAX) {
+          ws.close(1008, "Rate limit");
           return;
         }
-      } catch {}
-      // M1: read-only — ignore all other client messages (rate-limit still applies above)
-    });
+        // Handle token_rotate_ack — purely informational, no state change
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed && parsed.type === "token_rotate_ack") {
+            meta.pendingRotationAcks = 0;
+            console.log(`[mobile-preview] token_rotate_ack from ${meta.ip}`);
+            return;
+          }
+        } catch {}
+        // M1: read-only — ignore all other client messages (rate-limit still applies above)
+      });
 
-    ws.on("close", () => {
-      clients.delete(ws);
-      clientMeta.delete(ws);
-      if (clients.size === 0) stopHeartbeat();
+      ws.on("close", () => {
+        clients.delete(ws);
+        clientMeta.delete(ws);
+        if (clients.size === 0) stopHeartbeat();
+      });
+      ws.on("error", () => {
+        clients.delete(ws);
+        clientMeta.delete(ws);
+      });
     });
-    ws.on("error", () => { clients.delete(ws); clientMeta.delete(ws); });
-  });
   }
 
   function startHeartbeat() {
@@ -317,7 +409,10 @@ function initMobilePreviewServer(ctx) {
       const nowMs = Date.now();
       for (const c of clients) {
         const meta = clientMeta.get(c);
-        if (c.isAlive === false || (meta && nowMs - meta.lastPong > CLIENT_TIMEOUT_MS)) {
+        if (
+          c.isAlive === false ||
+          (meta && nowMs - meta.lastPong > clientTimeoutMs)
+        ) {
           c.terminate();
           clients.delete(c);
           clientMeta.delete(c);
@@ -332,28 +427,37 @@ function initMobilePreviewServer(ctx) {
             continue;
           }
           try {
-            c.send(buildMessage("token_rotate", {
-              newToken: tokenState.token,
-              expiresAt: tokenState.graceUntil,
-            }));
+            c.send(
+              buildMessage("token_rotate", {
+                newToken: tokenState.token,
+                expiresAt: tokenState.graceUntil,
+              }),
+            );
           } catch {}
           meta.pendingRotationAcks++;
         }
         c.isAlive = false;
-        try { c.ping(); } catch {}
+        try {
+          c.ping();
+        } catch {}
       }
       if (clients.size === 0) stopHeartbeat();
     }, HEARTBEAT_MS);
   }
 
   function stopHeartbeat() {
-    if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
   }
 
   function broadcast(message) {
     for (const c of clients) {
       if (c.readyState === WebSocket.OPEN) {
-        try { c.send(message); } catch {}
+        try {
+          c.send(message);
+        } catch {}
       }
     }
   }
@@ -362,7 +466,9 @@ function initMobilePreviewServer(ctx) {
 
   function buildPayload(sid, session) {
     if (!session) return null;
-    const recentEvents = Array.isArray(session.recentEvents) ? session.recentEvents.slice(-10) : [];
+    const recentEvents = Array.isArray(session.recentEvents)
+      ? session.recentEvents.slice(-10)
+      : [];
     return {
       sessionId: sid,
       agentId: session.agentId || null,
@@ -459,12 +565,27 @@ function initMobilePreviewServer(ctx) {
     closed = true;
     sessionCache.clear();
     stopHeartbeat();
-    if (rotationTimer) { clearTimeout(rotationTimer); rotationTimer = null; }
-    for (const c of clients) { try { c.close(1001, "Server shutting down"); } catch {} }
+    if (rotationTimer) {
+      clearTimeout(rotationTimer);
+      rotationTimer = null;
+    }
+    for (const c of clients) {
+      try {
+        c.close(1001, "Server shutting down");
+      } catch {}
+    }
     clients.clear();
     clientMeta.clear();
-    if (wss) { try { wss.close(); } catch {} }
-    if (httpServer) { try { httpServer.close(); } catch {} }
+    if (wss) {
+      try {
+        wss.close();
+      } catch {}
+    }
+    if (httpServer) {
+      try {
+        httpServer.close();
+      } catch {}
+    }
   }
 
   function onSnapshot() {
