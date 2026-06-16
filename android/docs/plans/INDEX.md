@@ -30,6 +30,12 @@
 | 10 | [sessions Map GC 优化](P2-3-sessions-map-gc-pressure.md) | 1h | `执行 P2-3: 优化 ClawdWebSocket 中 sessions Map 的高频拷贝问题，减少 GC 压力，使用 ConcurrentHashMap in-place 更新替代每次创建新 Map` |
 | 11 | [SvgLoader 线程安全](P2-4-svloader-thread-safety.md) | 1h | `执行 P2-4: 改进 SvgLoader 的线程安全，将 assetCache/missingCache 改为线程安全集合，消除初始化时序依赖` |
 
+## P3.5 — 用户体验修复
+
+| # | 计划 | 工时 | 启动提示词 |
+|---|------|------|-----------|
+| 15 | [悬浮窗大小实时生效 + 重启自动恢复](P4-1-floating-pet-size-and-restore.md) | 1.5h | `执行 P4-1: 修复悬浮窗大小滑块不实时生效（改为 onValueChange 发送广播 + setPackage），以及退出 app 重启后悬浮窗不自动恢复（将自动启动逻辑移至 MainActivity）` |
+
 ## P3 — 长期规划（架构/测试）
 
 | # | 计划 | 工时 | 启动提示词 |
@@ -47,16 +53,17 @@
 | P0 | 3 | 3.5h |
 | P1 | 4 | 5.5h |
 | P2 | 4 | 4.5h |
+| P3.5 | 1 | 1.5h |
 | P3 | 3 | 7.5h |
-| **合计** | **14** | **21h** |
+| **合计** | **15** | **22.5h** |
 
 ## 推荐执行顺序
 
 ```
-P0-1 (Token) → P0-3 (重命名) → P1-3 (TTL 清理) → P1-2 (MessageParser)
+P4-1 (悬浮窗体验) → P0-1 (Token) → P0-3 (重命名) → P1-3 (TTL 清理) → P1-2 (MessageParser)
 → P0-2 (TOFU) → P1-1 (WorkManager) → P1-4 (静态访问)
 → P2-1 (测试) → P2-2 (WakeLock) → P2-3 (GC) → P2-4 (SvgLoader)
 → P3-1 → P3-2 → P3-3
 ```
 
-**理由**: P0-1 和 P0-3 影响面小、改动少，可快速完成建立信心。P1-3 和 P1-2 是独立模块，无依赖。P0-2 需要 UI 配合，放后面。P2/P3 按依赖关系排列。
+**理由**: P4-1 用户反馈的体验问题，改动小（~15行）、风险低、用户感知明显，优先处理。后续按原顺序执行。

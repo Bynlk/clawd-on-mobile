@@ -3,7 +3,7 @@
 > **优先级**: P2 — 长时运行风险  
 > **影响范围**: `service/WebSocketService.kt`  
 > **预估工时**: 30min  
-> **启动提示词**: `执行 P2-2: 为 WebSocketService 的 WakeLock 添加续期机制，避免 1 小时超时后 SSE 连接断开`
+> **启动提示词**: `执行 P2-2: 为 WebSocketService 的 WakeLock 添加续期机制，避免 1 小时超时后 WebSocket 连接断开`
 
 ---
 
@@ -11,13 +11,13 @@
 
 ```kotlin
 // WebSocketService.kt:193
-wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:sse").apply {
+wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:ws").apply {
     setReferenceCounted(false)
     acquire(60 * 60 * 1000L) // 1 hour timeout safety net
 }
 ```
 
-WakeLock 设置了 1 小时超时。超时后系统释放锁，CPU 进入休眠，SSE 连接静默断开。当前的 watchdog（30s）可能无法在 CPU 休眠时触发重连。
+WakeLock 设置了 1 小时超时。超时后系统释放锁，CPU 进入休眠，WebSocket 连接静默断开。当前的 watchdog（30s）可能无法在 CPU 休眠时触发重连。
 
 ## 修复方案
 
@@ -63,7 +63,7 @@ companion object {
 将 WakeLock 超时设为更长（如 8 小时），仅在连接成功时续期：
 
 ```kotlin
-wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:sse").apply {
+wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:ws").apply {
     acquire(8 * 60 * 60 * 1000L)  // 8 hours
 }
 ```

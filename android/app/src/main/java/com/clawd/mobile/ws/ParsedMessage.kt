@@ -6,7 +6,7 @@ import kotlinx.serialization.json.JsonElement
 
 /**
  * Typed result of parsing a single message.
- * Produced by [MessageParser], consumed by [SseClient.handleMessage] and [WsClient.handleMessage].
+ * Produced by [MessageParser], consumed by [MessageHandler.handleMessage].
  */
 sealed class ParsedMessage {
     abstract val timestamp: Long

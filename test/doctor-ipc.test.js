@@ -1,6 +1,22 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
-const { __test } = require("../src/doctor-ipc");
+const { registerDoctorIpc, __test } = require("../src/doctor-ipc");
+
+function makeMockIpcMain() {
+  const handlers = {};
+  return {
+    handle(channel, listener) { handlers[channel] = listener; },
+    handlers,
+  };
+}
+
+function makeMockApp() {
+  return {
+    getAppPath: () => "/mock/app",
+    getPath: () => "/mock/userData",
+    getVersion: () => "1.0.0",
+  };
+}
 
 describe("Doctor IPC helpers", () => {
   it("single-flights concurrent doctor checks and resets after completion", async () => {
@@ -55,5 +71,55 @@ describe("Doctor IPC helpers", () => {
     assert.deepStrictEqual(__test.normalizeDoctorOpenLogPayload("bad"), {});
     assert.deepStrictEqual(__test.normalizeDoctorOpenLogPayload({ name: 123 }), {});
     assert.deepStrictEqual(__test.normalizeDoctorOpenLogPayload({ name: "clawd.log" }), { name: "clawd.log" });
+  });
+});
+
+describe("registerDoctorIpc", () => {
+  it("registers all 4 IPC handlers", () => {
+    const ipcMain = makeMockIpcMain();
+    registerDoctorIpc({
+      ipcMain,
+      app: makeMockApp(),
+      shell: {},
+      server: {},
+      getPrefsSnapshot: () => ({}),
+      getDoNotDisturb: () => false,
+      getLocale: () => "en",
+    });
+    assert.ok(ipcMain.handlers["doctor:run-checks"]);
+    assert.ok(ipcMain.handlers["doctor:test-connection"]);
+    assert.ok(ipcMain.handlers["doctor:open-clawd-log"]);
+    assert.ok(ipcMain.handlers["doctor:get-report"]);
+  });
+
+  it("doctor:run-checks returns redacted result", async () => {
+    const ipcMain = makeMockIpcMain();
+    registerDoctorIpc({
+      ipcMain,
+      app: makeMockApp(),
+      shell: {},
+      server: { getPort: () => 12345, isRunning: () => true },
+      getPrefsSnapshot: () => ({ agents: {} }),
+      getDoNotDisturb: () => false,
+      getLocale: () => "en",
+    });
+    const result = await ipcMain.handlers["doctor:run-checks"]();
+    assert.ok(result);
+    assert.ok(result.checks || result.status);
+  });
+
+  it("doctor:get-report returns a string", async () => {
+    const ipcMain = makeMockIpcMain();
+    registerDoctorIpc({
+      ipcMain,
+      app: makeMockApp(),
+      shell: {},
+      server: { getPort: () => 12345, isRunning: () => true },
+      getPrefsSnapshot: () => ({ agents: {} }),
+      getDoNotDisturb: () => false,
+      getLocale: () => "en",
+    });
+    const report = await ipcMain.handlers["doctor:get-report"]();
+    assert.equal(typeof report, "string");
   });
 });

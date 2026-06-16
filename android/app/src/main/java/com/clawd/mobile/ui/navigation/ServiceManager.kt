@@ -33,9 +33,9 @@ class ServiceManager(
         private const val TAG = "ServiceManager"
     }
 
-    private val _sseClient = MutableStateFlow<StreamingClient?>(null)
+    private val _streamingClient = MutableStateFlow<StreamingClient?>(null)
     /** Current [StreamingClient], null until service starts or fallback creates one. */
-    val sseClient: StateFlow<StreamingClient?> = _sseClient.asStateFlow()
+    val streamingClient: StateFlow<StreamingClient?> = _streamingClient.asStateFlow()
 
     private val collectorJobs = mutableListOf<Job>()
 
@@ -54,7 +54,7 @@ class ServiceManager(
     suspend fun initialize() {
         WsConnectionService.start(context)
         val client = acquireClient()
-        _sseClient.value = client
+        _streamingClient.value = client
         if (client != null) startCollectors(client)
     }
 
@@ -64,7 +64,7 @@ class ServiceManager(
      */
     suspend fun refresh() {
         val client = acquireClient()
-        _sseClient.value = client
+        _streamingClient.value = client
         if (client != null) startCollectors(client)
     }
 
@@ -139,7 +139,7 @@ class ServiceManager(
         prefsStore.setCertFingerprint(cert.fingerprint)
         HttpClientProvider.setCertFingerprint(cert.fingerprint)
         _pendingCert.value = null
-        _sseClient.value?.setConnectionState(com.clawd.mobile.ws.ConnectionState.CONNECTED)
+        _streamingClient.value?.setConnectionState(com.clawd.mobile.ws.ConnectionState.CONNECTED)
     }
 
     /** Reject the pending TOFU certificate. */

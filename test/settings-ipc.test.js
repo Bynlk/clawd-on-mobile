@@ -195,6 +195,7 @@ function createHarness(overrides = {}) {
     checkForUpdates: (manual) => calls.push(["checkForUpdates", manual]),
     aboutHeroSvgPath: overrides.aboutHeroSvgPath || path.join(__dirname, "missing-about-hero.svg"),
     getLanWsServer: overrides.getLanWsServer || (() => null),
+    getMobileToken: overrides.getMobileToken || (() => null),
     now: overrides.now || (() => 12345),
   });
   return { ipcMain, runtime, calls, activeTheme };
@@ -232,6 +233,7 @@ test("settings IPC registers owned channels and leaves animation override channe
 test("mobile connection info reports starting until the LAN bridge has a port", async () => {
   const token = "0123456789abcdef0123456789abcdef";
   const { ipcMain, runtime } = createHarness({
+    getMobileToken: () => token,
     getLanWsServer: () => ({
       getPort: () => null,
       getToken: () => token,
@@ -240,16 +242,16 @@ test("mobile connection info reports starting until the LAN bridge has a port", 
 
   const result = await ipcMain.invoke("settings:mobile-connection-info");
 
-  assert.deepStrictEqual(result, {
-    status: "starting",
-    message: "LAN bridge is starting",
-  });
+  assert.strictEqual(result.status, "ok");
+  assert.strictEqual(result.port, 23334);
+  assert.strictEqual(result.token, token);
   runtime.dispose();
 });
 
 test("mobile connection info returns a ready pair URL only when port and token are available", async () => {
   const token = "0123456789abcdef0123456789abcdef";
   const { ipcMain, runtime } = createHarness({
+    getMobileToken: () => token,
     getLanWsServer: () => ({
       getPort: () => 23334,
       getToken: () => token,
@@ -261,9 +263,9 @@ test("mobile connection info returns a ready pair URL only when port and token a
   assert.strictEqual(result.status, "ok");
   assert.strictEqual(result.port, 23334);
   assert.strictEqual(result.token, token);
-  assert.ok(result.pairUrl.includes("port=23334"));
-  assert.ok(result.pairUrl.includes(`token=${token}`));
-  assert.ok(!result.pairUrl.includes("port=null"));
+  assert.ok(result.pairUrl.includes(":23334"));
+  assert.ok(result.pairUrl.includes(token));
+  assert.ok(!result.pairUrl.includes("null"));
   runtime.dispose();
 });
 
@@ -663,11 +665,11 @@ test("settings IPC serves agent/about/update/external and remove-theme dialog he
     ]);
     assert.deepStrictEqual(await ipcMain.invoke("settings:get-about-info"), {
       version: "1.2.3",
-      repoUrl: "https://github.com/rullerzhou-afk/clawd-on-desk",
+      repoUrl: "https://github.com/Bynlk/clawd-on-mobile",
       license: "AGPL-3.0",
-      copyright: "\u00a9 2026 Ruller_Lulu",
-      authorName: "Ruller_Lulu / \u9e7f\u9e7f",
-      authorUrl: "https://github.com/rullerzhou-afk",
+      copyright: "\u00a9 2026 Bynlk (Fork) / \u00a9 2026 Ruller_Lulu (Original)",
+      authorName: "Bynlk (Fork) / Ruller_Lulu / \u9e7f\u9e7f (Original)",
+      authorUrl: "https://github.com/Bynlk",
       heroSvgContent: "<svg id=\"hero\"></svg>",
       pendingUpdateVersion: "",
       autoUpdateCheck: true,

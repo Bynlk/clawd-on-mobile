@@ -161,7 +161,7 @@ class FloatingPetService : Service() {
                     handleCommand(command)
                 }
             }
-            // Collect SSE reaction events from server
+            // Collect WebSocket reaction events from server
             launch {
                 WsConnectionService.getClient()?.reactions?.collect { svg ->
                     val path = "svg/$character/$svg"

@@ -11,7 +11,7 @@ import kotlinx.serialization.json.*
 import okhttp3.Response
 
 /**
- * Shared implementation for [SseClient] and [WsClient].
+ * Shared implementation for [StreamingClient] transport implementations.
  *
  * Holds all common state (flows, connection config, reconnect logic, message handler)
  * and delegates transport-specific work to three abstract hooks:
@@ -27,10 +27,10 @@ abstract class AbstractStreamingClient(
     protected val prefsStore: PrefsStore,
 ) : StreamingClient {
 
-    /** Log tag, overridden per subclass (e.g. "SseClient", "WsClient"). */
+    /** Log tag, overridden per subclass (e.g. "WsClient"). */
     protected abstract val tag: String
 
-    /** Watchdog timeout in milliseconds. SSE uses 30s, WS uses 90s. */
+    /** Watchdog timeout in milliseconds. WS uses 90s. */
     protected abstract val watchdogTimeoutMs: Long
 
     // ── Transport hooks ──────────────────────────────────────────────────
@@ -195,7 +195,7 @@ abstract class AbstractStreamingClient(
     /**
      * Called from transport `onOpen`. Handles TOFU cert check and sets connected state.
      * Subclasses call this from their transport-specific listener after any
-     * transport-specific validation (e.g. SSE Content-Type check).
+     * transport-specific validation.
      */
     protected fun onTransportOpen(response: Response) {
         android.util.Log.d(tag, "onOpen code=${response.code}")

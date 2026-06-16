@@ -999,7 +999,7 @@ describe("checkAgentIntegrations", () => {
   it("reports managed Pi extension as ok", () => {
     const descriptor = piDescriptor();
     writeJson(path.join(descriptor.configPath, ".clawd-managed.json"), {
-      app: "clawd-on-desk",
+      app: "clawd-on-mobile",
       integration: "pi",
       managed: true,
     });
@@ -1016,7 +1016,7 @@ describe("checkAgentIntegrations", () => {
   it("reports managed Pi extension with missing copied files as repairable broken-path", () => {
     const descriptor = piDescriptor();
     writeJson(path.join(descriptor.configPath, ".clawd-managed.json"), {
-      app: "clawd-on-desk",
+      app: "clawd-on-mobile",
       integration: "pi",
       managed: true,
     });
@@ -1059,17 +1059,17 @@ describe("checkAgentIntegrations", () => {
       configPath: path.join(parentDir, "openclaw.json"),
       configMode: "openclaw-plugin",
       marker: "openclaw-plugin",
-      pluginId: "clawd-on-desk",
+      pluginId: "clawd-on-mobile",
     });
   }
 
   function makeOpenClawPluginDir(root) {
     const pluginDir = path.join(root, "hooks", "openclaw-plugin");
     fs.mkdirSync(pluginDir, { recursive: true });
-    fs.writeFileSync(path.join(pluginDir, "index.js"), "export default { id: 'clawd-on-desk', register() {} };\n", "utf8");
+    fs.writeFileSync(path.join(pluginDir, "index.js"), "export default { id: 'clawd-on-mobile', register() {} };\n", "utf8");
     writeJson(path.join(pluginDir, "openclaw.plugin.json"), {
-      id: "clawd-on-desk",
-      name: "Clawd on Desk",
+      id: "clawd-on-mobile",
+      name: "Clawd on Mobile",
       description: "test",
       activation: { onStartup: true },
       configSchema: { type: "object", additionalProperties: false, properties: {} },
@@ -1107,7 +1107,7 @@ describe("checkAgentIntegrations", () => {
       plugins: {
         load: { paths: [pluginDir] },
         entries: {
-          "clawd-on-desk": {
+          "clawd-on-mobile": {
             enabled: true,
             hooks: { allowConversationAccess: false },
           },
@@ -1127,7 +1127,7 @@ describe("checkAgentIntegrations", () => {
     writeJson(descriptor.configPath, {
       plugins: {
         load: { paths: [pluginDir] },
-        entries: { "clawd-on-desk": { enabled: true } },
+        entries: { "clawd-on-mobile": { enabled: true } },
       },
     });
 

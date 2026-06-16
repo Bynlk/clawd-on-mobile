@@ -72,7 +72,7 @@ object HttpClientProvider {
     }
 
     /**
-     * Returns an [OkHttpClient] for streaming (SSE/WebSocket) with [config].
+     * Returns an [OkHttpClient] for streaming (WebSocket) with [config].
      * readTimeout=0 (no timeout on streaming responses).
      */
     fun getStreamingClient(config: ConnectionConfig): OkHttpClient {
@@ -124,7 +124,7 @@ object HttpClientProvider {
     /**
      * Reset cached clients — call when connection config changes or app disconnects.
      * Does NOT clear the certificate fingerprint, which is managed explicitly via
-     * [setCertFingerprint]. This prevents a race where [disconnect][com.clawd.mobile.ws.SseClient.disconnect]
+     * [setCertFingerprint]. This prevents a race where [disconnect][com.clawd.mobile.ws.StreamingClient.disconnect]
      * clears the fingerprint while [ApprovalWorker] may still need it for in-flight requests.
      */
     fun reset() = synchronized(this) {

@@ -948,7 +948,7 @@ function dismissPermissionForTerminal(perm) {
 function maybeStartRemoteApproval(permEntry) {
   if (!isRemoteApprovalActionable(permEntry)) return false;
 
-  // Mobile approval is handled by the SSE bridge in main.js (addPendingPermission override).
+  // Mobile approval is handled by the WebSocket bridge in main.js (addPendingPermission override).
   // Telegram approval (fallback)
   const client = getTelegramApprovalClient();
   if (!client || typeof client.requestApproval !== "function") return false;
@@ -1809,4 +1809,7 @@ module.exports.__test = {
   sanitizeAntigravityPermissionDecision,
   buildAntigravityPermissionResponseBody,
   buildElicitationUpdatedInput,
+  sanitizeCopilotPermissionDecision,
+  buildCopilotPermissionResponseBody,
+  buildPermissionFocusEntry,
 };

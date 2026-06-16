@@ -4,7 +4,7 @@ import com.clawd.mobile.data.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 
-/** Abstraction over streaming transport (SSE or WebSocket). */
+/** Abstraction over streaming transport (WebSocket). */
 interface StreamingClient {
     val connectionState: StateFlow<ConnectionState>
     val sessions: StateFlow<Map<String, SessionData>>

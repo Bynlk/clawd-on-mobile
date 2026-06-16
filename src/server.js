@@ -45,7 +45,7 @@ const {
   buildToolInputFingerprint,
   findPendingPermissionForStateEvent,
 } = require("./server-permission-utils");
-const { MobileWSServer } = require("./mobile-ws-server");
+const { initMobileServer } = require("./mobile-server-integration");
 const crypto = require("crypto");
 const os = require("os");
 const fs = require("fs");
@@ -76,72 +76,24 @@ const writeRuntimeConfigFn = ctx.writeRuntimeConfig || writeRuntimeConfig;
 const CLAUDE_HOOK_GUARD_NOTICE_TTL_MS = 30 * 60 * 1000;
 
 let httpServer = null;
-
-// Persist mobile state to survive restarts
-const MOBILE_STATE_PATH = require("path").join(
-  (typeof ctx.getDataDir === "function" ? ctx.getDataDir() : require("os").homedir()),
-  ".clawd-mobile-state.json"
-);
-
-function loadMobileState() {
-  try {
-    const data = require("fs").readFileSync(MOBILE_STATE_PATH, "utf8");
-    return JSON.parse(data);
-  } catch { return {}; }
-}
-
-function saveMobileState(patch) {
-  try {
-    const current = loadMobileState();
-    const updated = { ...current, ...patch, savedAt: Date.now() };
-    const tmpPath = MOBILE_STATE_PATH + ".tmp";
-    require("fs").writeFileSync(tmpPath, JSON.stringify(updated, null, 2));
-    require("fs").renameSync(tmpPath, MOBILE_STATE_PATH);
-  } catch (err) {
-    console.warn("[mobile] Failed to save state:", err.message);
-  }
-}
-
-const savedState = loadMobileState();
-const MOBILE_TOKEN = savedState.token || crypto.randomBytes(16).toString("hex");
-if (!savedState.token) saveMobileState({ token: MOBILE_TOKEN });
-
-let mobileWS = null;
 let activeServerPort = null;
-let mobileHttpServer = null;
-let mobileServerPort = null;
-const pendingMobileApprovals = new Map();
 let lastClaudeHookGuardNotice = null;
+
+// Initialize mobile companion integration (skipped when feature flag is off)
+const mobileIntegration = ctx.mobileCompanionEnabled !== false
+  ? initMobileServer(ctx, { createHttpServer: ctx.createHttpServer || http.createServer.bind(http) })
+  : null;
+const getMobileWS = mobileIntegration ? mobileIntegration.getMobileWS : () => null;
+const getMobileToken = mobileIntegration ? mobileIntegration.getMobileToken : () => null;
+const getPendingMobileApprovals = mobileIntegration ? mobileIntegration.getPendingMobileApprovals : () => [];
+const saveMobileState = mobileIntegration ? mobileIntegration.saveMobileState : () => {};
+const broadcastHookEvent = mobileIntegration ? mobileIntegration.broadcastHookEvent : () => {};
+const startMobileServerBase = mobileIntegration ? mobileIntegration.startMobileServer : () => {};
+const stopMobileServer = mobileIntegration ? mobileIntegration.stopMobileServer : () => {};
+const setupPermissionHooks = mobileIntegration ? mobileIntegration.setupPermissionHooks : () => {};
+const setupStateChangeHooks = mobileIntegration ? mobileIntegration.setupStateChangeHooks : () => {};
 const codexOfficialTurns = new Map();
 const recentHookEvents = new Map();
-
-/**
- * Resolve a pending mobile approval by ID.
- * Shared by HTTP /mobile/approve and WS permission_response handlers.
- * Returns { ok: true } on success, { ok: false, error } on failure.
- */
-function resolveMobileApproval(id, data) {
-  if (!id) return { ok: false, error: "missing id" };
-  const decision = data.decision || data.behavior;
-  if (!decision || (decision !== "allow" && decision !== "deny")) {
-    return { ok: false, error: "need decision: allow|deny" };
-  }
-  const pending = pendingMobileApprovals.get(id);
-  if (!pending) {
-    return { ok: false, error: "request not found or expired" };
-  }
-  clearTimeout(pending.timer);
-  pendingMobileApprovals.delete(id);
-  const resolvedDecision = (decision === "allow" && Number.isFinite(data.suggestionIndex))
-    ? `suggestion:${data.suggestionIndex}`
-    : decision;
-  // Elicitation: forward updatedInput (answers) to resolvePermissionEntry
-  if (decision === "allow" && data.updatedInput && pending.entry) {
-    pending.entry.resolvedUpdatedInput = data.updatedInput;
-  }
-  try { pending.resolve(resolvedDecision); } catch (e) { console.warn("[mobile] approval resolve error:", e.message); }
-  return { ok: true };
-}
 
 function shouldDropForDnd() {
   if (typeof ctx.shouldDropForDnd === "function") {
@@ -322,8 +274,6 @@ function startHttpServer() {
         createRequestHookRecorder,
         shouldDropForDnd,
         codexOfficialTurns,
-        mobileWS,
-        broadcastHookEvent,
       });
     } else if (req.method === "POST" && req.url === "/permission") {
       handlePermissionPost(req, res, {
@@ -336,50 +286,8 @@ function startHttpServer() {
     }
   });
 
-  mobileWS = new MobileWSServer(httpServer, {
-    token: MOBILE_TOKEN,
-    maxClients: savedState.mobileMaxClients || 10,
-    heartbeatIntervalMs: 30000,
-  });
-
-  // Register WS message handler for approval responses from Android
-  mobileWS.onClientMessage((ws, msg) => {
-    if (msg.type === "permission_response" || msg.type === "elicitation_response") {
-      const result = resolveMobileApproval(msg.id || msg.requestId, msg);
-      try {
-        ws.send(JSON.stringify({
-          type: "approval_result",
-          id: msg.id || msg.requestId,
-          ...result,
-          timestamp: Date.now(),
-        }));
-      } catch (e) { console.warn("[mobile-ws] send approval_result error:", e.message); }
-    }
-  });
-
-  // Load persisted connection history
-  const savedHistory = savedState.connectionHistory;
-  if (savedHistory) mobileWS.loadConnectionHistory(savedHistory);
-
-  // Forward WS events to settings window and persist state
-  function notifyMobileState() {
-    try {
-      const { BrowserWindow } = require("electron");
-      for (const bw of BrowserWindow.getAllWindows()) {
-        if (bw && !bw.isDestroyed()) {
-          bw.webContents.send("settings-changed", {
-            mobileStatus: mobileWS.getClientCount() > 0 ? "Connected" : "Listening",
-            mobileClients: mobileWS.getClientInfoList(),
-          });
-        }
-      }
-    } catch (e) { console.warn("[mobile] notifyMobileState error:", e.message); }
-    // Persist connection history
-    saveMobileState({ connectionHistory: mobileWS.getConnectionHistory() });
-  }
-
-  mobileWS.on("client-connected", notifyMobileState);
-  mobileWS.on("client-disconnected", notifyMobileState);
+  // Initialize mobile companion server (MobileWSServer + WS handler + connection history)
+  startMobileServerBase(httpServer, { skipHttpServer: !!ctx.skipMobileServer });
 
   const listenPorts = getPortCandidatesFn();
   let listenIndex = 0;
@@ -404,7 +312,7 @@ function startHttpServer() {
     writeRuntimeConfigFn(activeServerPort);
     const logHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
     console.log(`Clawd state server listening on ${logHost}:${activeServerPort}`);
-    console.log(`  Mobile companion token: ${MOBILE_TOKEN.slice(0, 4)}… (set via QR scan or settings page)`);
+    console.log(`  Mobile companion token: ${getMobileToken().slice(0, 4)}… (set via QR scan or settings page)`);
     // Defer hook/plugin registration off the startup path. Each sync call
     // reads+parses+writes a config JSON (50-150ms cumulative on slow disks),
     // and they operate on independent files for independent agents, so
@@ -418,85 +326,13 @@ function startHttpServer() {
   httpServer.listen(listenPorts[listenIndex], bindHost);
 }
 
-function broadcastHookEvent(eventData) {
-  if (!mobileWS || mobileWS.getClientCount() === 0) {
-    if (eventData.type === "permission_request") {
-      console.log(`[mobile-ws] broadcastHookEvent type=${eventData.type} SKIPPED — no WS clients connected`);
-    }
-    return;
-  }
-  console.log(`[mobile-ws] broadcastHookEvent type=${eventData.type} clients=${mobileWS.getClientCount()}`);
-  mobileWS.broadcast(eventData);
-}
-
-function startMobileServer() {
-  const MOBILE_PORT = 23334;
-  mobileHttpServer = createHttpServer((req, res) => {
-    // Skip WebSocket upgrade requests — handled by ws library's upgrade listener
-    if (req.headers.upgrade && /websocket/i.test(req.headers.upgrade)) return;
-    // All HTTP requests go through MobileWSServer.handleRequest (token-protected)
-    if (mobileWS) {
-      mobileWS.handleRequest(req, res);
-    } else {
-      res.writeHead(503);
-      res.end("Server not ready");
-    }
-  });
-
-  let mobilePortFallback = false;
-  mobileHttpServer.on("error", (err) => {
-    if (err.code === "EADDRINUSE" && !mobilePortFallback) {
-      mobilePortFallback = true;
-      console.warn(`[mobile-ws] Port ${MOBILE_PORT} occupied, trying ${MOBILE_PORT + 1}`);
-      mobileHttpServer.listen(MOBILE_PORT + 1, mobileBindHost);
-    } else if (err.code === "EADDRINUSE") {
-      console.warn(`[mobile-ws] Ports ${MOBILE_PORT}-${MOBILE_PORT + 1} both occupied, mobile server disabled`);
-    } else {
-      console.error("[mobile-ws] Server error:", err.message);
-    }
-  });
-
-  // WebSocket: single server, manual upgrade for /mobile/ws (Android) and /ws (PWA)
-  const WebSocket = require("ws");
-  const wss = new WebSocket.Server({ noServer: true, perMessageDeflate: false, autoPong: false });
-  mobileHttpServer.on("upgrade", (req, socket, head) => {
-    const urlPath = (require("url").parse(req.url || "").pathname || "");
-    if (urlPath === "/mobile/ws" || urlPath === "/ws") {
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit("connection", ws, req);
-      });
-    } else {
-      socket.destroy();
-    }
-  });
-  if (mobileWS) mobileWS.attachWSS(wss);
-  console.log(`[mobile-ws] WebSocket endpoint at /mobile/ws on port ${MOBILE_PORT}`);
-
-  const mobileBindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
-  mobileHttpServer.listen(MOBILE_PORT, mobileBindHost, () => {
-    mobileServerPort = MOBILE_PORT;
-    if (mobileWS) mobileWS.setPort(MOBILE_PORT);
-    console.log(`[mobile-ws] Listening on ${mobileBindHost}:${MOBILE_PORT}`);
-  });
-}
-
-function stopMobileServer() {
-  for (const [, pending] of pendingMobileApprovals) {
-    try { clearTimeout(pending.timer); } catch {}
-  }
-  pendingMobileApprovals.clear();
-  if (mobileHttpServer) {
-    mobileHttpServer.close();
-    mobileHttpServer = null;
-  }
-}
-
 function cleanup() {
   stopMobileServer();
   clearRuntimeConfigFn();
   clearClaudeHookGuardStatus();
   stopClaudeSettingsWatcher();
-  if (mobileWS) mobileWS.close();
+  const ws = getMobileWS();
+  if (ws) ws.close();
   if (httpServer) httpServer.close();
 }
 
@@ -525,13 +361,15 @@ return {
   startClaudeSettingsWatcher,
   stopClaudeSettingsWatcher,
   cleanup,
-  getMobileWS: () => mobileWS,
-  getMobileToken: () => MOBILE_TOKEN,
+  getMobileWS,
+  getMobileToken,
   getHookServerPort: () => activeServerPort,
   saveMobileState,
   broadcastHookEvent,
-  startMobileServer,
-  getPendingMobileApprovals: () => pendingMobileApprovals,
+  startMobileServer: startMobileServerBase,
+  getPendingMobileApprovals,
+  setupPermissionHooks,
+  setupStateChangeHooks,
 };
 
 };

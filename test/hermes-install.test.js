@@ -249,7 +249,7 @@ describe("Hermes plugin installer", () => {
 
     assert.strictEqual(result.status, "error");
     assert.strictEqual(result.reason, "hermes-cli-unavailable");
-    assert.match(result.message, /hermes plugins enable clawd-on-desk/);
+    assert.match(result.message, /hermes plugins enable clawd-on-mobile/);
     assert.strictEqual(fs.readFileSync(configPath, "utf8"), "plugins:\n  enabled: []\n");
     assert.ok(fs.existsSync(path.join(result.pluginDir, "__init__.py")));
   });

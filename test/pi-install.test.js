@@ -99,7 +99,7 @@ describe("pi-install", () => {
       skipped: true,
       updated: false,
       reason: "pi-not-found",
-      extensionDir: path.join(parentDir, "extensions", "clawd-on-desk"),
+      extensionDir: path.join(parentDir, "extensions", "clawd-on-mobile"),
     });
   });
 
@@ -134,7 +134,7 @@ describe("pi-install", () => {
     const root = makeTempDir();
     const sourceDir = makeSourceDir();
     const parentDir = path.join(root, ".pi", "agent");
-    const extensionDir = path.join(parentDir, "extensions", "clawd-on-desk");
+    const extensionDir = path.join(parentDir, "extensions", "clawd-on-mobile");
     fs.mkdirSync(extensionDir, { recursive: true });
     fs.writeFileSync(path.join(extensionDir, EXTENSION_FILE), "user extension\n", "utf8");
 
@@ -173,7 +173,7 @@ describe("pi-install", () => {
   it("refuses to uninstall an unmanaged Pi extension directory", () => {
     const root = makeTempDir();
     const parentDir = path.join(root, ".pi", "agent");
-    const extensionDir = path.join(parentDir, "extensions", "clawd-on-desk");
+    const extensionDir = path.join(parentDir, "extensions", "clawd-on-mobile");
     fs.mkdirSync(extensionDir, { recursive: true });
     fs.writeFileSync(path.join(extensionDir, EXTENSION_FILE), "user extension\n", "utf8");
 

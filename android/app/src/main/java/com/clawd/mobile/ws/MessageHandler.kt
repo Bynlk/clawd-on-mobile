@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Shared message handling logic for [SseClient] and [WsClient].
+ * Shared message handling logic for [StreamingClient] transport implementations.
  *
  * Extracted to eliminate ~70 lines of duplicated code between the two transport implementations.
  * The handler operates on shared state passed via constructor, keeping both clients' state

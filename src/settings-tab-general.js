@@ -151,6 +151,14 @@
       }),
     ]));
 
+    parent.appendChild(helpers.buildSection(t("sectionMobile") || "Mobile", [
+      helpers.buildSwitchRow({
+        key: "mobileCompanionEnabled",
+        labelKey: "rowMobileCompanion",
+        descKey: "rowMobileCompanionDesc",
+      }),
+    ]));
+
     parent.appendChild(helpers.buildSection(t("sectionBubbles"), [
       helpers.buildSwitchRow({
         key: "hideBubbles",

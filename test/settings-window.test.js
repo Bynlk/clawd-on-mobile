@@ -14,6 +14,10 @@ class FakeBrowserWindow {
     this.calls = [];
     this.events = new Map();
     this.onceEvents = new Map();
+    this.webContents = {
+      on() {},
+      toggleDevTools() {},
+    };
     FakeBrowserWindow.instances.push(this);
   }
 

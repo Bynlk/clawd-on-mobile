@@ -13,7 +13,6 @@ const { resolveHookAgentId } = require("./server-agent-id");
 const { resolveCodexOfficialHookState } = require("./server-codex-official-turns");
 const {
   deriveSessionBadge,
-  deriveMobileChipFields,
   BADGE_DOT_COLORS,
   sessionDisplayTitle,
 } = require("./state-session-snapshot");
@@ -64,8 +63,6 @@ function handleStatePost(req, res, options) {
     shouldDropForDnd,
     codexOfficialTurns,
     pathApi = path,
-    mobileWS,
-    broadcastHookEvent,
   } = options;
   let body = "";
   let bodySize = 0;
@@ -224,15 +221,12 @@ function handleStatePost(req, res, options) {
         if (svg) {
           const safeSvg = pathApi.basename(svg);
           ctx.setState(state, safeSvg);
-          if (mobileWS) {
-            mobileWS.broadcastState("__global__", {
+          if (typeof ctx.onMobileStateChange === "function") {
+            ctx.onMobileStateChange("__global__", "state", {
               state,
               event: "setState",
               svg: safeSvg,
             });
-          }
-          if (typeof broadcastHookEvent === "function") {
-            broadcastHookEvent({ type: "state", sessionId: "__global__", state, event: "setState", svg: safeSvg, timestamp: Date.now() });
           }
         } else {
           ctx.updateSession(sid, state, event, {
@@ -263,7 +257,7 @@ function handleStatePost(req, res, options) {
             stopHookActive,
             ...(agentIdentity.defaulted ? { agentIdDefaulted: true } : {}),
           });
-          if (mobileWS) {
+          if (typeof ctx.onMobileStateChange === "function") {
             const session = ctx.sessions ? ctx.sessions.get(sid) : null;
             const recentEvents = (session && Array.isArray(session.recentEvents))
               ? session.recentEvents
@@ -290,7 +284,9 @@ function handleStatePost(req, res, options) {
             if (event && (!tempEvents.length || tempEvents[tempEvents.length-1].event !== event)) {
               tempEvents.push({ event, at: Date.now() });
             }
-            const chip = deriveMobileChipFields(hookState, tempEvents);
+            const chip = typeof ctx.deriveMobileChipFields === "function"
+              ? ctx.deriveMobileChipFields(hookState, tempEvents)
+              : null;
             // Resolve display SVG for mobile — uses the same displayHintMap
             // lookup as the desktop renderer so working/juggling/thinking
             // animations match when a hook sends display_svg.
@@ -319,26 +315,20 @@ function handleStatePost(req, res, options) {
               // session null → not yet created → hide from mobile
               isVisible: session != null && sessionState !== "sleeping" && !session.headless,
             };
-            mobileWS.broadcastState(sid, mobilePayload);
-            if (typeof broadcastHookEvent === "function") {
-              broadcastHookEvent({
-                type: "state",
-                sessionId: sid,
-                ...mobilePayload,
-                state: mobilePayload.state,
-                event,
-                agentId,
-                toolName: toolName || null,
-                sessionTitle: sessionTitle || null,
-                cwd: cwd || null,
-                recentEvents,
-                lastOutput,
-                displayState,
-                isReal,
-                badge,
-                timestamp: Date.now(),
-              });
-            }
+            ctx.onMobileStateChange(sid, "state", {
+              ...mobilePayload,
+              state: mobilePayload.state,
+              event,
+              agentId,
+              toolName: toolName || null,
+              sessionTitle: sessionTitle || null,
+              cwd: cwd || null,
+              recentEvents,
+              lastOutput,
+              displayState,
+              isReal,
+              badge,
+            });
 
             // Forward tool output to mobile clients
             if (data.tool_result || data.output) {
@@ -346,13 +336,12 @@ function handleStatePost(req, res, options) {
               const truncated = typeof rawOutput === "string"
                 ? rawOutput.substring(0, 500)
                 : JSON.stringify(rawOutput).substring(0, 500);
-              mobileWS.broadcastToolOutput(sid, {
-                toolName: toolName || event || "",
-                output: truncated,
-                event: event || "",
-              });
-              if (typeof broadcastHookEvent === "function") {
-                broadcastHookEvent({ type: "tool_output", sessionId: sid, toolName: toolName || event || "", output: truncated, event: event || "", timestamp: Date.now() });
+              if (typeof ctx.onMobileToolOutput === "function") {
+                ctx.onMobileToolOutput(sid, {
+                  toolName: toolName || event || "",
+                  output: truncated,
+                  event: event || "",
+                });
               }
               // Store last output on session
               if (session) {

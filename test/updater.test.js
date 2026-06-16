@@ -385,7 +385,7 @@ describe("updater visual flow", () => {
     assert.deepStrictEqual(visualStates, ["checking", null]);
     assert.ok(appliedStates.includes("error"));
     assert.deepStrictEqual(requests, [
-      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "api.github.com/repos/Bynlk/clawd-on-mobile/releases/latest",
     ]);
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "error"]);
     assert.match(bubbles[1].detail, /Operation: Check for Updates/);
@@ -421,8 +421,8 @@ describe("updater visual flow", () => {
     await updater.checkForUpdates(true);
 
     assert.deepStrictEqual(requests, [
-      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
-      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "api.github.com/repos/Bynlk/clawd-on-mobile/releases/latest",
+      "github.com/Bynlk/clawd-on-mobile/releases/latest",
     ]);
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "up-to-date"]);
   });
@@ -472,8 +472,8 @@ describe("updater visual flow", () => {
 
     assert.strictEqual(updateChecks, 1);
     assert.deepStrictEqual(requests, [
-      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
-      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "api.github.com/repos/Bynlk/clawd-on-mobile/releases/latest",
+      "github.com/Bynlk/clawd-on-mobile/releases/latest",
     ]);
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "available"]);
   });
@@ -502,8 +502,8 @@ describe("updater visual flow", () => {
     await updater.checkForUpdates(true);
 
     assert.deepStrictEqual(requests, [
-      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
-      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "api.github.com/repos/Bynlk/clawd-on-mobile/releases/latest",
+      "github.com/Bynlk/clawd-on-mobile/releases/latest",
     ]);
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "error"]);
     assert.match(bubbles[1].detail, /GitHub releases redirect returned 200/);
@@ -524,7 +524,7 @@ describe("updater visual flow", () => {
     await updater.checkForUpdates(true);
 
     assert.deepStrictEqual(requests, [
-      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "api.github.com/repos/Bynlk/clawd-on-mobile/releases/latest",
     ]);
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "error"]);
     assert.match(bubbles[1].detail, /Reason: No releases found/);
@@ -717,8 +717,8 @@ describe("updater visual flow", () => {
     await updater.checkForUpdates(true);
 
     assert.deepStrictEqual(requests, [
-      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
-      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "api.github.com/repos/Bynlk/clawd-on-mobile/releases/latest",
+      "github.com/Bynlk/clawd-on-mobile/releases/latest",
     ]);
     assert.deepStrictEqual(openedUrls, []);
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "up-to-date"]);
@@ -780,8 +780,8 @@ describe("updater visual flow", () => {
 
     assert.strictEqual(updateChecks, 1);
     assert.deepStrictEqual(requests, [
-      "api.github.com/repos/rullerzhou-afk/clawd-on-desk/releases/latest",
-      "github.com/rullerzhou-afk/clawd-on-desk/releases/latest",
+      "api.github.com/repos/Bynlk/clawd-on-mobile/releases/latest",
+      "github.com/Bynlk/clawd-on-mobile/releases/latest",
     ]);
     assert.deepStrictEqual(openedUrls, []);
     assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking"]);
@@ -1014,7 +1014,7 @@ describe("updater visual flow", () => {
       await handlers["update-available"]({ version: "0.5.11" });
 
       assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "available", "ready"]);
-      assert.strictEqual(openedUrls[0], "https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest");
+      assert.strictEqual(openedUrls[0],       "https://github.com/Bynlk/clawd-on-mobile/releases/latest");
       assert.match(bubbles[2].message, /opened/i);
     } finally {
       Object.defineProperty(process, "platform", { value: originalPlatform });
@@ -1513,5 +1513,138 @@ describe("updater #329 background scheduler", () => {
     assert.strictEqual(second.status, "new-update");
     assert.strictEqual(second.version, "v0.9.0");
     assert.strictEqual(requestHeaders[1]["If-None-Match"], '"abc123"');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────
+// Additional __test coverage
+// ──────────────────────────────────────────────────────────────────────
+describe("updater __test pure helpers", () => {
+  it("compareVersions returns 0 for equal versions", () => {
+    const { compareVersions } = initUpdater.__test;
+    assert.strictEqual(compareVersions("0.5.10", "0.5.10"), 0);
+    assert.strictEqual(compareVersions("v0.5.10", "0.5.10"), 0);
+  });
+
+  it("compareVersions returns -1 when v1 < v2", () => {
+    const { compareVersions } = initUpdater.__test;
+    assert.strictEqual(compareVersions("0.5.9", "0.5.10"), -1);
+    assert.strictEqual(compareVersions("0.5.10", "0.6.0"), -1);
+    assert.strictEqual(compareVersions("0.4.99", "0.5.0"), -1);
+  });
+
+  it("compareVersions returns 1 when v1 > v2", () => {
+    const { compareVersions } = initUpdater.__test;
+    assert.strictEqual(compareVersions("0.6.0", "0.5.10"), 1);
+    assert.strictEqual(compareVersions("1.0.0", "0.9.99"), 1);
+  });
+
+  it("compareVersions handles versions with different segment counts", () => {
+    const { compareVersions } = initUpdater.__test;
+    assert.strictEqual(compareVersions("1.0", "1.0.0"), 0);
+    assert.strictEqual(compareVersions("1.0.0.1", "1.0.0"), 1);
+  });
+
+  it("isUpdate404Error detects ERR_UPDATER_CHANNEL_FILE_NOT_FOUND code", () => {
+    const { isUpdate404Error } = initUpdater.__test;
+    assert.strictEqual(isUpdate404Error({ code: "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND" }), true);
+  });
+
+  it("isUpdate404Error detects 404 in message", () => {
+    const { isUpdate404Error } = initUpdater.__test;
+    assert.strictEqual(isUpdate404Error({ message: "GitHub returned 404" }), true);
+  });
+
+  it("isUpdate404Error detects 'Cannot find latest.yml' in message", () => {
+    const { isUpdate404Error } = initUpdater.__test;
+    assert.strictEqual(isUpdate404Error({ message: "Cannot find latest.yml" }), true);
+  });
+
+  it("isUpdate404Error returns false for non-404 errors", () => {
+    const { isUpdate404Error } = initUpdater.__test;
+    assert.strictEqual(isUpdate404Error({ message: "network timeout" }), false);
+    assert.strictEqual(isUpdate404Error(null), false);
+    assert.strictEqual(isUpdate404Error(undefined), false);
+  });
+
+  it("findWindowsArm64InstallerAsset returns null for null release", () => {
+    const { findWindowsArm64InstallerAsset } = initUpdater.__test;
+    assert.strictEqual(findWindowsArm64InstallerAsset(null), null);
+    assert.strictEqual(findWindowsArm64InstallerAsset(undefined), null);
+  });
+
+  it("findWindowsArm64InstallerAsset returns null for release without assets", () => {
+    const { findWindowsArm64InstallerAsset } = initUpdater.__test;
+    assert.strictEqual(findWindowsArm64InstallerAsset({}), null);
+    assert.strictEqual(findWindowsArm64InstallerAsset({ assets: [] }), null);
+  });
+
+  it("findWindowsArm64InstallerAsset skips non-.exe assets", () => {
+    const { findWindowsArm64InstallerAsset } = initUpdater.__test;
+    const asset = findWindowsArm64InstallerAsset({
+      assets: [
+        { name: "Clawd-Setup-arm64.exe.blockmap", browser_download_url: "x" },
+        { name: "Clawd-Setup-arm64.yml", browser_download_url: "x" },
+      ],
+    });
+    assert.strictEqual(asset, null);
+  });
+
+  it("formatVersionForMessage handles null/undefined/empty", () => {
+    const { formatVersionForMessage } = initUpdater.__test;
+    assert.strictEqual(formatVersionForMessage(null), "");
+    assert.strictEqual(formatVersionForMessage(undefined), "");
+    assert.strictEqual(formatVersionForMessage(""), "");
+  });
+
+  it("formatVersionForMessage strips V prefix case-insensitively", () => {
+    const { formatVersionForMessage } = initUpdater.__test;
+    assert.strictEqual(formatVersionForMessage("V1.2.3"), "1.2.3");
+  });
+});
+
+describe("updater menu label and item", () => {
+  beforeEach(() => {
+    mock.restoreAll();
+    delete require.cache[require.resolve("../src/updater")];
+    initUpdater = require("../src/updater");
+  });
+
+  it("getUpdateMenuLabel returns default label when idle with no pending version", () => {
+    const updater = initUpdater(makeCtx(), makeDeps());
+    assert.strictEqual(updater.getUpdateMenuLabel(), "Check for Updates");
+  });
+
+  it("getUpdateMenuLabel shows pending version when set", async () => {
+    const prefs = { autoUpdateCheck: true, pendingUpdateVersion: "", dismissedUpdateVersions: {} };
+    const updater = initUpdater(makeCtx({
+      getUpdatePref: (k) => prefs[k],
+      setUpdatePref: (k, v) => { prefs[k] = v; },
+    }), makeDeps());
+    await updater.handlePendingVersion("v2.0.0", { tag_name: "v2.0.0" }, { trigger: "scheduled" });
+    // After handlePendingVersion, pendingUpdateVersion should be "v2.0.0"
+    assert.ok(updater.getUpdateMenuLabel().includes("2.0.0"));
+  });
+
+  it("getUpdateMenuItem is disabled during checking state", async () => {
+    let resolveCheck;
+    const checkPromise = new Promise((r) => { resolveCheck = r; });
+    const updater = initUpdater(makeCtx(), makeDeps({
+      httpsGetImpl: (options, cb) => {
+        // Never resolve — keep status as "checking"
+        return { on() { return this; }, setTimeout() {} };
+      },
+    }));
+    // Start a check that will hang
+    const check = updater.checkForUpdates(true);
+    const item = updater.getUpdateMenuItem();
+    assert.strictEqual(item.enabled, false);
+    // Cleanup: the check will fail on its own or we can ignore
+  });
+
+  it("getUpdateMenuItem is enabled when idle", () => {
+    const updater = initUpdater(makeCtx(), makeDeps());
+    const item = updater.getUpdateMenuItem();
+    assert.strictEqual(item.enabled, true);
   });
 });

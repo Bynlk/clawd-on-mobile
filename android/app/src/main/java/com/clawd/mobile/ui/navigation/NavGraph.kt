@@ -55,7 +55,7 @@ fun ClawdNavGraph() {
     var refreshKey by remember { mutableIntStateOf(0) }
     LaunchedEffect(refreshKey) { if (refreshKey > 0) serviceManager.refresh() }
 
-    val ws = serviceManager.sseClient.collectAsState().value
+    val ws = serviceManager.streamingClient.collectAsState().value
     if (ws == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -123,7 +123,7 @@ fun ClawdNavGraph() {
 
                 SessionsScreen(
                     navController = navController,
-                    sseClient = ws,
+                    streamingClient = ws,
                     approvalViewModel = approvalViewModel,
                     prefsStore = prefsStore
                 )
@@ -156,7 +156,7 @@ fun ClawdNavGraph() {
             composable("settings") {
                 SettingsScreen(
                     navController = navController,
-                    sseClient = ws,
+                    streamingClient = ws,
                     prefsStore = prefsStore,
                     snackbarHostState = snackbarHostState
                 )

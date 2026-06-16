@@ -112,7 +112,7 @@ describe("openclaw plugin runtime", () => {
       },
     });
 
-    assert.strictEqual(api.default.id, "clawd-on-desk");
+    assert.strictEqual(api.default.id, "clawd-on-mobile");
     assert.ok(registrations.some((entry) => entry.name === "before_tool_call"));
     assert.ok(registrations.some((entry) => entry.name === "model_call_ended"));
   });

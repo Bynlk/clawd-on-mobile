@@ -24,6 +24,7 @@ function makeServer({ runtimePort = 23333, addressPort = 23333, listening = true
     writeRuntimeConfig: () => true,
     clearRuntimeConfig: () => true,
     readRuntimePort: () => runtimePort,
+    skipMobileServer: true,
   });
   return api;
 }

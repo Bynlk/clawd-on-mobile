@@ -357,3 +357,134 @@ describe("theme-runtime active ownership", () => {
     assert.ok(calls.includes("sequencer.cleanup"));
   });
 });
+
+describe("theme-runtime accessor functions", () => {
+  it("getActiveThemeId returns fallback when no theme is loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getActiveThemeId(), "clawd");
+    assert.strictEqual(runtime.getActiveThemeId("custom"), "custom");
+  });
+
+  it("getActiveThemeId returns the active theme id", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    runtime.loadInitialTheme("calico");
+    assert.strictEqual(runtime.getActiveThemeId(), "calico");
+  });
+
+  it("getActiveThemeCapabilities returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getActiveThemeCapabilities(), null);
+  });
+
+  it("getActiveThemeCapabilities returns capabilities after loading", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    runtime.loadInitialTheme("clawd");
+    const caps = runtime.getActiveThemeCapabilities();
+    assert.ok(caps !== null);
+  });
+
+  it("getActiveThemeContext returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getActiveThemeContext(), null);
+  });
+
+  it("getActiveThemeContext returns context after loading", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    runtime.loadInitialTheme("clawd");
+    const ctx = runtime.getActiveThemeContext();
+    assert.ok(ctx !== null);
+  });
+
+  it("resolveHint returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.resolveHint("some-file.svg"), null);
+  });
+
+  it("resolveHint returns null for unknown hook filenames", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    runtime.loadInitialTheme("clawd");
+    assert.strictEqual(runtime.resolveHint("nonexistent.svg"), null);
+  });
+
+  it("getAssetPath returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getAssetPath("idle.svg"), null);
+  });
+
+  it("getRendererAssetsPath returns default path when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getRendererAssetsPath(), "../assets/svg");
+  });
+
+  it("getRendererSourceAssetsPath returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getRendererSourceAssetsPath(), null);
+  });
+
+  it("getRendererConfig returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getRendererConfig(), null);
+  });
+
+  it("getHitRendererConfig returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getHitRendererConfig(), null);
+  });
+
+  it("getSoundUrl returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getSoundUrl("click"), null);
+  });
+
+  it("getPreviewSoundUrl returns null when no theme loaded", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.getPreviewSoundUrl(), null);
+  });
+
+  it("isReloadInProgress returns false initially", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    assert.strictEqual(runtime.isReloadInProgress(), false);
+  });
+
+  it("getThemeInfo returns null for unknown theme id", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    runtime.loadInitialTheme("clawd");
+    assert.strictEqual(runtime.getThemeInfo("nonexistent"), null);
+  });
+
+  it("getThemeInfo returns correct info for a known theme", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    runtime.loadInitialTheme("clawd");
+    const info = runtime.getThemeInfo("calico");
+    assert.ok(info !== null);
+    assert.strictEqual(info.active, false);
+    assert.strictEqual(info.builtin, true);
+  });
+
+  it("getThemeInfo marks the active theme", () => {
+    makeFixture();
+    const { runtime } = createRuntime();
+    runtime.loadInitialTheme("clawd");
+    const info = runtime.getThemeInfo("clawd");
+    assert.ok(info !== null);
+    assert.strictEqual(info.active, true);
+  });
+});

@@ -22,16 +22,16 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ApprovalViewModel(
     application: Application,
-    private val sseClient: StreamingClient
+    private val streamingClient: StreamingClient
 ) : AndroidViewModel(application) {
 
     class Factory(
         private val application: Application,
-        private val sseClient: StreamingClient
+        private val streamingClient: StreamingClient
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-            return ApprovalViewModel(application, sseClient) as T
+            return ApprovalViewModel(application, streamingClient) as T
         }
     }
 
@@ -95,19 +95,19 @@ class ApprovalViewModel(
 
     init {
         viewModelScope.launch {
-            sseClient.permissionRequests.collect { request ->
+            streamingClient.permissionRequests.collect { request ->
                 handleNewRequest(request)
             }
         }
     }
 
     private fun resolveSessionName(sessionId: String?): String? =
-        resolveSessionName(sessionId, sseClient.sessions.value, prefsStore)
+        resolveSessionName(sessionId, streamingClient.sessions.value, prefsStore)
 
     private fun handleNewRequest(request: PermissionRequestData) {
         val requestId = request.requestId ?: return
         Log.d("ApprovalViewModel", "handleNewRequest id=$requestId tool=${request.toolName} currentPending=${_pendingRequests.value.size}")
-        // Atomic dedup: SSE reconnect may re-deliver the same request
+        // Atomic dedup: WebSocket reconnect may re-deliver the same request
         if (!activeRequestIds.add(requestId)) {
             Log.d("ApprovalViewModel", "Duplicate request ignored: $requestId")
             return
@@ -176,7 +176,7 @@ class ApprovalViewModel(
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "allow") }.getOrDefault(false)
+            val ok = runCatching { streamingClient.sendPermissionResponse(requestId, "allow") }.getOrDefault(false)
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -192,7 +192,7 @@ class ApprovalViewModel(
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "deny") }.getOrDefault(false)
+            val ok = runCatching { streamingClient.sendPermissionResponse(requestId, "deny") }.getOrDefault(false)
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -208,7 +208,7 @@ class ApprovalViewModel(
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
-            val ok = runCatching { sseClient.sendPermissionResponse(requestId, "allow", suggestionIndex) }.getOrDefault(false)
+            val ok = runCatching { streamingClient.sendPermissionResponse(requestId, "allow", suggestionIndex) }.getOrDefault(false)
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -225,7 +225,7 @@ class ApprovalViewModel(
         if (!respondedRequestIds.add(requestId)) return
         viewModelScope.launch {
             val request = _pendingRequests.value.find { it.requestId == requestId }
-            val ok = runCatching { sseClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers) }.getOrDefault(false)
+            val ok = runCatching { streamingClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers) }.getOrDefault(false)
             if (ok) {
                 removeRequest(requestId, saveForRestore = false)
             } else {
@@ -239,7 +239,7 @@ class ApprovalViewModel(
 
     /** Returns true if connected; emits error event and returns false otherwise. */
     private fun ensureConnected(): Boolean {
-        if (!sseClient.connectionState.value.isConnected) {
+        if (!streamingClient.connectionState.value.isConnected) {
             _errorEvents.tryEmit(getApplication<Application>().getString(
                 com.clawd.mobile.R.string.error_not_connected
             ))

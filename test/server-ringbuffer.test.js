@@ -80,6 +80,7 @@ function makeCtx(overrides = {}) {
     writeRuntimeConfig: () => true,
     clearRuntimeConfig: () => true,
     readRuntimePort: () => null,
+    skipMobileServer: true,
     STATE_SVGS: {
       idle: "x.svg",
       working: "x.svg",

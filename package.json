@@ -136,6 +136,7 @@
       "assets/svg/**/*",
       "assets/sounds/**/*",
       "assets/tray-icon*.png",
+      "assets/dock-icon.png",
       "hooks/**/*",
       "extensions/**/*",
       "agents/**/*",

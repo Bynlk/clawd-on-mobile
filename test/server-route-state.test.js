@@ -258,12 +258,8 @@ describe("server-route-state POST", () => {
           session.updatedAt = 2;
         },
         resolveDisplayState: () => "attention",
-      },
-      options: {
-        mobileWS: {
-          broadcastState: (sid, payload) => mobileStates.push({ sid, payload }),
-        },
-        broadcastHookEvent: (payload) => mobileHooks.push(payload),
+        onMobileStateChange: (sid, changeType, payload) => mobileStates.push({ sid, payload }),
+        onMobileToolOutput: (sid, payload) => mobileHooks.push({ type: "tool_output", sessionId: sid, ...payload }),
       },
     });
 
@@ -272,10 +268,6 @@ describe("server-route-state POST", () => {
     assert.strictEqual(mobileStates[0].payload.state, "idle");
     assert.strictEqual(mobileStates[0].payload.badge, "done");
     assert.strictEqual(mobileStates[0].payload.dotColor, "#71717a");
-    assert.strictEqual(mobileHooks.length, 1);
-    assert.strictEqual(mobileHooks[0].state, "idle");
-    assert.strictEqual(mobileHooks[0].badge, "done");
-    assert.strictEqual(mobileHooks[0].dotColor, "#71717a");
   });
 
   it("returns 400 for mini states without an svg override", async () => {

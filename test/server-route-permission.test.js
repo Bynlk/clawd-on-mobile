@@ -61,6 +61,8 @@ function makeCtx(overrides = {}) {
     maybeStartRemoteApproval: [],
     addPendingPermission: [],
     removePendingPermission: [],
+    onPermissionAdded: [],
+    onPermissionRemoved: [],
   };
   const ctx = {
     doNotDisturb: false,
@@ -92,6 +94,12 @@ function makeCtx(overrides = {}) {
       if (idx === -1) return false;
       this.pendingPermissions.splice(idx, 1);
       return true;
+    },
+    onPermissionAdded(permEntry, id) {
+      calls.onPermissionAdded.push({ permEntry, id });
+    },
+    onPermissionRemoved(permEntry) {
+      calls.onPermissionRemoved.push({ permEntry });
     },
     ...overrides,
   };

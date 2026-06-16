@@ -75,7 +75,7 @@ class WsConnectionService : Service() {
         /** Emits when a new StreamingClient instance is created and ready. */
         val clientReady: Flow<StreamingClient> = _clientReady.receiveAsFlow()
 
-        fun getClient(): StreamingClient? = instance?.sseClient
+        fun getClient(): StreamingClient? = instance?.streamingClient
 
         fun isRunning(): Boolean = instance != null
 
@@ -99,7 +99,7 @@ class WsConnectionService : Service() {
 
     private val prefsStore by lazy { PrefsStore.getInstance(this) }
     @Volatile
-    var sseClient: StreamingClient? = null
+    var streamingClient: StreamingClient? = null
         private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var stateCollectorJob: Job? = null
@@ -112,8 +112,8 @@ class WsConnectionService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        sseClient = WsClient(prefsStore)
-        _clientReady.trySend(sseClient!!)
+        streamingClient = WsClient(prefsStore)
+        _clientReady.trySend(streamingClient!!)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -125,17 +125,17 @@ class WsConnectionService : Service() {
                 if (useNewConfig) {
                     val config = prefsStore.loadConfig()
                     if (config != null) {
-                        sseClient?.connect(config)
+                        streamingClient?.connect(config)
                     } else {
-                        sseClient?.reconnect()
+                        streamingClient?.reconnect()
                     }
                 } else {
-                    sseClient?.reconnect()
+                    streamingClient?.reconnect()
                 }
                 startStateCollector()
             }
             ACTION_DISCONNECT -> {
-                sseClient?.disconnect()
+                streamingClient?.disconnect()
                 releaseLocks()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -144,7 +144,7 @@ class WsConnectionService : Service() {
                 // Service restarted by system
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.status_disconnected)))
                 acquireLocks()
-                sseClient?.reconnect()
+                streamingClient?.reconnect()
                 startStateCollector()
             }
         }
@@ -158,7 +158,7 @@ class WsConnectionService : Service() {
             // WakeLock management: hold during active states, release when idle.
             // This saves battery when the pet is idle (no tasks running).
             launch {
-                sseClient?.displayState?.collect { displayState ->
+                streamingClient?.displayState?.collect { displayState ->
                     val isActive = displayState == "working" || displayState == "notification" ||
                         displayState == "attention" || displayState == "error"
                     if (isActive) {
@@ -177,11 +177,11 @@ class WsConnectionService : Service() {
                 }
             }
 
-            sseClient?.connectionState?.collect { state ->
+            streamingClient?.connectionState?.collect { state ->
                 val status = when (state) {
-                    ConnectionState.CONNECTED -> getString(R.string.status_connected_to, sseClient?.currentHost ?: "")
+                    ConnectionState.CONNECTED -> getString(R.string.status_connected_to, streamingClient?.currentHost ?: "")
                     ConnectionState.CONNECTING -> getString(R.string.status_connecting)
-                    ConnectionState.PENDING_CERT_CONFIRMATION -> getString(R.string.status_connected_to, sseClient?.currentHost ?: "")
+                    ConnectionState.PENDING_CERT_CONFIRMATION -> getString(R.string.status_connected_to, streamingClient?.currentHost ?: "")
                     ConnectionState.RECONNECTING -> getString(R.string.status_reconnecting)
                     ConnectionState.AUTH_FAILED -> getString(R.string.status_auth_failed)
                     ConnectionState.DISCONNECTED -> getString(R.string.status_disconnected)
@@ -250,7 +250,7 @@ class WsConnectionService : Service() {
     private fun acquireLocks() {
         if (wifiLock == null) {
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "clawd:sse").apply {
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "clawd:ws").apply {
                 setReferenceCounted(false)
                 acquire()
             }
@@ -270,7 +270,7 @@ class WsConnectionService : Service() {
                     }
                     lastNetworkReconnectMs = now
                     android.util.Log.d("WsConnectionService", "Network available — triggering reconnect")
-                    (sseClient as? com.clawd.mobile.ws.WsClient)?.reconnectOnNetworkChange()
+                    (streamingClient as? com.clawd.mobile.ws.WsClient)?.reconnectOnNetworkChange()
                 }
             }
             networkCallback = callback
@@ -326,7 +326,7 @@ class WsConnectionService : Service() {
     private fun acquireWakeLock() {
         if (wakeLock == null) {
             val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:sse").apply {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "clawd:ws").apply {
                 setReferenceCounted(false)
             }
         }
@@ -339,8 +339,8 @@ class WsConnectionService : Service() {
         stateCollectorJob?.cancel()
         releaseLocks()
         scope.cancel()
-        sseClient?.destroy()
-        sseClient = null
+        streamingClient?.destroy()
+        streamingClient = null
         instance = null
         super.onDestroy()
     }

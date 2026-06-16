@@ -23,7 +23,7 @@ import com.clawd.mobile.ws.StreamingClient
 @Composable
 internal fun ConnectionStatusCard(
     isConnected: Boolean,
-    sseClient: StreamingClient,
+    streamingClient: StreamingClient,
     onScan: () -> Unit,
     onManual: () -> Unit
 ) {
@@ -61,8 +61,8 @@ internal fun ConnectionStatusCard(
 
             if (isConnected) {
                 // Connected: show IP + port
-                val host = sseClient.currentHost ?: ""
-                val port = sseClient.currentPort?.toString() ?: ""
+                val host = streamingClient.currentHost ?: ""
+                val port = streamingClient.currentPort?.toString() ?: ""
                 Spacer(modifier = Modifier.height(10.dp))
                 CopyableRow(stringResource(R.string.settings_ip_address), host) { clipboard.setText(AnnotatedString(host)) }
                 CopyableRow(stringResource(R.string.settings_port), port) { clipboard.setText(AnnotatedString(port)) }

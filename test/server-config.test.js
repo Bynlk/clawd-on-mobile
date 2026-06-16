@@ -58,7 +58,7 @@ describe("server-config helpers", () => {
       }, {
         httpGet(_options, onResponse) {
           const res = {
-            headers: { "x-clawd-server": "clawd-on-desk" },
+            headers: { "x-clawd-server": "clawd-on-mobile" },
             setEncoding() {},
             on(event, handler) {
               if (event === "data") handler("");

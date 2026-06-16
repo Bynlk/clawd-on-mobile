@@ -79,7 +79,7 @@
     <string name="perm_overlay_title">Overlay Permission</string>
     <string name="perm_overlay_desc">Used to display the floating pet overlay. Needs to be manually enabled in system settings.</string>
     <string name="perm_battery_title">Background Activity Permission</string>
-    <string name="perm_battery_desc">To ensure the background SSE connection isn\'t killed by the system, please allow Clawd Mobile to ignore battery optimization.\n\nChinese phone brands (MIUI, ColorOS, EMUI, etc.) aggressively kill background apps — this permission prevents 3-second disconnections.</string>
+    <string name="perm_battery_desc">To ensure the background WebSocket connection isn\'t killed by the system, please allow Clawd Mobile to ignore battery optimization.\n\nChinese phone brands (MIUI, ColorOS, EMUI, etc.) aggressively kill background apps — this permission prevents 3-second disconnections.</string>
     <string name="action_skip">Skip</string>
 
     <!-- Sessions screen -->

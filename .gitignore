@@ -125,3 +125,4 @@ android/release-keystore.jks
 android/release-keystore.b64
 android/keystore-base64.txt
 android/ks_b64.tmp
+coverage/

@@ -79,7 +79,7 @@
     <string name="perm_overlay_title">悬浮窗权限</string>
     <string name="perm_overlay_desc">用于显示桌宠悬浮窗，需要在系统设置中手动开启。</string>
     <string name="perm_battery_title">后台保活权限</string>
-    <string name="perm_battery_desc">为确保后台 SSE 连接不被系统杀死，请允许 Clawd Mobile 忽略电池优化。\n\n国产手机（MIUI、ColorOS、EMUI 等）会强制关闭后台应用，此权限可避免 3 秒断连问题。</string>
+    <string name="perm_battery_desc">为确保后台 WebSocket 连接不被系统杀死，请允许 Clawd Mobile 忽略电池优化。\n\n国产手机（MIUI、ColorOS、EMUI 等）会强制关闭后台应用，此权限可避免 3 秒断连问题。</string>
     <string name="action_skip">跳过</string>
 
     <!-- Sessions screen -->

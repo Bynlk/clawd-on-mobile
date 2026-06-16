@@ -23,11 +23,11 @@ import com.clawd.mobile.ws.ConnectionState
 @Composable
 fun SettingsScreen(
     navController: NavController,
-    sseClient: StreamingClient,
+    streamingClient: StreamingClient,
     prefsStore: PrefsStore,
     snackbarHostState: SnackbarHostState? = null
 ) {
-    val connectionState by sseClient.connectionState.collectAsState()
+    val connectionState by streamingClient.connectionState.collectAsState()
     val isConnected = connectionState == ConnectionState.CONNECTED
 
     Scaffold(
@@ -46,7 +46,7 @@ fun SettingsScreen(
             // Connection status card (always visible)
             ConnectionStatusCard(
                 isConnected = isConnected,
-                sseClient = sseClient,
+                streamingClient = streamingClient,
                 onScan = { navController.navigate("scan") },
                 onManual = { navController.navigate("manual") }
             )

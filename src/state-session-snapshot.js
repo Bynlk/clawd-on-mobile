@@ -40,56 +40,12 @@ function isDoneEvent(event) {
   return DONE_EVENTS.has(event);
 }
 
-// Mobile chip fields — status bar text+color for Android companion
-const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
 const BADGE_DOT_COLORS = {
   running: "#3b82f6",
   interrupted: "#d97706",
   done: "#71717a",
   idle: "#52525b",
 };
-const ACTIVE_CHIP_MAP = {
-  working: { text: "工作中", color: "#3b82f6" },
-  thinking: { text: "思考中", color: "#8b5cf6" },
-  juggling: { text: "多任务", color: "#f59e0b" },
-  notification: { text: "通知", color: "#d97706" },
-  attention: { text: "需要关注", color: "#d97706" },
-  error: { text: "错误", color: "#ef4444" },
-  sweeping: { text: "清理中", color: "#a1a1aa" },
-  carrying: { text: "搬运中", color: "#a1a1aa" },
-};
-const EVENT_CHIP_MAP = {
-  Stop: { text: "已完成", color: "#22c55e" },
-  StopFailure: { text: "出错", color: "#ef4444" },
-  SubagentStart: { text: "子任务", color: "#60a5fa" },
-  SubagentStop: { text: "子任务完成", color: "#22c55e" },
-  PermissionRequest: { text: "需要权限", color: "#d97706" },
-  Elicitation: { text: "等待中", color: "#d97706" },
-  Notification: { text: "等待中", color: "#d97706" },
-  WorktreeCreate: { text: "工作树", color: "#60a5fa" },
-};
-const ERROR_EVENTS = new Set(["StopFailure", "PostToolUseFailure", "ApiError"]);
-
-function deriveMobileChipFields(state, recentEvents) {
-  const lastEvent = recentEvents.length ? recentEvents[recentEvents.length - 1] : null;
-  const lastEventName = lastEvent && lastEvent.event ? lastEvent.event : null;
-  const isOneshot = ONESHOT_STATES.has(state);
-  const effectiveState = isOneshot ? "idle" : state;
-  if (effectiveState === "idle") {
-    if (ERROR_EVENTS.has(lastEventName)) {
-      return { text: "出错", color: "#ef4444" };
-    }
-    if (isOneshot) {
-      if (lastEventName && EVENT_CHIP_MAP[lastEventName]) return EVENT_CHIP_MAP[lastEventName];
-      return ACTIVE_CHIP_MAP[state] || null;
-    }
-    return null;
-  }
-  if (lastEventName && EVENT_CHIP_MAP[lastEventName]) {
-    return EVENT_CHIP_MAP[lastEventName];
-  }
-  return ACTIVE_CHIP_MAP[effectiveState] || null;
-}
 
 const SESSION_TITLE_CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]+/g;
 const SESSION_TITLE_MAX = 80;
@@ -392,7 +348,6 @@ module.exports = {
   sessionUpdatedAt,
   isSessionInProgress,
   deriveSessionBadge,
-  deriveMobileChipFields,
   BADGE_DOT_COLORS,
   shouldAutoClearDetachedSession,
   getSessionAliasEntry,

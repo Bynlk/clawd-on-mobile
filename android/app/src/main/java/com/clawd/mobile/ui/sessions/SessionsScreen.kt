@@ -31,13 +31,13 @@ import com.clawd.mobile.ws.StreamingClient
 @Composable
 fun SessionsScreen(
     navController: NavController,
-    sseClient: StreamingClient,
+    streamingClient: StreamingClient,
     approvalViewModel: ApprovalViewModel,
     prefsStore: PrefsStore
 ) {
-    val connectionState by sseClient.connectionState.collectAsState()
-    val sessionsMap by sseClient.sessions.collectAsState()
-    val syncing by sseClient.syncing.collectAsState()
+    val connectionState by streamingClient.connectionState.collectAsState()
+    val sessionsMap by streamingClient.sessions.collectAsState()
+    val syncing by streamingClient.syncing.collectAsState()
     val pendingRequests by approvalViewModel.pendingRequests.collectAsState()
     val countdowns by approvalViewModel.countdowns.collectAsState()
     val notificationRequestId by approvalViewModel.notificationRequestId.collectAsState()
@@ -103,7 +103,7 @@ fun SessionsScreen(
             FixedTopBar(
                 isConnected = isConnected,
                 connectionState = connectionState,
-                onRetry = { sseClient.reconnect() }
+                onRetry = { streamingClient.reconnect() }
             )
 
             // Main content
@@ -170,7 +170,7 @@ fun SessionsScreen(
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             ) {
                 DevicesSheet(
-                    sseClient = sseClient,
+                    streamingClient = streamingClient,
                     connectionState = connectionState,
                     sessionCount = sessions.size,
                     onClose = {
@@ -284,13 +284,13 @@ private fun SectionLabel(title: String, count: Int) {
 
 @Composable
 private fun DevicesSheet(
-    sseClient: StreamingClient,
+    streamingClient: StreamingClient,
     connectionState: ConnectionState,
     sessionCount: Int,
     onClose: () -> Unit
 ) {
-    val host = sseClient.currentHost
-    val port = sseClient.currentPort
+    val host = streamingClient.currentHost
+    val port = streamingClient.currentPort
 
     Column(
         modifier = Modifier

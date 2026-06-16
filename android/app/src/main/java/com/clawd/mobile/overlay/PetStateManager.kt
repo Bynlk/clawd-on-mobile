@@ -502,7 +502,7 @@ class PetStateManager(
     }
 
     // ======================================================================
-    //  Reaction triggers (gesture + SSE)
+    //  Reaction triggers (gesture + WebSocket)
     // ======================================================================
 
     /**
@@ -555,13 +555,13 @@ class PetStateManager(
     }
 
     /**
-     * Load a reaction SVG by asset path (for SSE-triggered reactions).
+     * Load a reaction SVG by asset path (for WebSocket-triggered reactions).
      * Plays for [REACTION_DISPLAY_MS], then restores.
      * Guard: skipped during sleep sequence.
      */
     fun loadReaction(assetPath: String) {
         if (currentState.isSleepSequence) return
-        Log.d(TAG, "SSE reaction: $assetPath")
+        Log.d(TAG, "WS reaction: $assetPath")
         activeScope?.let { timerManager.loadReactionAndRestore(assetPath, REACTION_DISPLAY_MS, it) }
     }
 }

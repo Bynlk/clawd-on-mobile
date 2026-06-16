@@ -437,3 +437,443 @@ test("animation override data builds tier cards with transition override metadat
     harness.cleanup();
   }
 });
+
+// ── isObjectChannelSvgAnimationFile ────────────────────────────────
+
+test("isObjectChannelSvgAnimationFile returns true for .svg files with object svgChannel", () => {
+  const theme = { rendering: { svgChannel: "object" } };
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile("foo.svg", theme), true);
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile("FOO.SVG", theme), true);
+});
+
+test("isObjectChannelSvgAnimationFile returns false for non-svg extensions", () => {
+  const theme = { rendering: { svgChannel: "object" } };
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile("foo.gif", theme), false);
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile("foo.png", theme), false);
+});
+
+test("isObjectChannelSvgAnimationFile returns false when svgChannel is not 'object'", () => {
+  const theme = { rendering: { svgChannel: "inline" } };
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile("foo.svg", theme), false);
+});
+
+test("isObjectChannelSvgAnimationFile returns false when theme or filename is missing", () => {
+  const theme = { rendering: { svgChannel: "object" } };
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile(null, theme), false);
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile("", theme), false);
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile("foo.svg", null), false);
+  assert.strictEqual(animationOverrideTest.isObjectChannelSvgAnimationFile("foo.svg", {}), false);
+});
+
+// ── isTrustedScriptedAnimationFile edge cases ──────────────────────
+
+test("isTrustedScriptedAnimationFile returns false when filename, theme, or _builtin is missing", () => {
+  const theme = { _builtin: true, trustedRuntime: { scriptedSvgFiles: ["a.svg"] } };
+  assert.strictEqual(animationOverrideTest.isTrustedScriptedAnimationFile(null, theme), false);
+  assert.strictEqual(animationOverrideTest.isTrustedScriptedAnimationFile("", theme), false);
+  assert.strictEqual(animationOverrideTest.isTrustedScriptedAnimationFile("a.svg", null), false);
+  assert.strictEqual(animationOverrideTest.isTrustedScriptedAnimationFile("a.svg", {}), false);
+  assert.strictEqual(animationOverrideTest.isTrustedScriptedAnimationFile("a.svg", { _builtin: false }), false);
+});
+
+test("isTrustedScriptedAnimationFile returns false when trustedRuntime.scriptedSvgFiles is not an array", () => {
+  const theme = { _builtin: true, trustedRuntime: { scriptedSvgFiles: "not-array" } };
+  assert.strictEqual(animationOverrideTest.isTrustedScriptedAnimationFile("a.svg", theme), false);
+});
+
+test("isTrustedScriptedAnimationFile matches basename only", () => {
+  const theme = { _builtin: true, trustedRuntime: { scriptedSvgFiles: ["a.svg"] } };
+  assert.strictEqual(animationOverrideTest.isTrustedScriptedAnimationFile("subdir/a.svg", theme), true);
+  assert.strictEqual(animationOverrideTest.isTrustedScriptedAnimationFile("b.svg", theme), false);
+});
+
+// ── getTrustedScriptedAnimationCycleMs edge cases ──────────────────
+
+test("getTrustedScriptedAnimationCycleMs returns null for non-trusted files", () => {
+  const theme = { _builtin: false, trustedRuntime: { scriptedSvgCycleMs: { "a.svg": 5000 } } };
+  assert.strictEqual(animationOverrideTest.getTrustedScriptedAnimationCycleMs("a.svg", theme), null);
+});
+
+test("getTrustedScriptedAnimationCycleMs returns null when cycle ms is not positive or not finite", () => {
+  const theme = { _builtin: true, trustedRuntime: { scriptedSvgFiles: ["a.svg"], scriptedSvgCycleMs: { "a.svg": 0 } } };
+  assert.strictEqual(animationOverrideTest.getTrustedScriptedAnimationCycleMs("a.svg", theme), null);
+
+  const theme2 = { _builtin: true, trustedRuntime: { scriptedSvgFiles: ["a.svg"], scriptedSvgCycleMs: { "a.svg": -100 } } };
+  assert.strictEqual(animationOverrideTest.getTrustedScriptedAnimationCycleMs("a.svg", theme2), null);
+
+  const theme3 = { _builtin: true, trustedRuntime: { scriptedSvgFiles: ["a.svg"], scriptedSvgCycleMs: { "a.svg": Infinity } } };
+  assert.strictEqual(animationOverrideTest.getTrustedScriptedAnimationCycleMs("a.svg", theme3), null);
+});
+
+test("getTrustedScriptedAnimationCycleMs returns null when cycleMap entry is missing", () => {
+  const theme = { _builtin: true, trustedRuntime: { scriptedSvgFiles: ["a.svg"], scriptedSvgCycleMs: {} } };
+  assert.strictEqual(animationOverrideTest.getTrustedScriptedAnimationCycleMs("a.svg", theme), null);
+});
+
+// ── buildAnimationPreviewPosterDescriptor edge cases ───────────────
+
+test("buildAnimationPreviewPosterDescriptor returns null when filename or theme or absPath is missing", () => {
+  assert.strictEqual(animationOverrideTest.buildAnimationPreviewPosterDescriptor(null, { _id: "t" }, "/path"), null);
+  assert.strictEqual(animationOverrideTest.buildAnimationPreviewPosterDescriptor("a.svg", null, "/path"), null);
+  assert.strictEqual(animationOverrideTest.buildAnimationPreviewPosterDescriptor("a.svg", { _id: "t" }, null), null);
+  assert.strictEqual(animationOverrideTest.buildAnimationPreviewPosterDescriptor("a.svg", { _id: "t" }, ""), null);
+});
+
+test("buildAnimationPreviewPosterDescriptor returns null when statSync throws", () => {
+  const fakeFs = { statSync() { throw new Error("ENOENT"); } };
+  assert.strictEqual(
+    animationOverrideTest.buildAnimationPreviewPosterDescriptor("a.svg", { _id: "t" }, "/no/such/file", { fs: fakeFs }),
+    null
+  );
+});
+
+test("buildAnimationPreviewPosterDescriptor uses 'theme' as fallback themeId when _id is missing", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-desc-"));
+  try {
+    const absPath = path.join(root, "a.svg");
+    fs.writeFileSync(absPath, "<svg></svg>", "utf8");
+    const descriptor = animationOverrideTest.buildAnimationPreviewPosterDescriptor("a.svg", {}, absPath);
+    assert.strictEqual(descriptor.themeId, "theme");
+    assert.strictEqual(descriptor.filename, "a.svg");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ── previewAnimationOverride validation ────────────────────────────
+
+test("previewAnimationOverride rejects non-object payload", () => {
+  const harness = createRuntimeHarness();
+  try {
+    assert.deepStrictEqual(
+      harness.runtime.previewAnimationOverride(null),
+      { status: "error", message: "previewAnimationOverride payload must be an object" }
+    );
+    assert.deepStrictEqual(
+      harness.runtime.previewAnimationOverride("bad"),
+      { status: "error", message: "previewAnimationOverride payload must be an object" }
+    );
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("previewAnimationOverride rejects missing or empty stateKey", () => {
+  const harness = createRuntimeHarness();
+  try {
+    assert.deepStrictEqual(
+      harness.runtime.previewAnimationOverride({ stateKey: "", file: "a.svg" }),
+      { status: "error", message: "previewAnimationOverride.stateKey must be a non-empty string" }
+    );
+    assert.deepStrictEqual(
+      harness.runtime.previewAnimationOverride({ file: "a.svg" }),
+      { status: "error", message: "previewAnimationOverride.stateKey must be a non-empty string" }
+    );
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("previewAnimationOverride rejects missing or empty file", () => {
+  const harness = createRuntimeHarness();
+  try {
+    assert.deepStrictEqual(
+      harness.runtime.previewAnimationOverride({ stateKey: "idle", file: "" }),
+      { status: "error", message: "previewAnimationOverride.file must be a non-empty string" }
+    );
+    assert.deepStrictEqual(
+      harness.runtime.previewAnimationOverride({ stateKey: "idle" }),
+      { status: "error", message: "previewAnimationOverride.file must be a non-empty string" }
+    );
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("previewAnimationOverride reports error when state runtime is unavailable", () => {
+  const harness = createRuntimeHarness();
+  try {
+    // Override getStateRuntime to return something missing applyState
+    const originalGetStateRuntime = harness.runtime;
+    // Create a new harness that returns null from getStateRuntime
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-anim-rt-"));
+    const assetsDir = path.join(root, "assets");
+    fs.mkdirSync(assetsDir, { recursive: true });
+    const noRuntime = createSettingsAnimationOverridesMain({
+      app: { isPackaged: false, getVersion: () => "1.0.0" },
+      BrowserWindow: FakeBrowserWindow,
+      dialog: { showSaveDialog: async () => ({ canceled: true }), showOpenDialog: async () => ({ canceled: true }) },
+      shell: { openPath: async () => "" },
+      fs,
+      path,
+      themeLoader: {
+        _resolveAssetPath: (_t, f) => path.join(assetsDir, f),
+        getAssetPath: (f) => path.join(assetsDir, f),
+        getThemeMetadata: () => ({}),
+      },
+      animationCycle: { probeAssetCycle: () => ({ ms: null, status: "unavailable", source: null }) },
+      settingsController: { getSnapshot: () => ({ themeOverrides: {} }), applyCommand: async () => ({}) },
+      getActiveTheme: () => makeTheme(root),
+      getSettingsWindow: () => null,
+      getLang: () => "en",
+      getThemeReloadInProgress: () => false,
+      getStateRuntime: () => null,
+      sendToRenderer: () => {},
+    });
+    try {
+      assert.deepStrictEqual(
+        noRuntime.previewAnimationOverride({ stateKey: "idle", file: "idle.svg" }),
+        { status: "error", message: "previewAnimationOverride requires state runtime" }
+      );
+    } finally {
+      noRuntime.cleanup();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  } finally {
+    harness.cleanup();
+  }
+});
+
+// ── previewReaction validation ─────────────────────────────────────
+
+test("previewReaction rejects non-object payload", () => {
+  const harness = createRuntimeHarness();
+  try {
+    assert.deepStrictEqual(
+      harness.runtime.previewReaction(null),
+      { status: "error", message: "previewReaction payload must be an object" }
+    );
+    assert.deepStrictEqual(
+      harness.runtime.previewReaction("bad"),
+      { status: "error", message: "previewReaction payload must be an object" }
+    );
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("previewReaction rejects missing or empty file", () => {
+  const harness = createRuntimeHarness();
+  try {
+    assert.deepStrictEqual(
+      harness.runtime.previewReaction({ file: "" }),
+      { status: "error", message: "previewReaction.file must be a non-empty string" }
+    );
+    assert.deepStrictEqual(
+      harness.runtime.previewReaction({}),
+      { status: "error", message: "previewReaction.file must be a non-empty string" }
+    );
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("previewReaction clamps duration and sends to renderer", () => {
+  const harness = createRuntimeHarness();
+  try {
+    const result = harness.runtime.previewReaction({ file: "click.svg", durationMs: 5000 });
+    assert.strictEqual(result.status, "ok");
+    assert.strictEqual(harness.stateCalls.length, 1);
+    assert.strictEqual(harness.stateCalls[0][0], "sendToRenderer");
+    assert.strictEqual(harness.stateCalls[0][1], "play-click-reaction");
+    assert.strictEqual(harness.stateCalls[0][2], "click.svg");
+    // durationMs=5000 clamped to PREVIEW_HOLD_MAX_MS=3500
+    assert.strictEqual(harness.stateCalls[0][3], animationOverrideTest.PREVIEW_HOLD_MAX_MS);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("previewReaction uses PREVIEW_HOLD_MIN_MS as default duration", () => {
+  const harness = createRuntimeHarness();
+  try {
+    harness.runtime.previewReaction({ file: "click.svg" });
+    assert.strictEqual(harness.stateCalls[0][3], animationOverrideTest.PREVIEW_HOLD_MIN_MS);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+// ── buildAnimationAssetPreview for non-scripted files ──────────────
+
+test("buildAnimationAssetPreview returns direct file URL for non-scripted SVGs", () => {
+  const harness = createRuntimeHarness();
+  try {
+    const preview = harness.runtime.buildAnimationAssetPreview("idle.svg", harness.activeTheme);
+    assert.strictEqual(preview.needsScriptedPreviewPoster, false);
+    assert.strictEqual(preview.previewImageUrl, preview.fileUrl);
+    assert.strictEqual(preview.previewPosterCacheKey, null);
+    assert.strictEqual(preview.previewPosterPending, false);
+    assert.ok(preview.fileUrl.startsWith("file:"));
+  } finally {
+    harness.cleanup();
+  }
+});
+
+// ── buildAnimationAssetProbe for unknown files ─────────────────────
+
+test("buildAnimationAssetProbe returns unavailable when file cannot be resolved", () => {
+  const harness = createRuntimeHarness();
+  try {
+    const probe = harness.runtime.buildAnimationAssetProbe("nonexistent.svg", harness.activeTheme);
+    assert.strictEqual(probe.assetCycleMs, null);
+    assert.strictEqual(probe.assetCycleStatus, "unavailable");
+    assert.strictEqual(probe.assetCycleSource, null);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+// ── listAnimationOverrideAssets ────────────────────────────────────
+
+test("listAnimationOverrideAssets returns sorted asset list from directory", () => {
+  const harness = createRuntimeHarness();
+  try {
+    const assets = harness.runtime.listAnimationOverrideAssets(harness.activeTheme);
+    assert.ok(Array.isArray(assets));
+    assert.ok(assets.length >= 3); // idle.svg, scripted.svg, sleep.svg
+    // Verify sorted by name
+    for (let i = 1; i < assets.length; i++) {
+      assert.ok(assets[i].name.localeCompare(assets[i - 1].name, undefined, { numeric: true, sensitivity: "base" }) >= 0);
+    }
+    // Verify each asset has required fields
+    for (const asset of assets) {
+      assert.ok(typeof asset.name === "string");
+      assert.ok(typeof asset.ext === "string");
+      assert.ok(typeof asset.fileUrl === "string");
+    }
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("listAnimationOverrideAssets returns empty array when theme is null", () => {
+  const harness = createRuntimeHarness();
+  try {
+    assert.deepStrictEqual(harness.runtime.listAnimationOverrideAssets(null), []);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+// ── cleanup / bumpPreviewPosterGeneration ──────────────────────────
+
+test("cleanup does not throw", () => {
+  const harness = createRuntimeHarness();
+  assert.doesNotThrow(() => harness.runtime.cleanup());
+  fs.rmSync(harness.root, { recursive: true, force: true });
+});
+
+test("bumpPreviewPosterGeneration increments generation counter", () => {
+  const harness = createRuntimeHarness();
+  try {
+    const gen1 = harness.runtime.bumpPreviewPosterGeneration();
+    const gen2 = harness.runtime.bumpPreviewPosterGeneration();
+    assert.strictEqual(gen2, gen1 + 1);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("clearPreviewTimer does not throw when no timer is active", () => {
+  const harness = createRuntimeHarness();
+  try {
+    assert.doesNotThrow(() => harness.runtime.clearPreviewTimer());
+  } finally {
+    harness.cleanup();
+  }
+});
+
+// ── previewAnimationOverride with trusted scripted file hold times ─
+
+test("previewAnimationOverride uses trusted cycle ms for preview hold when no explicit duration", () => {
+  const harness = createRuntimeHarness();
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const delays = [];
+  try {
+    global.setTimeout = (_fn, ms) => { delays.push(ms); return { fakeTimer: true }; };
+    global.clearTimeout = () => {};
+
+    const result = harness.runtime.previewAnimationOverride({ stateKey: "thinking", file: "scripted.svg" });
+    assert.strictEqual(result.status, "ok");
+    // trusted scripted cycle is 5400ms, clamped to [800, 15000]
+    assert.strictEqual(delays[0], 5400);
+  } finally {
+    harness.cleanup();
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+});
+
+test("previewAnimationOverride clamps explicit duration to hold bounds", () => {
+  const harness = createRuntimeHarness();
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const delays = [];
+  try {
+    global.setTimeout = (_fn, ms) => { delays.push(ms); return { fakeTimer: true }; };
+    global.clearTimeout = () => {};
+
+    // Too low - clamped up to PREVIEW_HOLD_MIN_MS (800)
+    harness.runtime.previewAnimationOverride({ stateKey: "idle", file: "idle.svg", durationMs: 100 });
+    assert.strictEqual(delays[delays.length - 1], animationOverrideTest.PREVIEW_HOLD_MIN_MS);
+
+    // Too high for non-trusted - clamped to PREVIEW_HOLD_MAX_MS (3500)
+    harness.runtime.previewAnimationOverride({ stateKey: "idle", file: "idle.svg", durationMs: 50000 });
+    assert.strictEqual(delays[delays.length - 1], animationOverrideTest.PREVIEW_HOLD_MAX_MS);
+  } finally {
+    harness.cleanup();
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+  }
+});
+
+// ── buildAnimationOverrideData with no active theme ────────────────
+
+test("buildAnimationOverrideData returns null when there is no active theme", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-anim-null-"));
+  try {
+    const noRuntime = createSettingsAnimationOverridesMain({
+      app: { isPackaged: false, getVersion: () => "1.0.0" },
+      BrowserWindow: FakeBrowserWindow,
+      dialog: { showSaveDialog: async () => ({}), showOpenDialog: async () => ({}) },
+      shell: { openPath: async () => "" },
+      fs,
+      path,
+      themeLoader: { _resolveAssetPath: () => null, getAssetPath: () => null, getThemeMetadata: () => ({}) },
+      animationCycle: { probeAssetCycle: () => ({}) },
+      settingsController: { getSnapshot: () => ({ themeOverrides: {} }), applyCommand: async () => ({}) },
+      getActiveTheme: () => null,
+      getSettingsWindow: () => null,
+      getLang: () => "en",
+      getThemeReloadInProgress: () => false,
+      getStateRuntime: () => ({ applyState: () => {}, resolveDisplayState: () => "idle", getSvgOverride: () => null }),
+      sendToRenderer: () => {},
+    });
+    assert.strictEqual(noRuntime.buildAnimationOverrideData(), null);
+    noRuntime.cleanup();
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ── runPendingPostReloadTasks handles task errors ──────────────────
+
+test("runPendingPostReloadTasks continues even if a task throws", () => {
+  const harness = createRuntimeHarness();
+  try {
+    harness.setThemeReloadInProgress(true);
+    // Queue two deferred previews; first will succeed, then we add a failing task manually
+    harness.runtime.previewAnimationOverride({ stateKey: "thinking", file: "scripted.svg" });
+    harness.runtime.previewAnimationOverride({ stateKey: "idle", file: "idle.svg" });
+
+    harness.setThemeReloadInProgress(false);
+    // runPendingPostReloadTasks should not throw even if a task throws
+    assert.doesNotThrow(() => harness.runtime.runPendingPostReloadTasks());
+    // Both tasks should have run
+    assert.strictEqual(harness.stateCalls.length, 2);
+  } finally {
+    harness.cleanup();
+  }
+});

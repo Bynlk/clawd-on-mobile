@@ -64,6 +64,7 @@ function makeCtx(overrides = {}) {
     writeRuntimeConfig: () => true,
     clearRuntimeConfig: () => true,
     readRuntimePort: () => null,
+    skipMobileServer: true, // Skip mobile HTTP server in tests
 
     // Hook sync impls — keep them all as no-ops
     syncClawdHooksImpl: () => {},

@@ -6,10 +6,10 @@ import org.junit.Test
 import org.junit.Assert.*
 
 /**
- * Tests for [MessageParser] — the real SSE message parser.
+ * Extended tests for [MessageParser] — the real message parser.
  * Verifies both typed [ParsedMessage] output and [buildToolInputSummary] logic.
  */
-class SseClientParsingTest {
+class MessageParserExtendedTest {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val parser = MessageParser()

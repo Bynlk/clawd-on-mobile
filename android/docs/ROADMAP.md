@@ -87,7 +87,6 @@
 | 任务 | 关联 | 工作量 | 风险 | 依赖 |
 |------|------|--------|------|------|
 | ClawdWebSocket 拆分 | M-10 | L | 中 | 无 |
-| 重命名 ClawdWebSocket → ClawdSseClient | M-04 | S | 低 | P3-1 |
 | 引入依赖注入（Koin） | M-03 | L | 高 | P3-1 |
 | SessionProvider 接口解耦 | M-11 | M | 中 | P3-1 |
 | MainActivity 权限流程拆分 | M-05 | M | 低 | 无 |

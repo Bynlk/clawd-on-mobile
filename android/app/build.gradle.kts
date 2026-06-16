@@ -26,11 +26,15 @@ android {
 
     signingConfigs {
         create("release") {
-            val ks = System.getenv("KEYSTORE_FILE") ?: ""
+            val ks = findProperty("KEYSTORE_FILE") as? String?
+                ?: System.getenv("KEYSTORE_FILE") ?: ""
             storeFile = if (ks.isNotEmpty()) rootProject.file(ks) else null
-            storePassword = System.getenv("STORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            storePassword = findProperty("STORE_PASSWORD") as? String?
+                ?: System.getenv("STORE_PASSWORD") ?: ""
+            keyAlias = findProperty("KEY_ALIAS") as? String?
+                ?: System.getenv("KEY_ALIAS") ?: ""
+            keyPassword = findProperty("KEY_PASSWORD") as? String?
+                ?: System.getenv("KEY_PASSWORD") ?: ""
         }
     }
 
@@ -85,9 +89,8 @@ dependencies {
     implementation(libs.navigation.compose)
     implementation(libs.lifecycle.runtime)
 
-    // HTTP / SSE
+    // HTTP / WebSocket
     implementation(libs.okhttp)
-    implementation(libs.okhttp.sse)
     // WebSocket client (replaces OkHttp WebSocket — OkHttp 4.12.0 has frame parsing bug)
     implementation(libs.nv.websocket.client)
 

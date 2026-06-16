@@ -75,6 +75,7 @@ function startServer(overrides = {}) {
     writeRuntimeConfig: () => true,
     clearRuntimeConfig: () => true,
     readRuntimePort: () => null,
+    skipMobileServer: true,
     syncClawdHooksImpl: () => {},
     syncGeminiHooksImpl: () => {},
     syncAntigravityHooksImpl: () => {},

@@ -102,6 +102,7 @@ function makeServer(overrides = {}) {
     readRuntimePort: () => null,
     writeRuntimeConfig: () => true,
     clearRuntimeConfig: () => true,
+    skipMobileServer: true,
     fs: {
       watch(_dir, callback) {
         lastWatcher = new FakeWatcher(callback);

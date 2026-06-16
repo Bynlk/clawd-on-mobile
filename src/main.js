@@ -1166,17 +1166,18 @@ const _stateCtx = {
     broadcastSessionHudSnapshot(snapshot);
     repositionFloatingBubbles();
     if (hardwareBuddyAdapter) hardwareBuddyAdapter.notifyStateChanged();
-    const ws = getMobileWS();
-    if (ws) ws.broadcastSessionSnapshot(snapshot);
+    if (typeof _serverCtx.onMobileSessionSnapshot === "function") {
+      _serverCtx.onMobileSessionSnapshot(snapshot);
+    }
     // R1a: best-effort completion notifications
     if (telegramCompanion) {
       try { telegramCompanion.onSnapshot(snapshot); } catch {}
     }
   },
   onSessionRemoved: (sessionId) => {
-    const ws = getMobileWS();
-    if (ws) ws.removeSession(sessionId);
-    broadcastHookEvent({ type: "session_deleted", sessionId, timestamp: Date.now() });
+    if (typeof _serverCtx.onMobileSessionRemoved === "function") {
+      _serverCtx.onMobileSessionRemoved(sessionId);
+    }
   },
   // Phase 3b: 读 prefs.themeOverrides 判断某个 oneshot state 是否被用户禁用。
   // state.js gate 调这个做 early-return。不做白名单校验——settings-actions
@@ -1460,79 +1461,16 @@ const _serverCtx = {
   maybeStartRemoteApproval,
   replyOpencodePermission,
   permLog,
+  mobileCompanionEnabled: _settingsController.get("mobileCompanionEnabled") !== false,
 };
 const _server = require("./server")(_serverCtx);
-const { startHttpServer, getHookServerPort, getMobileWS, getMobileToken, saveMobileState, broadcastHookEvent, startMobileServer, getPendingMobileApprovals } = _server;
+const { startHttpServer, getHookServerPort, getMobileWS, getMobileToken, saveMobileState, broadcastHookEvent, startMobileServer, getPendingMobileApprovals, setupPermissionHooks, setupStateChangeHooks } = _server;
 
-// 移动端 SSE 权限审批桥接：覆盖 _serverCtx.addPendingPermission（server-route-permission.js
-// 实际调用的路径），将权限请求广播到 SSE，并存储到 pendingMobileApprovals 供 /mobile/approve 回调。
-const _origAddPendingPermission = _serverCtx.addPendingPermission;
-_serverCtx.addPendingPermission = function(permEntry) {
-  _origAddPendingPermission(permEntry);
-  console.log(`[mobile-bridge] addPendingPermission called: agentId=${permEntry?.agentId} hasRes=${!!permEntry?.res} toolName=${permEntry?.toolName}`);
-  if (permEntry && permEntry.res && permEntry.agentId !== "opencode") {
-    const id = "mobile_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-    permEntry._mobileApprovalId = id;
-    console.log(`[mobile-bridge] broadcasting permission_request id=${id}`);
-    // Generate labels for mobile clients (desktop bubble-renderer does this client-side)
-    const mobileSuggestions = (permEntry.suggestions || []).map((s) => {
-      if (s.label) return s;
-      let label = "Always Allow";
-      if (s.type === "setMode") {
-        if (s.mode === "acceptEdits") label = "Auto-accept edits";
-        else if (s.mode === "plan") label = "Switch to plan mode";
-        else label = s.mode || label;
-      } else if (s.type === "addRules") {
-        const rule = Array.isArray(s.rules) && s.rules[0] ? s.rules[0] : s;
-        const rc = rule.ruleContent || s.ruleContent;
-        const tn = rule.toolName || s.toolName || "";
-        if (rc) {
-          label = rc.includes("**")
-            ? `Allow ${tn} in ${rc.split("**")[0].replace(/[\\/]$/, "").split(/[\\/]/).pop() || rc}`
-            : `Always allow: ${rc.length > 30 ? rc.slice(0, 29) + "…" : rc}`;
-        }
-      }
-      return { ...s, label };
-    });
-    broadcastHookEvent({
-      type: "permission_request",
-      id,
-      sessionId: permEntry.sessionId,
-      toolName: permEntry.toolName,
-      agentId: permEntry.agentId,
-      toolInput: permEntry.toolInput || null,
-      suggestions: mobileSuggestions,
-      timestamp: Date.now(),
-    });
-    const pendingApprovals = getPendingMobileApprovals();
-    const timer = setTimeout(() => {
-      if (!pendingApprovals.has(id)) return;
-      pendingApprovals.delete(id);
-      try { resolvePermissionEntry(permEntry, "deny", "Mobile approval timed out"); } catch {}
-    }, 60000);
-    pendingApprovals.set(id, {
-      entry: permEntry,
-      timer,
-      resolve: (decision) => {
-        try { resolvePermissionEntry(permEntry, decision, "Mobile approval"); } catch {}
-      },
-    });
-  }
-  return permEntry;
-};
-const _origRemovePendingPermission = _serverCtx.removePendingPermission;
-_serverCtx.removePendingPermission = function(permEntry, reason) {
-  const result = _origRemovePendingPermission(permEntry, reason);
-  if (permEntry && permEntry._mobileApprovalId) {
-    const pendingApprovals = getPendingMobileApprovals();
-    const pending = pendingApprovals.get(permEntry._mobileApprovalId);
-    if (pending) {
-      clearTimeout(pending.timer);
-      pendingApprovals.delete(permEntry._mobileApprovalId);
-    }
-  }
-  return result;
-};
+// Set up mobile permission hooks (replaces monkey-patch approach)
+if (_serverCtx.mobileCompanionEnabled) {
+  setupPermissionHooks(_serverCtx, resolvePermissionEntry);
+  setupStateChangeHooks(_serverCtx);
+}
 
 function updateLog(msg) {
   if (!updateDebugLog) return;
@@ -2708,7 +2646,7 @@ const SETTINGS_MIRROR_SETTERS = {
   soundMuted: (v) => { soundMuted = v; }, soundVolume: (v) => { soundVolume = v; }, lowPowerIdleMode: (v) => { lowPowerIdleMode = v; },
   keepAwakeWhileWorking: (v) => { keepAwakeWhileWorking = v; },
   allowEdgePinning: (v) => { allowEdgePinningCached = v; }, disableMiniMode: (v) => { disableMiniModeCached = v; }, keepSizeAcrossDisplays: (v) => { keepSizeAcrossDisplaysCached = v; },
-  mobileMaxClients: (v) => { const ws = getMobileWS(); if (ws && ws.setMaxClients) ws.setMaxClients(v); saveMobileState({ mobileMaxClients: v }); },
+  mobileMaxClients: (v) => { if (typeof _serverCtx.onMobileMaxClientsChange === "function") _serverCtx.onMobileMaxClientsChange(v); saveMobileState({ mobileMaxClients: v }); },
 };
 
 function updateSettingsMirrors(changes) { for (const [key, value] of Object.entries(changes)) if (SETTINGS_MIRROR_SETTERS[key]) SETTINGS_MIRROR_SETTERS[key](value); }
