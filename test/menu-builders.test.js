@@ -296,10 +296,12 @@ describe("buildMiniModeMenuItem", () => {
 // 3. buildBringToPrimaryDisplayMenuItem
 // ──────────────────────────────────────────────────────────────────
 describe("buildBringToPrimaryDisplayMenuItem", () => {
-  // In the tray menu, the bring-to-primary item is at index 10
-  // (after settings, openDashboard).
+  // In the tray menu, the bring-to-primary item is after settings and openDashboard.
+  // Index depends on platform (macOS adds dock/menu bar toggles).
   function getBringItem(cap) {
-    return cap.template[10];
+    // Find the item by label containing "bring" or "primary"
+    const idx = cap.template.findIndex(item => item && item.label && /bring|primary/i.test(item.label));
+    return idx >= 0 ? cap.template[idx] : undefined;
   }
 
   it("is enabled when not in mini mode and bringPetToPrimaryDisplay is a function", () => {

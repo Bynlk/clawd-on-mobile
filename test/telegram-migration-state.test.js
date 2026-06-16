@@ -177,3 +177,76 @@ test("Rollback path: NATIVE_ACTIVE → SWITCHING_TO_LEGACY → LEGACY_ACTIVE", (
   assert.equal(r2.state, STATES.LEGACY_ACTIVE);
   assert.deepEqual(r2.prefsPatch, { transport: "legacy" });
 });
+
+test("SIDECAR_RUNTIME_FAILED @ LEGACY_ACTIVE → LEGACY_ACTIVE + only EMIT_RUNTIME_STATUS", () => {
+  const r = applyEvent(
+    { state: STATES.LEGACY_ACTIVE, prefs: { transport: "legacy" }, files: {} },
+    { type: EVENTS.SIDECAR_RUNTIME_FAILED, reason: "boom", message: "sidecar exited (signal SIGTERM)" },
+  );
+  assert.equal(r.errorCode, null);
+  assert.equal(r.state, STATES.LEGACY_ACTIVE);
+  assert.deepEqual(effectTypes(r.sideEffects), [SIDE_EFFECTS.EMIT_RUNTIME_STATUS]);
+  const payload = r.sideEffects[0].payload;
+  assert.equal(payload.transport, "legacy");
+  assert.equal(payload.status, "failed");
+  assert.equal(payload.reason, "boom");
+  assert.equal(payload.message, "sidecar exited (signal SIGTERM)");
+  // Runtime health never persists prefs nor transitions state.
+  assert.equal(r.prefsPatch, undefined);
+});
+
+test("SIDECAR_RUNTIME_FAILED is illegal outside LEGACY_ACTIVE (incl. SWITCHING_TO_LEGACY)", () => {
+  for (const state of [
+    STATES.IDLE,
+    STATES.NATIVE_ACTIVE,
+    STATES.TESTING_NATIVE,
+    STATES.SWITCHING_TO_LEGACY,
+    STATES.NEEDS_SETUP,
+  ]) {
+    const r = applyEvent({ state, prefs: {}, files: {} }, { type: EVENTS.SIDECAR_RUNTIME_FAILED, reason: "x" });
+    assert.equal(r.errorCode, ERROR_CODES.ILLEGAL_TRANSITION, `state=${state}`);
+    assert.equal(r.state, state);
+    assert.deepEqual(r.sideEffects, []);
+  }
+});
+
+test("SIDECAR_RUNTIME_RECOVERED @ LEGACY_ACTIVE clears message (shallow-merge safe)", () => {
+  const r = applyEvent(
+    { state: STATES.LEGACY_ACTIVE, prefs: { transport: "legacy" }, files: {} },
+    { type: EVENTS.SIDECAR_RUNTIME_RECOVERED },
+  );
+  assert.equal(r.state, STATES.LEGACY_ACTIVE);
+  assert.deepEqual(effectTypes(r.sideEffects), [SIDE_EFFECTS.EMIT_RUNTIME_STATUS]);
+  const payload = r.sideEffects[0].payload;
+  assert.equal(payload.status, "running");
+  assert.equal(payload.reason, null);
+  assert.equal(payload.message, "");
+});
+
+test("SIDECAR_RUNTIME_RECOVERED is illegal outside LEGACY_ACTIVE", () => {
+  const r = applyEvent(
+    { state: STATES.SWITCHING_TO_LEGACY, prefs: {}, files: {} },
+    { type: EVENTS.SIDECAR_RUNTIME_RECOVERED },
+  );
+  assert.equal(r.errorCode, ERROR_CODES.ILLEGAL_TRANSITION);
+  assert.deepEqual(r.sideEffects, []);
+});
+
+test("SIDECAR_START_FAILED carries message through runtime-status", () => {
+  const r = applyEvent(
+    { state: STATES.SWITCHING_TO_LEGACY, prefs: {}, files: {} },
+    { type: EVENTS.SIDECAR_START_FAILED, reason: "RB", message: "boom detail" },
+  );
+  assert.equal(r.state, STATES.LEGACY_ACTIVE);
+  const emit = r.sideEffects.find((e) => e.type === SIDE_EFFECTS.EMIT_RUNTIME_STATUS);
+  assert.ok(emit, "expected EMIT_RUNTIME_STATUS");
+  assert.equal(emit.payload.message, "boom detail");
+});
+
+test("checkInvariants: runtime failure event emits no start side-effects", () => {
+  const r = applyEvent(
+    { state: STATES.LEGACY_ACTIVE, prefs: { transport: "legacy" }, files: {} },
+    { type: EVENTS.SIDECAR_RUNTIME_FAILED, reason: "x" },
+  );
+  assert.deepEqual(checkInvariants(r), []);
+});

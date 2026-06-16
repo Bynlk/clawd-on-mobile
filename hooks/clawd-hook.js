@@ -6,6 +6,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const { postStateToRunningServer, readHostPrefix } = require("./server-config");
+const { extractClaudeContextUsageFromEntries } = require("./context-usage");
 const { createPidResolver, readStdinJson, getPlatformConfig } = require("./shared-process");
 
 const TRANSCRIPT_TAIL_BYTES = 262144; // 256 KB
@@ -368,6 +369,14 @@ function buildStateBody(event, payload, resolve) {
   // Read transcript tail once and reuse for both session title extraction and
   // API error detection (Stop only). Avoids two file reads per hook invocation.
   const transcriptEntries = readTranscriptTailEntries(payload.transcript_path);
+  // Pass the raw session id (null when the hook payload omits it), not the
+  // "default" placeholder above: a transcript whose entries carry a real
+  // sessionId must not be filtered out just because session_id was missing.
+  const contextUsage = extractClaudeContextUsageFromEntries(
+    transcriptEntries,
+    payload.session_id || null,
+  );
+  if (contextUsage) body.context_usage = contextUsage;
   const sessionTitle =
     normalizeTitle(payload.session_title) ||
     extractSessionTitleFromEntries(transcriptEntries);
@@ -412,7 +421,7 @@ function buildStateBody(event, payload, resolve) {
   if (process.env.CLAWD_REMOTE) {
     body.host = readHostPrefix();
   } else {
-    const { stablePid, agentPid, agentCommandLine, detectedEditor, pidChain, foregroundWtHwnd } = resolve();
+    const { stablePid, agentPid, agentCommandLine, detectedEditor, pidChain, foregroundWtHwnd, tmuxSocket, tmuxClient } = resolve();
     body.source_pid = stablePid;
     if (detectedEditor) body.editor = detectedEditor;
     if (agentPid) {
@@ -423,6 +432,8 @@ function buildStateBody(event, payload, resolve) {
       }
     }
     if (pidChain.length) body.pid_chain = pidChain;
+    if (tmuxSocket) body.tmux_socket = tmuxSocket;
+    if (tmuxClient) body.tmux_client = tmuxClient;
     if (shouldReportForegroundWtHwnd(event) && foregroundWtHwnd) {
       body.wt_hwnd = String(foregroundWtHwnd);
     }
@@ -446,15 +457,17 @@ function main() {
   // Remote mode: skip PID collection — remote PIDs are meaningless on the local machine
   if (event === "SessionStart" && !process.env.CLAWD_REMOTE) resolve();
 
-  readStdinJson().then((payload) => {
-    const body = buildStateBody(event, payload || {}, resolve);
-    if (!body) process.exit(0);
-    postStateToRunningServer(
-      JSON.stringify(body),
-      { timeoutMs: 100 },
-      () => process.exit(0)
-    );
-  });
+  readStdinJson()
+    .then((payload) => {
+      const body = buildStateBody(event, payload || {}, resolve);
+      if (!body) process.exit(0);
+      postStateToRunningServer(
+        JSON.stringify(body),
+        { timeoutMs: 100 },
+        () => process.exit(0)
+      );
+    })
+    .catch(() => process.exit(0));
 }
 
 if (require.main === module) main();

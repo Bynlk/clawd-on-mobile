@@ -2,13 +2,13 @@
 
 [返回 README](../../README.zh-CN.md) · [English](copilot-setup.md)
 
-> **从 v0.8.x 起 Clawd 默认自动同步 Copilot CLI hooks**——启用 Copilot CLI agent 后无需手动配置，Clawd 启动时会把 `copilot-hook.js` 写入 `<COPILOT_HOME 或 ~/.copilot>/hooks/hooks.json`（marker-based 增量合并，不会覆盖用户其他 hook）。
+> **Copilot CLI 改为按需安装。** 全新安装后，若需要本机 Copilot CLI 追踪，请先到 **Settings → Agents** 点击 Copilot CLI 的 **Install / 安装**。安装且启用后，Clawd 启动时会把 `copilot-hook.js` 写入 `<COPILOT_HOME 或 ~/.copilot>/hooks/hooks.json`（marker-based 增量合并，不会覆盖用户其他 hook）。
 >
 > 本文档保留作为**高级/手动备选**：调试、定制事件子集、离线参考、或测试 Clawd 行为时用。
 
 ## 自动同步行为速览
 
-- **触发**：Clawd 启动 + 在 Settings 启用 Copilot CLI agent。
+- **触发**：Clawd 启动 + 在 Settings 已安装且启用 Copilot CLI agent。
 - **目标文件**：`<copilot-home>/hooks/hooks.json`，其中 `<copilot-home>` = `$COPILOT_HOME`（trimmed 非空）或 `~/.copilot`。
 - **注册的事件（10 个）**：`sessionStart` / `userPromptSubmitted` / `preToolUse` / `postToolUse` / `sessionEnd` / `errorOccurred` / `agentStop` / `subagentStart` / `subagentStop` / `preCompact`。
 - **覆盖范围**：只接管含 `copilot-hook.js` marker 的 entry；用户其他 entry / 其他 `hooks/*.json` 文件原样保留。

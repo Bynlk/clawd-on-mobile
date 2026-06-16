@@ -36,6 +36,20 @@ const DEFAULT_EDITOR_PATH_CHECKS = [
 const WINDOWS_TERMINAL_WINDOW_CLASS = "CASCADIA_HOSTING_WINDOW_CLASS";
 const WINDOWS_TERMINAL_PROCESS_NAMES = new Set(["windowsterminal.exe", "windowsterminalpreview.exe"]);
 
+function normalizeTmuxSocketPath(value) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || text.length > 4096 || !text.startsWith("/")) return null;
+  return /[\0\r\n]/.test(text) ? null : text;
+}
+
+function normalizeTmuxClientTarget(value) {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || text.length > 256 || text.startsWith("-")) return null;
+  return /^[\w./:-]+$/.test(text) ? text : null;
+}
+
 // ── getPlatformConfig ────────────────────────────────────────────────────────
 // Returns { terminalNames: Set, systemBoundary: Set, editorMap: Object, editorPathChecks: Array }
 // Options:
@@ -271,7 +285,62 @@ function createPidResolver(options) {
       pid = parentPid;
     }
 
-    _cached = { stablePid: terminalPid || lastGoodPid, agentPid, agentCommandLine, detectedEditor, pidChain, foregroundWtHwnd };
+    let tmuxClient = null;
+    if (!isWin && !terminalPid && process.env.TMUX && process.env.TMUX_PANE) {
+      const tmuxParts = process.env.TMUX.split(",");
+      const tmuxServerPid = tmuxParts.length >= 2 ? parseInt(tmuxParts[1], 10) : 0;
+      const walkReachedTmux = tmuxServerPid > 1 && pidChain.includes(tmuxServerPid);
+      if (walkReachedTmux) {
+        try {
+          const raw = execFileSync(
+            "tmux", ["list-clients", "-t", process.env.TMUX_PANE, "-F", "#{client_pid}\t#{client_tty}"],
+            { encoding: "utf8", timeout: 500 }
+          );
+          const clients = raw.split("\n")
+            .map((line) => {
+              const parts = line.split("\t");
+              const pid = parseInt((parts[0] || "").trim(), 10);
+              return {
+                pid,
+                target: normalizeTmuxClientTarget(parts.slice(1).join("\t")),
+              };
+            })
+            .filter(c => Number.isFinite(c.pid) && c.pid > 1);
+          outer: for (const client of clients) {
+            let walkPid = client.pid;
+            const localAdds = [];
+            for (let t = 0; t < 4; t++) {
+              let tName, tParent;
+              try {
+                const tComm = execFileSync("ps", ["-o", "comm=", "-p", String(walkPid)],
+                  { encoding: "utf8", timeout: 500 }).trim();
+                tName = require("path").basename(tComm).toLowerCase();
+                tParent = parseInt(
+                  execFileSync("ps", ["-o", "ppid=", "-p", String(walkPid)],
+                    { encoding: "utf8", timeout: 500 }).trim(), 10);
+              } catch { break; }
+              if (terminalNames.has(tName)) {
+                terminalPid = walkPid;
+                tmuxClient = client.target;
+                pidChain.push(...localAdds, walkPid);
+                break outer;
+              }
+              if (!tParent || tParent <= 1 || tParent === walkPid) break;
+              localAdds.push(walkPid);
+              walkPid = tParent;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    let tmuxSocket = null;
+    if (process.env.TMUX) {
+      const socketPath = process.env.TMUX.split(",")[0];
+      tmuxSocket = normalizeTmuxSocketPath(socketPath);
+    }
+
+    _cached = { stablePid: terminalPid || lastGoodPid, agentPid, agentCommandLine, detectedEditor, pidChain, foregroundWtHwnd, tmuxSocket, tmuxClient };
     return _cached;
   };
 }

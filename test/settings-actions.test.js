@@ -78,11 +78,11 @@ describe("updateRegistry pure-data validators", () => {
   it("function-form boolean fields reject non-booleans", () => {
     const deps = { snapshot: baseSnapshot };
     for (const key of [
-      "sessionHudEnabled", "sessionHudShowElapsed", "sessionHudCleanupDetached",
+      "sessionHudEnabled", "sessionHudShowElapsed", "sessionHudShowContextUsage", "sessionHudCleanupDetached",
       "sessionHudShowStateLabels", "sessionHudPinned",
       "miniMode", "openAtLoginHydrated", "soundMuted", "bubbleFollowPet",
       "hideBubbles", "permissionBubblesEnabled", "lowPowerIdleMode",
-      "allowEdgePinning", "keepSizeAcrossDisplays",
+      "allowEdgePinning", "disableMiniMode", "keepSizeAcrossDisplays",
     ]) {
       assert.strictEqual(updateRegistry[key](true, deps).status, "ok", `${key}(true)`);
       assert.strictEqual(updateRegistry[key](false, deps).status, "ok", `${key}(false)`);
@@ -198,6 +198,10 @@ describe("updateRegistry pure-data validators", () => {
     const deps = { snapshot: baseSnapshot };
     assert.strictEqual(updateRegistry.agents({}, deps).status, "ok");
     assert.strictEqual(updateRegistry.agents([], deps).status, "error");
+    assert.strictEqual(updateRegistry.dismissedAgentInstallHints({ "qwen-code": true }, deps).status, "ok");
+    assert.strictEqual(updateRegistry.dismissedAgentInstallHints({ "qwen-code": false }, deps).status, "error");
+    assert.strictEqual(updateRegistry.dismissedAgentCleanupHints({ "qwen-code": true }, deps).status, "ok");
+    assert.strictEqual(updateRegistry.dismissedAgentCleanupHints({ "qwen-code": false }, deps).status, "error");
     assert.strictEqual(updateRegistry.themeOverrides({}, deps).status, "ok");
     assert.strictEqual(updateRegistry.themeOverrides("nope", deps).status, "error");
   });
@@ -631,6 +635,38 @@ describe("bubble policy commands", () => {
   });
 });
 
+describe("setAutoApproveAll danger gate", () => {
+  it("refuses to enable without confirmed:true (dialog is a real boundary)", async () => {
+    const r = await commandRegistry.setAutoApproveAll({ enabled: true }, {});
+    assert.strictEqual(r.status, "error");
+    assert.match(r.message, /confirmed:true/);
+  });
+
+  it("refuses to enable when confirmed is falsy", async () => {
+    for (const bad of [false, "true", 1, null, undefined]) {
+      const r = await commandRegistry.setAutoApproveAll({ enabled: true, confirmed: bad }, {});
+      assert.strictEqual(r.status, "error", `confirmed=${JSON.stringify(bad)} must be rejected`);
+    }
+  });
+
+  it("enables only with explicit confirmed:true", async () => {
+    const r = await commandRegistry.setAutoApproveAll({ enabled: true, confirmed: true }, {});
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(r.commit, { autoApproveAllPermissions: true });
+  });
+
+  it("disables immediately with no confirmation required", async () => {
+    const r = await commandRegistry.setAutoApproveAll({ enabled: false }, {});
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(r.commit, { autoApproveAllPermissions: false });
+  });
+
+  it("rejects a non-boolean enabled", async () => {
+    const r = await commandRegistry.setAutoApproveAll({ enabled: "yes", confirmed: true }, {});
+    assert.strictEqual(r.status, "error");
+  });
+});
+
 describe("session cleanup interval validators", () => {
   const snapshot = prefs.getDefaults();
 
@@ -846,6 +882,12 @@ describe("hook commands", () => {
   it("cleanupIntegrations disables all managed agents before running cleanup", async () => {
     const calls = [];
     const snapshot = prefs.getDefaults();
+    snapshot.dismissedAgentInstallHints = { hermes: true };
+    snapshot.dismissedAgentCleanupHints = { "qwen-code": true, hermes: true };
+    assert.ok(
+      MANAGED_CLEANUP_AGENT_IDS.includes("reasonix"),
+      "bulk cleanup should include Reasonix hooks"
+    );
     const result = await commandRegistry.cleanupIntegrations(null, {
       snapshot,
       stopIntegrationForAgent: (agentId) => calls.push(["stopIntegration", agentId]),
@@ -856,16 +898,24 @@ describe("hook commands", () => {
         calls.push(["cleanup", options.source]);
         return {
           mode: "apply",
-          summary: { agentsChecked: 14, agentsAffected: 2, entriesRemoved: 3, skipped: 12, failed: 0 },
+          summary: { agentsChecked: 15, agentsAffected: 2, entriesRemoved: 3, skipped: 13, failed: 0 },
         };
       },
     });
 
     assert.strictEqual(result.status, "ok");
+    assert.strictEqual(commandRegistry.cleanupIntegrations.lockKey, "agentIntegration");
     assert.strictEqual(result.cleanup.summary.entriesRemoved, 3);
     for (const agentId of MANAGED_CLEANUP_AGENT_IDS) {
       assert.strictEqual(result.commit.agents[agentId].enabled, false, `${agentId} should be disabled`);
+      assert.strictEqual(result.commit.agents[agentId].integrationInstalled, false, `${agentId} should be uninstalled`);
+      assert.strictEqual(
+        result.commit.dismissedAgentInstallHints[agentId],
+        true,
+        `${agentId} install hint should be dismissed after bulk cleanup`
+      );
     }
+    assert.deepStrictEqual(result.commit.dismissedAgentCleanupHints, {});
     assert.deepStrictEqual(calls.at(-1), ["cleanup", "about"]);
     assert.deepStrictEqual(calls[0], ["stopIntegration", "claude-code"]);
   });
@@ -904,8 +954,11 @@ describe("doctor repair commands", () => {
 
   it("accepts Copilot CLI through the standard auto-repair path", async () => {
     const calls = [];
+    const snapshot = prefs.getDefaults();
+    snapshot.agents["copilot-cli"].integrationInstalled = true;
+    snapshot.agents["copilot-cli"].enabled = true;
     const r = await commandRegistry.repairAgentIntegration({ agentId: "copilot-cli" }, {
-      snapshot: prefs.getDefaults(),
+      snapshot,
       repairIntegrationForAgent: (agentId) => {
         calls.push(agentId);
         return { status: "ok", added: 10, updated: 0 };
@@ -2143,6 +2196,68 @@ describe("importAnimationOverrides command", () => {
     const r = commandRegistry.importAnimationOverrides(validPayload, { snapshot });
     assert.strictEqual(r.status, "ok");
     assert.ok(r.commit.themeOverrides.clawd);
+  });
+});
+
+describe("textScaleByDisplay validator", () => {
+  it("has a registry entry so command commits pass controller validation", () => {
+    // Regression: the controller rejects command commits whose keys lack a
+    // registry validator ("unknown settings key textScaleByDisplay").
+    assert.strictEqual(typeof updateRegistry.textScaleByDisplay, "function");
+  });
+
+  it("accepts a valid display map and rejects junk entries", () => {
+    assert.strictEqual(updateRegistry.textScaleByDisplay({ "1": 1.35, "2": 0.8 }).status, "ok");
+    assert.strictEqual(updateRegistry.textScaleByDisplay({}).status, "ok");
+    assert.strictEqual(updateRegistry.textScaleByDisplay(null).status, "error");
+    assert.strictEqual(updateRegistry.textScaleByDisplay([1.2]).status, "error");
+    assert.strictEqual(updateRegistry.textScaleByDisplay({ "1": 99 }).status, "error");
+    assert.strictEqual(updateRegistry.textScaleByDisplay({ "1": "1.2" }).status, "error");
+    assert.strictEqual(updateRegistry.textScaleByDisplay({ " ": 1.2 }).status, "error");
+  });
+});
+
+describe("setTextScaleForDisplay command", () => {
+  it("writes the entry for the resolved display and keeps other displays", () => {
+    const r = commandRegistry.setTextScaleForDisplay({ value: 1.35 }, {
+      snapshot: { textScaleByDisplay: { "2": 1.2 } },
+      resolveTextScaleDisplayKey: () => "1",
+    });
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(r.commit, { textScaleByDisplay: { "1": 1.35, "2": 1.2 } });
+  });
+
+  it("overwrites an existing entry for the same display", () => {
+    const r = commandRegistry.setTextScaleForDisplay({ value: 1 }, {
+      snapshot: { textScaleByDisplay: { "1": 1.35 } },
+      resolveTextScaleDisplayKey: () => "1",
+    });
+    assert.deepStrictEqual(r.commit, { textScaleByDisplay: { "1": 1 } });
+  });
+
+  it("falls back to the legacy global without display context", () => {
+    const r = commandRegistry.setTextScaleForDisplay({ value: 1.25 }, { snapshot: {} });
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(r.commit, { textScale: 1.25 });
+  });
+
+  it("never evicts the entry being written when the map is at capacity", () => {
+    const full = {};
+    for (let i = 0; i < 16; i++) full[`d${i}`] = 1.2;
+    const r = commandRegistry.setTextScaleForDisplay({ value: 1.4 }, {
+      snapshot: { textScaleByDisplay: full },
+      resolveTextScaleDisplayKey: () => "fresh",
+    });
+    assert.strictEqual(r.commit.textScaleByDisplay.fresh, 1.4);
+    assert.strictEqual(Object.keys(r.commit.textScaleByDisplay).length, 16);
+  });
+
+  it("rejects out-of-range and non-numeric values", () => {
+    const deps = { snapshot: {}, resolveTextScaleDisplayKey: () => "1" };
+    assert.strictEqual(commandRegistry.setTextScaleForDisplay({ value: 0.5 }, deps).status, "error");
+    assert.strictEqual(commandRegistry.setTextScaleForDisplay({ value: 2 }, deps).status, "error");
+    assert.strictEqual(commandRegistry.setTextScaleForDisplay({ value: "abc" }, deps).status, "error");
+    assert.strictEqual(commandRegistry.setTextScaleForDisplay(null, deps).status, "error");
   });
 });
 

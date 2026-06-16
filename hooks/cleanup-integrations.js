@@ -13,12 +13,14 @@ const { unregisterCodeBuddyHooks } = require("./codebuddy-install");
 const { unregisterKiroHooks } = require("./kiro-install");
 const { unregisterKimiHooks } = require("./kimi-install");
 const { unregisterQwenCodeHooks } = require("./qwen-code-install");
+const { unregisterCodewhaleHooks } = require("./codewhale-install");
 const { unregisterCodexCommandHooks } = require("./codex-install-utils");
 const { unregisterOpencodePlugin } = require("./opencode-install");
 const { unregisterPiExtension } = require("./pi-install");
 const { unregisterOpenClawPlugin } = require("./openclaw-install");
 const { resolveHermesHome, unregisterHermesPlugin } = require("./hermes-install");
 const { unregisterQoderHooks } = require("./qoder-install");
+const { unregisterReasonixHooks } = require("./reasonix-install");
 
 const CODEX_MARKERS = ["codex-hook.js", "codex-debug-hook.js"];
 
@@ -32,12 +34,14 @@ const MANAGED_AGENT_IDS = Object.freeze([
   "kiro-cli",
   "kimi-cli",
   "qwen-code",
+  "codewhale",
   "codex",
   "opencode",
   "pi",
   "openclaw",
   "hermes",
   "qoder",
+  "reasonix",
 ]);
 
 const AGENT_DISPLAY_NAMES = Object.freeze({
@@ -50,12 +54,14 @@ const AGENT_DISPLAY_NAMES = Object.freeze({
   "kiro-cli": "Kiro CLI",
   "kimi-cli": "Kimi Code CLI",
   "qwen-code": "Qwen Code",
+  codewhale: "CodeWhale",
   codex: "Codex CLI",
   opencode: "opencode",
   pi: "Pi",
   openclaw: "OpenClaw",
   hermes: "Hermes Agent",
   qoder: "Qoder",
+  reasonix: "Reasonix",
 });
 
 function normalizeHomeDir(value) {
@@ -152,6 +158,10 @@ function buildCleanupOptionsForHome(homeDirInput, options = {}) {
         ...common,
         settingsPath: path.join(homeDir, ".qwen", "settings.json"),
       },
+      codewhale: {
+        ...common,
+        configPath: path.join(homeDir, ".codewhale", "config.toml"),
+      },
       codex: {
         ...common,
         homeDir,
@@ -184,6 +194,10 @@ function buildCleanupOptionsForHome(homeDirInput, options = {}) {
         ...common,
         settingsPath: path.join(homeDir, ".qoder", "settings.json"),
       },
+      reasonix: {
+        ...common,
+        settingsPath: path.join(homeDir, ".reasonix", "settings.json"),
+      },
     },
   };
 }
@@ -198,12 +212,14 @@ const AGENT_CLEANERS = Object.freeze({
   "kiro-cli": unregisterKiroHooks,
   "kimi-cli": unregisterKimiHooks,
   "qwen-code": unregisterQwenCodeHooks,
+  codewhale: unregisterCodewhaleHooks,
   codex: unregisterCodexCommandHooks,
   opencode: unregisterOpencodePlugin,
   pi: unregisterPiExtension,
   openclaw: unregisterOpenClawPlugin,
   hermes: unregisterHermesPlugin,
   qoder: unregisterQoderHooks,
+  reasonix: unregisterReasonixHooks,
 });
 
 function removedCountFromResult(result) {

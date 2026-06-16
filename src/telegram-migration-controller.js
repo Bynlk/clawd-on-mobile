@@ -8,6 +8,7 @@
 const {
   STATES,
   EVENTS,
+  SIDE_EFFECTS,
   applyEvent,
   computeInitial,
   defaultPrefs,
@@ -42,7 +43,7 @@ function createTelegramMigrationController({
 
   let state = STATES.IDLE;
   let prefs = defaultPrefs();
-  let runtimeStatus = { transport: "off", status: "stopped", reason: null };
+  let runtimeStatus = { transport: "off", status: "stopped", reason: null, message: "" };
   let pendingTestTimer = null;
   let lastError = null;
 
@@ -125,7 +126,7 @@ function createTelegramMigrationController({
         state = STATES.SWITCHING_TO_LEGACY;
         const failed = applyEvent(
           { state, prefs, files: readFilesNow() },
-          { type: EVENTS.SIDECAR_START_FAILED, reason: lastError.code },
+          { type: EVENTS.SIDECAR_START_FAILED, reason: lastError.code, message: lastError.message || "" },
         );
         try {
           await manager.apply(failed.sideEffects || []);
@@ -138,6 +139,18 @@ function createTelegramMigrationController({
           };
           state = result.state;
         }
+      } else if (state === STATES.LEGACY_ACTIVE
+        && hasEffect(result.sideEffects, SIDE_EFFECTS.START_SIDECAR)) {
+        // "Retry legacy sidecar" (USER_ENABLE_LEGACY while already LEGACY_ACTIVE)
+        // failed again: refresh runtime-status so the badge failure detail isn't
+        // stale. A fresh enable from IDLE is intentionally left un-promoted —
+        // state stays IDLE and no runtime failure is recorded.
+        try {
+          await applyRuntimeFailure({
+            reason: lastError.code || "sidecar_start_failed",
+            message: lastError.message || "",
+          });
+        } catch {}
       }
       // Best-effort recover: re-read the world so state mirrors reality.
       return { ok: false, errorCode: lastError.code, message: lastError.message, state };
@@ -145,6 +158,7 @@ function createTelegramMigrationController({
 
     state = result.state;
     lastError = null;
+    reconcileRuntimeStatusAfterStateChange();
 
     // Arm/clear the 60s test timer alongside state transitions (per plan §148
     // the Telegram tap deadline is owned by the driver, not the reducer).
@@ -158,6 +172,36 @@ function createTelegramMigrationController({
     return { ok: true, state };
   }
 
+  function hasEffect(sideEffects, type) {
+    return Array.isArray(sideEffects) && sideEffects.some((e) => e && e.type === type);
+  }
+
+  // Record a legacy runtime failure as runtime-status without changing the
+  // lifecycle state. Caller must have already settled `state` to LEGACY_ACTIVE;
+  // the reducer rejects this event in any other state, so a guard miss is a
+  // safe no-op rather than a bad transition.
+  async function applyRuntimeFailure({ reason, message, files }) {
+    const failed = applyEvent(
+      { state, prefs, files: files || readFilesNow() },
+      { type: EVENTS.SIDECAR_RUNTIME_FAILED, reason, message },
+    );
+    if (failed.errorCode) return;
+    await manager.apply(failed.sideEffects || []);
+    state = failed.state;
+  }
+
+  // Reconcile runtime-status when a successful dispatch lands outside legacy
+  // ownership. A stale legacy "failed" must not survive USER_DISABLE / switch to
+  // native — otherwise it leaks into the badge overlay and the Telegram /status
+  // diagnostic. Recovery while still LEGACY_ACTIVE is owned by
+  // SIDECAR_RUNTIME_RECOVERED, so this never clears in legacy/switching states.
+  function reconcileRuntimeStatusAfterStateChange() {
+    if (state === STATES.LEGACY_ACTIVE || state === STATES.SWITCHING_TO_LEGACY) return;
+    if (runtimeStatus && runtimeStatus.transport === "legacy" && runtimeStatus.status === "failed") {
+      runtimeStatus = { transport: "off", status: "stopped", reason: null, message: "" };
+    }
+  }
+
   async function init() {
     readPrefsNow();
     const files = readFilesNow();
@@ -165,7 +209,22 @@ function createTelegramMigrationController({
     try {
       await manager.apply(result.sideEffects || []);
     } catch (err) {
+      lastError = { code: err && err.code ? err.code : "APPLY_FAILED", message: err && err.message };
       log("warn", "migration init apply failed", { error: err && err.message });
+      // computeInitial only emits START_SIDECAR alongside LEGACY_ACTIVE, so the
+      // selected transport stays legacy; surface the failure through
+      // runtime-status so the migration card matches the Telegram badge.
+      state = result.state;
+      if (hasEffect(result.sideEffects, SIDE_EFFECTS.START_SIDECAR)) {
+        try {
+          await applyRuntimeFailure({
+            reason: lastError.code || "sidecar_start_failed",
+            message: lastError.message || "",
+            files,
+          });
+        } catch {}
+      }
+      return state;
     }
     state = result.state;
     return state;

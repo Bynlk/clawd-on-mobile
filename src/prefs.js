@@ -37,8 +37,20 @@ const {
   MAX_AUTO_CLOSE_SECONDS,
 } = require("./bubble-policy");
 const { normalizeSessionAliases } = require("./session-alias");
+const {
+  TEXT_SCALE_MIN,
+  TEXT_SCALE_MAX,
+  TEXT_SCALE_DEFAULT,
+  normalizeTextScaleByDisplay,
+} = require("./text-scale");
 
-const CURRENT_VERSION = 8;
+const CURRENT_VERSION = 11;
+const DEFAULT_INTEGRATION_INSTALLED_IDS = Object.freeze(["claude-code", "codex"]);
+const DEFAULT_INTEGRATION_INSTALLED_SET = new Set(DEFAULT_INTEGRATION_INSTALLED_IDS);
+
+function isDefaultIntegrationInstalled(agentId) {
+  return DEFAULT_INTEGRATION_INSTALLED_SET.has(agentId);
+}
 
 // ── Schema ──
 // Each field has: type, default OR defaultFactory, optional enum/normalize/validate.
@@ -97,8 +109,9 @@ const SCHEMA = {
   bubbleFollowPet: { type: "boolean", default: false },
   sessionHudEnabled: { type: "boolean", default: true },
   sessionHudShowStateLabels: { type: "boolean", default: true },
-  sessionHudShowElapsed: { type: "boolean", default: true },
-  sessionHudCleanupDetached: { type: "boolean", default: false },
+  sessionHudShowElapsed: { type: "boolean", default: false },
+  sessionHudShowContextUsage: { type: "boolean", default: true },
+  sessionHudCleanupDetached: { type: "boolean", default: true },
   sessionHudPinned: { type: "boolean", default: false },
   // Stale-cleanup intervals (ms). Defaults match the historical constants in
   // state-stale-cleanup.js so upgrading users see no behavioral change.
@@ -121,6 +134,23 @@ const SCHEMA = {
   },
   hideBubbles: { type: "boolean", default: false },
   permissionBubblesEnabled: { type: "boolean", default: true },
+  // DANGER: "auto-pilot". When true, every agent permission request is
+  // auto-approved without showing a bubble or asking the user. Default false;
+  // the only way to flip it on is the explicit, confirmation-gated toggle in
+  // Settings. DND and per-agent permissionsEnabled gates still win — they are
+  // checked before showPermissionBubble, which is where auto-approve hooks in.
+  // Headless sessions are also stopped before that chokepoint, but their
+  // downstream fallback is agent-specific: Claude/CodeBuddy auto-deny, while
+  // Codex/Qwen/Copilot/Hermes return no-decision and opencode silently falls
+  // back to its TUI prompt. Codex subagent permission payloads are treated as
+  // headless even if no prior session-state event has populated the runtime map.
+  //
+  // `ephemeral: true` — this field is runtime-only. It is NOT written to disk
+  // by save(), and load()/validate() force it back to the default. So enabling
+  // auto-pilot lasts only for the current app session: quit and relaunch and
+  // it's off again, requiring a fresh confirmation. A dangerous "approve
+  // everything" mode must never silently persist across restarts.
+  autoApproveAllPermissions: { type: "boolean", default: false, ephemeral: true },
   notificationBubbleAutoCloseSeconds: {
     type: "number",
     default: NOTIFICATION_DEFAULT_SECONDS,
@@ -164,6 +194,21 @@ const SCHEMA = {
   // proportional pixel-size recomputation. The pet keeps its current
   // window size; the size slider still works (per-display proportional).
   keepSizeAcrossDisplays: { type: "boolean", default: false },
+  // Text-window zoom (bubbles, HUD, dashboard, settings, resume input). The
+  // pet itself scales via `size` and is never zoomed. `textScale` is the
+  // global default; `textScaleByDisplay` overrides it per display id (the
+  // slider writes the entry for the display the settings window sits on, via
+  // the setTextScaleForDisplay command).
+  textScale: {
+    type: "number",
+    default: TEXT_SCALE_DEFAULT,
+    validate: (v) => Number.isFinite(v) && v >= TEXT_SCALE_MIN && v <= TEXT_SCALE_MAX,
+  },
+  textScaleByDisplay: {
+    type: "object",
+    defaultFactory: () => ({}),
+    normalize: normalizeTextScaleByDisplay,
+  },
   shortcuts: {
     type: "object",
     defaultFactory: () => getDefaultShortcuts(),
@@ -175,28 +220,43 @@ const SCHEMA = {
   agents: {
     type: "object",
     defaultFactory: () => ({
-      "claude-code": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "codex": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true, permissionMode: "intercept", nativeNotificationSoundEnabled: false },
-      "copilot-cli": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "cursor-agent": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "gemini-cli": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
+      // subagentPermissionsEnabled (#451): bubbles for PermissionRequests
+      // fired inside a Task subagent. Only claude-code carries the flag —
+      // normalizeAgents drops it for agents whose default entry lacks it.
+      "claude-code": { integrationInstalled: true, enabled: true, permissionsEnabled: true, subagentPermissionsEnabled: true, notificationHookEnabled: true },
+      "codex": { integrationInstalled: true, enabled: true, permissionsEnabled: true, notificationHookEnabled: true, permissionMode: "intercept", nativeNotificationSoundEnabled: false },
+      "copilot-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
+      "cursor-agent": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
+      "gemini-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
       // Antigravity is state-only post-D2 — Clawd never surfaces a permission
       // bubble for agy regardless of this flag (see server-route-permission.js
       // antigravity branch). Default kept as false so legacy reads don't see a
       // stale "true" implying bubbles are enabled.
-      "antigravity-cli": { enabled: true, permissionsEnabled: false },
-      "codebuddy": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "kiro-cli": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "kimi-cli": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "qwen-code": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "opencode": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
-      "pi": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
-      "openclaw": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
-      "hermes": { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
+      "antigravity-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: false },
+      "codebuddy": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
+      "kiro-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
+      "kimi-cli": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
+      "qwen-code": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
+      "codewhale": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
+      "opencode": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
+      "pi": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
+      "openclaw": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
+      "hermes": { integrationInstalled: false, enabled: false, permissionsEnabled: true, notificationHookEnabled: true },
       // Qoder is state-only (Phase 1) — permission bubbles default off.
-      "qoder": { enabled: true, permissionsEnabled: false, notificationHookEnabled: true },
+      "qoder": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
+      "reasonix": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
     }),
     normalize: normalizeAgents,
+  },
+  dismissedAgentInstallHints: {
+    type: "object",
+    defaultFactory: () => ({}),
+    normalize: normalizeDismissedAgentHintMap,
+  },
+  dismissedAgentCleanupHints: {
+    type: "object",
+    defaultFactory: () => ({}),
+    normalize: normalizeDismissedAgentHintMap,
   },
   themeOverrides: {
     type: "object",
@@ -320,6 +380,10 @@ function validate(raw) {
   for (const key of SCHEMA_KEYS) {
     if (!(key in raw)) continue;
     const field = SCHEMA[key];
+    // Ephemeral (runtime-only) fields are never restored from a snapshot —
+    // they always reset to their default on load. This is how auto-pilot stays
+    // off across restarts even if a value somehow landed on disk.
+    if (field.ephemeral) continue;
     let value = raw[key];
     if (field.type === "object" && typeof field.normalize === "function") {
       value = field.normalize(value, out[key]);
@@ -367,6 +431,9 @@ function normalizeStaleTriple(out) {
 //   is reset off.
 function migrate(raw) {
   if (!raw || typeof raw !== "object") return raw;
+  const originalAgentIds = raw.agents && typeof raw.agents === "object" && !Array.isArray(raw.agents)
+    ? new Set(Object.keys(raw.agents))
+    : new Set();
   const out = { ...raw };
   if (out.version === undefined || out.version === null) {
     out.version = 1;
@@ -472,6 +539,46 @@ function migrate(raw) {
     }
     out.version = 8;
   }
+  // v8 -> v9: introduce autoApproveAllPermissions ("auto-pilot"). Force the
+  // value OFF on upgrade — a v8 prefs file could not have legitimately set this
+  // key (it didn't exist yet), so any pre-existing value is stale or planted.
+  // Clearing it guarantees an upgrading user never silently inherits
+  // auto-approval; the only way to turn it on is the confirmation-gated path.
+  if (out.version < 9) {
+    out.autoApproveAllPermissions = false;
+    out.version = 9;
+  }
+  // v9 -> v10: sessionHudShowElapsed / sessionHudCleanupDetached flipped their
+  // schema defaults for FRESH INSTALLS ONLY (compact HUD by default). Existing
+  // files normally carry both keys explicitly (save() bakes the full
+  // snapshot), but a file written by a pre-HUD-toggle build or hand-trimmed
+  // by the user lacks them — without this backfill validate() would hand
+  // those users the new defaults and visibly change their HUD. Pin the old
+  // defaults for every pre-v10 file; fresh installs never run migrate().
+  if (out.version < 10) {
+    if (!("sessionHudShowElapsed" in out)) out.sessionHudShowElapsed = true;
+    if (!("sessionHudCleanupDetached" in out)) out.sessionHudCleanupDetached = false;
+    out.version = 10;
+  }
+  // v10 -> v11: agent integrations are installed on demand. Entries that were
+  // actually present in an old prefs file predate `integrationInstalled`, so
+  // keep them managed by Clawd. Missing entries fall through to v11 defaults
+  // instead of pretending that a never-seen/newer agent was installed.
+  if (out.version < 11) {
+    if (out.agents && typeof out.agents === "object") {
+      const defaults = SCHEMA.agents.defaultFactory();
+      for (const agentId of Object.keys(defaults)) {
+        if (!originalAgentIds.has(agentId)) continue;
+        const current = out.agents[agentId];
+        if (!current || typeof current !== "object") continue;
+        out.agents[agentId] = {
+          ...current,
+          integrationInstalled: true,
+        };
+      }
+    }
+    out.version = 11;
+  }
   if ((typeof out.version === "number" ? out.version : 0) < CURRENT_VERSION) {
     out.version = CURRENT_VERSION;
   }
@@ -479,10 +586,26 @@ function migrate(raw) {
   return out;
 }
 
-const AGENT_FLAGS = ["enabled", "permissionsEnabled", "notificationHookEnabled", "nativeNotificationSoundEnabled"];
+const AGENT_FLAGS = [
+  "integrationInstalled",
+  "enabled",
+  "permissionsEnabled",
+  "subagentPermissionsEnabled",
+  "notificationHookEnabled",
+  "nativeNotificationSoundEnabled",
+];
 const CODEX_PERMISSION_MODES = ["native", "intercept"];
 
 function normalizeDismissedUpdateVersions(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out = {};
+  for (const key of Object.keys(value)) {
+    if (typeof key === "string" && key && value[key] === true) out[key] = true;
+  }
+  return out;
+}
+
+function normalizeDismissedAgentHintMap(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out = {};
   for (const key of Object.keys(value)) {
@@ -517,7 +640,12 @@ function normalizeAgents(value, defaultsValue) {
     const entry = value[id];
     if (!entry || typeof entry !== "object") continue;
     const base = (defaultsValue && defaultsValue[id])
-      || { enabled: true, permissionsEnabled: true, notificationHookEnabled: true };
+      || {
+        integrationInstalled: isDefaultIntegrationInstalled(id),
+        enabled: true,
+        permissionsEnabled: true,
+        notificationHookEnabled: true,
+      };
     const merged = { ...base };
     let touched = false;
     const allowedFlags = AGENT_FLAGS.filter((flag) => Object.prototype.hasOwnProperty.call(base, flag));
@@ -780,6 +908,12 @@ function load(prefsPath) {
 
 function save(prefsPath, snapshot) {
   const validated = validate(snapshot);
+  // Ephemeral (runtime-only) fields never touch disk — drop them so a
+  // dangerous mode like auto-pilot can't persist across restarts, and so the
+  // prefs file never contains a scary `autoApproveAllPermissions: true`.
+  for (const key of SCHEMA_KEYS) {
+    if (SCHEMA[key].ephemeral) delete validated[key];
+  }
   // Ensure parent directory exists (Electron userData is normally created by the
   // framework, but we can't assume it for tests).
   try {
@@ -794,6 +928,7 @@ module.exports = {
   SCHEMA_KEYS,
   AGENT_FLAGS,
   CODEX_PERMISSION_MODES,
+  DEFAULT_INTEGRATION_INSTALLED_IDS,
   getDefaults,
   validate,
   migrate,

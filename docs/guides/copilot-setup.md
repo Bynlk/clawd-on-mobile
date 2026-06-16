@@ -2,13 +2,13 @@
 
 [Back to README](../../README.md) · [简体中文](copilot-setup.zh-CN.md)
 
-> **Starting in v0.8.x, Clawd auto-syncs Copilot CLI hooks by default.** Enabling the Copilot CLI agent in Settings is enough — on launch, Clawd writes `copilot-hook.js` into `<COPILOT_HOME or ~/.copilot>/hooks/hooks.json` using marker-based merge that preserves your other hook entries.
+> **Copilot CLI is installed on demand.** On fresh installs, open **Settings → Agents** and click **Install** for Copilot CLI before using local Copilot tracking. After it is installed and enabled, Clawd writes `copilot-hook.js` into `<COPILOT_HOME or ~/.copilot>/hooks/hooks.json` on launch using marker-based merge that preserves your other hook entries.
 >
 > This document is kept as the **advanced / manual fallback**: useful for debugging, customizing the event subset, working offline, or testing Clawd's behavior.
 
 ## Auto-sync at a glance
 
-- **Trigger**: Clawd launches *and* Copilot CLI is enabled in Settings.
+- **Trigger**: Clawd launches *and* Copilot CLI is installed and enabled in Settings.
 - **Target file**: `<copilot-home>/hooks/hooks.json`, where `<copilot-home>` is `$COPILOT_HOME` (trimmed, non-empty) or `~/.copilot` if the env is unset.
 - **Registered events (10)**: `sessionStart`, `userPromptSubmitted`, `preToolUse`, `postToolUse`, `sessionEnd`, `errorOccurred`, `agentStop`, `subagentStart`, `subagentStop`, `preCompact`.
 - **Coverage**: only entries containing the `copilot-hook.js` marker are managed; your other entries and other `hooks/*.json` files are left untouched.

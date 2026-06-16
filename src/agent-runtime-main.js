@@ -3,6 +3,7 @@
 const DefaultCodexSubagentClassifier = require("../agents/codex-subagent-classifier");
 const {
   buildCodexMonitorUpdateOptions,
+  isCodexMonitorMetadataOnlyEvent,
   isCodexMonitorPermissionEvent,
 } = require("./codex-monitor-callback");
 
@@ -135,6 +136,10 @@ function createAgentRuntimeMain(options = {}) {
     return callServer("stopIntegrationForAgent", agentId);
   }
 
+  function uninstallIntegrationForAgent(agentId) {
+    return callServer("uninstallIntegrationForAgent", agentId);
+  }
+
   function clearSessionsByAgent(agentId) {
     const state = getStateRuntime();
     return state && typeof state.clearSessionsByAgent === "function"
@@ -142,11 +147,11 @@ function createAgentRuntimeMain(options = {}) {
       : 0;
   }
 
-  function dismissPermissionsByAgent(agentId) {
+  function dismissPermissionsByAgent(agentId, options) {
     const perm = getPermissionRuntime();
     const state = getStateRuntime();
     const removed = perm && typeof perm.dismissPermissionsByAgent === "function"
-      ? perm.dismissPermissionsByAgent(agentId)
+      ? perm.dismissPermissionsByAgent(agentId, options)
       : 0;
     // Kimi keeps a state-side permission hold for passive notifications; when
     // an agent is disabled, dismissing the bubble must release that hold too.
@@ -169,7 +174,30 @@ function createAgentRuntimeMain(options = {}) {
       const CodexLogMonitor = loadCodexLogMonitor();
       const codexAgent = loadCodexAgent();
       codexMonitor = new CodexLogMonitor(codexAgent, (sid, state, event, extra) => {
-        if (shouldSuppressCodexLogEvent(sid, state, event)) return;
+        if (isCodexMonitorMetadataOnlyEvent(event, extra)) {
+          const metadataOptions = buildCodexMonitorUpdateOptions(extra, {
+            includeHeadless: true,
+          });
+          if (metadataOptions.contextUsage) {
+            updateSession(sid, state, event, {
+              ...metadataOptions,
+              preserveState: true,
+            });
+          }
+          return;
+        }
+        if (shouldSuppressCodexLogEvent(sid, state, event)) {
+          const metadataOptions = buildCodexMonitorUpdateOptions(extra, {
+            includeHeadless: true,
+          });
+          if (metadataOptions.contextUsage) {
+            updateSession(sid, state, event, {
+              ...metadataOptions,
+              preserveState: true,
+            });
+          }
+          return;
+        }
         if (isCodexMonitorPermissionEvent(state)) {
           updateSession(sid, "notification", event, buildCodexMonitorUpdateOptions(extra, {
             includeHeadless: false,
@@ -207,6 +235,7 @@ function createAgentRuntimeMain(options = {}) {
     syncIntegrationForAgent,
     repairIntegrationForAgent,
     stopIntegrationForAgent,
+    uninstallIntegrationForAgent,
     clearSessionsByAgent,
     dismissPermissionsByAgent,
     updateSessionFromServer,

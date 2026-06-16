@@ -286,10 +286,12 @@ function buildPermissionBody(payload, resolve, options = {}) {
     const readHost = options.readHostPrefix || readHostPrefix;
     body.host = readHost();
   } else if (typeof resolve === "function") {
-    const { stablePid, agentPid, pidChain } = resolve();
+    const { stablePid, agentPid, pidChain, tmuxSocket, tmuxClient } = resolve();
     if (stablePid) body.source_pid = stablePid;
     if (agentPid) body.agent_pid = agentPid;
     if (Array.isArray(pidChain) && pidChain.length) body.pid_chain = pidChain;
+    if (tmuxSocket) body.tmux_socket = tmuxSocket;
+    if (tmuxClient) body.tmux_client = tmuxClient;
   }
 
   return body;
@@ -370,11 +372,13 @@ function buildStateBody(event, payload, resolve, options = {}) {
     const readHost = options.readHostPrefix || readHostPrefix;
     body.host = readHost();
   } else {
-    const { stablePid, agentPid, detectedEditor, pidChain } = resolve();
+    const { stablePid, agentPid, detectedEditor, pidChain, tmuxSocket, tmuxClient } = resolve();
     body.source_pid = stablePid;
     if (detectedEditor) body.editor = detectedEditor;
     if (agentPid) body.agent_pid = agentPid;
     if (pidChain.length) body.pid_chain = pidChain;
+    if (tmuxSocket) body.tmux_socket = tmuxSocket;
+    if (tmuxClient) body.tmux_client = tmuxClient;
   }
 
   return body;

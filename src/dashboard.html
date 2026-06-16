@@ -61,7 +61,8 @@ body { user-select: none; }
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  /* 100% (zoom-aware), not viewport units — see settings.css .app for why. */
+  height: 100%;
   min-width: 0;
 }
 
@@ -211,7 +212,8 @@ h1 {
 
 .meta,
 .path,
-.event-row {
+.event-row,
+.context-usage-row {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -226,6 +228,11 @@ h1 {
 
 .event-row {
   color: var(--muted);
+}
+
+.context-usage-row {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .badge {

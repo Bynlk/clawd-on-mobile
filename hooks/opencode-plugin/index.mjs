@@ -109,6 +109,8 @@ const _sessionParentById = new Map();
 let _stablePid = null;
 let _pidChain = [];
 let _detectedEditor = null;
+let _tmuxSocket = null;
+let _tmuxClient = null;
 // Project directory — captured from ctx.directory at init, sent with every
 // POST so state.js can display path.basename(cwd) as the session menu label
 // (otherwise it falls back to the session_id prefix, e.g. "ses 2a..").
@@ -273,6 +275,26 @@ function getStablePid() {
   }
 
   _stablePid = terminalPid || lastGoodPid;
+
+  _tmuxSocket = null;
+  _tmuxClient = null;
+  if (process.env.TMUX) {
+    const socketPath = process.env.TMUX.split(",")[0];
+    if (typeof socketPath === "string" && socketPath.startsWith("/") && socketPath.length <= 4096 && !/[\0\r\n]/.test(socketPath)) {
+      _tmuxSocket = socketPath;
+    }
+    if (process.env.TMUX_PANE) {
+      try {
+        const raw = execFileSync("tmux", ["list-clients", "-t", process.env.TMUX_PANE, "-F", "#{client_tty}"],
+          { encoding: "utf8", timeout: 500 });
+        const target = raw.split("\n").map(s => s.trim()).find(Boolean) || "";
+        if (target && target.length <= 256 && !target.startsWith("-") && /^[\w./:-]+$/.test(target)) {
+          _tmuxClient = target;
+        }
+      } catch {}
+    }
+  }
+
   debugLog(`PID resolved stable=${_stablePid} editor=${_detectedEditor || "none"} chain=[${_pidChain.join(",")}]`);
   return _stablePid;
 }
@@ -288,6 +310,8 @@ function postToClawd(urlPath, body, logTag) {
     body.source_pid = _stablePid;
     if (_pidChain.length) body.pid_chain = _pidChain;
     if (_detectedEditor) body.editor = _detectedEditor;
+    if (_tmuxSocket) body.tmux_socket = _tmuxSocket;
+    if (_tmuxClient) body.tmux_client = _tmuxClient;
   }
   if (_cwd) body.cwd = _cwd;
   body.agent_pid = process.pid;

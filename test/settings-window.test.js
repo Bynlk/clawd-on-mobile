@@ -314,3 +314,42 @@ test("settings window runtime skips temporary front lift outside Windows", () =>
   assert.deepStrictEqual(win.calls.slice(-3), ["show", "moveTop", "focus"]);
   assert.strictEqual(win.calls.some((call) => Array.isArray(call) && call[0] === "setAlwaysOnTop"), false);
 });
+
+test("settings window move re-applies text scale and pokes the slider context (debounced)", () => {
+  const { runtime, timers } = createRuntime();
+
+  runtime.open();
+  const win = FakeBrowserWindow.instances[0];
+  const sends = [];
+  win.webContents = {
+    isDestroyed: () => false,
+    send: (channel) => sends.push(channel),
+  };
+
+  // Two quick moves: the first debounce timer is superseded, nothing fires
+  // until the surviving timer runs.
+  win.emit("move");
+  win.emit("move");
+  const moveTimers = timers.filter((timer) => timer.delay === 350);
+  assert.strictEqual(moveTimers.length, 2);
+  assert.strictEqual(moveTimers[0].cleared, true);
+  assert.strictEqual(moveTimers[1].cleared, false);
+  assert.deepStrictEqual(sends, []);
+
+  moveTimers[1].callback();
+  assert.deepStrictEqual(sends, ["settings:text-scale-context-changed"]);
+});
+
+test("applyTextScaleToWindow pokes the slider context even when zoom injection is unavailable", () => {
+  const { runtime } = createRuntime();
+
+  runtime.open();
+  const win = FakeBrowserWindow.instances[0];
+  const sends = [];
+  // No insertCSS: applyZoomToWindow bails, but the context poke (which the
+  // cross-display slider sync depends on) must still go out.
+  win.webContents = { send: (channel) => sends.push(channel) };
+
+  runtime.applyTextScaleToWindow();
+  assert.deepStrictEqual(sends, ["settings:text-scale-context-changed"]);
+});

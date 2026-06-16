@@ -387,6 +387,28 @@ function buildTelegramApprovalStatus({
 
   const ready = telegramApprovalSettings.readiness(config, token);
   const legacyStatus = sidecarStatus || { status: "stopped" };
+  // Reverse-divergence guard: once the controller knows the legacy sidecar
+  // failed, keep the badge "failed" even if the live sidecar handle has since
+  // gone "stopped" or been torn down (which would otherwise read as "ready").
+  // Only the failure overlay is honoured — "running" must still come from the
+  // live sidecar status, never from a stale runtime-status snapshot.
+  const runtimeStatus = migrationSnapshot && migrationSnapshot.runtimeStatus;
+  // Only overlay while legacy is the *current* owner. A stale legacy failure
+  // (e.g. user disabled or switched after a failure) must not keep the badge
+  // red; the controller also reconciles runtimeStatus on those transitions.
+  if (migrationSnapshot && migrationSnapshot.state === "LEGACY_ACTIVE"
+    && runtimeStatus && runtimeStatus.transport === "legacy" && runtimeStatus.status === "failed") {
+    return {
+      ...legacyStatus,
+      status: "failed",
+      transport: "legacy",
+      enabled: config && config.enabled === true,
+      configured: ready.ready === true,
+      reason: runtimeStatus.reason || legacyStatus.reason || "failed",
+      message: runtimeStatus.message || legacyStatus.message || ready.message || "",
+      tokenStored: token && token.tokenStored === true,
+    };
+  }
   return {
     ...legacyStatus,
     transport: "legacy",

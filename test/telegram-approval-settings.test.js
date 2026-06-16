@@ -32,7 +32,7 @@ test("normalizeTelegramApproval trims ids and accepts numeric chat id shorthand"
     allowedTgUserId: "123456789",
     targetSessionKey: "telegram:987654321",
     notifyOnComplete: false,
-    completionOutputMode: "full",
+    completionOutputMode: "off",
     r3DirectSendEnabled: false,
   });
 });
@@ -116,7 +116,7 @@ test("readiness blocks enabled Telegram approval until ids and token are configu
       allowedTgUserId: "",
       targetSessionKey: "telegram:987654321",
       notifyOnComplete: false,
-      completionOutputMode: "full",
+      completionOutputMode: "off",
       r3DirectSendEnabled: false,
     },
   });

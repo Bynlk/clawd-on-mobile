@@ -20,6 +20,10 @@ const VERIFIED_GITHUB_CONTRIBUTORS = [
   "NeroAyase",
   "divergentD",
   "Ne9roni",
+  "QingXB",
+  "29206394",
+  "Tsdsj",
+  "godlockin",
 ];
 
 function extractContributorTable(markdown, filename) {

@@ -47,6 +47,31 @@ describe("createSettingsController construction", () => {
   });
 });
 
+describe("setTextScaleForDisplay end-to-end commit", () => {
+  it("commits the per-display map through the controller and persists it", async () => {
+    // Regression: the command's commit key must pass the controller's
+    // registry validation ("unknown settings key textScaleByDisplay").
+    const ctrl = createSettingsController({
+      prefsPath: makeTempPath(),
+      injectedDeps: { resolveTextScaleDisplayKey: () => "69992868" },
+    });
+    const r = await ctrl.applyCommand("setTextScaleForDisplay", { value: 1.35 });
+    assert.strictEqual(r.status, "ok");
+    assert.deepStrictEqual(ctrl.get("textScaleByDisplay"), { "69992868": 1.35 });
+
+    const again = await ctrl.applyCommand("setTextScaleForDisplay", { value: 1 });
+    assert.strictEqual(again.status, "ok");
+    assert.deepStrictEqual(ctrl.get("textScaleByDisplay"), { "69992868": 1 });
+  });
+
+  it("falls back to the legacy global key without display context", async () => {
+    const ctrl = createSettingsController({ prefsPath: makeTempPath() });
+    const r = await ctrl.applyCommand("setTextScaleForDisplay", { value: 1.25 });
+    assert.strictEqual(r.status, "ok");
+    assert.strictEqual(ctrl.get("textScale"), 1.25);
+  });
+});
+
 describe("applyUpdate sync invariant", () => {
   it("sync action: returns a plain object, NOT a Promise, and the next sync read sees the new value", () => {
     // This is the contract that lets `ctx.lang = "zh"` work in sync menu setters

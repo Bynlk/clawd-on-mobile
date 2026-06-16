@@ -57,7 +57,7 @@ test("first snapshot primes dedupe without notifying", async () => {
   assert.deepEqual(sent, [], "backlog of already-finished sessions must not re-ping on start");
 });
 
-test("factory defaults to full output without bare completion fallback", async () => {
+test("factory defaults to no completion output", async () => {
   const { comp, sent } = makeCompanion();
   comp.onSnapshot({ sessions: [] });
   comp.onSnapshot({ sessions: [doneEntry()] });
@@ -67,6 +67,18 @@ test("factory defaults to full output without bare completion fallback", async (
   comp.onSnapshot({
     sessions: [doneEntry({
       lastEvent: { rawEvent: "Stop", at: 2000 },
+      assistantLastOutput: "Implemented the fix.",
+    })],
+  });
+  await tick();
+  assert.deepEqual(sent, [], "default factory should not send assistant output");
+});
+
+test("factory sends assistant output only when full output is explicit", async () => {
+  const { comp, sent } = makeCompanion({ getCompletionOutputMode: () => "full" });
+  comp.onSnapshot({ sessions: [] });
+  comp.onSnapshot({
+    sessions: [doneEntry({
       assistantLastOutput: "Implemented the fix.",
     })],
   });

@@ -10,7 +10,7 @@ installer users.
 - A local Clawd instance is running
 - Your machine can reach the remote host via the system `ssh`
 - Node.js is installed on the remote
-- Claude Code and/or Codex CLI is installed on the remote
+- At least one supported remote agent is installed on the remote: Claude Code, Codex CLI, or Copilot CLI
 
 Clawd does not store SSH passwords or private-key passphrases. First-time host
 key confirmation, passphrase entry, and ssh-agent loading are all handled by
@@ -29,9 +29,14 @@ the system `ssh` and your system terminal.
 4. Click **One-click deploy**.
    - Clawd opens and maintains the `ssh -R` reverse tunnel
    - Then it copies hook files from the currently installed Clawd to the remote's `~/.claude/hooks/`
-   - Then it registers Claude Code hooks and Codex official hooks in remote mode
+   - Then it registers Claude Code hooks, Codex official hooks, and Copilot CLI hooks in remote mode when the matching remote agent is installed
    - Connection / deployment logs are shown directly below the profile
-5. Start Claude Code or Codex CLI on the remote. The Dashboard will show the session once the first remote hook event arrives.
+5. Start Claude Code, Codex CLI, or Copilot CLI on the remote. The Dashboard will show the session once the first remote hook event arrives.
+
+For remote-only Copilot CLI tracking on a fresh local install, turn on
+**Copilot CLI** in **Settings → Agents** so Clawd accepts those remote hook
+events. You do not need to click **Install** unless you also want local Copilot
+hooks on this machine.
 
 If the profile has **Auto-start Codex fallback monitor on connect** enabled,
 Clawd will SSH in after connect to launch `~/.claude/hooks/codex-remote-monitor.js`.
@@ -46,7 +51,7 @@ your LAN IP directly either.
 The actual chain is:
 
 ```
-Remote Claude/Codex hook
+Remote Claude/Codex/Copilot hook
   -> POST http://127.0.0.1:<remote forward port>
   -> SSH reverse tunnel
   -> Local Clawd http://127.0.0.1:<local runtime port>
@@ -59,12 +64,14 @@ appear in the Dashboard, you still need:
 - Remote hooks deployed successfully
 - The remote agent started, with at least one hook event emitted
 - For Codex, the remote Codex TUI has reviewed the hooks via `/hooks` if your version requires it
+- For remote-only Copilot CLI on a fresh local install, local **Settings → Agents → Copilot CLI** is turned on
 
 ## Doctor vs. remote boundary
 
 Doctor's **Agent integration** check only diagnoses local config — e.g. the
 hook path in your local `~/.claude/settings.json`. It does **not** SSH into the
-remote to inspect the remote's `~/.claude/settings.json` or `~/.codex/hooks.json`.
+remote to inspect the remote's `~/.claude/settings.json`, `~/.codex/hooks.json`,
+or `~/.copilot/hooks/hooks.json`.
 
 So a local `broken path` only means your local Claude hook path is off; it
 does not imply the remote SSH deployment failed. Check the **Hook status** and

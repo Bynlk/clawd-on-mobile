@@ -104,8 +104,16 @@ function getWindowsClaudePathSuffixes(pathExtEnv) {
   return suffixes;
 }
 
+// Path semantics must follow the requested platform, not the host: tests inject
+// win32/posix scenarios cross-platform. In production platform === process.platform,
+// so this resolves to the host path module.
+function pathForPlatform(platform) {
+  return platform === "win32" ? path.win32 : path.posix;
+}
+
 function getClaudePathCandidates(options = {}) {
   const platform = options.platform || process.platform;
+  const platformPath = pathForPlatform(platform);
   const pathEnv = options.pathEnv !== undefined ? options.pathEnv : process.env.PATH;
   const existsSync = options.existsSync || fs.existsSync;
 
@@ -124,7 +132,7 @@ function getClaudePathCandidates(options = {}) {
     if (!dir) continue;
 
     for (const suffix of suffixes) {
-      const candidate = path.join(dir, `claude${suffix}`);
+      const candidate = platformPath.join(dir, `claude${suffix}`);
       const key = platform === "win32" ? candidate.toLowerCase() : candidate;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -140,6 +148,7 @@ function getClaudePathCandidates(options = {}) {
 
 async function getClaudePathCandidatesAsync(options = {}) {
   const platform = options.platform || process.platform;
+  const platformPath = pathForPlatform(platform);
   const pathEnv = options.pathEnv !== undefined ? options.pathEnv : process.env.PATH;
   const access = options.access || fs.promises.access.bind(fs.promises);
 
@@ -158,7 +167,7 @@ async function getClaudePathCandidatesAsync(options = {}) {
     if (!dir) continue;
 
     for (const suffix of suffixes) {
-      const candidate = path.join(dir, `claude${suffix}`);
+      const candidate = platformPath.join(dir, `claude${suffix}`);
       const key = platform === "win32" ? candidate.toLowerCase() : candidate;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -175,12 +184,13 @@ async function getClaudePathCandidatesAsync(options = {}) {
 
 function getClaudePackageJsonCandidates(candidatePath, options = {}) {
   const platform = options.platform || process.platform;
+  const platformPath = pathForPlatform(platform);
   const existsSync = options.existsSync || fs.existsSync;
   const readFileSync = options.readFileSync || fs.readFileSync;
   const realpathSync = options.realpathSync || fs.realpathSync;
   const statSync = options.statSync || fs.statSync;
 
-  if (!path.isAbsolute(candidatePath)) return [];
+  if (!platformPath.isAbsolute(candidatePath)) return [];
 
   const candidates = [];
   const seen = new Set();
@@ -195,12 +205,12 @@ function getClaudePackageJsonCandidates(candidatePath, options = {}) {
     } catch {}
   };
 
-  const candidateDir = path.dirname(candidatePath);
-  addCandidate(path.join(candidateDir, ...CLAUDE_PACKAGE_JSON_SEGMENTS));
+  const candidateDir = platformPath.dirname(candidatePath);
+  addCandidate(platformPath.join(candidateDir, ...CLAUDE_PACKAGE_JSON_SEGMENTS));
 
   try {
     const resolvedPath = realpathSync(candidatePath);
-    addCandidate(path.join(path.dirname(resolvedPath), "package.json"));
+    addCandidate(platformPath.join(platformPath.dirname(resolvedPath), "package.json"));
   } catch {}
 
   try {
@@ -211,8 +221,8 @@ function getClaudePackageJsonCandidates(candidatePath, options = {}) {
       const shimSource = readFileSync(candidatePath, "utf8");
       const shimMatch = shimSource.match(CLAUDE_SHIM_CLI_PATTERN);
       if (shimMatch) {
-        const cliPath = path.resolve(candidateDir, shimMatch[0].replace(/[\\/]/g, path.sep));
-        addCandidate(path.join(path.dirname(cliPath), "package.json"));
+        const cliPath = platformPath.resolve(candidateDir, shimMatch[0].replace(/[\\/]/g, platformPath.sep));
+        addCandidate(platformPath.join(platformPath.dirname(cliPath), "package.json"));
       }
     }
   } catch {}
@@ -222,12 +232,13 @@ function getClaudePackageJsonCandidates(candidatePath, options = {}) {
 
 async function getClaudePackageJsonCandidatesAsync(candidatePath, options = {}) {
   const platform = options.platform || process.platform;
+  const platformPath = pathForPlatform(platform);
   const access = options.access || fs.promises.access.bind(fs.promises);
   const readFile = options.readFile || fs.promises.readFile.bind(fs.promises);
   const realpath = options.realpath || fs.promises.realpath.bind(fs.promises);
   const stat = options.stat || fs.promises.stat.bind(fs.promises);
 
-  if (!path.isAbsolute(candidatePath)) return [];
+  if (!platformPath.isAbsolute(candidatePath)) return [];
 
   const candidates = [];
   const seen = new Set();
@@ -243,12 +254,12 @@ async function getClaudePackageJsonCandidatesAsync(candidatePath, options = {}) 
     } catch {}
   };
 
-  const candidateDir = path.dirname(candidatePath);
-  await addCandidate(path.join(candidateDir, ...CLAUDE_PACKAGE_JSON_SEGMENTS));
+  const candidateDir = platformPath.dirname(candidatePath);
+  await addCandidate(platformPath.join(candidateDir, ...CLAUDE_PACKAGE_JSON_SEGMENTS));
 
   try {
     const resolvedPath = await realpath(candidatePath);
-    await addCandidate(path.join(path.dirname(resolvedPath), "package.json"));
+    await addCandidate(platformPath.join(platformPath.dirname(resolvedPath), "package.json"));
   } catch {}
 
   try {
@@ -258,8 +269,8 @@ async function getClaudePackageJsonCandidatesAsync(candidatePath, options = {}) 
       const shimSource = await readFile(candidatePath, "utf8");
       const shimMatch = String(shimSource).match(CLAUDE_SHIM_CLI_PATTERN);
       if (shimMatch) {
-        const cliPath = path.resolve(candidateDir, shimMatch[0].replace(/[\\/]/g, path.sep));
-        await addCandidate(path.join(path.dirname(cliPath), "package.json"));
+        const cliPath = platformPath.resolve(candidateDir, shimMatch[0].replace(/[\\/]/g, platformPath.sep));
+        await addCandidate(platformPath.join(platformPath.dirname(cliPath), "package.json"));
       }
     }
   } catch {}
@@ -324,14 +335,15 @@ async function readClaudeVersionFallbackAsync(candidatePath, options = {}) {
  */
 function getClaudeVersion(options = {}) {
   const platform = options.platform || process.platform;
+  const platformPath = pathForPlatform(platform);
   const homeDir = options.homeDir || os.homedir();
   const execFileSync = options.execFileSync || require("child_process").execFileSync;
   const candidates = [];
 
   if (platform === "darwin") {
     candidates.push(
-      path.join(homeDir, ".local", "bin", "claude"),
-      path.join(homeDir, ".claude", "local", "claude"),
+      platformPath.join(homeDir, ".local", "bin", "claude"),
+      platformPath.join(homeDir, ".claude", "local", "claude"),
       "/opt/homebrew/bin/claude",
       "/usr/local/bin/claude"
     );
@@ -378,6 +390,7 @@ async function getClaudeVersionAsync(options = {}) {
 
   const compute = async () => {
     const platform = options.platform || process.platform;
+    const platformPath = pathForPlatform(platform);
     const homeDir = options.homeDir || os.homedir();
     const execFile = options.execFile || ((command, args, execOptions) => new Promise((resolve, reject) => {
       childProcess.execFile(command, args, execOptions, (err, stdout, stderr) => {
@@ -392,8 +405,8 @@ async function getClaudeVersionAsync(options = {}) {
     if (!candidates.length) {
       if (platform === "darwin") {
         candidates.push(
-          path.join(homeDir, ".local", "bin", "claude"),
-          path.join(homeDir, ".claude", "local", "claude"),
+          platformPath.join(homeDir, ".local", "bin", "claude"),
+          platformPath.join(homeDir, ".claude", "local", "claude"),
           "/opt/homebrew/bin/claude",
           "/usr/local/bin/claude"
         );

@@ -426,7 +426,7 @@ describe("Codex official hook", () => {
     });
   });
 
-  it("does not classify PermissionRequest payloads even when the transcript is subagent", () => {
+  it("classifies subagent PermissionRequest payloads so the headless gate fires without a state event", () => {
     withTempTranscript([
       JSON.stringify({
         type: "session_meta",
@@ -445,7 +445,7 @@ describe("Codex official hook", () => {
       }, mockResolve);
 
       assert.strictEqual(body.agent_id, "codex");
-      assert.strictEqual(Object.prototype.hasOwnProperty.call(body, "codex_session_role"), false);
+      assert.strictEqual(body.codex_session_role, "subagent");
     });
   });
 

@@ -6,14 +6,13 @@ const DEFAULT_TG_APPROVAL = Object.freeze({
   enabled: false,
   allowedTgUserId: "",
   targetSessionKey: "",
-  // R1a bare ping gate: when false, Clawd will not send a "finished" message
-  // unless there is assistant output to include. Native-only (legacy sidecar
-  // users silently lack it — see getTelegramCompanionClient in main.js).
+  // R1a bare ping gate: when false, Clawd will not send a "finished" message.
+  // Native-only (legacy sidecar users silently lack it — see
+  // getTelegramCompanionClient in main.js).
   notifyOnComplete: false,
-  // R1b default: send the assistant's final text when available. If the
-  // extractor has no text and notifyOnComplete is false, no bare fallback ping
-  // is sent.
-  completionOutputMode: "full",
+  // R1b privacy default: do not send assistant output unless the user
+  // explicitly opts into "Full answer" from Settings.
+  completionOutputMode: "off",
   // R3 dogfood gate. Slice 1/2/3a only focuses the selected local terminal;
   // it does not paste text or press Enter.
   r3DirectSendEnabled: false,

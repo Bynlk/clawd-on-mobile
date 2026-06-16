@@ -12,6 +12,7 @@ const {
 const { GEMINI_HOOK_EVENTS } = require("../hooks/gemini-install");
 const { ANTIGRAVITY_HOOK_EVENTS, __test: antigravityInstallTest } = require("../hooks/antigravity-install");
 const { QWEN_CODE_HOOK_EVENTS, buildQwenCodeHookCommand } = require("../hooks/qwen-code-install");
+const { HOOK_ENTRIES: CODEWHALE_HOOK_ENTRIES } = require("../hooks/codewhale-install");
 const { QODER_HOOK_EVENTS, buildQoderHookCommand } = require("../hooks/qoder-install");
 
 const tempDirs = [];
@@ -25,6 +26,11 @@ function makeTempDir() {
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf8");
+}
+
+function writeText(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, value, "utf8");
 }
 
 function baseDescriptor(overrides = {}) {
@@ -154,6 +160,37 @@ function qoderHooksConfig(commandForEvent = (event) => `"/node" "/app/hooks/qode
   return hooks;
 }
 
+function codewhaleDescriptor() {
+  const root = makeTempDir();
+  const parentDir = path.join(root, ".codewhale");
+  return baseDescriptor({
+    agentId: "codewhale",
+    agentName: "CodeWhale",
+    parentDir,
+    configPath: path.join(parentDir, "config.toml"),
+    commandMarker: "codewhale-hook.js",
+    marker: "managed by clawd-on-desk",
+    configMode: "codewhale-hooks-toml",
+    hookEvents: CODEWHALE_HOOK_ENTRIES.map((entry) => entry[0]),
+  });
+}
+
+function codewhaleToml(events = CODEWHALE_HOOK_ENTRIES.map((entry) => entry[0]), commandForEvent = (event) => `"/node" "/app/hooks/codewhale-hook.js" "${event}"`) {
+  return [
+    "[hooks]",
+    "enabled = true",
+    "",
+    ...events.flatMap((event) => [
+      "[[hooks.hooks]]",
+      "# managed by clawd-on-desk",
+      `event = "${event}"`,
+      `command = '''${commandForEvent(event)}'''`,
+      "background = true",
+      "",
+    ]),
+  ].join("\n");
+}
+
 function qwenHooksConfig(commandForEvent = (event) => `"/node" "/app/hooks/qwen-code-hook.js" ${event}`) {
   const hooks = {};
   for (const event of QWEN_CODE_HOOK_EVENTS) {
@@ -214,6 +251,23 @@ describe("checkAgentIntegrations", () => {
     assert.strictEqual(detail.status, "not-installed");
     assert.strictEqual(detail.level, "info");
     assert.strictEqual(detail.parentDirExists, false);
+  });
+
+  it("reports not-managed before disabled for uninstalled agents", () => {
+    const descriptor = baseDescriptor({ agentId: "gemini-cli" });
+    const detail = runOne(descriptor, {
+      prefs: {
+        agents: {
+          "gemini-cli": {
+            integrationInstalled: false,
+            enabled: false,
+          },
+        },
+      },
+    });
+
+    assert.strictEqual(detail.status, "not-managed");
+    assert.strictEqual(detail.level, "info");
   });
 
   it("keeps enabled Hermes missing install info-only when another integration is ok", () => {
@@ -793,6 +847,67 @@ describe("checkAgentIntegrations", () => {
     assert.deepStrictEqual(detail.fixAction, { type: "agent-integration", agentId: "qoder" });
   });
 
+  it("validates CodeWhale TOML hooks", () => {
+    const descriptor = codewhaleDescriptor();
+    writeText(descriptor.configPath, codewhaleToml());
+
+    const seen = [];
+    const detail = runOne(descriptor, {
+      validateCommand: (command) => {
+        seen.push(command);
+        return { ok: true, nodeBin: "/node", scriptPath: "/app/hooks/codewhale-hook.js" };
+      },
+    });
+
+    assert.strictEqual(detail.status, "ok");
+    assert.strictEqual(detail.commandCount, CODEWHALE_HOOK_ENTRIES.length);
+    assert.ok(seen.every((command) => command.includes("codewhale-hook.js")));
+    assert.strictEqual(detail.scriptPath, "/app/hooks/codewhale-hook.js");
+  });
+
+  it("warns and offers repair when CodeWhale is missing managed hook events", () => {
+    const descriptor = codewhaleDescriptor();
+    writeText(descriptor.configPath, codewhaleToml(["session_start"]));
+
+    const detail = runOne(descriptor);
+
+    assert.strictEqual(detail.status, "not-connected");
+    assert.ok(detail.missingCodewhaleHookEvents.includes("session_end"));
+    assert.deepStrictEqual(detail.fixAction, { type: "agent-integration", agentId: "codewhale" });
+  });
+
+  it("warns and offers repair when CodeWhale hooks are disabled", () => {
+    const descriptor = codewhaleDescriptor();
+    writeText(descriptor.configPath, codewhaleToml().replace("enabled = true", "enabled = false"));
+
+    const detail = runOne(descriptor);
+
+    assert.strictEqual(detail.status, "not-connected");
+    assert.deepStrictEqual(detail.supplementary, {
+      key: "codewhale_hooks",
+      value: "disabled",
+      detail: "[hooks].enabled is false",
+    });
+    assert.deepStrictEqual(detail.fixAction, { type: "agent-integration", agentId: "codewhale" });
+  });
+
+  it("warns and offers repair when CodeWhale hook commands fail validation", () => {
+    const descriptor = codewhaleDescriptor();
+    writeText(descriptor.configPath, codewhaleToml());
+
+    const detail = runOne(descriptor, {
+      validateCommand: () => ({
+        ok: false,
+        reason: "missing-script",
+        scriptPath: "/missing/codewhale-hook.js",
+      }),
+    });
+
+    assert.strictEqual(detail.status, "broken-path");
+    assert.match(detail.detail, /parse-failed/);
+    assert.deepStrictEqual(detail.fixAction, { type: "agent-integration", agentId: "codewhale" });
+  });
+
   it("does not offer automatic repair when Antigravity Clawd hooks are disabled", () => {
     const descriptor = antigravityDescriptor();
     writeAntigravityHooks(descriptor, {
@@ -1281,9 +1396,10 @@ describe("checkAgentIntegrations", () => {
     assert.strictEqual(detail.permissionBubbleDetail, "permission bubbles disabled for this agent");
   });
 
-  it("aggregates all-info states as critical when no integration is ok", () => {
-    // none-global agents (info status `manual-only`) + missing agents only:
-    // no real `ok` integrations means the overall summary is critical.
+  it("aggregates all-info states as pass (no false critical) when nothing is active", () => {
+    // none-global agents (info status `manual-only`) + missing agents only.
+    // Every integration being disabled / manual / not installed is a user or
+    // environment choice, not a fault, so the summary must stay green (#490).
     const result = checkAgentIntegrations({
       fs,
       descriptors: [
@@ -1291,8 +1407,28 @@ describe("checkAgentIntegrations", () => {
         baseDescriptor({ agentId: "missing-agent" }),
       ],
     });
-    assert.strictEqual(result.status, "critical");
-    assert.strictEqual(result.level, "critical");
+    assert.strictEqual(result.status, "pass");
+    assert.strictEqual(result.level, null);
+  });
+
+  it("stays warning when a real problem coexists with info-only integrations", () => {
+    // One auto-install agent with a missing config (not-connected → warning)
+    // plus a disabled agent (info). The warning must still drive the summary;
+    // the #490 de-escalation only applies when nothing is actually wrong.
+    const brokenDescriptor = baseDescriptor({ agentId: "broken-agent", marker: "broken-hook.js" });
+    fs.mkdirSync(brokenDescriptor.parentDir, { recursive: true });
+    const disabledDescriptor = baseDescriptor({ agentId: "off-agent", marker: "off-hook.js" });
+
+    const result = checkAgentIntegrations({
+      fs,
+      prefs: { agents: { "off-agent": { enabled: false } } },
+      descriptors: [brokenDescriptor, disabledDescriptor],
+    });
+
+    assert.strictEqual(result.status, "warning");
+    assert.strictEqual(result.level, "warning");
+    assert.strictEqual(result.warningCount, 1);
+    assert.strictEqual(result.okCount, 0);
   });
 
   it("keeps the integration summary in warning when Gemini hooks are disabled", () => {

@@ -37,9 +37,9 @@
       // built from this object, so omitting it would let normalize() reset a
       // user's explicit bare-ping choice on the next save.
       notifyOnComplete: !!(cfg && cfg.notifyOnComplete === true),
-      completionOutputMode: !cfg || cfg.completionOutputMode === undefined || cfg.completionOutputMode === "full"
+      completionOutputMode: cfg && (cfg.completionOutputMode === "full" || cfg.completionOutputMode === "tail")
         ? "full"
-        : (cfg.completionOutputMode === "tail" ? "full" : "off"),
+        : "off",
       r3DirectSendEnabled: !!(cfg && cfg.r3DirectSendEnabled === true),
     };
   }
@@ -314,7 +314,7 @@
         break;
       case "LEGACY_ACTIVE":
         if (snap.runtimeStatus && snap.runtimeStatus.status === "failed") {
-          body.appendChild(migrationCopy("Legacy sidecar failed to start."));
+          body.appendChild(migrationCopy("Legacy sidecar is not running."));
           body.appendChild(migrationButton("Retry legacy sidecar", () =>
             migrationDispatch("USER_ENABLE_LEGACY")));
         }

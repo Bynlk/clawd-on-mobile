@@ -212,6 +212,7 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
     provider: (session && session.provider) || null,
     codexOriginator: (session && session.codexOriginator) || null,
     codexSource: (session && session.codexSource) || null,
+    contextUsage: snapshotContextUsage(session),
     assistantLastOutput: (session && typeof session.assistantLastOutput === "string")
       ? session.assistantLastOutput
       : null,
@@ -227,6 +228,20 @@ function buildSessionSnapshotEntry(id, session, sessionAliases = {}, options = {
     // ackedAt stays internal — only the boolean reaches renderers.
     requiresCompletionAck: !!(session && session.requiresCompletionAck === true),
   };
+}
+
+function snapshotContextUsage(session) {
+  const usage = session && session.contextUsage;
+  if (!usage || typeof usage !== "object") return null;
+  const used = Number(usage.used);
+  if (!Number.isFinite(used) || used < 0) return null;
+  const out = { used };
+  const limit = Number(usage.limit);
+  if (Number.isFinite(limit) && limit > 0) out.limit = limit;
+  const percent = Number(usage.percent);
+  if (Number.isFinite(percent)) out.percent = Math.max(0, Math.min(100, Math.round(percent)));
+  if (usage.source === "claude" || usage.source === "codex") out.source = usage.source;
+  return out;
 }
 
 function normalizeSessionsIterable(sessions) {
@@ -330,6 +345,7 @@ function sessionSnapshotSignature(snapshot) {
       provider: entry.provider,
       codexOriginator: entry.codexOriginator,
       codexSource: entry.codexSource,
+      contextUsage: entry.contextUsage,
       assistantLastOutput: entry.assistantLastOutput,
       assistantLastOutputTruncated: !!entry.assistantLastOutputTruncated,
       lastEventLabelKey: entry.lastEvent ? entry.lastEvent.labelKey : null,

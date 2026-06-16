@@ -1,4 +1,4 @@
-const { formatDetail, truncate } = window.ClawdBubbleFormat;
+const { formatDetail, truncate, parseMcpToolName } = window.ClawdBubbleFormat;
 const card = document.getElementById("card");
 const toolPill = document.getElementById("toolPill");
 const toolPillText = document.getElementById("toolPillText");
@@ -76,6 +76,7 @@ const BUBBLE_STRINGS = {
     other: "Other",
     otherPlaceholder: "Type your answer…",
     codexPermission: "Codex Permission",
+    codexToolApproval: "Codex Tool Approval",
     kimiPermission: "Kimi Permission",
     checkKimiTerminal: "Approve or reject this request in the Kimi terminal.",
     gotIt: "Got it",
@@ -110,6 +111,7 @@ const BUBBLE_STRINGS = {
     other: "\u5176\u4ED6",
     otherPlaceholder: "\u8F93\u5165\u4F60\u7684\u56DE\u7B54\u2026",
     codexPermission: "Codex \u6743\u9650\u8BF7\u6C42",
+    codexToolApproval: "Codex \u5DE5\u5177\u8C03\u7528\u5BA1\u6279",
     kimiPermission: "Kimi \u6743\u9650\u8BF7\u6C42",
     checkKimiTerminal: "\u8BF7\u5728 Kimi \u7EC8\u7AEF\u4E2D\u6279\u51C6\u6216\u62D2\u7EDD\u8BE5\u8BF7\u6C42\u3002",
     gotIt: "\u77E5\u9053\u4E86",
@@ -144,6 +146,7 @@ const BUBBLE_STRINGS = {
     other: "其他",
     otherPlaceholder: "輸入你的回答…",
     codexPermission: "Codex 權限請求",
+    codexToolApproval: "Codex 工具呼叫審批",
     kimiPermission: "Kimi 權限請求",
     checkKimiTerminal: "請在 Kimi 終端機中允許或拒絕此請求。",
     gotIt: "了解",
@@ -178,6 +181,7 @@ const BUBBLE_STRINGS = {
     other: "\uAE30\uD0C0",
     otherPlaceholder: "\uC9C1\uC811 \uC785\uB825\u2026",
     codexPermission: "Codex \uAD8C\uD55C \uC694\uCCAD",
+    codexToolApproval: "Codex \uB3C4\uAD6C \uD638\uCD9C \uC2B9\uC778",
     kimiPermission: "Kimi \uAD8C\uD55C \uC694\uCCAD",
     checkKimiTerminal: "Kimi \uD130\uBBF8\uB110\uC5D0\uC11C \uC774 \uC694\uCCAD\uC744 \uD5C8\uC6A9\uD558\uAC70\uB098 \uAC70\uBD80\uD558\uC138\uC694.",
     gotIt: "\uD655\uC778",
@@ -212,6 +216,7 @@ const BUBBLE_STRINGS = {
     other: "その他",
     otherPlaceholder: "回答を入力…",
     codexPermission: "Codex 権限リクエスト",
+    codexToolApproval: "Codex ツール呼び出しの承認",
     kimiPermission: "Kimi 権限リクエスト",
     checkKimiTerminal: "Kimi ターミナルでこのリクエストを許可または拒否してください。",
     gotIt: "了解",
@@ -813,16 +818,23 @@ function show(data) {
   }
 
   const isPlanReview = data.toolName === "ExitPlanMode";
+  // Issue #445: an MCP tool call (e.g. Codex + Vercel MCP) is not an OS
+  // permission. For Codex MCP approvals, relabel the title and show a friendly
+  // "server · tool" pill so "MCP__CODEX_APPS__VERCEL__LIST_PROJECTS" reads as
+  // "vercel · list_projects". Parsing is display-only — Allow/Deny semantics and
+  // the no-decision fallback are untouched.
+  const mcp = parseMcpToolName(data.toolName);
 
   // Header
-  headerTitle.textContent = isPlanReview
-    ? bubbleText(data.lang, "planReview")
-    : bubbleText(data.lang, "permissionRequest");
+  let titleKey = "permissionRequest";
+  if (isPlanReview) titleKey = "planReview";
+  else if (mcp && data.isCodex) titleKey = "codexToolApproval";
+  headerTitle.textContent = bubbleText(data.lang, titleKey);
   toolPill.style.display = isPlanReview ? "none" : "";
   btnDeny.style.display = isPlanReview ? "none" : "";
 
-  // Tool pill
-  toolPillText.textContent = data.toolName || "Unknown";
+  // Tool pill — friendly "server · tool" for MCP, raw tool name otherwise
+  toolPillText.textContent = mcp ? mcp.display : (data.toolName || "Unknown");
   toolPill.setAttribute("data-tool", data.toolName || "");
 
   // Command block (textContent only — never innerHTML)

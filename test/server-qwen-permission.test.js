@@ -155,6 +155,25 @@ describe("Qwen Code /permission path", () => {
     }
   });
 
+  it("returns no-decision for headless Qwen sessions before auto-pilot can allow", async () => {
+    const sessionId = "qwen-code:headless";
+    const { handler, pendingPermissions, shown } = startServer({
+      sessions: new Map([[sessionId, { agentId: "qwen-code", headless: true }]]),
+    });
+
+    const res = await callPermission(handler, {
+      agent_id: "qwen-code",
+      session_id: sessionId,
+      tool_name: "Bash",
+      tool_input: { command: "npm test" },
+    });
+
+    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.body, "");
+    assert.strictEqual(pendingPermissions.length, 0);
+    assert.strictEqual(shown.length, 0);
+  });
+
   it("enqueues a Qwen approval bubble without suggestions or provider-specific fields", async () => {
     const { handler, pendingPermissions, updates, shown } = startServer();
     const req = makeReq({

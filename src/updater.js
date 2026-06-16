@@ -97,6 +97,7 @@ function initUpdater(ctx, deps = {}) {
   const t = makeTranslate(ctx);
   const runtimePlatform = deps.platform || process.platform;
   const runtimeArch = deps.arch || process.arch;
+  const isMac = runtimePlatform === "darwin";
 
   let updateStatus = "idle";
   // activeCheck carries the current in-flight check context. trigger:
@@ -375,11 +376,12 @@ function initUpdater(ctx, deps = {}) {
   }
 
   async function showUpToDateBubble(version) {
+    const displayVersion = formatVersionForMessage(version);
     clearOverlay();
     return showInfoBubble(
       "up-to-date",
       t("updateNotAvailable", "You're Up to Date"),
-      t("updateNotAvailableMsg", "Clawd v{version} is the latest version.").replace("{version}", version),
+      t("updateNotAvailableMsg", "Clawd v{version} is the latest version.").replace("{version}", displayVersion),
       {
         version,
         actions: [{ id: "dismiss", label: t("dismiss", "Dismiss"), variant: "secondary" }],
@@ -617,6 +619,7 @@ function initUpdater(ctx, deps = {}) {
   //          user never made.
   async function handlePendingVersion(version, release, promptCtx = { trigger: "scheduled" }) {
     if (!version) return;
+    const displayVersion = formatVersionForMessage(version);
 
     // Always record the pending version so the tray label / About hint
     // reflect reality, even if we end up not showing the bubble.
@@ -634,16 +637,15 @@ function initUpdater(ctx, deps = {}) {
     // pet does not get stuck masking working/thinking.
     pulseState("notification");
 
-    const isMacUi = process.platform === "darwin";
-    const primaryLabel = isMacUi ? t("download", "Download") : t("updateNow", "Update Now");
-    const messageKey = isMacUi
+    const primaryLabel = isMac ? t("download", "Download") : t("updateNow", "Update Now");
+    const messageKey = isMac
       ? t("updateAvailableMacMsg", "v{version} is available. Open the download page?")
       : t("updateAvailableMsg", "v{version} is available. Download and install now?");
 
     const result = await awaitBubbleResult(showBubble({
       mode: "available",
       title: t("updateAvailable", "Update Available"),
-      message: messageKey.replace("{version}", version),
+      message: messageKey.replace("{version}", displayVersion),
       version,
       actions: [
         { id: "primary", label: primaryLabel, variant: "primary" },
@@ -702,6 +704,7 @@ function initUpdater(ctx, deps = {}) {
   }
 
   async function promptAvailableUpdate({ mode, version, onPrimary }) {
+    const displayVersion = formatVersionForMessage(version);
     const primaryLabel = mode === "git"
       ? t("updateNow", "Update Now")
       : t("download", "Download");
@@ -711,7 +714,7 @@ function initUpdater(ctx, deps = {}) {
       message: (mode === "mac"
         ? t("updateAvailableMacMsg", "v{version} is available. Open the download page?")
         : t("updateAvailableMsg", "v{version} is available. Download and install now?"))
-        .replace("{version}", version),
+        .replace("{version}", displayVersion),
       version,
       actions: [
         { id: "primary", label: primaryLabel, variant: "primary" },
@@ -732,11 +735,12 @@ function initUpdater(ctx, deps = {}) {
   }
 
   async function promptReadyUpdate(version, onPrimary) {
+    const displayVersion = formatVersionForMessage(version);
     pulseSuccessState();
     const action = await awaitBubbleAction(showBubble({
       mode: "ready",
       title: t("updateReady", "Update Ready"),
-      message: t("updateReadyMsg", "v{version} has been downloaded. Restart now to update?").replace("{version}", version),
+      message: t("updateReadyMsg", "v{version} has been downloaded. Restart now to update?").replace("{version}", displayVersion),
       version,
       actions: [
         { id: "primary", label: t("restartNow", "Restart Now"), variant: "primary" },
@@ -845,7 +849,7 @@ function initUpdater(ctx, deps = {}) {
           execFileFn("npm", ["install", "--no-fund", "--no-audit"], {
             cwd: repoRoot,
             timeout: 120000,
-            shell: process.platform === "win32",
+            shell: runtimePlatform === "win32",
           }, (err) => (err ? reject(err) : resolve()));
         });
       } catch (err) {
@@ -1309,7 +1313,7 @@ function initUpdater(ctx, deps = {}) {
       default:
         if (pendingUpdateVersion) {
           return t("checkForUpdatesPending", "Update available · v{version}")
-            .replace("{version}", pendingUpdateVersion);
+            .replace("{version}", formatVersionForMessage(pendingUpdateVersion));
         }
         return t("checkForUpdates", "Check for Updates");
     }

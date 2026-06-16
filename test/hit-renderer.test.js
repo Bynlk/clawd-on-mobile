@@ -68,6 +68,11 @@ function createHarness({ isMac = false, sendState = {} } = {}) {
         playClickReaction: (svg, d) => apiCalls.push(["playClickReaction", svg, d]),
         onStateSync: (cb) => { apiHandlers.stateSync = cb; },
         onCancelReaction: (cb) => { apiHandlers.cancelReaction = cb; },
+        // Drop bridge (#459): fake files carry .path; "" mimics webUtils
+        // returning nothing for non-filesystem Files.
+        getPathForFile: (file) => (file && file.path) || "",
+        dropPaths: (paths) => apiCalls.push(["dropPaths", paths]),
+        onDropAccepted: (cb) => { apiHandlers.dropAccepted = cb; },
       },
       addEventListener: () => {},
     },
@@ -228,5 +233,107 @@ describe("hit-renderer input layer", () => {
         ["startDragReaction", "right"],
       ]
     );
+  });
+});
+
+describe("hit-renderer OS file drop (#459)", () => {
+  function makeDragEvent({ types = ["Files"], files = [] } = {}) {
+    return {
+      prevented: false,
+      preventDefault() { this.prevented = true; },
+      dataTransfer: { types, files, dropEffect: "" },
+    };
+  }
+
+  it("macOS registers no drop machinery at all: no listeners, no affordance, no accept handler", () => {
+    const h = createHarness({ isMac: true });
+    assert.strictEqual(h.area.listeners.get("dragover"), undefined);
+    assert.strictEqual(h.area.listeners.get("drop"), undefined);
+    assert.strictEqual(h.apiHandlers.dropAccepted, undefined);
+  });
+
+  it("dragover with files shows the copy affordance outside mini mode", () => {
+    const h = createHarness();
+    const evt = makeDragEvent();
+    h.area.listeners.get("dragover")(evt);
+    assert.strictEqual(evt.prevented, true);
+    assert.strictEqual(evt.dataTransfer.dropEffect, "copy");
+  });
+
+  it("dragover gives no affordance in mini mode or for non-file drags", () => {
+    const mini = createHarness({ sendState: { currentState: "idle", miniMode: true, dndEnabled: false } });
+    const miniEvt = makeDragEvent();
+    mini.area.listeners.get("dragover")(miniEvt);
+    assert.strictEqual(miniEvt.prevented, false);
+    assert.strictEqual(miniEvt.dataTransfer.dropEffect, "");
+
+    const h = createHarness();
+    const textEvt = makeDragEvent({ types: ["text/plain"] });
+    h.area.listeners.get("dragover")(textEvt);
+    assert.strictEqual(textEvt.prevented, false);
+  });
+
+  it("drop resolves paths through the preload bridge, filtering non-filesystem Files", () => {
+    const h = createHarness();
+    const evt = makeDragEvent({ files: [{ path: "" }, { path: "/proj/dir" }, { path: "/other" }] });
+    h.area.listeners.get("drop")(evt);
+    assert.strictEqual(evt.prevented, true);
+    // Array.from: the paths array is born in the vm realm — copy it into the
+    // host realm so deepStrictEqual's prototype check passes.
+    const dropCalls = h.apiCalls
+      .filter((c) => c[0] === "dropPaths")
+      .map((c) => [c[0], Array.from(c[1])]);
+    assert.deepStrictEqual(dropCalls, [["dropPaths", ["/proj/dir", "/other"]]]);
+  });
+
+  it("drop sends nothing when every File lacks a filesystem path", () => {
+    const h = createHarness();
+    const evt = makeDragEvent({ files: [{ path: "" }] });
+    h.area.listeners.get("drop")(evt);
+    assert.deepStrictEqual(h.apiCalls.filter((c) => c[0] === "dropPaths"), []);
+  });
+
+  it("drop is inert in mini mode even if the event slips through", () => {
+    const h = createHarness({ sendState: { currentState: "idle", miniMode: true, dndEnabled: false } });
+    const evt = makeDragEvent({ files: [{ path: "/proj" }] });
+    h.area.listeners.get("drop")(evt);
+    assert.deepStrictEqual(h.apiCalls.filter((c) => c[0] === "dropPaths"), []);
+  });
+
+  it("accepted drop plays the double reaction through the local isReacting gate", () => {
+    const h = createHarness();
+    h.apiHandlers.dropAccepted();
+    assert.deepStrictEqual(
+      h.apiCalls.filter((c) => c[0] === "playClickReaction"),
+      [["playClickReaction", "flail.svg", 3500]]
+    );
+    // While reacting, a second accept must not stack another animation.
+    h.apiHandlers.dropAccepted();
+    assert.strictEqual(h.apiCalls.filter((c) => c[0] === "playClickReaction").length, 1);
+  });
+
+  it("accepted drop falls back to the click poke for double-less themes (Calico)", () => {
+    const h = createHarness();
+    h.apiHandlers.themeConfig({ reactions: {
+      clickLeft: { file: "left.svg", duration: 2500 },
+      clickRight: { file: "right.svg", duration: 2500 },
+      drag: { file: "drag.svg" },
+    } });
+    h.apiHandlers.dropAccepted();
+    const plays = h.apiCalls.filter((c) => c[0] === "playClickReaction");
+    assert.strictEqual(plays.length, 1);
+    assert.ok(["left.svg", "right.svg"].includes(plays[0][1]), plays[0][1]);
+    assert.strictEqual(plays[0][2], 2500);
+  });
+
+  it("accepted drop stays silent for drag-only themes (Cloudling) or a busy pet", () => {
+    const noReact = createHarness();
+    noReact.apiHandlers.themeConfig({ reactions: { drag: { file: "drag.svg" } } });
+    noReact.apiHandlers.dropAccepted();
+    assert.deepStrictEqual(noReact.apiCalls.filter((c) => c[0] === "playClickReaction"), []);
+
+    const busy = createHarness({ sendState: { currentState: "working", miniMode: false, dndEnabled: false } });
+    busy.apiHandlers.dropAccepted();
+    assert.deepStrictEqual(busy.apiCalls.filter((c) => c[0] === "playClickReaction"), []);
   });
 });

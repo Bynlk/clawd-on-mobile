@@ -246,6 +246,32 @@ describe("updateSession: Notification hook gate", () => {
     assert.deepStrictEqual(ctx._soundsPlayed, ["confirm"], "Qoder notification must play confirm");
   });
 
+  it("mutes CodeWhale passive attention notifications when the per-agent flag is off", () => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    ctx = makeCtx({ notificationHookEnabled: false });
+    api = require("../src/state")(ctx);
+
+    api.updateSession("codewhale-1", "attention", "Notification", { agentId: "codewhale" });
+
+    assert.strictEqual(api.sessions.has("codewhale-1"), true, "CodeWhale session must still be registered");
+    assert.strictEqual(api.sessions.get("codewhale-1").state, "idle", "CodeWhale attention resolves bookkeeping to idle");
+    const stateChanges = ctx._rendererEvents.filter(([ch]) => ch === "state-change");
+    assert.ok(stateChanges.length >= 1, "pet must still get a state-change broadcast");
+    assert.notStrictEqual(stateChanges[0][1], "attention", "muted: must not enter attention state");
+  });
+
+  it("lets CodeWhale passive attention notifications through when the per-agent flag is on", () => {
+    mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+    ctx = makeCtx({ notificationHookEnabled: true });
+    api = require("../src/state")(ctx);
+
+    api.updateSession("codewhale-1", "attention", "Notification", { agentId: "codewhale" });
+
+    const stateChanges = ctx._rendererEvents.filter(([ch]) => ch === "state-change");
+    assert.ok(stateChanges.length >= 1, "CodeWhale attention notification must broadcast");
+    assert.strictEqual(stateChanges[0][1], "attention");
+  });
+
   it("never drops PermissionRequest events even when the flag is off", () => {
     // Permission bubbles must keep their bell regardless of idle-alert prefs.
     // PermissionRequest is handled by the branch before the gate and never

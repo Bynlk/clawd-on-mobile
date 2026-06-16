@@ -1,15 +1,18 @@
 const { BrowserWindow } = require("electron");
 const path = require("path");
 const { keepOutOfTaskbar } = require("./taskbar");
+const { clampTextScale, scaleWidth, scaleHeight, applyZoomToWindow } = require("./text-scale");
 
 const isLinux = process.platform === "linux";
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
 const WIN_TOPMOST_LEVEL = "pop-up-menu";
 const LINUX_WINDOW_TYPE = "toolbar";
+// CSS px (multiple of 20 → integral DIP width at every 5% textScale step).
 const WIDTH = 340;
 const EDGE_MARGIN = 8;
 const GAP = 6;
+const MAX_WORK_AREA_WIDTH_RATIO = 0.9;
 const MAC_FLOATING_TOPMOST_DELAY_MS = 120;
 
 function requiredDependency(value, name, owner) {
@@ -148,6 +151,7 @@ function computeUpdateBubbleBounds({
 
 module.exports = function initUpdateBubble(ctx) {
   let bubble = null;
+  // CSS px, as reported by the renderer; converted to DIP where consumed.
   let measuredHeight = 0;
   let activePayload = null;
   let resolveAction = null;
@@ -155,13 +159,19 @@ module.exports = function initUpdateBubble(ctx) {
   let autoCloseTimer = null;
   let visibleSince = 0;
 
+  function getTextScale() {
+    return clampTextScale(typeof ctx.getTextScale === "function" ? ctx.getTextScale() : 1);
+  }
+
   function getPermissionStackHeight() {
     const pending = typeof ctx.getPendingPermissions === "function" ? ctx.getPendingPermissions() : [];
+    const scale = getTextScale();
     let total = 0;
     for (const perm of pending) {
       if (!perm || !perm.bubble || perm.bubble.isDestroyed() || !perm.bubble.isVisible()) continue;
-      total += perm.measuredHeight || 200;
-      total += GAP;
+      // perm.measuredHeight is CSS px (see permission.js); the offset is DIP.
+      total += scaleHeight(perm.measuredHeight || 200, scale);
+      total += Math.round(GAP * scale);
     }
     return total;
   }
@@ -169,9 +179,10 @@ module.exports = function initUpdateBubble(ctx) {
   function ensureBubble() {
     if (bubble && !bubble.isDestroyed()) return bubble;
 
+    const scale = getTextScale();
     bubble = new BrowserWindow({
-      width: WIDTH,
-      height: estimateHeight(activePayload),
+      width: scaleWidth(WIDTH, scale),
+      height: scaleHeight(estimateHeight(activePayload), scale),
       show: false,
       frame: false,
       transparent: true,
@@ -204,6 +215,9 @@ module.exports = function initUpdateBubble(ctx) {
     });
 
     bubble.webContents.once("did-finish-load", () => {
+      // Explicit even though same-origin propagation usually covers it — a
+      // stale partition-persisted factor must never win over prefs.
+      applyZoomToWindow(bubble, getTextScale());
       if (activePayload) bubble.webContents.send("update-bubble-show", activePayload);
     });
 
@@ -211,13 +225,13 @@ module.exports = function initUpdateBubble(ctx) {
     return bubble;
   }
 
-  function computeBounds() {
+  function computeBounds(scale = getTextScale()) {
     if (!ctx.win || ctx.win.isDestroyed()) return null;
     const petBounds = ctx.getPetWindowBounds();
     const cx = petBounds.x + petBounds.width / 2;
     const cy = petBounds.y + petBounds.height / 2;
     const wa = ctx.getNearestWorkArea(cx, cy);
-    const height = measuredHeight || estimateHeight(activePayload);
+    const height = scaleHeight(measuredHeight || estimateHeight(activePayload), scale);
     const reservedHeight = getPermissionStackHeight();
     const anchorRect = ctx.bubbleFollowPet && typeof ctx.getUpdateBubbleAnchorRect === "function"
       ? ctx.getUpdateBubbleAnchorRect(petBounds)
@@ -226,9 +240,9 @@ module.exports = function initUpdateBubble(ctx) {
 
     return computeUpdateBubbleBounds({
       bubbleFollowPet: ctx.bubbleFollowPet,
-      width: WIDTH,
-      edgeMargin: EDGE_MARGIN,
-      gap: GAP,
+      width: Math.min(scaleWidth(WIDTH, scale), Math.floor(wa.width * MAX_WORK_AREA_WIDTH_RATIO)),
+      edgeMargin: Math.round(EDGE_MARGIN * scale),
+      gap: Math.round(GAP * scale),
       height,
       reservedHeight,
       hudReservedOffset: typeof ctx.getHudReservedOffset === "function" ? ctx.getHudReservedOffset() : 0,
@@ -241,7 +255,11 @@ module.exports = function initUpdateBubble(ctx) {
 
   function repositionUpdateBubble() {
     if (!bubble || bubble.isDestroyed()) return;
-    const bounds = computeBounds();
+    // Resolve the scale ONCE and feed the same value to both the zoom
+    // injection and the bounds math (see session-hud syncSessionHud).
+    const scale = getTextScale();
+    applyZoomToWindow(bubble, scale);
+    const bounds = computeBounds(scale);
     if (bounds) bubble.setBounds(bounds);
   }
 

@@ -15,7 +15,21 @@ function readFlag(snapshot, agentId, flag, defaultValue = true) {
 }
 
 const isAgentEnabled = (snapshot, agentId) => readFlag(snapshot, agentId, "enabled");
+// Missing `integrationInstalled` defaults true only for legacy/un-normalized
+// snapshots. Normal prefs snapshots carry an explicit v11 value for every
+// registered agent, so fresh installs still follow prefs defaults.
+const isAgentIntegrationInstalled = (snapshot, agentId) => (
+  readFlag(snapshot, agentId, "integrationInstalled", true)
+);
+const shouldSyncAgentIntegration = (snapshot, agentId) => (
+  isAgentEnabled(snapshot, agentId) && isAgentIntegrationInstalled(snapshot, agentId)
+);
 const isAgentPermissionsEnabled = (snapshot, agentId) => readFlag(snapshot, agentId, "permissionsEnabled");
+// #451 sub-gate under permissionsEnabled: bubbles for PermissionRequests that
+// fire from inside a Claude Code subagent (Task tool). Only claude-code's
+// prefs entry carries the flag; other agents read default-true and are
+// unaffected.
+const isAgentSubagentPermissionsEnabled = (snapshot, agentId) => readFlag(snapshot, agentId, "subagentPermissionsEnabled");
 const isAgentNotificationHookEnabled = (snapshot, agentId) => readFlag(snapshot, agentId, "notificationHookEnabled");
 const isCodexNativeNotificationSoundEnabled = (snapshot) =>
   readFlag(snapshot, "codex", "nativeNotificationSoundEnabled", false);
@@ -28,9 +42,12 @@ const isCodexPermissionInterceptEnabled = (snapshot) => getCodexPermissionMode(s
 
 module.exports = {
   getCodexPermissionMode,
+  isAgentIntegrationInstalled,
   isAgentEnabled,
   isAgentPermissionsEnabled,
+  isAgentSubagentPermissionsEnabled,
   isAgentNotificationHookEnabled,
   isCodexNativeNotificationSoundEnabled,
   isCodexPermissionInterceptEnabled,
+  shouldSyncAgentIntegration,
 };

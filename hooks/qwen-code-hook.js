@@ -124,11 +124,13 @@ function isQwenAgentCommandLine(cmd) {
 }
 
 function applyLocalProcessFields(body, resolve) {
-  const { stablePid, agentPid, detectedEditor, pidChain } = resolve();
+  const { stablePid, agentPid, detectedEditor, pidChain, tmuxSocket, tmuxClient } = resolve();
   if (Number.isFinite(stablePid) && stablePid > 0) body.source_pid = Math.floor(stablePid);
   if (detectedEditor) body.editor = detectedEditor;
   if (Number.isFinite(agentPid) && agentPid > 0) body.agent_pid = Math.floor(agentPid);
   if (Array.isArray(pidChain) && pidChain.length) body.pid_chain = pidChain;
+  if (tmuxSocket) body.tmux_socket = tmuxSocket;
+  if (tmuxClient) body.tmux_client = tmuxClient;
 }
 
 function maybeAddToolMetadata(body, payload) {

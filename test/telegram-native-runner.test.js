@@ -145,7 +145,7 @@ test("native runner requestApproval resolves allow for matching callback", async
     }],
   }));
   server.enqueueOk("answerCallbackQuery", true);
-  server.enqueueOk("editMessageReplyMarkup", { message_id: 99 });
+  server.enqueueOk("editMessageText", { message_id: 99 });
 
   const runner = createTelegramNativeRunner({
     tokenStore: tokenStore(),
@@ -168,8 +168,76 @@ test("native runner requestApproval resolves allow for matching callback", async
   releaseFirstPoll({ ok: true, result: [] });
   const decision = await decisionPromise;
   assert.deepEqual(decision, { action: "allow" });
+  // The toast and the card rewrite are fire-and-forget now; let them land.
+  await tick();
   assert.equal(server.calls.some((call) => call.method === "answerCallbackQuery"), true);
-  assert.equal(server.calls.some((call) => call.method === "editMessageReplyMarkup"), true);
+  const allowEdit = server.calls.find((call) => call.method === "editMessageText");
+  assert.ok(allowEdit, "tapping Allow rewrites the card body with the outcome");
+  assert.equal(
+    allowEdit.payload.text,
+    "claude-code requests Bash\n\nSummary: Run tests\n\n\u2705 Allowed",
+  );
+  assert.equal(allowEdit.payload.reply_markup, undefined);
+  await runner.stop();
+});
+
+test("native runner claims a Telegram tap atomically so a racing abort can't drop it", async () => {
+  const server = createFakeTelegramServer();
+  let releaseFirstPoll;
+  let allowData = "";
+  const controller = new AbortController();
+
+  server.enqueue("getUpdates", () => new Promise((resolve) => { releaseFirstPoll = resolve; }));
+  server.enqueue("sendMessage", (payload) => {
+    allowData = payload.reply_markup.inline_keyboard[0][0].callback_data;
+    return { ok: true, result: { message_id: 70, chat: { id: 123 } } };
+  });
+  server.enqueue("getUpdates", () => ({
+    ok: true,
+    result: [{
+      update_id: 1,
+      callback_query: {
+        id: "cb-allow",
+        from: { id: 777 },
+        message: { message_id: 70, chat: { id: 123 } },
+        data: allowData,
+      },
+    }],
+  }));
+  server.enqueueOk("answerCallbackQuery", true);
+  server.enqueueOk("editMessageText", { message_id: 70 });
+
+  const runner = createTelegramNativeRunner({
+    tokenStore: tokenStore(),
+    transport: server.transport,
+    getDispatch: () => async () => {},
+    getChatId: () => "123",
+    getAllowedUserId: () => "777",
+  });
+
+  await runner.start();
+  await tick();
+  const decisionPromise = runner.requestApproval(
+    { title: "claude-code requests Bash", detail: "Summary: Run tests" },
+    { signal: controller.signal },
+  );
+  await tick();
+
+  releaseFirstPoll({ ok: true, result: [] });
+  const decision = await decisionPromise;
+  // The tap is claimed synchronously, so the desktop answering immediately
+  // afterwards (signal abort) is a no-op rather than a null drop.
+  assert.deepEqual(decision, { action: "allow" });
+
+  controller.abort();
+  await tick();
+
+  const edits = server.calls.filter((call) => call.method === "editMessageText");
+  assert.equal(edits.length, 1, "the late abort must not fire a second, conflicting card rewrite");
+  assert.equal(
+    edits[0].payload.text,
+    "claude-code requests Bash\n\nSummary: Run tests\n\n\u2705 Allowed",
+  );
   await runner.stop();
 });
 
@@ -202,7 +270,7 @@ test("native runner requestApproval renders suggestions and returns suggestion d
     }],
   }));
   server.enqueueOk("answerCallbackQuery", true);
-  server.enqueueOk("editMessageReplyMarkup", { message_id: 101 });
+  server.enqueueOk("editMessageText", { message_id: 101 });
 
   const runner = createTelegramNativeRunner({
     tokenStore: tokenStore(),
@@ -268,7 +336,7 @@ test("native runner rejects forged suggestion callbacks and waits for a valid de
   }));
   server.enqueueOk("answerCallbackQuery", true);
   server.enqueueOk("answerCallbackQuery", true);
-  server.enqueueOk("editMessageReplyMarkup", { message_id: 102 });
+  server.enqueueOk("editMessageText", { message_id: 102 });
 
   const runner = createTelegramNativeRunner({
     tokenStore: tokenStore(),
@@ -290,11 +358,18 @@ test("native runner rejects forged suggestion callbacks and waits for a valid de
   releaseFirstPoll({ ok: true, result: [] });
   const decision = await decisionPromise;
   assert.deepEqual(decision, { action: "suggestion", index: 0 });
+  // The valid tap's toast + card rewrite are fire-and-forget now; let them land.
+  await tick();
 
   const callbackAnswers = server.calls.filter((call) => call.method === "answerCallbackQuery");
   assert.equal(callbackAnswers[0].payload.text, "Unavailable");
   assert.equal(callbackAnswers[1].payload.text, "Applied");
-  assert.equal(server.calls.filter((call) => call.method === "editMessageReplyMarkup").length, 1);
+  const edits = server.calls.filter((call) => call.method === "editMessageText");
+  assert.equal(edits.length, 1, "only the valid decision rewrites the card");
+  assert.equal(
+    edits[0].payload.text,
+    "claude-code requests Bash\n\nSummary: Run tests\n\n\u2705 Applied",
+  );
   await runner.stop();
 });
 
@@ -336,7 +411,7 @@ test("native runner requestApproval ignores wrong user and resolves later callba
   }));
   server.enqueueOk("answerCallbackQuery", true);
   server.enqueueOk("answerCallbackQuery", true);
-  server.enqueueOk("editMessageReplyMarkup", { message_id: 100 });
+  server.enqueueOk("editMessageText", { message_id: 100 });
 
   const runner = createTelegramNativeRunner({
     tokenStore: tokenStore(),
@@ -356,9 +431,17 @@ test("native runner requestApproval ignores wrong user and resolves later callba
   releaseFirstPoll({ ok: true, result: [] });
 
   assert.deepEqual(await decisionPromise, { action: "deny" });
+  // The valid tap's toast + card rewrite are fire-and-forget now; let them land.
+  await tick();
   assert.equal(
     server.calls.filter((call) => call.method === "answerCallbackQuery").length,
     2,
+  );
+  const denyEdit = server.calls.find((call) => call.method === "editMessageText");
+  assert.ok(denyEdit, "tapping Deny rewrites the card body with the outcome");
+  assert.equal(
+    denyEdit.payload.text,
+    "claude-code requests Bash\n\nSummary: Run tests\n\n\u274C Denied",
   );
   await runner.stop();
 });
@@ -458,6 +541,177 @@ test("native runner aborts an in-flight approval send before a late Telegram suc
     true,
     "abort should cancel the in-flight Telegram send",
   );
+
+  releaseFirstPoll({ ok: true, result: [] });
+  await runner.stop();
+});
+
+test("native runner rewrites approval card with status when resolved outside Telegram (abort)", async () => {
+  const server = createFakeTelegramServer();
+  let releaseFirstPoll;
+
+  server.enqueue("getUpdates", () => new Promise((resolve) => { releaseFirstPoll = resolve; }));
+  server.enqueueOk("sendMessage", { message_id: 99, chat: { id: 123 } });
+  server.enqueueOk("editMessageText", { message_id: 99 });
+
+  const runner = createTelegramNativeRunner({
+    tokenStore: tokenStore(),
+    transport: server.transport,
+    getDispatch: () => async () => {},
+    getChatId: () => "123",
+    getAllowedUserId: () => "777",
+  });
+
+  await runner.start();
+  await tick();
+
+  const controller = new AbortController();
+  const decisionPromise = runner.requestApproval(
+    { title: "claude-code requests Bash", detail: "Summary: Run tests" },
+    { signal: controller.signal },
+  );
+  // Let the card send resolve so the entry records its message id.
+  await tick();
+  assert.equal(server.calls.filter((call) => call.method === "sendMessage").length, 1);
+
+  // The permission was resolved outside Telegram (desktop answer, DND, or a
+  // dismissed bubble): the caller aborts the in-flight request.
+  controller.abort();
+  assert.equal(await decisionPromise, null);
+  await tick();
+
+  const editCalls = server.calls.filter((call) => call.method === "editMessageText");
+  assert.equal(editCalls.length, 1, "stale approval card must be rewritten with the outcome");
+  assert.equal(editCalls[0].payload.chat_id, "123");
+  assert.equal(editCalls[0].payload.message_id, 99);
+  assert.equal(
+    editCalls[0].payload.text,
+    "claude-code requests Bash\n\nSummary: Run tests\n\n\u2705 Resolved outside Telegram",
+  );
+  assert.equal(
+    editCalls[0].payload.reply_markup,
+    undefined,
+    "editMessageText without reply_markup drops the inline keyboard",
+  );
+  assert.equal(
+    server.calls.some((call) => call.method === "editMessageReplyMarkup"),
+    false,
+    "no separate keyboard strip when the text rewrite succeeds",
+  );
+
+  releaseFirstPoll({ ok: true, result: [] });
+  await runner.stop();
+});
+
+test("native runner appends timeout status when an approval expires", async () => {
+  const server = createFakeTelegramServer();
+  let releaseFirstPoll;
+
+  server.enqueue("getUpdates", () => new Promise((resolve) => { releaseFirstPoll = resolve; }));
+  server.enqueueOk("sendMessage", { message_id: 77, chat: { id: 123 } });
+  server.enqueueOk("editMessageText", { message_id: 77 });
+
+  const runner = createTelegramNativeRunner({
+    tokenStore: tokenStore(),
+    transport: server.transport,
+    getDispatch: () => async () => {},
+    getChatId: () => "123",
+    getAllowedUserId: () => "777",
+    approvalTimeoutMs: 10,
+  });
+
+  await runner.start();
+  await tick();
+
+  const decision = await runner.requestApproval({ title: "claude-code requests Bash", detail: "Summary: Run tests" });
+  assert.equal(decision, null);
+  await tick();
+
+  const editCalls = server.calls.filter((call) => call.method === "editMessageText");
+  assert.equal(editCalls.length, 1);
+  assert.equal(editCalls[0].payload.message_id, 77);
+  assert.equal(
+    editCalls[0].payload.text,
+    "claude-code requests Bash\n\nSummary: Run tests\n\n\u23F3 Timed out",
+  );
+
+  releaseFirstPoll({ ok: true, result: [] });
+  await runner.stop();
+});
+
+test("native runner appends session-ended status when polling stops with a pending approval", async () => {
+  const server = createFakeTelegramServer();
+  let releaseFirstPoll;
+
+  server.enqueue("getUpdates", () => new Promise((resolve) => { releaseFirstPoll = resolve; }));
+  server.enqueueOk("sendMessage", { message_id: 55, chat: { id: 123 } });
+  server.enqueueOk("editMessageText", { message_id: 55 });
+
+  const runner = createTelegramNativeRunner({
+    tokenStore: tokenStore(),
+    transport: server.transport,
+    getDispatch: () => async () => {},
+    getChatId: () => "123",
+    getAllowedUserId: () => "777",
+  });
+
+  await runner.start();
+  await tick();
+
+  const decisionPromise = runner.requestApproval({ title: "claude-code requests Bash", detail: "Summary: Run tests" });
+  await tick();
+
+  releaseFirstPoll({ ok: true, result: [] });
+  await runner.stop();
+  assert.equal(await decisionPromise, null);
+  await tick();
+
+  const editCalls = server.calls.filter((call) => call.method === "editMessageText");
+  assert.equal(editCalls.length, 1);
+  assert.equal(editCalls[0].payload.message_id, 55);
+  assert.equal(
+    editCalls[0].payload.text,
+    "claude-code requests Bash\n\nSummary: Run tests\n\n\u23F9\uFE0F Session ended",
+  );
+});
+
+test("native runner falls back to stripping the keyboard when the status rewrite fails", async () => {
+  const server = createFakeTelegramServer();
+  let releaseFirstPoll;
+
+  server.enqueue("getUpdates", () => new Promise((resolve) => { releaseFirstPoll = resolve; }));
+  server.enqueueOk("sendMessage", { message_id: 88, chat: { id: 123 } });
+  server.enqueueError("editMessageText", { status: 400, description: "Bad Request: message can't be edited" });
+  server.enqueueOk("editMessageReplyMarkup", { message_id: 88 });
+
+  const runner = createTelegramNativeRunner({
+    tokenStore: tokenStore(),
+    transport: server.transport,
+    getDispatch: () => async () => {},
+    getChatId: () => "123",
+    getAllowedUserId: () => "777",
+  });
+
+  await runner.start();
+  await tick();
+
+  const controller = new AbortController();
+  const decisionPromise = runner.requestApproval(
+    { title: "claude-code requests Bash", detail: "Summary: Run tests" },
+    { signal: controller.signal },
+  );
+  await tick();
+
+  controller.abort();
+  assert.equal(await decisionPromise, null);
+  await tick();
+  await tick();
+
+  const stripCalls = server.calls.filter((call) => call.method === "editMessageReplyMarkup");
+  assert.equal(stripCalls.length, 1, "PR #446 guarantee: stale card must lose its keyboard even if the rewrite fails");
+  assert.equal(stripCalls[0].payload.chat_id, "123");
+  assert.equal(stripCalls[0].payload.message_id, 88);
+  assert.deepEqual(stripCalls[0].payload.reply_markup, { inline_keyboard: [] });
 
   releaseFirstPoll({ ok: true, result: [] });
   await runner.stop();

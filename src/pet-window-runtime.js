@@ -28,6 +28,20 @@ function isLiveWindow(win) {
   return !!(win && typeof win.isDestroyed === "function" && !win.isDestroyed());
 }
 
+function reloadWindowWebContents(win) {
+  try {
+    if (!isLiveWindow(win)) return false;
+    const contents = win.webContents;
+    if (!contents) return false;
+    if (typeof contents.isDestroyed === "function" && contents.isDestroyed()) return false;
+    if (typeof contents.reload !== "function") return false;
+    contents.reload();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function createPetWindowRuntime(options = {}) {
   const screen = options.screen || {};
   const isWin = !!options.isWin;
@@ -460,12 +474,36 @@ function createPetWindowRuntime(options = {}) {
       renderWin.on("unresponsive", () => {
         if (isQuitting()) return;
         console.warn("Clawd: renderer unresponsive — reloading");
-        renderWin.webContents.reload();
+        reloadWindowWebContents(renderWin);
       });
     }
 
     if (isWin) renderWin.setAlwaysOnTop(true, topmostLevel);
+    if (isWin) {
+      let sessionEndFlushed = false;
+      const flushForSessionEnd = () => {
+        if (sessionEndFlushed) return;
+        sessionEndFlushed = true;
+        try {
+          flushRuntimeStateToPrefs();
+        } catch (err) {
+          console.warn("Clawd: failed to persist prefs during Windows session end:", err && err.message);
+        }
+      };
+      renderWin.on("query-session-end", flushForSessionEnd);
+      renderWin.on("session-end", flushForSessionEnd);
+    }
     renderWin.loadFile(optionsArg.loadFilePath);
+    // file:// zoom propagates partition-wide and persists across restarts;
+    // builds that briefly used setZoomFactor for textScale may have left a
+    // non-1 factor behind. Reset it from the first window to load so the pet
+    // (and, via propagation, every file:// page) renders 1:1 — textScale uses
+    // per-document CSS zoom instead and never touches this map.
+    if (renderWin.webContents && typeof renderWin.webContents.once === "function") {
+      renderWin.webContents.once("did-finish-load", () => {
+        try { renderWin.webContents.setZoomFactor(1); } catch {}
+      });
+    }
     applyPetWindowBounds(optionsArg.initialVirtualBounds);
     renderWin.showInactive();
     keepOutOfTaskbar(renderWin);
@@ -535,7 +573,7 @@ function createPetWindowRuntime(options = {}) {
         optionsArg.onRenderProcessGone(details, hitWin);
         return;
       }
-      hitWin.webContents.reload();
+      reloadWindowWebContents(hitWin);
     });
     return hitWin;
   }
@@ -776,6 +814,7 @@ function createPetWindowRuntime(options = {}) {
     getInitialHitWindowBounds,
     createRenderWindow,
     createHitWindow,
+    reloadWindowWebContents,
     setDragLocked,
     isDragLocked,
     beginDragSnapshot,

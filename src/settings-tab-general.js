@@ -3,6 +3,8 @@
 (function initSettingsTabGeneral(root) {
   const GENERAL_IN_PLACE_KEYS = new Set([
     "size",
+    "textScale",
+    "textScaleByDisplay",
     "soundMuted",
     "flashTaskbarOnComplete",
     "flashIntervalMs",
@@ -13,6 +15,7 @@
     "sessionHudEnabled",
     "sessionHudShowStateLabels",
     "sessionHudShowElapsed",
+    "sessionHudShowContextUsage",
     "sessionHudCleanupDetached",
     "allowEdgePinning",
     "disableMiniMode",
@@ -23,6 +26,7 @@
     "hideBubbles",
     "bubbleFollowPet",
     "permissionBubblesEnabled",
+    "autoApproveAllPermissions",
     "notificationBubbleAutoCloseSeconds",
     "updateBubbleAutoCloseSeconds",
     "sessionStaleMs",
@@ -52,12 +56,14 @@
   const SESSION_HUD_CHILD_SWITCH_KEYS = [
     "sessionHudShowStateLabels",
     "sessionHudShowElapsed",
+    "sessionHudShowContextUsage",
     "sessionHudCleanupDetached",
   ];
   const SESSION_HUD_SUMMARY_KEYS = new Set([
     "sessionHudEnabled",
     "sessionHudShowStateLabels",
     "sessionHudShowElapsed",
+    "sessionHudShowContextUsage",
     "sessionHudCleanupDetached",
   ]);
   const CLAUDE_HOOK_MANAGEMENT_CHILD_SWITCH_KEYS = [
@@ -89,17 +95,8 @@
     parent.appendChild(helpers.buildSection(t("sectionAppearance"), [
       buildLanguageRow(),
       buildSizeSliderRow(),
+      buildTextScaleRow(),
       buildSoundGroup(),
-      helpers.buildSwitchRow({
-        key: "lowPowerIdleMode",
-        labelKey: "rowLowPowerIdleMode",
-        descKey: "rowLowPowerIdleModeDesc",
-      }),
-      helpers.buildSwitchRow({
-        key: "keepAwakeWhileWorking",
-        labelKey: "rowKeepAwakeWhileWorking",
-        descKey: "rowKeepAwakeWhileWorkingDesc",
-      }),
       buildFlashGroup(),
       helpers.buildSwitchRow({
         key: "allowEdgePinning",
@@ -122,6 +119,22 @@
       buildSessionHudGroup(),
       buildSessionCleanupGroup(),
       buildDashboardRow(),
+    ]));
+
+    // System: global power / system behaviors that aren't per-session and
+    // aren't appearance. Both toggles affect the whole machine's power state
+    // (low-power idle throttling; blocking OS sleep while any task runs).
+    parent.appendChild(helpers.buildSection(t("sectionSystem"), [
+      helpers.buildSwitchRow({
+        key: "lowPowerIdleMode",
+        labelKey: "rowLowPowerIdleMode",
+        descKey: "rowLowPowerIdleModeDesc",
+      }),
+      helpers.buildSwitchRow({
+        key: "keepAwakeWhileWorking",
+        labelKey: "rowKeepAwakeWhileWorking",
+        descKey: "rowKeepAwakeWhileWorkingDesc",
+      }),
     ]));
 
     const manageClaudeHooksEnabled = !!(state.snapshot && state.snapshot.manageClaudeHooksAutomatically);
@@ -173,6 +186,44 @@
         descKey: "rowBubbleFollowDesc",
       }),
     ]));
+
+    // Permissions is its own section (not "Bubbles") because auto-pilot is a
+    // permission-handling behavior, not a bubble-display preference. Kept last
+    // so the danger toggle sits at the bottom, away from everyday settings.
+    parent.appendChild(helpers.buildSection(t("sectionPermissions"), [
+      helpers.buildSwitchRow({
+        key: "autoApproveAllPermissions",
+        labelKey: "rowAutoApproveAll",
+        descKey: "rowAutoApproveAllDesc",
+        danger: true,
+        onToggle: ({ nextRaw }) => confirmAutoApproveAll(nextRaw),
+      }),
+    ]));
+  }
+
+  // DANGER "auto-pilot": enabling auto-approves every agent permission request
+  // (Bash, file writes, rm — everything) with no prompt. Gate the ENABLE path
+  // behind a destructive confirm; disabling is always safe and immediate.
+  function confirmAutoApproveAll(nextRaw) {
+    // Route through the setAutoApproveAll command (not settings:update, which
+    // now rejects this key). Enabling carries confirmed:true only after the
+    // user accepts the danger modal, so the confirmation is a real gate.
+    if (!nextRaw) return window.settingsAPI.command("setAutoApproveAll", { enabled: false });
+    return showAutoApproveAllConfirmModal().then((actionId) => {
+      if (actionId !== "enable") return { status: "ok", noop: true };
+      return window.settingsAPI.command("setAutoApproveAll", { enabled: true, confirmed: true });
+    });
+  }
+
+  function showAutoApproveAllConfirmModal() {
+    return showSettingsConfirmModal({
+      title: t("autoApproveAllConfirmTitle"),
+      detail: t("autoApproveAllConfirmDetail"),
+      actions: [
+        { id: "enable", label: t("autoApproveAllConfirmEnable"), tone: "danger" },
+        { id: "cancel", label: t("autoApproveAllConfirmCancel"), tone: "accent", defaultFocus: true },
+      ],
+    });
   }
 
   function confirmDisableClaudeHookManagement(nextRaw) {
@@ -416,6 +467,12 @@
         disabled: !sessionHudControlsEnabled,
       }),
       helpers.buildSwitchRow({
+        key: "sessionHudShowContextUsage",
+        labelKey: "rowSessionHudContextUsage",
+        descKey: "rowSessionHudContextUsageDesc",
+        disabled: !sessionHudControlsEnabled,
+      }),
+      helpers.buildSwitchRow({
         key: "sessionHudCleanupDetached",
         labelKey: "rowSessionHudCleanupDetached",
         descKey: "rowSessionHudCleanupDetachedDesc",
@@ -456,6 +513,13 @@
             snapshot.sessionHudShowElapsed !== false ? onLabel : offLabel
           ),
           accent: snapshot.sessionHudShowElapsed !== false,
+        });
+        items.push({
+          text: t("sessionHudSummaryContextUsage").replace(
+            "{state}",
+            snapshot.sessionHudShowContextUsage !== false ? onLabel : offLabel
+          ),
+          accent: snapshot.sessionHudShowContextUsage !== false,
         });
         items.push({
           text: t("sessionHudSummaryCleanup").replace(
@@ -1295,6 +1359,290 @@
     return row;
   }
 
+  // Mirrors TEXT_SCALE_MIN/MAX/STEP in src/text-scale.js (×100). The renderer
+  // can't require that module, so keep the two in sync by hand.
+  const TEXT_SCALE_UI_MIN = 80;
+  const TEXT_SCALE_UI_MAX = 160;
+  const TEXT_SCALE_UI_STEP = 5;
+  const TEXT_SCALE_UI_DEFAULT = 100;
+
+  function buildTextScaleRow() {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML =
+      `<div class="row-text">` +
+        `<span class="row-label"></span>` +
+        `<span class="row-desc"></span>` +
+      `</div>` +
+      `<div class="row-control volume-control text-scale-control">` +
+        `<input type="range" class="volume-slider text-scale-slider"` +
+          ` min="${TEXT_SCALE_UI_MIN}" max="${TEXT_SCALE_UI_MAX}" step="${TEXT_SCALE_UI_STEP}" />` +
+        `<button type="button" class="volume-readout text-scale-readout"></button>` +
+      `</div>`;
+    row.querySelector(".row-label").textContent = t("rowTextScale");
+    row.querySelector(".row-desc").textContent = t("rowTextScaleDesc");
+
+    const slider = row.querySelector(".text-scale-slider");
+    const readout = row.querySelector(".text-scale-readout");
+    const control = row.querySelector(".text-scale-control");
+    readout.title = t("textScaleResetTitle");
+
+    // textScale is per-display; the committed value for the display this
+    // window sits on lives main-side, so sync is an IPC round-trip rather
+    // than a snapshot read.
+    function syncFromContext() {
+      if (!window.settingsAPI || typeof window.settingsAPI.getTextScaleContext !== "function") return;
+      Promise.resolve(window.settingsAPI.getTextScaleContext()).then((context) => {
+        const pct = context && Number.isFinite(Number(context.percent))
+          ? Number(context.percent)
+          : 100;
+        paint(Math.min(TEXT_SCALE_UI_MAX, Math.max(TEXT_SCALE_UI_MIN, Math.round(pct))));
+      }).catch(() => {});
+    }
+
+    function paint(pct) {
+      slider.value = String(pct);
+      const fill = ((pct - TEXT_SCALE_UI_MIN) / (TEXT_SCALE_UI_MAX - TEXT_SCALE_UI_MIN)) * 100;
+      slider.style.setProperty("--volume-fill", `${fill}%`);
+      readout.textContent = `${pct}%`;
+    }
+
+    function snapTextScalePct(raw) {
+      const n = Number(raw);
+      const base = Number.isFinite(n) ? n : TEXT_SCALE_UI_DEFAULT;
+      const stepped = TEXT_SCALE_UI_MIN
+        + Math.round((base - TEXT_SCALE_UI_MIN) / TEXT_SCALE_UI_STEP) * TEXT_SCALE_UI_STEP;
+      return Math.min(TEXT_SCALE_UI_MAX, Math.max(TEXT_SCALE_UI_MIN, stepped));
+    }
+
+    // True from the first drag tick until commit (change) or rollback (blur).
+    // Context-changed pokes arriving mid-drag must NOT repaint the slider to
+    // the committed value — the preview itself triggers such pokes.
+    let previewLive = false;
+
+    // Single-flight gate instead of a timer: at most one preview IPC in the
+    // air, the freshest dragged value queued behind it.
+    let previewInFlight = false;
+    let previewQueued = null;
+    function sendPreview(pct) {
+      if (typeof window.settingsAPI.previewTextScale !== "function") return;
+      if (previewInFlight) {
+        previewQueued = pct;
+        return;
+      }
+      previewInFlight = true;
+      Promise.resolve(window.settingsAPI.previewTextScale(pct / 100))
+        .catch(() => {})
+        .then(() => {
+          previewInFlight = false;
+          if (previewQueued !== null) {
+            const next = previewQueued;
+            previewQueued = null;
+            sendPreview(next);
+          }
+        });
+    }
+
+    function rollbackPreview() {
+      if (typeof window.settingsAPI.endTextScalePreview !== "function") return;
+      Promise.resolve(window.settingsAPI.endTextScalePreview()).catch(() => {});
+    }
+
+    function commit(pct) {
+      window.settingsAPI.command("setTextScaleForDisplay", { value: pct / 100 }).then((result) => {
+        if (!result || result.status !== "ok") {
+          const msg = (result && result.message) || "unknown error";
+          rollbackPreview();
+          syncFromContext();
+          ops.showToast(t("toastSaveFailed") + msg, { error: true });
+        }
+      }).catch(() => {
+        rollbackPreview();
+        syncFromContext();
+      });
+    }
+
+    let pointerDrag = null;
+    let suppressNativeChange = null;
+
+    function stopNativePointer(ev) {
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      if (ev && typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+      else if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+    }
+
+    function capturePointerDrag(ev) {
+      const rect = typeof slider.getBoundingClientRect === "function"
+        ? slider.getBoundingClientRect()
+        : null;
+      const width = rect && Number.isFinite(Number(rect.width)) && Number(rect.width) > 0
+        ? Number(rect.width)
+        : 240;
+      const rectLeft = rect && Number.isFinite(Number(rect.left)) ? Number(rect.left) : 0;
+      const screenX = Number(ev && ev.screenX);
+      const clientX = Number(ev && ev.clientX);
+      const left = Number.isFinite(screenX) && Number.isFinite(clientX)
+        ? screenX - (clientX - rectLeft)
+        : rectLeft;
+      return {
+        pointerId: ev && ev.pointerId,
+        left,
+        width,
+      };
+    }
+
+    function pointerMatchesDrag(ev) {
+      if (!pointerDrag) return false;
+      if (pointerDrag.pointerId === undefined || pointerDrag.pointerId === null) return true;
+      return ev && ev.pointerId === pointerDrag.pointerId;
+    }
+
+    function textScalePctFromPointer(ev) {
+      if (!pointerDrag) return Number(slider.value);
+      const screenX = Number(ev && ev.screenX);
+      const clientX = Number(ev && ev.clientX);
+      if (!Number.isFinite(screenX) && !Number.isFinite(clientX)) {
+        return snapTextScalePct(slider.value);
+      }
+      const x = Number.isFinite(screenX)
+        ? screenX
+        : (Number.isFinite(clientX) ? clientX : pointerDrag.left);
+      const normalized = Math.max(0, Math.min(1, (x - pointerDrag.left) / pointerDrag.width));
+      return snapTextScalePct(TEXT_SCALE_UI_MIN + normalized * (TEXT_SCALE_UI_MAX - TEXT_SCALE_UI_MIN));
+    }
+
+    function previewPointerPct(pct) {
+      const nextPct = snapTextScalePct(pct);
+      if (Number(slider.value) !== nextPct) {
+        paint(nextPct);
+        sendPreview(nextPct);
+      }
+      return nextPct;
+    }
+
+    function markNativeChangeSuppressed(pct) {
+      suppressNativeChange = { pct: snapTextScalePct(pct), until: Date.now() + 500 };
+    }
+
+    function shouldSuppressNativeChange() {
+      if (!suppressNativeChange) return false;
+      if (Date.now() > suppressNativeChange.until) {
+        suppressNativeChange = null;
+        return false;
+      }
+      if (Number(slider.value) === suppressNativeChange.pct) {
+        suppressNativeChange = null;
+        return true;
+      }
+      return false;
+    }
+
+    function beginPointerDrag(ev) {
+      if (ev && ev.isPrimary === false) return;
+      if (ev && ev.button !== undefined && ev.button !== 0) return;
+      pointerDrag = capturePointerDrag(ev);
+      previewLive = true;
+      if (control) control.classList.add("dragging");
+      try {
+        if (typeof slider.focus === "function") slider.focus({ preventScroll: true });
+        if (typeof slider.setPointerCapture === "function" && ev && ev.pointerId !== undefined) {
+          slider.setPointerCapture(ev.pointerId);
+        }
+      } catch {}
+      stopNativePointer(ev);
+      previewPointerPct(textScalePctFromPointer(ev));
+    }
+
+    function movePointerDrag(ev) {
+      if (!pointerMatchesDrag(ev)) return;
+      stopNativePointer(ev);
+      previewPointerPct(textScalePctFromPointer(ev));
+    }
+
+    function finishPointerDrag(ev, { commitValue }) {
+      if (!pointerMatchesDrag(ev)) return false;
+      stopNativePointer(ev);
+      const finalPct = previewPointerPct(textScalePctFromPointer(ev));
+      try {
+        if (typeof slider.releasePointerCapture === "function" && pointerDrag.pointerId !== undefined) {
+          slider.releasePointerCapture(pointerDrag.pointerId);
+        }
+      } catch {}
+      pointerDrag = null;
+      if (control) control.classList.remove("dragging");
+      previewLive = false;
+      if (commitValue) {
+        markNativeChangeSuppressed(finalPct);
+        commit(finalPct);
+      } else {
+        rollbackPreview();
+        syncFromContext();
+      }
+      return true;
+    }
+
+    slider.addEventListener("pointerdown", beginPointerDrag);
+    slider.addEventListener("pointermove", movePointerDrag);
+    slider.addEventListener("pointerup", (ev) => {
+      finishPointerDrag(ev, { commitValue: true });
+    });
+    slider.addEventListener("pointercancel", (ev) => {
+      finishPointerDrag(ev, { commitValue: false });
+    });
+    slider.addEventListener("input", () => {
+      if (pointerDrag) return;
+      previewLive = true;
+      const pct = snapTextScalePct(slider.value);
+      paint(pct);
+      sendPreview(pct);
+    });
+    slider.addEventListener("change", () => {
+      if (shouldSuppressNativeChange()) return;
+      previewLive = false;
+      commit(snapTextScalePct(slider.value));
+    });
+    slider.addEventListener("blur", () => {
+      if (pointerDrag) return;
+      // A real edit already committed via change (which clears the preview in
+      // the main process); this only rolls back an abandoned preview.
+      previewLive = false;
+      rollbackPreview();
+    });
+    readout.addEventListener("click", () => {
+      paint(TEXT_SCALE_UI_DEFAULT);
+      commit(TEXT_SCALE_UI_DEFAULT);
+    });
+
+    // The window landed on a display with a different committed value (drag
+    // across screens, topology change) — re-pull. No store change happens in
+    // that case, so the settings-changed broadcast can't cover it.
+    const unsubscribeContextChanged =
+      window.settingsAPI && typeof window.settingsAPI.onTextScaleContextChanged === "function"
+        ? window.settingsAPI.onTextScaleContextChanged(() => {
+            if (!previewLive) syncFromContext();
+          })
+        : null;
+
+    paint(TEXT_SCALE_UI_DEFAULT);
+    syncFromContext();
+
+    state.mountedControls.textScale = {
+      row,
+      syncValueFromSnapshot() {
+        syncFromContext();
+      },
+      dispose() {
+        if (typeof unsubscribeContextChanged === "function") unsubscribeContextChanged();
+        rollbackPreview();
+      },
+    };
+
+    return row;
+  }
+
+  // = prefsSizeToUi(9): the prefs `size` default is "P:9" (see src/prefs.js).
+  const SIZE_UI_DEFAULT = 30;
+
   function buildSizeSliderRow() {
     const row = document.createElement("div");
     row.className = "row";
@@ -1303,53 +1651,23 @@
         `<span class="row-label"></span>` +
         `<span class="row-desc"></span>` +
       `</div>` +
-      `<div class="row-control size-control">` +
-        `<div class="size-slider-wrap">` +
-          `<div class="size-bubble"></div>` +
-          `<input type="range" class="size-slider" min="${helpers.SIZE_UI_MIN}" max="${helpers.SIZE_UI_MAX}" step="1" />` +
-        `</div>` +
-        `<div class="size-ticks"></div>` +
+      `<div class="row-control volume-control size-control">` +
+        `<input type="range" class="volume-slider size-slider" min="${helpers.SIZE_UI_MIN}" max="${helpers.SIZE_UI_MAX}" step="1" />` +
+        `<button type="button" class="volume-readout text-scale-readout size-readout"></button>` +
       `</div>`;
     row.querySelector(".row-label").textContent = t("rowSize");
     row.querySelector(".row-desc").textContent = t("rowSizeDesc");
 
     const control = row.querySelector(".size-control");
-    const sliderWrap = row.querySelector(".size-slider-wrap");
     const slider = row.querySelector(".size-slider");
-    const bubble = row.querySelector(".size-bubble");
-    const ticksEl = row.querySelector(".size-ticks");
-    const tickMarks = [];
-
-    function readThumbDiameterPx() {
-      const raw = window.getComputedStyle(slider).getPropertyValue("--size-slider-thumb-diameter");
-      const parsed = parseFloat(raw);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : helpers.SIZE_SLIDER_THUMB_DIAMETER;
-    }
-
-    function getSliderAnchorPx(ui) {
-      return helpers.getSizeSliderAnchorPx({
-        value: ui,
-        min: helpers.SIZE_UI_MIN,
-        max: helpers.SIZE_UI_MAX,
-        sliderWidth: slider.clientWidth,
-        thumbDiameter: readThumbDiameterPx(),
-      });
-    }
-
-    function repositionScaleGeometry(ui) {
-      const anchorPx = getSliderAnchorPx(ui);
-      bubble.style.left = `${anchorPx}px`;
-      for (const tick of tickMarks) {
-        tick.element.style.left = `${getSliderAnchorPx(tick.value)}px`;
-      }
-    }
+    const readout = row.querySelector(".size-readout");
+    readout.title = t("rowSizeResetTitle");
 
     function applyLocalValue(ui) {
       const pct = helpers.sizeUiToPct(ui);
       slider.value = String(ui);
-      slider.style.setProperty("--size-fill", `${pct}%`);
-      bubble.textContent = `${ui}%`;
-      repositionScaleGeometry(ui);
+      slider.style.setProperty("--volume-fill", `${pct}%`);
+      readout.textContent = `${ui}%`;
     }
 
     function setDragging(nextDragging, pending = state.transientUiState.size.pending) {
@@ -1361,21 +1679,6 @@
       state.transientUiState.size.draftUi === null ? readers.readSizeUiFromSnapshot() : state.transientUiState.size.draftUi;
     applyLocalValue(initial);
     setDragging(state.transientUiState.size.dragging, state.transientUiState.size.pending);
-
-    for (const v of helpers.SIZE_TICK_VALUES) {
-      const mark = document.createElement("span");
-      mark.className = "size-tick";
-      mark.dataset.value = String(v);
-      const dot = document.createElement("span");
-      dot.className = "size-tick-dot";
-      const label = document.createElement("span");
-      label.className = "size-tick-label";
-      label.textContent = String(v);
-      mark.appendChild(dot);
-      mark.appendChild(label);
-      ticksEl.appendChild(mark);
-      tickMarks.push({ value: v, element: mark });
-    }
 
     const controller = helpers.createSizeSliderController({
       readSnapshotUi: readers.readSizeUiFromSnapshot,
@@ -1399,29 +1702,9 @@
     state.mountedControls.size = {
       row,
       syncFromSnapshot: (options) => controller.syncFromSnapshot(options),
-      dispose: () => {
-        if (resizeObserver) resizeObserver.disconnect();
-        window.removeEventListener("resize", handleGeometryRefresh);
-        return controller.dispose();
-      },
+      dispose: () => controller.dispose(),
     };
     controller.syncFromSnapshot();
-
-    function handleGeometryRefresh() {
-      const currentUi =
-        state.transientUiState.size.draftUi === null ? readers.readSizeUiFromSnapshot() : state.transientUiState.size.draftUi;
-      repositionScaleGeometry(currentUi);
-    }
-
-    let resizeObserver = null;
-    if (typeof ResizeObserver === "function") {
-      resizeObserver = new ResizeObserver(() => {
-        handleGeometryRefresh();
-      });
-      resizeObserver.observe(sliderWrap);
-    }
-    window.addEventListener("resize", handleGeometryRefresh);
-    handleGeometryRefresh();
 
     slider.addEventListener("pointerdown", () => { void controller.pointerDown(); });
     slider.addEventListener("pointerup", () => { void controller.pointerUp(); });
@@ -1432,6 +1715,9 @@
     });
     slider.addEventListener("change", () => {
       void controller.change(Number(slider.value));
+    });
+    readout.addEventListener("click", () => {
+      void controller.change(SIZE_UI_DEFAULT);
     });
 
     return row;
@@ -1519,6 +1805,10 @@
     if (keys.length === 0) return false;
     if (!keys.every((key) => GENERAL_IN_PLACE_KEYS.has(key))) return false;
     if (keys.includes("size") && !ops.syncMountedSizeControl({ fromBroadcast: true })) return false;
+    if (keys.includes("textScale") || keys.includes("textScaleByDisplay")) {
+      const tc = state.mountedControls.textScale;
+      if (!tc || !document.body.contains(tc.row)) return false;
+    }
     if (keys.includes("soundVolume") || keys.includes("soundMuted")) {
       const vc = state.mountedControls.soundVolume;
       if (!vc || !document.body.contains(vc.row)) return false;
@@ -1552,7 +1842,7 @@
       }
     }
     for (const key of keys) {
-      if (key === "size" || key === "soundVolume") continue;
+      if (key === "size" || key === "soundVolume" || key === "textScale" || key === "textScaleByDisplay") continue;
       if (BUBBLE_POLICY_KEYS.has(key)) {
         const meta = state.mountedControls.bubblePolicyControls.get(key);
         if (!meta || !document.body.contains(meta.row)) return false;
@@ -1565,6 +1855,10 @@
     }
     for (const key of keys) {
       if (key === "size") continue;
+      if (key === "textScale" || key === "textScaleByDisplay") {
+        state.mountedControls.textScale.syncValueFromSnapshot();
+        continue;
+      }
       if (key === "soundVolume") {
         state.mountedControls.soundVolume.syncValueFromSnapshot();
         continue;

@@ -49,15 +49,19 @@ test("sendMessage: success returns result; token is NOT in transport args", asyn
   assert.deepEqual(server.calls[0].payload, { chat_id: 1, text: "hi" });
 });
 
-test("getMe / answerCallbackQuery / editMessageReplyMarkup roundtrip", async () => {
+test("getMe / answerCallbackQuery / editMessageReplyMarkup / editMessageText roundtrip", async () => {
   const { client, server } = makeClient();
   server.enqueueOk("getMe", { id: 9, username: "fake_bot" });
   server.enqueueOk("answerCallbackQuery", true);
   server.enqueueOk("editMessageReplyMarkup", { message_id: 11 });
+  server.enqueueOk("editMessageText", { message_id: 12, text: "done" });
 
   assert.equal((await client.getMe()).username, "fake_bot");
   assert.equal(await client.answerCallbackQuery({ callback_query_id: "x" }), true);
   assert.equal((await client.editMessageReplyMarkup({ chat_id: 1, message_id: 11 })).message_id, 11);
+  const edited = await client.editMessageText({ chat_id: 1, message_id: 12, text: "done" });
+  assert.equal(edited.message_id, 12);
+  assert.deepEqual(server.calls[3].payload, { chat_id: 1, message_id: 12, text: "done" });
 });
 
 test("getUpdates advances offset to lastUpdate.update_id + 1", async () => {
@@ -175,6 +179,33 @@ test("Error classes: undici fetch cause codes are network errors", () => {
     cause: { code: "UND_ERR_CONNECT_TIMEOUT" },
   });
   assert.equal(classifyError(err), ERROR_CLASSES.NETWORK);
+});
+
+test("Error classes: Chromium net::ERR_* connection failures are NETWORK (issue #359)", () => {
+  for (const message of [
+    "net::ERR_PROXY_CONNECTION_FAILED",
+    "net::ERR_TUNNEL_CONNECTION_FAILED",
+    "net::ERR_SOCKS_CONNECTION_FAILED",
+    "net::ERR_NAME_NOT_RESOLVED",
+    "net::ERR_CONNECTION_REFUSED",
+    "net::ERR_CONNECTION_RESET",
+    "net::ERR_TIMED_OUT",
+    "net::ERR_INTERNET_DISCONNECTED",
+  ]) {
+    assert.equal(classifyError(new Error(message)), ERROR_CLASSES.NETWORK, message);
+  }
+});
+
+test("Error classes: net::ERR_ABORTED is NETWORK, not TIMEOUT (must not exit poll loop)", () => {
+  // A genuine user abort arrives as name === "AbortError" and is handled earlier.
+  // An involuntary Chromium abort must be retried, so it must NOT map to TIMEOUT —
+  // the poll loop exits on TIMEOUT (telegram-native-runner.js loop/loopFirst).
+  assert.equal(classifyError(new Error("net::ERR_ABORTED")), ERROR_CLASSES.NETWORK);
+});
+
+test("Error classes: non-retryable net::ERR_* (cert / blocked) fall through to UNKNOWN", () => {
+  assert.equal(classifyError(new Error("net::ERR_CERT_AUTHORITY_INVALID")), ERROR_CLASSES.UNKNOWN);
+  assert.equal(classifyError(new Error("net::ERR_BLOCKED_BY_CLIENT")), ERROR_CLASSES.UNKNOWN);
 });
 
 test("Error classes: status=null but error_code=409 still classified as CONFLICT", () => {

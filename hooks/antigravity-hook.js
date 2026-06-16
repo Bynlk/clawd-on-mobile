@@ -7,6 +7,7 @@ const os = require("os");
 const path = require("path");
 const { postPermissionToRunningServer, postStateToRunningServer, readHostPrefix } = require("./server-config");
 const { createPidResolver, readStdinJson, getPlatformConfig } = require("./shared-process");
+const { stdoutForAntigravityEvent } = require("./antigravity-stdout");
 
 const ANTIGRAVITY_PERMISSION_TIMEOUT_MS = 590000;
 const TOOL_INPUT_STRING_MAX = 2000;
@@ -131,9 +132,7 @@ function buildAntigravityNoDecisionOutput(reason) {
 }
 
 function stdoutForEvent(hookName) {
-  if (hookName === "PreToolUse") return buildAntigravityNoDecisionOutput();
-  if (hookName === "Stop") return JSON.stringify({ decision: "allow" });
-  return "{}";
+  return stdoutForAntigravityEvent(hookName);
 }
 
 function resolveHookName(payload, argvEvent) {
@@ -270,6 +269,8 @@ function buildStateBody(hookName, payload, options = {}) {
   if (pidMeta.detectedEditor) body.editor = pidMeta.detectedEditor;
   if (Number.isFinite(pidMeta.agentPid) && pidMeta.agentPid > 0) body.agent_pid = Math.floor(pidMeta.agentPid);
   if (Array.isArray(pidMeta.pidChain) && pidMeta.pidChain.length) body.pid_chain = pidMeta.pidChain;
+  if (pidMeta.tmuxSocket) body.tmux_socket = pidMeta.tmuxSocket;
+  if (pidMeta.tmuxClient) body.tmux_client = pidMeta.tmuxClient;
   return body;
 }
 
@@ -305,6 +306,8 @@ function buildPermissionBody(hookName, payload, options = {}) {
   if (pidMeta.detectedEditor) body.editor = pidMeta.detectedEditor;
   if (Number.isFinite(pidMeta.agentPid) && pidMeta.agentPid > 0) body.agent_pid = Math.floor(pidMeta.agentPid);
   if (Array.isArray(pidMeta.pidChain) && pidMeta.pidChain.length) body.pid_chain = pidMeta.pidChain;
+  if (pidMeta.tmuxSocket) body.tmux_socket = pidMeta.tmuxSocket;
+  if (pidMeta.tmuxClient) body.tmux_client = pidMeta.tmuxClient;
   return body;
 }
 

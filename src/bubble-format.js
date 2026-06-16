@@ -81,7 +81,30 @@
     return truncate(JSON.stringify(input), 100);
   }
 
-  const api = { formatDetail, formatAntigravityDetail, truncate, firstStringValue };
+  // Issue #445: MCP tool names arrive as opaque, scary-looking identifiers
+  // (e.g. "MCP__CODEX_APPS__VERCEL__LIST_PROJECTS"). Parse them into a friendly
+  // "server · tool" label for display ONLY. Naming differs across agents —
+  // Codex uses upper-case 4-segment names, Claude Code uses lower-case 3-segment
+  // ("mcp__github__list_issues") — so we are case-insensitive and key off the
+  // last two segments. Returns null for anything that is not MCP-shaped, so the
+  // caller falls back to the raw name. This must never throw and must never
+  // decide safety/approval behavior.
+  function parseMcpToolName(toolName) {
+    if (typeof toolName !== "string" || !toolName) return null;
+    const segs = toolName.split("__");
+    if (segs.length < 2 || segs[0].toLowerCase() !== "mcp") return null;
+    const rest = segs.slice(1);
+    // Any empty segment (leading / middle / trailing "__") means a malformed
+    // name: fall back to the raw display rather than a misleading partial label
+    // (e.g. "MCP__CODEX_APPS__VERCEL__" must NOT render as "codex_apps · vercel").
+    if (rest.some((seg) => seg === "")) return null;
+    const tool = rest[rest.length - 1].toLowerCase();
+    const server = rest.length >= 2 ? rest[rest.length - 2].toLowerCase() : null;
+    const display = server ? `${server} · ${tool}` : tool;
+    return { server, tool, display };
+  }
+
+  const api = { formatDetail, formatAntigravityDetail, truncate, firstStringValue, parseMcpToolName };
 
   if (typeof module === "object" && module.exports) {
     module.exports = api;

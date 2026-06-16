@@ -125,6 +125,8 @@ function applyLocalProcessFields(body, pidMeta) {
   if (pidMeta.detectedEditor) body.editor = pidMeta.detectedEditor;
   if (Number.isFinite(pidMeta.agentPid) && pidMeta.agentPid > 0) body.agent_pid = Math.floor(pidMeta.agentPid);
   if (Array.isArray(pidMeta.pidChain) && pidMeta.pidChain.length) body.pid_chain = pidMeta.pidChain;
+  if (pidMeta.tmuxSocket) body.tmux_socket = pidMeta.tmuxSocket;
+  if (pidMeta.tmuxClient) body.tmux_client = pidMeta.tmuxClient;
 }
 
 const TOOL_METADATA_EVENTS = new Set([

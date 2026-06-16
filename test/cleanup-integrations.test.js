@@ -51,6 +51,7 @@ describe("cleanupIntegrations", () => {
     }
     assert.strictEqual(plan.byAgent["claude-code"].settingsPath, path.join(homeDir, ".claude", "settings.json"));
     assert.strictEqual(plan.byAgent.codex.hooksPath, path.join(homeDir, ".codex", "hooks.json"));
+    assert.strictEqual(plan.byAgent.codewhale.configPath, path.join(homeDir, ".codewhale", "config.toml"));
     assert.strictEqual(plan.byAgent.opencode.configPath, path.join(homeDir, ".config", "opencode", "opencode.json"));
     assert.strictEqual(plan.byAgent.pi.parentDir, path.join(homeDir, ".pi", "agent"));
     assert.strictEqual(plan.env.LOCALAPPDATA, targetLocalAppData);
@@ -65,6 +66,7 @@ describe("cleanupIntegrations", () => {
     const homeDir = path.join(root, "home");
     const pluginDir = resolvePluginDir();
     const codexPath = path.join(homeDir, ".codex", "hooks.json");
+    const codewhalePath = path.join(homeDir, ".codewhale", "config.toml");
     const opencodePath = path.join(homeDir, ".config", "opencode", "opencode.json");
     const kiroTeamPath = path.join(homeDir, ".kiro", "agents", "team.json");
     const kiroClawdPath = path.join(homeDir, ".kiro", "agents", "clawd.json");
@@ -78,6 +80,25 @@ describe("cleanupIntegrations", () => {
         ],
       },
     });
+    fs.mkdirSync(path.dirname(codewhalePath), { recursive: true });
+    fs.writeFileSync(
+      codewhalePath,
+      [
+        "[hooks]",
+        "enabled = true",
+        "",
+        "[[hooks.hooks]]",
+        "# managed by clawd-on-desk",
+        'event = "session_start"',
+        'command = "\\"node\\" \\"C:/clawd/hooks/codewhale-hook.js\\" \\"session_start\\""',
+        "",
+        "[[hooks.hooks]]",
+        'event = "session_start"',
+        'command = "echo user-hook"',
+        "",
+      ].join("\n"),
+      "utf8"
+    );
     writeJson(opencodePath, {
       plugin: [
         pluginDir,
@@ -112,6 +133,10 @@ describe("cleanupIntegrations", () => {
         { hooks: [{ type: "command", command: 'node "C:/user/hooks/keep.js"' }] },
       ]);
       assert.strictEqual(listCleanupBackups(path.dirname(codexPath)).length, 1);
+
+      const codewhale = fs.readFileSync(codewhalePath, "utf8");
+      assert.ok(!codewhale.includes("codewhale-hook.js"));
+      assert.ok(codewhale.includes('command = "echo user-hook"'));
 
       const opencode = readJson(opencodePath);
       assert.deepStrictEqual(opencode.plugin, [

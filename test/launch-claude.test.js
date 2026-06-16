@@ -10,11 +10,14 @@ const { describe, it } = require("node:test");
 const {
   buildClaudeArgs,
   buildTerminalCandidates,
+  buildShellTerminalCandidates,
+  openTerminalAt,
   buildCmdLaunchCommand,
   normalizeClaudeSessionId,
   quoteCmdExecutablePath,
   quoteForPowerShell,
   launchClaudeSession,
+  findClaudeCmd,
 } = require("../src/launch-claude");
 
 const WIN_PATH = "C:\\Program Files\\nodejs\\node_modules\\@anthropic\\claude.cmd";
@@ -108,16 +111,96 @@ describe("cmd executable quoting", () => {
   });
 });
 
+describe("findClaudeCmd", () => {
+  const NPM_DIR = "C:\\Users\\Tester\\AppData\\Roaming\\npm";
+  // `where`/`which` stub: emits the given paths as newline output.
+  const fakeWhere = (...paths) => ({ execFileSync: () => paths.join("\r\n") + "\r\n" });
+  // filesystem stub: only the listed paths "exist" (case-insensitive on Windows).
+  const fakeFs = (existing) => {
+    const set = new Set(existing.map((p) => String(p).toLowerCase()));
+    return { existsSync: (p) => set.has(String(p).toLowerCase()) };
+  };
+
+  it("Windows: prefers claude.cmd when `where` lists the extensionless script first", () => {
+    const ext = `${NPM_DIR}\\claude`;
+    const cmd = `${NPM_DIR}\\claude.cmd`;
+    const out = findClaudeCmd("win32", { ...fakeWhere(ext, cmd), ...fakeFs([ext, cmd]) });
+    assert.strictEqual(out, cmd, "must not return the 0x800700c1 POSIX shim");
+  });
+
+  it("Windows: never returns the extensionless POSIX shim, probing for a sibling", () => {
+    // `where` surfaced only the unrunnable script; its launchable sibling is
+    // right next to it. Returning `ext` here is the exact #435 bug.
+    const ext = `${NPM_DIR}\\claude`;
+    const cmd = `${NPM_DIR}\\claude.cmd`;
+    const out = findClaudeCmd("win32", { ...fakeWhere(ext), ...fakeFs([ext, cmd]) });
+    assert.strictEqual(out, cmd);
+  });
+
+  it("Windows: prefers a real claude.exe over the .cmd shim", () => {
+    const exe = `${NPM_DIR}\\claude.exe`;
+    const cmd = `${NPM_DIR}\\claude.cmd`;
+    const out = findClaudeCmd("win32", { ...fakeWhere(exe, cmd), ...fakeFs([exe, cmd]) });
+    assert.strictEqual(out, exe);
+  });
+
+  it("Windows: falls back to %APPDATA%\\npm\\claude.cmd when PATH lookup misses", () => {
+    const prev = process.env.APPDATA;
+    process.env.APPDATA = "C:\\Users\\Tester\\AppData\\Roaming";
+    try {
+      const cmd = path.join(process.env.APPDATA, "npm", "claude.cmd");
+      const out = findClaudeCmd("win32", {
+        execFileSync: () => { throw new Error("where: not found"); },
+        ...fakeFs([cmd]),
+      });
+      assert.strictEqual(out, cmd);
+    } finally {
+      if (prev === undefined) delete process.env.APPDATA;
+      else process.env.APPDATA = prev;
+    }
+  });
+
+  it("Windows: returns bare \"claude\" when nothing is found", () => {
+    const out = findClaudeCmd("win32", { execFileSync: () => "", existsSync: () => false });
+    assert.strictEqual(out, "claude");
+  });
+
+  it("Windows: passes through to stage 3 when only an extensionless shim exists (no sibling)", () => {
+    // No launchable variant anywhere — must NOT return the unrunnable script;
+    // falls through to bare \"claude\" for cmd.exe/PATHEXT to resolve.
+    const ext = `${NPM_DIR}\\claude`;
+    const out = findClaudeCmd("win32", { ...fakeWhere(ext), ...fakeFs([ext]) });
+    assert.strictEqual(out, "claude");
+  });
+
+  it("Windows: matches launchable extensions case-insensitively", () => {
+    const cmd = `${NPM_DIR}\\CLAUDE.CMD`;
+    const out = findClaudeCmd("win32", { ...fakeWhere(cmd), ...fakeFs([cmd]) });
+    assert.strictEqual(out, cmd);
+  });
+
+  it("POSIX: returns the first existing `which` result", () => {
+    const p = "/usr/local/bin/claude";
+    const out = findClaudeCmd("linux", { ...fakeWhere(p), ...fakeFs([p]) });
+    assert.strictEqual(out, p);
+  });
+});
+
 describe("buildTerminalCandidates - Windows", () => {
   it("orders fallbacks wt -> cmd -> powershell", () => {
     const cands = buildTerminalCandidates("claude", [], "win32");
     assert.deepStrictEqual(cands.map((c) => c.bin), ["wt.exe", "cmd.exe", "powershell.exe"]);
   });
 
-  it("wt.exe uses an argv array, no shell quoting needed", () => {
+  it("wt.exe routes through cmd.exe so Windows Terminal never execs a .cmd shim directly", () => {
     const cands = buildTerminalCandidates(WIN_PATH, ["--resume", "sid"], "win32");
     const wt = cands.find((c) => c.bin === "wt.exe");
-    assert.deepStrictEqual(wt.args, ["--", WIN_PATH, "--resume", "sid"]);
+    assert.deepStrictEqual(wt.args, [
+      "--", "cmd.exe", "/d", "/v:off", "/k", "call", `"${WIN_PATH}"`, "--resume", "sid",
+    ]);
+    // `call` keeps cmd's /K from stripping the leading quote; verbatim keeps the
+    // Node->wt hop from re-quoting. WT's own re-tokenization needs real Windows.
+    assert.deepStrictEqual(wt.extraOpts, { shell: false, windowsVerbatimArguments: true });
   });
 
   it("cmd.exe quotes a claude path with spaces", () => {
@@ -215,6 +298,59 @@ describe("buildTerminalCandidates - Windows", () => {
     }
   });
 
+  it("round-trips a spaced + parenthesized .cmd shim through wt's cmd.exe layer", { skip: process.platform !== "win32" }, () => {
+    // Dir name carries BOTH a space and cmd-special chars `()` — the exact shape
+    // (`Program Files (x86)`) that strips quotes under plain `/k "..."`. The
+    // `call` prefix is what keeps it intact.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "launch (x86) claude wt shim-"));
+    try {
+      const shimPath = path.join(tmpDir, "claude.cmd");
+      const echoPath = path.join(tmpDir, "echo-argv.js");
+      fs.writeFileSync(echoPath, 'console.log(JSON.stringify(process.argv.slice(2)));\n', "utf8");
+      fs.writeFileSync(
+        shimPath,
+        [
+          "@ECHO off",
+          "GOTO start",
+          ":find_dp0",
+          "SET dp0=%~dp0",
+          "EXIT /b",
+          ":start",
+          "SETLOCAL",
+          "CALL :find_dp0",
+          'SET "_prog=node"',
+          'endLocal & goto #_undefined_# 2>NUL || "%_prog%"  "%dp0%echo-argv.js" %*',
+          "",
+        ].join("\r\n"),
+        "utf8",
+      );
+
+      const claudeArgs = buildClaudeArgs("resume", "safe_sid-123");
+      const cands = buildTerminalCandidates(shimPath, claudeArgs, "win32");
+      const wt = cands.find((c) => c.bin === "wt.exe");
+      // Covers the cmd.exe SIDE only: given the tokens delivered faithfully, does
+      // `cmd /c call "<path>" <args>` run the shim and forward argv? It does NOT
+      // exercise Windows Terminal's own commandline re-tokenization/re-quoting —
+      // that layer needs a real wt.exe launch on Windows. Here we drop "--", swap
+      // /k -> /c so cmd exits, and feed the tokens to cmd.exe verbatim.
+      const inner = wt.args.slice(1).map((a) => (a === "/k" ? "/c" : a));
+      const result = spawnSync(inner[0], inner.slice(1), {
+        encoding: "utf8",
+        windowsVerbatimArguments: true,
+      });
+      const detail = JSON.stringify({
+        status: result.status,
+        error: result.error && result.error.message,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+      assert.strictEqual(result.status, 0, detail);
+      assert.deepStrictEqual(JSON.parse(result.stdout.trim()), claudeArgs, detail);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("powershell.exe single-quotes path and args, neutralizing injection", () => {
     const cands = buildTerminalCandidates(WIN_PATH, ["--resume", "a'; calc; '"], "win32");
     const ps = cands.find((c) => c.bin === "powershell.exe");
@@ -245,6 +381,158 @@ describe("buildTerminalCandidates - macOS", () => {
     const script = cands[0].args[1];
     // Any double quote from user input must be backslash-escaped for AppleScript.
     assert.ok(script.includes('\\"'), "AppleScript double quotes must be escaped");
+  });
+
+  it("prefixes an explicit cd -- <workDir> when a working directory is given (#459)", () => {
+    // Terminal.app `do script` shells start at $HOME and ignore spawn cwd, so
+    // the folder must live inside the command itself.
+    const cands = buildTerminalCandidates("/usr/local/bin/claude", [], "darwin", "/Users/me/proj dir");
+    const script = cands[0].args[1];
+    assert.ok(script.includes("cd -- '/Users/me/proj dir' && "), script);
+  });
+
+  it("omits the cd prefix when no working directory is given", () => {
+    const cands = buildTerminalCandidates("/usr/local/bin/claude", [], "darwin");
+    const script = cands[0].args[1];
+    assert.ok(!script.includes("cd -- "), script);
+  });
+});
+
+describe("buildShellTerminalCandidates (#459)", () => {
+  it("win32: wt -d first, then cmd cd /d as one pre-quoted string, then PS -LiteralPath", () => {
+    const dir = "C:\\My Projects\\app";
+    const cands = buildShellTerminalCandidates(dir, "win32");
+    assert.deepStrictEqual(cands.map((c) => c.bin), ["wt.exe", "cmd.exe", "powershell.exe"]);
+    // wt -d relies on Node's default arg quoting; no verbatim args.
+    assert.deepStrictEqual(cands[0].args, ["-d", dir]);
+    assert.strictEqual(cands[0].extraOpts, undefined);
+    // cmd: the /k payload is ONE pre-quoted string and must not start with a quote.
+    const cmdPayload = cands[1].args[cands[1].args.length - 1];
+    assert.strictEqual(cmdPayload, 'cd /d "C:\\My Projects\\app"');
+    assert.strictEqual(cands[1].extraOpts.windowsVerbatimArguments, true);
+    const psPayload = cands[2].args[cands[2].args.length - 1];
+    assert.strictEqual(psPayload, "Set-Location -LiteralPath 'C:\\My Projects\\app'");
+  });
+
+  it("win32: -LiteralPath keeps glob characters literal", () => {
+    const cands = buildShellTerminalCandidates("C:\\dir[1]", "win32");
+    const psPayload = cands[2].args[cands[2].args.length - 1];
+    assert.strictEqual(psPayload, "Set-Location -LiteralPath 'C:\\dir[1]'");
+  });
+
+  it("win32: rejects directories containing double quotes", () => {
+    assert.throws(
+      () => buildShellTerminalCandidates('C:\\evil" & calc & "', "win32"),
+      /double quotes/,
+    );
+  });
+
+  it("win32: a %-containing dir skips the cmd.exe candidate (no command-line escape exists)", () => {
+    const cands = buildShellTerminalCandidates("C:\\100% done", "win32");
+    assert.deepStrictEqual(cands.map((c) => c.bin), ["wt.exe", "powershell.exe"]);
+    // The survivors both pass the path literally.
+    assert.deepStrictEqual(cands[0].args, ["-d", "C:\\100% done"]);
+    assert.strictEqual(
+      cands[1].args[cands[1].args.length - 1],
+      "Set-Location -LiteralPath 'C:\\100% done'",
+    );
+  });
+
+  it("win32: `!` and `^ &` dirs keep the cmd.exe candidate (/v:off + quotes make them literal)", () => {
+    const cands = buildShellTerminalCandidates("C:\\bang!dir & spec^ial", "win32");
+    assert.deepStrictEqual(cands.map((c) => c.bin), ["wt.exe", "cmd.exe", "powershell.exe"]);
+    const cmd = cands[1];
+    assert.ok(cmd.args.includes("/v:off"), "delayed expansion must stay disabled");
+    assert.strictEqual(cmd.args[cmd.args.length - 1], 'cd /d "C:\\bang!dir & spec^ial"');
+  });
+
+  it("round-trips a spaced/special dir through real cmd.exe cd", { skip: process.platform !== "win32" }, () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd drop & test^ "));
+    try {
+      const cands = buildShellTerminalCandidates(dir, "win32");
+      const cmd = cands.find((c) => c.bin === "cmd.exe");
+      assert.ok(cmd, "non-% dir must keep the cmd candidate");
+      const payload = cmd.args[cmd.args.length - 1];
+      const result = spawnSync("cmd.exe", ["/d", "/v:off", "/s", "/c", `${payload} && cd`], {
+        encoding: "utf8",
+        windowsVerbatimArguments: true,
+      });
+      assert.strictEqual(result.status, 0, JSON.stringify({ stdout: result.stdout, stderr: result.stderr }));
+      assert.strictEqual(result.stdout.trim(), dir);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("darwin: single osascript candidate with explicit cd -- and two-layer quoting", () => {
+    const cands = buildShellTerminalCandidates("/Users/me/proj dir", "darwin");
+    assert.strictEqual(cands.length, 1);
+    assert.strictEqual(cands[0].bin, "osascript");
+    const script = cands[0].args[1];
+    assert.ok(script.startsWith('tell application "Terminal" to do script "'), script);
+    assert.ok(script.includes("cd -- '/Users/me/proj dir' && clear"), script);
+  });
+
+  it("darwin: survives single quotes in the directory name", () => {
+    const cands = buildShellTerminalCandidates("/tmp/it's here", "darwin");
+    const script = cands[0].args[1];
+    assert.ok(script.includes("cd -- "), script);
+    assert.ok(!script.includes("'/tmp/it's here'"), "naive single-quoting must not survive");
+  });
+
+  it("linux: documented emulator chain, command only keeps a shell alive", () => {
+    const cands = buildShellTerminalCandidates("/tmp/x", "linux");
+    assert.deepStrictEqual(
+      cands.map((c) => c.bin),
+      ["x-terminal-emulator", "xterm", "gnome-terminal", "konsole", "alacritty", "kitty"],
+    );
+    for (const c of cands) assert.strictEqual(c.args[c.args.length - 1], "exec bash");
+  });
+});
+
+describe("openTerminalAt (#459)", () => {
+  it("walks the candidate chain and passes the directory as spawn cwd", async () => {
+    const launches = [];
+    const result = await openTerminalAt("/tmp/proj", {
+      platform: () => "linux",
+      tryLaunch: async (bin, args, opts) => {
+        launches.push([bin, opts.cwd, opts.detached]);
+        if (launches.length < 2) return { ok: false, error: new Error("not installed") };
+        return { ok: true };
+      },
+    });
+    assert.deepStrictEqual(result, { ok: true, terminal: "xterm" });
+    assert.strictEqual(launches.length, 2);
+    for (const [, cwd, detached] of launches) {
+      assert.strictEqual(cwd, "/tmp/proj");
+      assert.strictEqual(detached, true);
+    }
+  });
+
+  it("reports the last error when every candidate fails", async () => {
+    const result = await openTerminalAt("/tmp/proj", {
+      platform: () => "darwin",
+      tryLaunch: async () => ({ ok: false, error: new Error("osascript missing") }),
+    });
+    assert.deepStrictEqual(result, { ok: false, message: "osascript missing" });
+  });
+
+  it("rejects an empty directory without spawning", async () => {
+    let launched = false;
+    const result = await openTerminalAt("", {
+      tryLaunch: async () => { launched = true; return { ok: true }; },
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(launched, false);
+  });
+
+  it("turns a win32 double-quote rejection into a failed result, not a throw", async () => {
+    const result = await openTerminalAt('C:\\evil" & calc', {
+      platform: () => "win32",
+      tryLaunch: async () => ({ ok: true }),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.match(result.message, /double quotes/);
   });
 });
 
@@ -327,7 +615,9 @@ describe("launchClaudeSession - terminal fallback", () => {
   it("passes the resolved claude path and quoted args through to the terminal", async () => {
     const { attempted, deps } = makeDeps({ plat: "win32", okBins: ["wt.exe"], findResult: WIN_PATH });
     await launchClaudeSession("resume", undefined, "sid_1", deps);
-    assert.deepStrictEqual(attempted[0].args, ["--", WIN_PATH, "--resume", "sid_1"]);
+    assert.deepStrictEqual(attempted[0].args, [
+      "--", "cmd.exe", "/d", "/v:off", "/k", "call", `"${WIN_PATH}"`, "--resume", "sid_1",
+    ]);
   });
 
   it("rejects unsafe resume IDs before trying any terminal", async () => {

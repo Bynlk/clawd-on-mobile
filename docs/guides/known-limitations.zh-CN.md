@@ -27,6 +27,8 @@
 | **OpenClaw：本地 TUI state-only 支持** | Phase 1 通过 OpenClaw plugin 观察 `openclaw tui --local` 的生命周期和工具事件。暂不提供权限气泡或终端聚焦；gateway / daemon / messaging 部署也未必能锚定到本地终端窗口。 |
 | **OpenClaw：启动时不编辑 JSON5 配置** | OpenClaw 支持 JSON5 和 include 型配置。Clawd 启动同步只会编辑已存在且是严格 JSON 的 `~/.openclaw/openclaw.json`；遇到 JSON5 / include 配置会跳过，除非你手动运行 installer，让 OpenClaw CLI 自己负责写入。 |
 | **OpenClaw on Windows：原生 codex relay 可能失败** | 如果 OpenClaw 使用原生 `agentRuntime: codex` 路径时卡住，或报 unsafe native hook relay bridge，建议切到 OpenAI-compatible model/provider，例如 `openai-codex/gpt-5.5`。这是 OpenClaw 自身行为；Clawd 只观察 plugin 状态事件，无法修复 relay。 |
+| **CodeWhale：全局 session id 缓存** | Phase 1 会把最近一次 CodeWhale session id 存在 `os.tmpdir()` 下的单个全局文件。多个 CodeWhale 实例并发运行时可能互相覆盖或误清这个缓存，导致状态串线或 HUD 出现重复标签。 |
+| **Qoder：仅状态同步** | Phase 1 通过 `~/.qoder/settings.json` 的 hook 观察 Qoder 状态与会话。`PermissionRequest` / `PermissionDenied` 只作为通知观察——hook 恒返回 `{}`，从不代答权限决策，所有 Allow / Deny 都留在 Qoder 原生权限流程里，Clawd 不弹权限气泡。启动恢复只识别 Qoder CLI 进程（`qodercli` / `qoder-cli`），闲置打开的 Qoder IDE 不会被当成进行中的 agent 工作。 |
 | **Windows Terminal：tab 聚焦能力有限** | Windows Terminal 会用一个宿主窗口 / 进程承载多个 tab，Clawd 无法可靠激活其中某一个指定 tab。HUD / Dashboard 终端跳转最适合单独的传统 `cmd.exe` / PowerShell 窗口，或标题里包含项目目录名的独立 Windows Terminal 窗口。Windows 11 上，`cmd.exe` 和 PowerShell 也可能默认被 Windows Terminal 托管；如果要使用传统窗口，需要把默认终端应用程序改为 Windows 控制台主机。 |
 | **macOS/Linux 安装包自动更新** | DMG/AppImage/deb 安装包无法自动更新——使用 `git clone` + `npm start` 可通过 `git pull` 自动更新，或从 GitHub Releases 手动下载。 |
 | **Electron 主进程无自动化测试** | 单元测试覆盖了 agent 配置和日志轮询，但状态机、窗口管理、托盘等 Electron 逻辑暂无自动化测试。 |

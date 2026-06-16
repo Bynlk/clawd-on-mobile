@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -611,6 +612,26 @@ def _resolve_process_metadata(start_pid: Optional[int] = None) -> Dict[str, Any]
         meta["pid_chain"] = pid_chain
     if detected_editor:
         meta["editor"] = detected_editor
+    tmux_env = os.environ.get("TMUX")
+    if tmux_env:
+        socket_path = tmux_env.split(",")[0]
+        if socket_path and socket_path.startswith("/") and len(socket_path) <= 4096 and not re.search(r"[\x00\r\n]", socket_path):
+            meta["tmux_socket"] = socket_path
+        tmux_pane = os.environ.get("TMUX_PANE")
+        if tmux_pane:
+            try:
+                proc = subprocess.run(
+                    ["tmux", "list-clients", "-t", tmux_pane, "-F", "#{client_tty}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=0.5,
+                    check=False,
+                )
+                target = next((line.strip() for line in proc.stdout.splitlines() if line.strip()), "")
+                if target and len(target) <= 256 and not target.startswith("-") and re.fullmatch(r"[\w./:-]+", target):
+                    meta["tmux_client"] = target
+            except Exception:
+                pass
     return meta
 
 
@@ -663,6 +684,12 @@ def _add_process_meta(payload: Dict[str, Any]) -> None:
     editor = meta.get("editor")
     if editor in ("code", "cursor"):
         payload["editor"] = editor
+    tmux_socket = meta.get("tmux_socket")
+    if isinstance(tmux_socket, str) and tmux_socket:
+        payload["tmux_socket"] = tmux_socket
+    tmux_client = meta.get("tmux_client")
+    if isinstance(tmux_client, str) and tmux_client:
+        payload["tmux_client"] = tmux_client
 
 
 def _first_string(*values: Any) -> str:

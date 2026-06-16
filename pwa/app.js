@@ -67,6 +67,20 @@
     return EVENT_LABELS_CN[eventName] || (typeof EVENT_LABELS !== "undefined" && EVENT_LABELS[eventName]) || eventName || "";
   }
 
+  var EVENT_ICONS = {
+    UserPromptSubmit: "💬", PreToolUse: "⚙️", PostToolUse: "✅",
+    PostToolUseFailure: "❌", Stop: "🏁", StopFailure: "❌",
+    SessionStart: "▶️", SessionEnd: "⏹️",
+    PermissionRequest: "🔒", Notification: "🔔",
+    SubagentStart: "🔀", SubagentStop: "🔀",
+    AfterAgent: "✅", ApiError: "❌",
+    Elicitation: "❓", WorktreeCreate: "🌿",
+  };
+
+  function eventIcon(eventName) {
+    return EVENT_ICONS[eventName] || "●";
+  }
+
   function log(msg) {
     var now = new Date();
     var ts = [now.getHours(), now.getMinutes(), now.getSeconds()]
@@ -83,18 +97,27 @@
     }
   }
 
-  function showToast(message, type) {
+  function showToast(message, type, persist) {
     type = type || "info";
     var container = document.getElementById("toast-container");
     var toast = document.createElement("div");
-    toast.className = "toast " + type;
+    toast.className = "toast " + type + (persist ? " toast-persist" : "");
     toast.textContent = message;
+    if (persist) {
+      var close = document.createElement("span");
+      close.className = "toast-close";
+      close.textContent = "✕";
+      close.onclick = function() { toast.remove(); };
+      toast.appendChild(close);
+    }
     container.appendChild(toast);
-    setTimeout(function() {
-      toast.style.opacity = "0";
-      toast.style.transition = "opacity 0.3s";
-      setTimeout(function() { toast.remove(); }, 300);
-    }, 3000);
+    if (!persist) {
+      setTimeout(function() {
+        toast.style.opacity = "0";
+        toast.style.transition = "opacity 0.3s";
+        setTimeout(function() { toast.remove(); }, 300);
+      }, 3000);
+    }
   }
 
   // === NotificationManager ===
@@ -118,7 +141,7 @@
       var s = data.state;
       var config = STATE_CONFIG[s];
       if (!config) return;
-      var label = data.title || "Agent";
+      var label = data.title || data.agentId || "Agent";
       if (s === "error" || s === "attention") {
         this._notify(config.label, label + " - " + config.label, s);
       } else if ((prev === "working" || prev === "thinking") && s === "idle") {
@@ -146,9 +169,10 @@
       this.ws = null; this.config = null;
       this.reconnectDelay = 1000; this.maxReconnectDelay = 30000;
       this.reconnectTimer = null; this.state = "disconnected";
-      this.retryCount = 0; this.maxRetries = 10;
-      this._closingIntentionally = false;
+      this.retryCount = 0;
       this.onStateChange = null; this.onMessage = null; this.onDisconnected = null;
+      this._hiddenAt = 0;
+      this._bindVisibility();
     }
 
     connect(config) {
@@ -162,26 +186,43 @@
 
     _doConnect() {
       if (!this.config) return;
-      if (this.ws) {
-        this._closingIntentionally = true;
-        try { this.ws.close(); } catch {}
+      // Tear down old socket — clear callbacks first to prevent stale events
+      var old = this.ws;
+      if (old) {
+        old.onopen = old.onmessage = old.onclose = old.onerror = null;
+        try { old.close(); } catch {}
       }
       var url = "ws://" + this.config.host + ":" + this.config.port + "/ws?token=" + this.config.token;
       this._setState("connecting");
       log("Connecting to " + this.config.host + ":" + this.config.port + "...");
-      try { this.ws = new WebSocket(url); } catch (err) { this._closingIntentionally = false; log("WS create failed: " + err.message); this._scheduleReconnect(); return; }
+      var socket;
+      try { socket = new WebSocket(url); } catch (err) { log("WS create failed: " + err.message); this._scheduleReconnect(); return; }
+      this.ws = socket;
       var self = this;
       var connected = false;
-      this.ws.onopen = function() { self._closingIntentionally = false; connected = true; self.retryCount = 0; self.reconnectDelay = 1000; self._setState("connected"); log("Connected"); showToast("已连接到桌面端", "success"); };
-      this.ws.onmessage = function(event) { try { var msg = JSON.parse(event.data); if (msg.type === "ping") { self.send({ type: "pong", timestamp: msg.timestamp }); } if (self.onMessage) self.onMessage(msg); } catch {} };
-      this.ws.onclose = function(event) {
-        if (self._closingIntentionally) return;
-        if (event.code === 1008) { self._setState("auth_failed"); log("Auth failed"); showToast("认证失败", "error"); return; }
+      socket.onopen = function() {
+        if (socket !== self.ws) return; // stale socket — ignore
+        connected = true; self.retryCount = 0; self.reconnectDelay = 1000;
+        self._setState("connected"); log("Connected"); showToast("已连接到桌面端", "success");
+        // Dismiss any persistent toasts (e.g. retry hint)
+        var persisted = document.querySelectorAll(".toast-persist");
+        for (var i = 0; i < persisted.length; i++) { persisted[i].remove(); }
+        // Strip query params from URL so stale ?token= from QR codes
+        // won't overwrite a rotated token in history on next auto-connect.
+        if (window.location.search) { history.replaceState(null, "", window.location.pathname); }
+      };
+      socket.onmessage = function(event) {
+        if (socket !== self.ws) return;
+        try { var msg = JSON.parse(event.data); if (self.onMessage) self.onMessage(msg); } catch {}
+      };
+      socket.onclose = function(event) {
+        if (socket !== self.ws) return; // stale socket — ignore
+        if (event.code === 1008) { self._setState("auth_failed"); log("Auth failed"); showToast("Token 已过期，请重新连接", "error"); return; }
         if (connected) log("Disconnected (code: " + event.code + ")");
         if (self.onDisconnected) self.onDisconnected();
         self._scheduleReconnect();
       };
-      this.ws.onerror = function() {};
+      socket.onerror = function() {};
     }
 
     send(data) { if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(typeof data === "string" ? data : JSON.stringify(data)); }
@@ -189,13 +230,11 @@
     _scheduleReconnect() {
       if (!this.config) return;
       this.retryCount++;
-      if (this.retryCount > this.maxRetries) {
-        this._setState("disconnected");
-        log("Max retries (" + this.maxRetries + ") reached, stopping");
-        showToast("连接失败，请检查地址和 Token", "error");
-        return;
-      }
       this._setState("reconnecting");
+      // After several retries, give actionable feedback (don't stop — just inform)
+      if (this.retryCount === 5) {
+        showToast("仍在重连…请检查地址、端口或桌面端是否已开启", "info", true);
+      }
       var self = this;
       this.reconnectTimer = setTimeout(function() { self.reconnectDelay = Math.min(self.reconnectDelay * 2, self.maxReconnectDelay); self._doConnect(); }, this.reconnectDelay);
     }
@@ -212,6 +251,35 @@
 
     getHistory() { try { return JSON.parse(localStorage.getItem("clawd-history") || "[]"); } catch { return []; } }
     deleteHistory(index) { var h = this.getHistory(); h.splice(index, 1); localStorage.setItem("clawd-history", JSON.stringify(h)); }
+
+    _updateHistoryToken(host, port, newToken) {
+      var history = this.getHistory();
+      for (var i = 0; i < history.length; i++) {
+        if (history[i].host === host && history[i].port === port) {
+          history[i].token = newToken;
+        }
+      }
+      localStorage.setItem("clawd-history", JSON.stringify(history));
+    }
+
+    _bindVisibility() {
+      var self = this;
+      document.addEventListener("visibilitychange", function() {
+        if (document.visibilityState !== "visible") {
+          self._hiddenAt = Date.now();
+          return;
+        }
+        if (!self.config) return;
+        var hiddenFor = self._hiddenAt ? Date.now() - self._hiddenAt : 0;
+        // Short tab switch: trust OPEN. Background > 30s: force reconnect (zombie guard)
+        if (hiddenFor < 30000 && self.ws && self.ws.readyState === WebSocket.OPEN) return;
+        log("Page visible after " + Math.round(hiddenFor / 1000) + "s, reconnecting...");
+        self.retryCount = 0;
+        self.reconnectDelay = 1000;
+        clearTimeout(self.reconnectTimer);
+        self._doConnect();
+      });
+    }
   }
 
   // === SessionRenderer ===
@@ -285,13 +353,16 @@
       var isExpanded = this.expandedSet.has(sid);
       var events = s.recentEvents || [];
       var stateKey = s.state || "idle";
+      var agentLabel = (s.agentId || "agent").toUpperCase();
+      var sessionTitle = s.title || "";
       var html = '<div class="session-card">';
       html += '<div class="card-header"><div class="card-agent"><div class="agent-dot"></div>';
-      html += '<span class="agent-name">' + esc((s.title || "agent").toUpperCase()) + '</span></div>';
+      html += '<span class="agent-name">' + esc(agentLabel) + '</span></div>';
       html += '<span class="state-badge ' + stateKey + '">' + config.label + '</span></div>';
-      html += '<div class="card-title">' + esc(s.title || "") + '</div>';
+      if (sessionTitle) html += '<div class="card-title">' + esc(sessionTitle) + '</div>';
       html += '<div class="card-meta">';
       if (s.basename) { html += '<span class="meta-item mono">' + icon("folder") + '<span>' + esc(s.basename) + '</span></span>'; }
+      if (s.updatedAt) { html += '<span class="meta-sep">&middot;</span><span class="meta-item meta-time" data-ts="' + s.updatedAt + '">' + formatAgo(s.updatedAt) + '</span>'; }
       html += '</div>';
       html += '<div class="card-divider"></div>';
       html += '<div class="card-footer" data-sid="' + sid + '"><div class="footer-events">' + icon("activity") + '<span>最近事件</span>';
@@ -309,6 +380,7 @@
         var ev = events[i]; var c = STATE_CONFIG[ev.state] || STATE_CONFIG.idle;
         html += '<div class="event-row"><div class="event-dot" style="background:' + c.color + '"></div>';
         html += '<div class="event-line" style="background:' + c.color + '"></div>';
+        html += '<span class="event-icon">' + eventIcon(ev.event) + '</span>';
         html += '<span class="event-label">' + esc(eventLabel(ev.event)) + '</span>';
         html += '<span class="event-time"' + (ev.at ? ' data-ts="' + ev.at + '"' : '') + '>' + formatAgo(ev.at) + '</span></div>';
       }
@@ -319,7 +391,7 @@
       var self = this;
       setInterval(function() {
         if (document.visibilityState !== 'visible') return;
-        var els = self.container.querySelectorAll('.event-time[data-ts]');
+        var els = self.container.querySelectorAll('.event-time[data-ts], .meta-time[data-ts]');
         for (var i = 0; i < els.length; i++) {
           var ts = parseInt(els[i].getAttribute('data-ts'), 10);
           if (!isNaN(ts)) els[i].textContent = formatAgo(ts);
@@ -460,6 +532,16 @@
         else if (msg.type === "state") { self.renderer.updateState(msg.sessionId, msg.data); self.notifier.onStateChange(msg.sessionId, msg.data); }
         else if (msg.type === "session_deleted") { self.renderer.removeSession(msg.sessionId); }
         else if (msg.type === "tool_output") { var sid = msg.sessionId; var session = self.renderer.sessions.get(sid); if (session) { session.lastOutput = { toolName: msg.data.toolName, output: (msg.data.output || "").substring(0, 200), at: msg.timestamp || Date.now() }; self.renderer.render(); } }
+        else if (msg.type === "token_rotate") {
+          var newToken = msg.newToken;
+          if (newToken && self.connection.config) {
+            self.connection.config.token = newToken;
+            self.connection._updateHistoryToken(self.connection.config.host, self.connection.config.port, newToken);
+            self.connection.send({ type: "token_rotate_ack" });
+            log("Token rotated");
+            showToast("令牌已更新", "success");
+          }
+        }
       };
     }
 

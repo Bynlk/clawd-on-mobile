@@ -13,11 +13,13 @@ const codebuddy = require("../../hooks/codebuddy-install");
 const kiro = require("../../hooks/kiro-install");
 const kimi = require("../../hooks/kimi-install");
 const qwen = require("../../hooks/qwen-code-install");
+const codewhale = require("../../hooks/codewhale-install");
 const opencode = require("../../hooks/opencode-install");
 const pi = require("../../hooks/pi-install");
 const openclaw = require("../../hooks/openclaw-install");
 const hermes = require("../../hooks/hermes-install");
 const qoder = require("../../hooks/qoder-install");
+const reasonix = require("../../hooks/reasonix-install");
 
 function agentName(agentId) {
   const agent = getAgent(agentId);
@@ -147,6 +149,19 @@ const AGENT_DESCRIPTORS = Object.freeze([
     hookEvents: qwen.QWEN_CODE_HOOK_EVENTS,
   }),
   Object.freeze({
+    agentId: "codewhale",
+    agentName: agentName("codewhale"),
+    eventSource: agentEventSource("codewhale"),
+    parentDir: path.dirname(codewhale.resolveCodewhaleConfigPath()),
+    configPath: codewhale.resolveCodewhaleConfigPath(),
+    configMode: "codewhale-hooks-toml",
+    autoInstall: true,
+    marker: "managed by clawd-on-desk",
+    commandMarker: "codewhale-hook.js",
+    nested: true,
+    hookEvents: codewhale.HOOK_ENTRIES.map((entry) => entry[0]),
+  }),
+  Object.freeze({
     agentId: "opencode",
     agentName: agentName("opencode"),
     eventSource: agentEventSource("opencode"),
@@ -206,6 +221,18 @@ const AGENT_DESCRIPTORS = Object.freeze([
     marker: qoder.MARKER,
     nested: true,
     hookEvents: qoder.QODER_HOOK_EVENTS,
+  }),
+  Object.freeze({
+    agentId: "reasonix",
+    agentName: agentName("reasonix"),
+    eventSource: agentEventSource("reasonix"),
+    parentDir: reasonix.DEFAULT_PARENT_DIR,
+    configPath: reasonix.DEFAULT_CONFIG_PATH,
+    configMode: "file",
+    autoInstall: true,
+    marker: reasonix.MARKER,
+    nested: true,
+    hookEvents: reasonix.REASONIX_HOOK_EVENTS,
   }),
 ]);
 

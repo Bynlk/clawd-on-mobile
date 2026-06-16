@@ -6,6 +6,7 @@ const MENU_AFFECTING_KEYS = new Set([
   "bubbleFollowPet",
   "hideBubbles",
   "permissionBubblesEnabled",
+  "autoApproveAllPermissions",
   "notificationBubbleAutoCloseSeconds",
   "permissionBubbleAutoCloseSeconds",
   "updateBubbleAutoCloseSeconds",
@@ -65,6 +66,7 @@ function createSettingsEffectRouter(options = {}) {
   const hideUpdateBubbleForPolicy = options.hideUpdateBubbleForPolicy || noop;
   const refreshUpdateBubbleAutoClose = options.refreshUpdateBubbleAutoClose || noop;
   const repositionFloatingBubbles = options.repositionFloatingBubbles || noop;
+  const applyTextScale = options.applyTextScale || noop;
   const syncSessionHudVisibility = options.syncSessionHudVisibility || noop;
   const handleSessionHudPinnedChanged = options.handleSessionHudPinnedChanged || noop;
   const reclampPetAfterEdgePinningChange = options.reclampPetAfterEdgePinningChange || noop;
@@ -174,6 +176,11 @@ function createSettingsEffectRouter(options = {}) {
     if ("bubbleFollowPet" in changes) {
       safeCall(logWarn, "Clawd: repositionFloatingBubbles failed:", repositionFloatingBubbles);
     }
+    if ("textScale" in changes || "textScaleByDisplay" in changes) {
+      // applyTextScale owns the whole cascade: per-display zoom on live text
+      // windows, fixed-width window resize, and bubble/HUD repositioning.
+      safeCall(logWarn, "Clawd: applyTextScale failed:", applyTextScale);
+    }
     if ("sessionHudPinned" in changes) {
       // Pinned transitions are handled inside session-hud.js so the visible
       // state can be inspected BEFORE the new mirror takes effect during a
@@ -190,6 +197,7 @@ function createSettingsEffectRouter(options = {}) {
       "sessionHudEnabled" in changes
       || "sessionHudShowStateLabels" in changes
       || "sessionHudShowElapsed" in changes
+      || "sessionHudShowContextUsage" in changes
     ) {
       try {
         syncSessionHudVisibility();

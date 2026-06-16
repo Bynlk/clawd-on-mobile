@@ -130,6 +130,13 @@ function isAgentEnabled(agentId) {
   return ctx.isAgentEnabled(agentId) !== false;
 }
 
+function shouldSyncAgentIntegration(agentId) {
+  if (typeof ctx.shouldSyncAgentIntegration === "function") {
+    return ctx.shouldSyncAgentIntegration(agentId) !== false;
+  }
+  return isAgentEnabled(agentId);
+}
+
 function getHookServerPort() {
   return activeServerPort || readRuntimePortFn() || DEFAULT_SERVER_PORT;
 }
@@ -173,6 +180,7 @@ const integrationSync = createIntegrationSyncRuntime({
   getHookServerPort,
   shouldManageClaudeHooks,
   isAgentEnabled,
+  shouldSyncAgentIntegration,
   startClaudeSettingsWatcher,
   stopClaudeSettingsWatcher,
 });
@@ -190,6 +198,7 @@ const {
   syncIntegrationForAgent: syncIntegrationForAgentBase,
   repairIntegrationForAgent: repairIntegrationForAgentBase,
   stopIntegrationForAgent,
+  uninstallIntegrationForAgent,
   syncEnabledStartupIntegrations,
 } = integrationSync;
 
@@ -247,6 +256,7 @@ const claudeSettingsWatcher = createClaudeSettingsWatcher({
   ...ctx,
   shouldManageClaudeHooks,
   isAgentEnabled,
+  shouldSyncAgentIntegration,
   getHookServerPort,
   syncClawdHooks,
   notifySuspiciousShrink,
@@ -356,6 +366,7 @@ return {
   syncPiExtension,
   syncIntegrationForAgent,
   repairIntegrationForAgent,
+  uninstallIntegrationForAgent,
   repairRuntimeStatus,
   stopIntegrationForAgent,
   startClaudeSettingsWatcher,

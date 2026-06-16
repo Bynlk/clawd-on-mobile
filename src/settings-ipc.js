@@ -2,6 +2,7 @@
 
 const defaultFs = require("fs");
 const defaultPath = require("path");
+const { detectAgentInstallations: defaultDetectAgentInstallations } = require("./agent-installation-detector");
 const settingsThemeImporter = require("./settings-theme-importer");
 const { registerMobileSettingsIpc } = require("./mobile-settings-ipc");
 
@@ -122,7 +123,14 @@ function registerSettingsIpc(options = {}) {
   const getDoNotDisturb = options.getDoNotDisturb || (() => false);
   const getSoundMuted = options.getSoundMuted || (() => false);
   const getSoundVolume = options.getSoundVolume || (() => 1);
+  const previewTextScale = options.previewTextScale
+    || (() => ({ status: "error", message: "text scale preview unavailable" }));
+  const endTextScalePreview = options.endTextScalePreview
+    || (() => ({ status: "error", message: "text scale preview unavailable" }));
+  const getTextScaleContext = options.getTextScaleContext
+    || (() => ({ percent: 100 }));
   const getAllAgents = requiredDependency(options.getAllAgents, "getAllAgents");
+  const detectAgentInstallations = options.detectAgentInstallations || defaultDetectAgentInstallations;
   const checkForUpdates = options.checkForUpdates || (() => {});
   const getHardwareBuddyStatus = options.getHardwareBuddyStatus || (() => null);
   const testHardwareBuddyApproval = options.testHardwareBuddyApproval || (async () => ({
@@ -172,6 +180,12 @@ function registerSettingsIpc(options = {}) {
     if (payload.key === "tgMigration") {
       return { status: "error", message: "tgMigration is internal; use telegramMigration.dispatch" };
     }
+    // DANGER "auto-pilot": never let a plain settings:update flip this on. It
+    // must go through the setAutoApproveAll command, which demands confirmed:true.
+    // This makes the confirmation dialog a real boundary instead of UI-only.
+    if (payload.key === "autoApproveAllPermissions") {
+      return { status: "error", message: "autoApproveAllPermissions is gated; use the setAutoApproveAll command" };
+    }
     return settingsController.applyUpdate(payload.key, payload.value);
   });
   handle("settings:begin-size-preview", () => settingsSizePreviewSession.begin());
@@ -187,6 +201,21 @@ function registerSettingsIpc(options = {}) {
     }
     return settingsSizePreviewSession.end(value || null);
   });
+  // Transient textScale preview while the slider drags: applies zoom to live
+  // windows but never writes the store. Commit still goes through
+  // settings:update so the controller stays the only writer.
+  handle("settings:preview-text-scale", (_event, value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) {
+      return { status: "error", message: `invalid text scale "${value}"` };
+    }
+    return previewTextScale(n);
+  });
+  handle("settings:end-text-scale-preview", () => endTextScalePreview());
+  // textScale is per-display; the renderer can't resolve its own display, so
+  // the slider asks main for the committed value of the display the settings
+  // window currently sits on.
+  handle("settings:get-text-scale-context", () => getTextScaleContext());
   handle("settings:get-preview-sound-url", () => {
     try { return themeLoader.getPreviewSoundUrl(); }
     catch { return null; }
@@ -391,6 +420,20 @@ function registerSettingsIpc(options = {}) {
     }
   });
 
+  handle("settings:detect-agent-installations", () => {
+    try {
+      return detectAgentInstallations({ fs, path, now });
+    } catch (err) {
+      console.warn("Clawd: settings:detect-agent-installations failed:", err && err.message);
+      return {
+        checkedAt: now(),
+        agents: [],
+        skippedAgentIds: [],
+        error: err && err.message ? err.message : String(err),
+      };
+    }
+  });
+
   handle("settings:get-about-info", () => {
     let heroSvgContent = "";
     try {
@@ -451,6 +494,28 @@ function registerSettingsIpc(options = {}) {
     sendToRenderer,
     QRCode,
     _disposers: disposers,
+  });
+
+  handle("settings:regenerate-mobile-token", async () => {
+    try {
+      const lanWsServer = options.getLanWsServer ? options.getLanWsServer() : null;
+      if (!lanWsServer) return { status: "error", message: "LAN bridge not available" };
+      const newToken = lanWsServer.regenerateToken();
+      return { status: "ok", token: newToken };
+    } catch (err) {
+      return { status: "error", message: (err && err.message) || String(err) };
+    }
+  });
+
+  handle("settings:reset-mobile-access", async () => {
+    try {
+      const lanWsServer = options.getLanWsServer ? options.getLanWsServer() : null;
+      if (!lanWsServer) return { status: "error", message: "LAN bridge not available" };
+      const newToken = lanWsServer.resetMobileAccess();
+      return { status: "ok", token: newToken };
+    } catch (err) {
+      return { status: "error", message: (err && err.message) || String(err) };
+    }
   });
 
   return {

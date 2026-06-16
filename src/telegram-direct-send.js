@@ -203,7 +203,7 @@ function createWindowsPasteOnlyDeliveryAdapter({
       if (!promptText) {
         return { status: "failed", delivered: false, errorClass: "empty_prompt" };
       }
-      if (promptText.includes("\n")) {
+      if (/[\r\n]/.test(promptText)) {
         return { status: "failed", delivered: false, errorClass: "multiline_unsupported" };
       }
       if (!clipboard || typeof clipboard.writeText !== "function") {
@@ -248,10 +248,12 @@ function createWindowsPasteOnlyDeliveryAdapter({
       }
 
       let errorClass = null;
+      let clipboardRestored = false;
       if (canRestore && restoreClipboardOnSuccess) {
         try {
           await delay(restoreDelayMs);
           clipboard.writeText(previousText);
+          clipboardRestored = true;
         } catch {
           errorClass = "clipboard_restore_failed";
         }
@@ -262,6 +264,7 @@ function createWindowsPasteOnlyDeliveryAdapter({
         delivered: true,
         autoEnter: false,
         errorClass,
+        clipboardRestored,
       };
     },
   };
@@ -282,6 +285,7 @@ function normalizeDeliveryResult(value) {
       errorClass: typeof value.errorClass === "string" && value.errorClass
         ? value.errorClass.replace(/[\r\n\t]+/g, " ").slice(0, 80)
         : null,
+      clipboardRestored: value.clipboardRestored === true,
     };
   }
   return {
@@ -313,6 +317,9 @@ function formatDeliveryAck(status, entry, deliveryResult) {
     case "sent_with_enter":
       return `Sent to terminal for session ${shortId}.`;
     case "pasted_without_enter":
+      if (deliveryResult && deliveryResult.clipboardRestored === true) {
+        return `Pasted text into session ${shortId}; press Enter locally to send it. Your previous clipboard text was restored.`;
+      }
       return `Pasted text into session ${shortId}; press Enter locally to send it. The text is still on this computer's clipboard for manual retry.`;
     case "fallback_copied":
       return `Copied text to this computer's clipboard for session ${shortId}. Paste and send it locally when ready.`;

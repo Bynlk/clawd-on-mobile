@@ -76,6 +76,84 @@ test("direct send maps a completion notification reply to the exact local sessio
   }]);
 });
 
+test("direct send falls back to clipboard when the platform paste adapter is unsupported", async () => {
+  const writes = [];
+  const direct = createTelegramDirectSend({
+    isEnabled: () => true,
+    getSessionSnapshot: () => ({ sessions: [localTerminalEntry()] }),
+    focusSession: () => confirmedFocusResult(),
+    deliveryAdapter: createWindowsPasteOnlyDeliveryAdapter({
+      osPlatform: "darwin",
+      clipboard: { writeText: () => { throw new Error("must not touch paste clipboard"); } },
+    }),
+    fallbackAdapter: createClipboardFallbackDeliveryAdapter({
+      clipboard: {
+        writeText: (value, type) => writes.push({ value, type }),
+        readText: () => "continue please",
+      },
+    }),
+    osPlatform: "darwin",
+  });
+
+  direct.registerCompletionNotification({ messageId: 42, sessionId: "sess-local-1" });
+  const res = await direct.handleTextMessage({
+    text: "continue please",
+    replyToMessageId: 42,
+    messageId: 99,
+    fromId: "777",
+    chatId: "123",
+  });
+
+  assert.equal(res.status, "fallback_copied");
+  assert.equal(direct._deliveries.get(res.deliveryId).fallbackReason, "platform_unsupported");
+  assert.deepEqual(writes, [{ value: "continue please", type: "clipboard" }]);
+  assert.match(res.text, /Copied text to this computer's clipboard/);
+  assert.doesNotMatch(res.text, /focus-only dogfood mode/);
+});
+
+test("direct send treats bare carriage returns as multiline and falls back to clipboard", async () => {
+  const pasteWrites = [];
+  const fallbackWrites = [];
+  const execCalls = [];
+  const direct = createTelegramDirectSend({
+    isEnabled: () => true,
+    getSessionSnapshot: () => ({ sessions: [localTerminalEntry()] }),
+    focusSession: () => confirmedFocusResult(),
+    deliveryAdapter: createWindowsPasteOnlyDeliveryAdapter({
+      osPlatform: "win32",
+      clipboard: {
+        readText: () => "previous",
+        writeText: (value) => pasteWrites.push(value),
+      },
+      execFile: (cmd, args, opts, cb) => {
+        execCalls.push({ cmd, args, opts });
+        cb(null, "", "");
+      },
+    }),
+    fallbackAdapter: createClipboardFallbackDeliveryAdapter({
+      clipboard: {
+        writeText: (value, type) => fallbackWrites.push({ value, type }),
+        readText: () => "line one\nline two",
+      },
+    }),
+    osPlatform: "win32",
+  });
+
+  direct.registerCompletionNotification({ messageId: 42, sessionId: "sess-local-1" });
+  const res = await direct.handleTextMessage({
+    text: "line one\rline two",
+    replyToMessageId: 42,
+    messageId: 99,
+  });
+
+  assert.equal(res.status, "fallback_copied");
+  assert.equal(direct._deliveries.get(res.deliveryId).promptText, "line one\nline two");
+  assert.equal(direct._deliveries.get(res.deliveryId).fallbackReason, "multiline_unsupported");
+  assert.deepEqual(pasteWrites, []);
+  assert.deepEqual(execCalls, []);
+  assert.deepEqual(fallbackWrites, [{ value: "line one\nline two", type: "clipboard" }]);
+});
+
 test("direct send ignores normal text while the feature flag is disabled", async () => {
   const direct = createTelegramDirectSend({
     isEnabled: () => false,
@@ -298,7 +376,7 @@ test("direct send calls the delivery adapter only after confirmed focus and reco
     focusSession: () => confirmedFocusResult({ token: "focus-token-3" }),
     deliveryAdapter: async (payload) => {
       calls.push(payload);
-      return { status: "pasted_without_enter", delivered: true, autoEnter: false };
+      return { status: "pasted_without_enter", delivered: true, autoEnter: false, clipboardRestored: true };
     },
     osPlatform: "win32",
   });
@@ -314,6 +392,7 @@ test("direct send calls the delivery adapter only after confirmed focus and reco
 
   assert.equal(res.status, "pasted_without_enter");
   assert.equal(res.deliveryResult.delivered, true);
+  assert.equal(res.deliveryResult.clipboardRestored, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].deliveryId, res.deliveryId);
   assert.equal(calls[0].promptText, "continue\nplease");
@@ -336,6 +415,8 @@ test("direct send calls the delivery adapter only after confirmed focus and reco
     "pasted_without_enter",
   ]);
   assert.doesNotMatch(res.text, /continue/);
+  assert.match(res.text, /previous clipboard text was restored/);
+  assert.doesNotMatch(res.text, /still on this computer's clipboard/);
 });
 
 test("direct send adapter failures become failed deliveries without logging prompt text", async () => {
@@ -524,6 +605,7 @@ test("Windows paste-only adapter can restore clipboard on success when explicitl
   });
 
   assert.equal(res.status, "pasted_without_enter");
+  assert.equal(res.clipboardRestored, true);
   assert.deepEqual(writes, ["continue please", "previous text"]);
   assert.deepEqual(delays, [10, 25]);
   assert.equal(clipboardText, "previous text");

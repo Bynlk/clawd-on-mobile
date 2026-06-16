@@ -108,6 +108,8 @@ describe("server-route-state POST", () => {
       cwd: "D:\\repo",
       editor: "cursor",
       pid_chain: [1, "bad", 3],
+      tmux_socket: "/tmp/tmux-1000/work",
+      tmux_client: "/dev/pts/7",
       agent_pid: 99.8,
       agent_id: "codex",
       host: "remote-host",
@@ -135,6 +137,8 @@ describe("server-route-state POST", () => {
         cwd: "D:\\repo",
         editor: "cursor",
         pidChain: [1, 3],
+        tmuxSocket: "/tmp/tmux-1000/work",
+        tmuxClient: "/dev/pts/7",
         agentPid: 99,
         agentId: "codex",
         host: "remote-host",
@@ -147,6 +151,7 @@ describe("server-route-state POST", () => {
         ghosttyTerminalId: "ghostty-term-7",
         displayHint: "display.svg",
         sessionTitle: "Work title",
+        contextUsage: null,
         assistantLastOutput: null,
         assistantLastOutputTruncated: false,
         permissionSuspect: true,
@@ -171,6 +176,35 @@ describe("server-route-state POST", () => {
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.calls.updateSession[0][3].assistantLastOutput, "Done.\nsecret=abc123");
     assert.strictEqual(res.calls.updateSession[0][3].assistantLastOutputTruncated, true);
+  });
+
+  it("passes valid context_usage to updateSession", async () => {
+    const res = await callStatePost(JSON.stringify({
+      state: "working",
+      session_id: "sid",
+      event: "PreToolUse",
+      context_usage: { used: 1000, limit: 200000, percent: 1, source: "claude" },
+    }));
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(res.calls.updateSession[0][3].contextUsage, {
+      used: 1000,
+      limit: 200000,
+      percent: 1,
+      source: "claude",
+    });
+  });
+
+  it("drops invalid context_usage without rejecting state", async () => {
+    const res = await callStatePost(JSON.stringify({
+      state: "working",
+      session_id: "sid",
+      event: "PreToolUse",
+      context_usage: { used: -1, limit: 0 },
+    }));
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.calls.updateSession[0][3].contextUsage, null);
   });
 
   it("marks missing agent_id as a defaulted Claude Code attribution", async () => {

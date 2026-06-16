@@ -64,7 +64,14 @@ function registerOpencodePlugin(options = {}) {
       if (!options.silent) {
         console.log("Clawd: ~/.config/opencode/ not found — skipping opencode plugin registration");
       }
-      return { added: false, skipped: true, created: false, configPath, pluginDir };
+      return {
+        added: false,
+        skipped: true,
+        created: false,
+        reason: "opencode-not-found",
+        configPath,
+        pluginDir,
+      };
     }
   }
 

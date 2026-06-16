@@ -233,6 +233,7 @@ function createClaudeSettingsWatcher(ctx = {}) {
           settingsWatchDebounceTimer = null;
           if (typeof ctx.shouldManageClaudeHooks === "function" && !ctx.shouldManageClaudeHooks()) return;
           if (typeof ctx.isAgentEnabled === "function" && !ctx.isAgentEnabled("claude-code")) return;
+          if (typeof ctx.shouldSyncAgentIntegration === "function" && !ctx.shouldSyncAgentIntegration("claude-code")) return;
           // Rate-limit: don't re-sync within 5s to avoid write wars with CC-Switch
           if (nowFn() - settingsWatchLastSyncTime < settingsWatchRateLimitMs) return;
           try {

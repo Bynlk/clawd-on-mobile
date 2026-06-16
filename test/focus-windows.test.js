@@ -73,7 +73,7 @@ describe("Windows terminal focus", () => {
     }
   });
 
-  it("keeps direct parent-window focus for non-WindowsTerminal processes with cwd", () => {
+  it("keeps direct parent-window focus for single-window processes with cwd", () => {
     const { initFocus, cleanup } = loadFocusWithMock();
     try {
       const focus = initFocus({});
@@ -83,6 +83,11 @@ describe("Windows terminal focus", () => {
       assert.match(cmd, /\[WinFocus\]::Focus\(\$proc\.MainWindowHandle\)/);
       assert.match(cmd, /parent-direct/);
       assert.match(cmd, /WindowsTerminal/);
+      assert.match(cmd, /\$editorProcessNames = @\('Code', 'Cursor'\)/);
+      assert.match(cmd, /editor-parent-title-match/);
+      assert.match(cmd, /editor-parent-title-ambiguous/);
+      assert.match(cmd, /editor-parent-no-title-match/);
+      assert.match(cmd, /editor-parent-no-title/);
     } finally {
       cleanup();
     }
@@ -152,7 +157,7 @@ describe("Windows terminal focus", () => {
     }
   });
 
-  it("caches successful Windows focus HWNDs by session key", () => {
+  it("caches successful Windows focus HWNDs by session key only with matching titles", () => {
     const { initFocus, cleanup } = loadFocusWithMock();
     try {
       const focus = initFocus({});
@@ -162,11 +167,19 @@ describe("Windows terminal focus", () => {
       assert.match(helperScript, /IsUsableWindow/);
       assert.match(cmd, /\$focusCacheKey = \(\[Text\.Encoding\]::UTF8\.GetString/);
       assert.match(cmd, /\$global:ClawdFocusWindowCache/);
+      assert.match(cmd, /\$cacheTitleNames = @\(/);
+      assert.match(cmd, /Test-ClawdWindowTitleMatch/);
+      assert.match(cmd, /sourcePid = \$focusCacheSourcePid/);
+      assert.match(cmd, /titleNames = @\(\$cacheTitleNames\)/);
       assert.match(cmd, /Get-ClawdCachedWindow/);
       assert.match(cmd, /reason = 'cached-window'/);
+      assert.match(cmd, /Remove\(\$focusCacheKey\)/);
       assert.match(cmd, /Save-ClawdFocusCache \$matches\[0\]/);
       assert.match(cmd, /Save-ClawdFocusCache \$wtMatches\[0\]/);
-      assert.match(cmd, /Save-ClawdFocusCache \$singleWtWindows\[0\]/);
+      assert.match(cmd, /Save-ClawdFocusCache \$wtHwndFromHook/);
+      assert.doesNotMatch(cmd, /Save-ClawdFocusCache \$pidWindows\[0\]/);
+      assert.doesNotMatch(cmd, /Save-ClawdFocusCache \$singleWtWindows\[0\]/);
+      assert.doesNotMatch(cmd, /Save-ClawdFocusCache \$pendingConsoleHwnd/);
     } finally {
       cleanup();
     }
@@ -274,6 +287,10 @@ describe("Windows terminal focus", () => {
       assert.equal(confirmForeground(
         { reason: "parent-direct", targetHwnd: "1001", foregroundHwnd: "1001" },
         { hwnd: "1001" }
+      ), true);
+      assert.equal(confirmForeground(
+        { reason: "editor-parent-title-match", targetHwnd: "1002", foregroundHwnd: "1002" },
+        { hwnd: "1002" }
       ), true);
       assert.equal(confirmForeground(
         { reason: "parent-direct", targetHwnd: "1001", foregroundHwnd: "2002" },

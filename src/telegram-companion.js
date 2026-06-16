@@ -204,7 +204,7 @@ function createTelegramCompanion({
   isEnabled,
   log = () => {},
   getLang = () => "en",
-  getCompletionOutputMode = () => "full",
+  getCompletionOutputMode = () => "off",
   getNotifyOnComplete = () => false,
   formatText = null,
   onNotificationSent = null,
@@ -259,10 +259,10 @@ function createTelegramCompanion({
         const value = typeof getLang === "function" ? getLang() : "";
         if (typeof value === "string" && value) lang = value;
       } catch {}
-      let completionOutputMode = "full";
+      let completionOutputMode = "off";
       try {
         completionOutputMode = normalizeCompletionOutputMode(
-          typeof getCompletionOutputMode === "function" ? getCompletionOutputMode() : "full"
+          typeof getCompletionOutputMode === "function" ? getCompletionOutputMode() : "off"
         );
       } catch {}
       let includeBare = true;

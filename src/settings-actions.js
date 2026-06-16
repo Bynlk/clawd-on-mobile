@@ -49,6 +49,12 @@
 // keep validate side-effect-free.
 
 const { CURRENT_VERSION } = require("./prefs");
+const {
+  TEXT_SCALE_MIN,
+  TEXT_SCALE_MAX,
+  isValidTextScale,
+  normalizeTextScaleByDisplay,
+} = require("./text-scale");
 const { isValidDisplaySnapshot } = require("./work-area");
 const {
   MAX_AUTO_CLOSE_SECONDS,
@@ -78,8 +84,14 @@ const {
   resetAllShortcuts,
 } = require("./settings-actions-shortcuts");
 const {
+  clearAgentCleanupHints,
+  clearAgentInstallHints,
+  dismissAgentCleanupHints,
+  installAgentIntegration,
+  dismissAgentInstallHints,
   setAgentFlag,
   setAgentPermissionMode,
+  uninstallAgentIntegration,
   repairAgentIntegration,
 } = require("./settings-actions-agents");
 const {
@@ -137,11 +149,13 @@ const MANAGED_CLEANUP_AGENT_IDS = Object.freeze([
   "kiro-cli",
   "kimi-cli",
   "qwen-code",
+  "codewhale",
   "opencode",
   "pi",
   "openclaw",
   "hermes",
   "qoder",
+  "reasonix",
 ]);
 
 // ── updateRegistry ──
@@ -185,6 +199,24 @@ const updateRegistry = {
   lang: requireEnum("lang", ["en", "zh", "zh-TW", "ko", "ja"]),
   soundMuted: requireBoolean("soundMuted"),
   soundVolume: requireNumberInRange("soundVolume", 0, 1),
+  textScale: requireNumberInRange("textScale", TEXT_SCALE_MIN, TEXT_SCALE_MAX),
+  // Committed by the setTextScaleForDisplay command (the controller requires
+  // every commit key to have a registry entry). Strict per-entry validation
+  // so a direct settings:update can't park junk in the in-memory store.
+  textScaleByDisplay: (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { status: "error", message: "textScaleByDisplay must be an object map" };
+    }
+    for (const [key, raw] of Object.entries(value)) {
+      if (typeof key !== "string" || !key.trim() || !isValidTextScale(raw)) {
+        return {
+          status: "error",
+          message: `textScaleByDisplay entry "${key}" must map a display id to ${TEXT_SCALE_MIN}–${TEXT_SCALE_MAX}`,
+        };
+      }
+    }
+    return { status: "ok" };
+  },
   flashTaskbarOnComplete: requireBoolean("flashTaskbarOnComplete"),
   flashIntervalMs: requireNumberInRange("flashIntervalMs", 200, 2000),
   flashDurationMs: requireNumberInRange("flashDurationMs", 0, 60000),
@@ -194,10 +226,12 @@ const updateRegistry = {
   sessionHudEnabled: requireBoolean("sessionHudEnabled"),
   sessionHudShowStateLabels: requireBoolean("sessionHudShowStateLabels"),
   sessionHudShowElapsed: requireBoolean("sessionHudShowElapsed"),
+  sessionHudShowContextUsage: requireBoolean("sessionHudShowContextUsage"),
   sessionHudCleanupDetached: requireBoolean("sessionHudCleanupDetached"),
   sessionHudPinned: requireBoolean("sessionHudPinned"),
   hideBubbles: requireBoolean("hideBubbles"),
   permissionBubblesEnabled: requireBoolean("permissionBubblesEnabled"),
+  autoApproveAllPermissions: requireBoolean("autoApproveAllPermissions"),
   notificationBubbleAutoCloseSeconds: requireIntegerInRange(
     "notificationBubbleAutoCloseSeconds",
     0,
@@ -332,6 +366,34 @@ const updateRegistry = {
     }
     return { status: "ok" };
   },
+  dismissedAgentInstallHints(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { status: "error", message: "dismissedAgentInstallHints must be a plain object" };
+    }
+    for (const key of Object.keys(value)) {
+      if (typeof key !== "string" || !key) {
+        return { status: "error", message: "dismissedAgentInstallHints keys must be non-empty strings" };
+      }
+      if (value[key] !== true) {
+        return { status: "error", message: `dismissedAgentInstallHints["${key}"] must be the literal true` };
+      }
+    }
+    return { status: "ok" };
+  },
+  dismissedAgentCleanupHints(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { status: "error", message: "dismissedAgentCleanupHints must be a plain object" };
+    }
+    for (const key of Object.keys(value)) {
+      if (typeof key !== "string" || !key) {
+        return { status: "error", message: "dismissedAgentCleanupHints keys must be non-empty strings" };
+      }
+      if (value[key] !== true) {
+        return { status: "error", message: `dismissedAgentCleanupHints["${key}"] must be the literal true` };
+      }
+    }
+    return { status: "ok" };
+  },
 
   // ── Phase 2/3 placeholders — schema reserves these so applyUpdate accepts them ──
   agents: requirePlainObject("agents"),
@@ -448,6 +510,31 @@ function setAllBubblesHidden(payload, deps) {
     return { status: "error", message: "setAllBubblesHidden.hidden must be a boolean" };
   }
   return { status: "ok", commit: buildAggregateHideCommit(hidden, deps && deps.snapshot) };
+}
+
+// DANGER "auto-pilot" writer. Enabling auto-approve-everything is a one-way
+// trust decision, so this command — not a raw settings:update — is the only
+// path allowed to flip it ON, and it requires an explicit confirmed:true.
+// The settings:update IPC handler rejects the field directly (see
+// settings-ipc.js), so the confirmation dialog is a real gate, not just UI
+// decoration: anything reaching the data layer must carry proof the user
+// confirmed. Disabling needs no confirmation (turning a danger toggle off is
+// always safe).
+function setAutoApproveAll(payload, _deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "setAutoApproveAll: payload must be an object" };
+  }
+  const enabled = payload.enabled;
+  if (typeof enabled !== "boolean") {
+    return { status: "error", message: "setAutoApproveAll.enabled must be a boolean" };
+  }
+  if (enabled && payload.confirmed !== true) {
+    return {
+      status: "error",
+      message: "setAutoApproveAll: enabling requires confirmed:true (user must confirm the danger dialog)",
+    };
+  }
+  return { status: "ok", commit: { autoApproveAllPermissions: enabled } };
 }
 
 function setBubbleCategoryEnabled(payload, deps) {
@@ -1056,6 +1143,27 @@ function cleanupMessage(result) {
     : `Integration cleanup finished; removed ${removed} item(s) from ${affected} integration(s).`;
 }
 
+function normalizeAgentDismissMapForCommit(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out = {};
+  for (const key of Object.keys(value)) {
+    if (typeof key === "string" && key && value[key] === true) out[key] = true;
+  }
+  return out;
+}
+
+function markDismissedAgentInstallHints(snapshot, agentIds) {
+  const next = normalizeAgentDismissMapForCommit(snapshot && snapshot.dismissedAgentInstallHints);
+  for (const agentId of agentIds) next[agentId] = true;
+  return next;
+}
+
+function clearDismissedAgentCleanupHints(snapshot, agentIds) {
+  const next = normalizeAgentDismissMapForCommit(snapshot && snapshot.dismissedAgentCleanupHints);
+  for (const agentId of agentIds) delete next[agentId];
+  return next;
+}
+
 async function cleanupIntegrationsCommand(_payload, deps = {}) {
   if (!deps || typeof deps.cleanupIntegrations !== "function") {
     return { status: "error", message: "cleanupIntegrations requires cleanupIntegrations dep" };
@@ -1078,6 +1186,19 @@ async function cleanupIntegrationsCommand(_payload, deps = {}) {
       agents = result.commit.agents;
       agentsChanged = true;
     }
+    const currentEntry = agents[agentId] && typeof agents[agentId] === "object"
+      ? agents[agentId]
+      : {};
+    if (currentEntry.integrationInstalled !== false) {
+      agents = {
+        ...agents,
+        [agentId]: {
+          ...currentEntry,
+          integrationInstalled: false,
+        },
+      };
+      agentsChanged = true;
+    }
   }
 
   let cleanup;
@@ -1095,8 +1216,12 @@ async function cleanupIntegrationsCommand(_payload, deps = {}) {
     status: "ok",
     cleanup,
     message: cleanup.status === "error" ? cleanup.message : cleanupMessage(cleanup),
+    commit: {
+      dismissedAgentInstallHints: markDismissedAgentInstallHints(snapshot, MANAGED_CLEANUP_AGENT_IDS),
+      dismissedAgentCleanupHints: clearDismissedAgentCleanupHints(snapshot, MANAGED_CLEANUP_AGENT_IDS),
+    },
   };
-  if (agentsChanged) response.commit = { agents };
+  if (agentsChanged) response.commit.agents = agents;
   return response;
 }
 
@@ -1120,19 +1245,54 @@ remoteSshMarkDeployed.lockKey = "remoteSsh";
 remoteSshMarkRemoteNode.lockKey = "remoteSsh";
 telegramApprovalSetToken.lockKey = "tgApproval";
 telegramApprovalSendTest.lockKey = "tgApproval";
-cleanupIntegrationsCommand.lockKey = "agentIntegrationCleanup";
+cleanupIntegrationsCommand.lockKey = "agentIntegration";
 
 const repairDoctorIssue = createRepairDoctorIssue({
   repairAgentIntegration,
   setBubbleCategoryEnabled,
 });
 
+// textScale is per-display: the slider edits the entry for the display the
+// settings window currently sits on (what you see is what you tune). The
+// renderer can't know which display that is, so the key is resolved
+// main-side via the injected resolveTextScaleDisplayKey dep. Without display
+// context (tests, headless) fall back to committing the legacy global so the
+// slider still works.
+function setTextScaleForDisplay(payload, deps) {
+  const value = Number(payload && payload.value);
+  if (!isValidTextScale(value)) {
+    return {
+      status: "error",
+      message: `textScale must be a number between ${TEXT_SCALE_MIN} and ${TEXT_SCALE_MAX}`,
+    };
+  }
+  const key = deps && typeof deps.resolveTextScaleDisplayKey === "function"
+    ? deps.resolveTextScaleDisplayKey()
+    : null;
+  if (typeof key !== "string" || !key) {
+    return { status: "ok", commit: { textScale: value } };
+  }
+  const snapshot = (deps && deps.snapshot) || {};
+  // New key goes first so the normalize cap can only trim stale displays,
+  // never the entry being written.
+  const prev = { ...(snapshot.textScaleByDisplay || {}) };
+  delete prev[key];
+  const next = normalizeTextScaleByDisplay({ [key]: value, ...prev });
+  return { status: "ok", commit: { textScaleByDisplay: next } };
+}
+
 const commandRegistry = {
   removeTheme,
   installHooks,
   uninstallHooks,
   cleanupIntegrations: cleanupIntegrationsCommand,
+  clearAgentCleanupHints,
+  clearAgentInstallHints,
+  dismissAgentCleanupHints,
+  dismissAgentInstallHints,
+  installAgentIntegration,
   repairAgentIntegration,
+  uninstallAgentIntegration,
   repairLocalServer,
   repairDoctorIssue,
   resizePet,
@@ -1142,9 +1302,11 @@ const commandRegistry = {
   setAgentFlag,
   setAgentPermissionMode,
   setAllBubblesHidden,
+  setAutoApproveAll,
   setBubbleCategoryEnabled,
   "sessionCleanup.setTriple": setSessionCleanupTriple,
   setSessionAlias,
+  setTextScaleForDisplay,
   setAnimationOverride,
   setSoundOverride,
   setThemeOverrideDisabled,

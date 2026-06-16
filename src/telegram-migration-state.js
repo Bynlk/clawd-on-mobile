@@ -24,6 +24,14 @@ const EVENTS = Object.freeze({
   USER_ROLLBACK_TO_LEGACY: "USER_ROLLBACK_TO_LEGACY",
   SIDECAR_STARTED: "SIDECAR_STARTED",
   SIDECAR_START_FAILED: "SIDECAR_START_FAILED",
+  // Runtime health of an already-selected legacy sidecar. Distinct from
+  // SIDECAR_START_FAILED (which is owned by the native→legacy switch path):
+  // these fire while LEGACY_ACTIVE is the steady state, carry no lifecycle
+  // transition, and only update runtime-status so the migration card and the
+  // Telegram badge agree. The main-process bridge maps sidecar status-changed
+  // → these. See plan-issue-430.
+  SIDECAR_RUNTIME_FAILED: "SIDECAR_RUNTIME_FAILED",
+  SIDECAR_RUNTIME_RECOVERED: "SIDECAR_RUNTIME_RECOVERED",
   USER_DISABLE: "USER_DISABLE",
 });
 
@@ -293,10 +301,44 @@ function applyEvent({ state, prefs, files }, event) {
           transport: "legacy",
           status: "failed",
           reason: (event && event.reason) || "sidecar_start_failed",
+          message: (event && event.message) || "",
         }),
       ],
       { transport: "legacy" },
     );
+  }
+
+  // Runtime health of the live legacy sidecar. Legal ONLY in LEGACY_ACTIVE:
+  // these events must never drive a lifecycle transition (e.g. they must not
+  // pull SWITCHING_TO_LEGACY forward to LEGACY_ACTIVE, which would skip the
+  // PERSIST_PREFS that SIDECAR_STARTED owns). The main-process bridge holds any
+  // SWITCHING_TO_LEGACY-window failure until the state settles to LEGACY_ACTIVE
+  // before dispatching. They only emit runtime-status; they carry no
+  // PERSIST_PREFS and resolve to the same state.
+  if (event.type === EVENTS.SIDECAR_RUNTIME_FAILED) {
+    if (state !== STATES.LEGACY_ACTIVE) return illegal(state);
+    return ok(STATES.LEGACY_ACTIVE, [
+      effect(SIDE_EFFECTS.EMIT_RUNTIME_STATUS, {
+        transport: "legacy",
+        status: "failed",
+        reason: (event && event.reason) || "sidecar_runtime_failed",
+        message: (event && event.message) || "",
+      }),
+    ]);
+  }
+
+  if (event.type === EVENTS.SIDECAR_RUNTIME_RECOVERED) {
+    if (state !== STATES.LEGACY_ACTIVE) return illegal(state);
+    // Explicitly clear message: onRuntimeStatus merges shallowly, so a stale
+    // failure message would otherwise survive the recovery.
+    return ok(STATES.LEGACY_ACTIVE, [
+      effect(SIDE_EFFECTS.EMIT_RUNTIME_STATUS, {
+        transport: "legacy",
+        status: "running",
+        reason: null,
+        message: "",
+      }),
+    ]);
   }
 
   return illegal(state);

@@ -1,6 +1,6 @@
 {
   "name": "clawd-on-mobile",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Clawd on Mobile — Android companion for Clawd on Desk, with desktop pet features.",
   "main": "src/main.js",
   "scripts": {
@@ -32,6 +32,8 @@
     "install:kiro-hooks": "node hooks/kiro-install.js",
     "install:kimi-hooks": "node hooks/kimi-install.js",
     "install:qwen-hooks": "node hooks/qwen-code-install.js",
+    "install:codewhale-hooks": "node hooks/codewhale-install.js",
+    "uninstall:codewhale-hooks": "node hooks/codewhale-install.js --uninstall",
     "install:pi-extension": "node hooks/pi-install.js",
     "uninstall:pi-extension": "node hooks/pi-install.js --uninstall",
     "install:openclaw-plugin": "node hooks/openclaw-install.js",
@@ -44,6 +46,8 @@
     "uninstall:hermes-plugin": "node hooks/hermes-install.js --uninstall",
     "install:qoder-hooks": "node hooks/qoder-install.js",
     "uninstall:qoder-hooks": "node hooks/qoder-install.js --uninstall",
+    "install:reasonix-hooks": "node hooks/reasonix-install.js",
+    "uninstall:reasonix-hooks": "node hooks/reasonix-install.js --uninstall",
     "cleanup:integrations": "node hooks/cleanup-integrations.js --apply",
     "register-protocol:dev": "node launch.js --register-protocol"
   },
@@ -147,6 +151,7 @@
       "assets/svg/**/*",
       "hooks/**/*",
       "extensions/**/*",
+      "agents/**/*",
       "themes/**/*"
     ],
     "extraResources": [

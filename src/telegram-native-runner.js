@@ -36,6 +36,27 @@ const MAX_NOTIFY_RETRY_DELAY_MS = 30000;
 const DEFAULT_POLL_RETRY_INITIAL_MS = 1000;
 const DEFAULT_POLL_RETRY_MAX_MS = 30000;
 
+// Status lines appended to an approval card whose decision landed somewhere
+// other than this Telegram chat, so the chat history shows the outcome
+// (issue #457). Keyed by the reason finishApproval received a null decision.
+// `elsewhere` is deliberately neutral: a signal abort covers more than a
+// desktop answer — the settings approval test arms a 60s abort, and DND /
+// dismissed interactive bubbles also abort without anything being "resolved".
+const APPROVAL_RESOLVED_ELSEWHERE_STATUS = Object.freeze({
+  elsewhere: "\u2705 Resolved outside Telegram",
+  timeout: "\u23F3 Timed out",
+  stopped: "\u23F9\uFE0F Session ended",
+});
+
+// Status lines for a decision taken on Telegram itself (a button tap). The
+// callback toast is instant but ephemeral; rewriting the card body leaves the
+// outcome in the chat history, symmetric with the resolved-elsewhere path.
+const APPROVAL_DECIDED_STATUS = Object.freeze({
+  allow: "\u2705 Allowed",
+  deny: "\u274C Denied",
+  suggestion: "\u2705 Applied",
+});
+
 function randomId() {
   return Math.random().toString(36).slice(2, 12);
 }
@@ -135,7 +156,7 @@ function createTelegramNativeRunner({
   let abortController = null;
   let polling = false;
   let pendingTest = null; // { nonce, chatId, allowedUser, messageId }
-  const pendingApprovals = new Map(); // id -> { resolve, chatId, allowedUser, messageId, timer, signal, onAbort, suggestionIndexes }
+  const pendingApprovals = new Map(); // id -> { resolve, chatId, allowedUser, messageId, text, timer, signal, onAbort, suggestionIndexes }
   let lastError = null;
   let pollRetryDelayMs = Math.max(1, pollRetryInitialMs);
 
@@ -424,20 +445,18 @@ function createTelegramNativeRunner({
       try { await client.answerCallbackQuery({ callback_query_id: cb.id, text: "Unavailable" }); } catch {}
       return true;
     }
-    try {
-      await client.answerCallbackQuery({
-        callback_query_id: cb.id,
-        text: decision.action === "allow" ? "Allowed" : (decision.action === "deny" ? "Denied" : "Applied"),
-      });
-    } catch {}
-    try {
-      await client.editMessageReplyMarkup({
-        chat_id: chatId,
-        message_id: entry.messageId || (cb.message && cb.message.message_id),
-        reply_markup: { inline_keyboard: [] },
-      });
-    } catch {}
-    finishApproval(parsed.id, decision);
+    // Acknowledge the tap (best-effort, NON-blocking) and then claim the
+    // decision SYNCHRONOUSLY via finishApproval before any await. Awaiting the
+    // toast or the card rewrite first would yield the event loop, and a
+    // concurrent timeout / signal abort / stop could delete this pending entry
+    // mid-flight and drop a real Allow/Deny. finishApproval resolves the
+    // promise up front and fire-and-forgets the status-line rewrite.
+    client.answerCallbackQuery({
+      callback_query_id: cb.id,
+      text: decision.action === "allow" ? "Allowed" : (decision.action === "deny" ? "Denied" : "Applied"),
+    }).catch(() => {});
+    const messageId = entry.messageId || (cb.message && cb.message.message_id);
+    finishApproval(parsed.id, decision, undefined, messageId);
     return true;
   }
 
@@ -506,7 +525,45 @@ function createTelegramNativeRunner({
     }
   }
 
-  function finishApproval(id, decision) {
+  // Best-effort: strip the inline keyboard off an approval card. Never throws.
+  function stripApprovalKeyboard(chatId, messageId) {
+    if (!chatId || !messageId) return Promise.resolve();
+    return client.editMessageReplyMarkup({
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: [] },
+    }).catch(() => {});
+  }
+
+  // Best-effort: rewrite an approval card's body with a status line appended so
+  // the chat history shows the outcome. editMessageText without reply_markup
+  // also drops the inline keyboard; if the rewrite fails (deleted message, edit
+  // window expired, ...) — or there's no status/body to render — fall back to
+  // stripping just the keyboard so a stale prompt can't be tapped. Never throws.
+  function appendApprovalStatus(entry, status, messageId) {
+    const chatId = entry && entry.chatId;
+    if (!chatId || !messageId) return Promise.resolve();
+    if (!status || !entry.text) return stripApprovalKeyboard(chatId, messageId);
+    return client.editMessageText({
+      chat_id: chatId,
+      message_id: messageId,
+      text: `${entry.text}\n\n${status}`,
+    }).catch(() => stripApprovalKeyboard(chatId, messageId));
+  }
+
+  // Single resolution point for an approval, used by every exit: a Telegram
+  // tap, a desktop answer (abort), a timeout, polling stop, or a send failure.
+  //
+  // The entry is claimed SYNCHRONOUSLY (pulled from the map, timer + abort
+  // listener cleared, promise resolved) before any network I/O, so two exits
+  // racing on the same id can't both act — the second finds no entry and no-ops.
+  // The card rewrite is then fire-and-forget so a slow edit never blocks or
+  // re-opens that race.
+  //
+  // `reason` has no default on purpose: a null-decision caller that forgets to
+  // pass one yields `status === undefined`, which degrades to stripping just
+  // the keyboard (the #446 behavior) rather than mislabeling the outcome.
+  function finishApproval(id, decision, reason, messageIdOverride) {
     const entry = pendingApprovals.get(id);
     if (!entry) return;
     pendingApprovals.delete(id);
@@ -514,12 +571,21 @@ function createTelegramNativeRunner({
     if (entry.signal && entry.onAbort) {
       try { entry.signal.removeEventListener("abort", entry.onAbort); } catch {}
     }
-    entry.resolve(normalizeApprovalDecision(decision));
+    const normalized = normalizeApprovalDecision(decision);
+    entry.resolve(normalized);
+    // Rewrite the card so the chat history shows the outcome and the inline
+    // keyboard is dropped. A Telegram-side decision shows the chosen action; a
+    // null decision (resolved elsewhere / timeout / polling stopped) shows the
+    // neutral reason. Best-effort — appendApprovalStatus never throws.
+    const status = normalized
+      ? APPROVAL_DECIDED_STATUS[normalized.action]
+      : APPROVAL_RESOLVED_ELSEWHERE_STATUS[reason];
+    appendApprovalStatus(entry, status, messageIdOverride || entry.messageId);
   }
 
   function clearAllApprovals() {
     const ids = Array.from(pendingApprovals.keys());
-    for (const id of ids) finishApproval(id, null);
+    for (const id of ids) finishApproval(id, null, "stopped");
   }
 
   function requestApproval(payload, options = {}) {
@@ -551,6 +617,9 @@ function createTelegramNativeRunner({
         chatId,
         allowedUser,
         messageId: null,
+        // Card body as sent, kept so a resolved-elsewhere edit can rebuild the
+        // text with a status line appended (issue #457).
+        text,
         timer: null,
         signal,
         onAbort: null,
@@ -558,11 +627,11 @@ function createTelegramNativeRunner({
       };
       pendingApprovals.set(id, entry);
 
-      entry.timer = setTimeout(() => finishApproval(id, null), Math.max(1, approvalTimeoutMs));
+      entry.timer = setTimeout(() => finishApproval(id, null, "timeout"), Math.max(1, approvalTimeoutMs));
       if (entry.timer && typeof entry.timer.unref === "function") entry.timer.unref();
 
       if (signal) {
-        entry.onAbort = () => finishApproval(id, null);
+        entry.onAbort = () => finishApproval(id, null, "elsewhere");
         signal.addEventListener("abort", entry.onAbort, { once: true });
       }
 
