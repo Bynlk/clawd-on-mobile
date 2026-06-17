@@ -22,15 +22,6 @@ name: Wayland smoke (issue 441)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [fix/linux-wayland-xwayland-default]
-  pull_request:
-    paths:
-      - src/linux-ozone.js
-      - ci/wayland-smoke.sh
-      - .github/workflows/wayland-smoke.yml
-      - package.json
-      - package-lock.json
 
 permissions:
   contents: read
