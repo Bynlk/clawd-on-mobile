@@ -131,6 +131,58 @@ Copilot CLI 同步走 `<COPILOT_HOME 或 ~/.copilot>/hooks/hooks.json`，marker-
 | `hooks/codex-remote-monitor.js` | 远程 Codex JSONL 轮询并通过 SSH 隧道回传 |
 | `extensions/vscode/extension.js` | VS Code / Cursor 终端 tab 聚焦辅助扩展 |
 
+## Engineering Process (开发流程)
+
+所有功能开发必须严格遵循以下流程，不得跳步。
+
+### 1. Spec 先行
+
+- 动手写代码之前，先输出完整的 spec 文档（计划书），包含：目标、技术方案、文件改动清单、验收标准、风险点
+- spec 文档放在项目根目录或 `docs/` 下，命名格式 `PLAN-<feature-name>.md`
+- 用户确认 spec 后才能开始编码
+
+### 2. 分支开发
+
+- 每个功能从 `main` 开新分支，命名格式 `feat/<feature-name>`
+- 所有改动在分支上进行，功能完成后合并回 `main`
+- 不要直接在 `main` 上做功能改动
+
+### 3. 决策边界
+
+- **可以自主决定**：代码风格、变量命名、文件组织、实现细节
+- **必须询问用户**：功能取舍、方案选择、优先级调整、spec 偏差处理
+- 遇到 spec 未覆盖的情况，暂停并向用户描述现状 + 提供选项，等用户选择后继续
+- 提供选项时用 `AskUserQuestion`，给出清晰的选项和利弊分析
+
+### 4. 任务完成后的审查循环
+
+每个任务（或一组相关任务）完成后，执行以下步骤：
+
+1. **对照 spec**：逐项检查改动是否与 spec 文档一致，记录偏差
+2. **子代理交叉 review**：启动一个独立 agent 对改动做 code review，检查正确性、遗漏、spec 一致性
+3. **如有冲突**：向用户报告偏差，提供修复选项，等用户决策
+4. **评估完成度**：给出百分比 + 剩余项清单
+5. **更新 spec 文档**：将实际执行结果、偏差记录、完成度更新到 spec 文件
+6. **提交**：确认无问题后 `git commit`，commit message 标注对应的 spec 文件
+
+### 5. Spec 与 Git 同步
+
+- 每次 commit 都应关联 spec 文档的某个阶段或步骤
+- spec 文档是活文档，随开发进展持续更新
+- 功能合并到 main 时，spec 文档应标记为"已完成"
+
+### 6. Git Commit 规范
+
+- commit message 用中文，简明扼要
+- 格式：`动作：简短描述`
+- 常用动作前缀：`新增：`、`删除：`、`修复：`、`重构：`、`更新：`、`优化：`、`配置：`
+- 示例：`新增：浮窗内审批气泡`、`修复：sseClient 命名残留`、`重构：提取 mobile 集成模块`
+- 不要写英文长句，不要用 conventional commits 格式（feat/fix/chore）
+
+## Communication Style
+
+用户是非技术背景，描述需求时可能不用专业术语、表达不够精确、情绪化。需要用产品经理思维去理解：先还原用户的真实意图和期望结果，再转化为技术方案。不要反问用户要精确参数，而是主动推断合理的默认值并给出方案让用户选择。遇到模糊需求时，先给出一个可执行的方案，而不是抛出一堆问题。
+
 ## Constraints
 
 - Claude Code / CodeBuddy 的阻塞式权限审批走 `POST /permission` HTTP hook；普通状态事件走 command hook
