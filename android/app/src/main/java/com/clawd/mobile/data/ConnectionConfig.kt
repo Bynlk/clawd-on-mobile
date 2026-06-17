@@ -1,20 +1,23 @@
 package com.clawd.mobile.data
 
 import android.util.Log
+import com.clawd.mobile.ws.LanConnectionStrategy
 import kotlinx.serialization.Serializable
 
 @Serializable
 data class ConnectionConfig(
     val host: String,
     val port: Int,
-    val token: String
+    val token: String,
+    val relayUrl: String? = null,
+    val relayToken: String? = null,
+    val useRelay: Boolean = false
 ) {
     /** Whether the host is on a local network (no TLS required). Cached per host. */
-    val isLan: Boolean get() = isLanCached(host)
+    val isLan: Boolean get() = if (useRelay) false else isLanCached(host)
 
     fun streamUrl(): String {
-        val scheme = if (isLan) "ws" else "wss"
-        return "$scheme://$host:$port/mobile/ws"
+        return LanConnectionStrategy().streamUrl(this)
     }
 
     /** URL safe for logging — no token included. */

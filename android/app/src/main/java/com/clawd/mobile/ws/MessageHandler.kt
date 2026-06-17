@@ -29,6 +29,8 @@ class MessageHandler(
     private val scope: CoroutineScope,
     private val messageParser: MessageParser,
     private val sendPong: (String) -> Unit,
+    private val onPeerConnected: ((String) -> Unit)? = null,
+    private val onPeerDisconnected: ((String) -> Unit)? = null,
 ) {
     /**
      * Parse and dispatch a raw message string.
@@ -110,6 +112,16 @@ class MessageHandler(
                 Log.w(tag, "Server sent disconnect — triggering reconnect")
                 // Let the transport layer handle reconnection via onTransportClosed/onTransportFailure
                 return false
+            }
+
+            is ParsedMessage.PeerConnected -> {
+                Log.d(tag, "peer_connected role=${parsed.role}")
+                onPeerConnected?.invoke(parsed.role)
+            }
+
+            is ParsedMessage.PeerDisconnected -> {
+                Log.d(tag, "peer_disconnected role=${parsed.role}")
+                onPeerDisconnected?.invoke(parsed.role)
             }
 
             is ParsedMessage.Unknown -> { /* ignore unknown types */ }

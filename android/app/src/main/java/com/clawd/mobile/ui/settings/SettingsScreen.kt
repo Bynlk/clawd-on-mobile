@@ -78,6 +78,14 @@ fun SettingsScreen(
             }
 
             AccordionSection(
+                title = "远程中继",
+                icon = ClawdIcons.Activity,
+                defaultExpanded = false
+            ) {
+                RelaySettings(prefsStore = prefsStore, streamingClient = streamingClient)
+            }
+
+            AccordionSection(
                 title = stringResource(R.string.settings_about),
                 icon = ClawdIcons.Activity,
                 defaultExpanded = false

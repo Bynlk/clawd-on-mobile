@@ -22,6 +22,9 @@ import com.clawd.mobile.notification.NotificationHelper
 import com.clawd.mobile.ws.StreamingClient
 import com.clawd.mobile.ws.WsClient
 import com.clawd.mobile.ws.ConnectionState
+import com.clawd.mobile.ws.ConnectionTag
+import com.clawd.mobile.ws.LanConnectionStrategy
+import com.clawd.mobile.ws.RelayConnectionStrategy
 import com.clawd.mobile.util.SafeExecutor
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -77,6 +80,22 @@ class WsConnectionService : Service() {
 
         fun getClient(): StreamingClient? = instance?.streamingClient
 
+        /** 获取指定 tag 的 client（LAN 或 Relay） */
+        fun getClientByTag(tag: ConnectionTag): StreamingClient? {
+            return when (tag) {
+                ConnectionTag.LAN -> instance?.streamingClient
+                ConnectionTag.RELAY -> instance?.relayClient
+            }
+        }
+
+        /** 获取所有活跃的 client 列表 */
+        fun getAllClients(): List<StreamingClient> {
+            val clients = mutableListOf<StreamingClient>()
+            instance?.streamingClient?.let { clients.add(it) }
+            instance?.relayClient?.let { clients.add(it) }
+            return clients
+        }
+
         fun isRunning(): Boolean = instance != null
 
         /** Start the service with an optional new [config]. If null, reconnects with saved config. */
@@ -108,6 +127,9 @@ class WsConnectionService : Service() {
     @Volatile
     var streamingClient: StreamingClient? = null
         private set
+    @Volatile
+    var relayClient: StreamingClient? = null
+        private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var stateCollectorJob: Job? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -121,6 +143,13 @@ class WsConnectionService : Service() {
         instance = this
         streamingClient = WsClient(prefsStore)
         _clientReady.trySend(streamingClient!!)
+
+        // 创建 relay client（如果配置了 relay）
+        val config = prefsStore.loadConfig()
+        if (config?.useRelay == true && !config.relayUrl.isNullOrBlank()) {
+            relayClient = WsClient(prefsStore)
+            _clientReady.trySend(relayClient!!)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -133,11 +162,16 @@ class WsConnectionService : Service() {
                     val config = prefsStore.loadConfig()
                     if (config != null) {
                         streamingClient?.connect(config)
+                        // 连接 relay client（如果配置了）
+                        if (config.useRelay && !config.relayUrl.isNullOrBlank() && relayClient != null) {
+                            relayClient?.connect(config)
+                        }
                     } else {
                         streamingClient?.reconnect()
                     }
                 } else {
                     streamingClient?.reconnect()
+                    relayClient?.reconnect()
                 }
                 startStateCollector()
             }
@@ -255,7 +289,10 @@ class WsConnectionService : Service() {
     }
 
     private fun acquireLocks() {
-        if (wifiLock == null) {
+        // WiFi lock 仅在 LAN 模式下获取（relay 模式可能走蜂窝网络）
+        val config = prefsStore.loadConfig()
+        val needWifiLock = config?.useRelay != true  // 非 relay 模式才需要 WiFi lock
+        if (wifiLock == null && needWifiLock) {
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "clawd:ws").apply {
                 setReferenceCounted(false)
@@ -347,6 +384,7 @@ class WsConnectionService : Service() {
         releaseLocks()
         scope.cancel()
         streamingClient?.destroy()
+        relayClient?.destroy()
         streamingClient = null
         instance = null
         super.onDestroy()

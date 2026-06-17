@@ -33,6 +33,8 @@ class MessageParser {
             "permission_request" -> parsePermissionRequest(obj, timestamp)
             "reaction" -> parseReaction(obj, timestamp)
             "disconnect" -> ParsedMessage.Disconnect(timestamp)
+            "peer_connected" -> parsePeerConnected(obj, timestamp)
+            "peer_disconnected" -> parsePeerDisconnected(obj, timestamp)
             else -> ParsedMessage.Unknown(type, timestamp)
         }
     }
@@ -190,6 +192,20 @@ class MessageParser {
     private fun parseReaction(obj: JsonObject, timestamp: Long): ParsedMessage.Reaction {
         val svg = obj["svg"]?.jsonPrimitive?.contentOrNull
         return ParsedMessage.Reaction(svg, timestamp)
+    }
+
+    // ── Peer Connected ──────────────────────────────────────────────────
+
+    private fun parsePeerConnected(obj: JsonObject, timestamp: Long): ParsedMessage.PeerConnected {
+        val role = obj["role"]?.jsonPrimitive?.contentOrNull ?: "unknown"
+        return ParsedMessage.PeerConnected(role, timestamp)
+    }
+
+    // ── Peer Disconnected ───────────────────────────────────────────────
+
+    private fun parsePeerDisconnected(obj: JsonObject, timestamp: Long): ParsedMessage.PeerDisconnected {
+        val role = obj["role"]?.jsonPrimitive?.contentOrNull ?: "unknown"
+        return ParsedMessage.PeerDisconnected(role, timestamp)
     }
 
     // ── Tool input summary builder ──────────────────────────────────────

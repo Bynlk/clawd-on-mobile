@@ -190,6 +190,16 @@ class PrefsStore private constructor(context: Context) {
         else prefs.edit().putString("cert_fingerprint", v).apply()
     }
 
+    // Remote relay
+    fun isRelayEnabled(): Boolean = prefs.getBoolean("relay_enabled", false)
+    fun setRelayEnabled(v: Boolean) { prefs.edit().putBoolean("relay_enabled", v).apply() }
+
+    fun getRelayUrl(): String = prefs.getString("relay_url", "") ?: ""
+    fun setRelayUrl(v: String) { prefs.edit().putString("relay_url", v).apply() }
+
+    fun getRelayToken(): String = prefs.getString("relay_token", "") ?: ""
+    fun setRelayToken(v: String) { prefs.edit().putString("relay_token", v).apply() }
+
     // Language / i18n
     /** Returns language tag: "zh" (default) or "en". */
     fun getLanguage(): String = prefs.getString(KEY_LANGUAGE, "zh") ?: "zh"
