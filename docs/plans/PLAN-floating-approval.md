@@ -1,10 +1,11 @@
 # Spec：Android 浮窗内审批
 
-> 状态：已修正（三轮验证通过，置信度 93%）
-> 修正项：双 client 审批路由、FIFO 自动推进逻辑、双 client 来源标记
+> 状态：已完成（单 client 版本，双 client 待 relay 功能完成后适配）
 > 分支：`feat/floating-approval`
 > 预估工时：~8h
-> 修正项：新增通知同步共享流、窗口标志动态切换、去重竞态保护
+> 完成度：~90%
+> 已实现：approvalCompletedFlow、ConcurrentHashMap 去重、窗口标志切换、FIFO 自动推进、滑动操作（50dp 阈值）、倒计时、通知同步、suggestionIndex 传递、角标数量、elicitation 跳转 App
+> 待完成：双 client 审批收集（依赖 relay 功能）
 
 ## 目标
 
