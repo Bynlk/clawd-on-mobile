@@ -68,6 +68,7 @@ class FloatingPetService : Service() {
     private var windowController: PetWindowController? = null
     private var gestureHandler: PetGestureHandler? = null
     private var bubbleManager: PetBubbleManager? = null
+    private var approvalBubbleManager: PetApprovalBubbleManager? = null
 
     // --- Broadcast receiver ---
     private var broadcastReceiver: BroadcastReceiver? = null
@@ -95,12 +96,14 @@ class FloatingPetService : Service() {
         showFloatingWindow()
         reloadGif()
         started = true
+        approvalBubbleManager?.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) {
             Log.d(TAG, "ACTION_DISCONNECT received, gracefully shutting down")
             started = false
+            approvalBubbleManager?.stop()
             bubbleManager?.dismiss()
             stateManager.reset()
             commandCollectorJob?.cancel()
@@ -130,6 +133,7 @@ class FloatingPetService : Service() {
         Log.d(TAG, "onDestroy")
         isRunning = false
         started = false
+        approvalBubbleManager?.stop()
         bubbleManager?.dismiss()
         stateManager.reset()
         commandCollectorJob?.cancel()
@@ -290,12 +294,21 @@ class FloatingPetService : Service() {
             onEnterApp = { openApp() }
         )
 
+        approvalBubbleManager = PetApprovalBubbleManager(
+            context = this,
+            windowManager = windowManager!!,
+            scope = scope,
+            getPetView = { petView },
+            getPetLayoutParams = { layoutParams }
+        )
+
         gestureHandler = PetGestureHandler(
             context = this,
             layoutParams = layoutParams!!,
             windowManager = windowManager!!,
             getPetView = { petView },
             onDragStart = {
+                approvalBubbleManager?.let { if (it.isShowing()) it.stop() else {} }
                 bubbleManager?.dismiss()
                 stateManager.triggerDragReaction()
             },
@@ -303,7 +316,13 @@ class FloatingPetService : Service() {
                 stateManager.restoreFromDragReaction()
             },
             onSingleTap = {
-                layoutParams?.let { bubbleManager?.toggle(it) }
+                // Priority: approval bubble > session bubble
+                if (approvalBubbleManager?.hasPending() == true) {
+                    // Approval bubble is managed by PetApprovalBubbleManager, no-op here
+                    // (it auto-shows on permission request arrival)
+                } else {
+                    layoutParams?.let { bubbleManager?.toggle(it) }
+                }
             },
             onDoubleTap = {
                 stateManager.triggerClickReaction()

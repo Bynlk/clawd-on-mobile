@@ -95,6 +95,13 @@ class WsConnectionService : Service() {
                 action = ACTION_DISCONNECT
             })
         }
+
+        /**
+         * Shared flow for signaling approval completion across UI paths.
+         * Emits requestId when an approval is completed (from notification or overlay).
+         * extraBufferCapacity=16 ensures ApprovalWorker emit never suspends.
+         */
+        val approvalCompletedFlow = MutableSharedFlow<String>(extraBufferCapacity = 16)
     }
 
     private val prefsStore by lazy { PrefsStore.getInstance(this) }

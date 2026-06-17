@@ -45,6 +45,10 @@ class ApprovalWorker(
             if (notificationId >= 0) {
                 NotificationHelper.cancelNotification(applicationContext, notificationId)
             }
+
+            // Signal approval completion to floating overlay (sync dismissal)
+            WsConnectionService.approvalCompletedFlow.tryEmit(requestId)
+
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Approval error", e)
