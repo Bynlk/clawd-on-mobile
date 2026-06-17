@@ -1,0 +1,15 @@
+{
+  "name": "clawd-relay-server",
+  "version": "1.0.0",
+  "description": "Clawd WebSocket 中继服务器",
+  "main": "relay-server.js",
+  "scripts": {
+    "start": "node relay-server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

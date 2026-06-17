@@ -299,6 +299,15 @@ function startHttpServer() {
   // Initialize mobile companion server (MobileWSServer + WS handler + connection history)
   startMobileServerBase(httpServer, { skipHttpServer: !!ctx.skipMobileServer });
 
+  // Initialize relay bridge (if configured in prefs)
+  try {
+    const { initRelayBridge } = require("./relay-bridge-integration");
+    const prefsModule = require("./prefs");
+    initRelayBridge(prefsModule);
+  } catch (e) {
+    console.warn("[server] relay bridge 初始化失败:", e.message);
+  }
+
   const listenPorts = getPortCandidatesFn();
   let listenIndex = 0;
   httpServer.on("error", (err) => {

@@ -327,6 +327,10 @@ const SCHEMA = {
   // Mobile companion feature flag. When false, the mobile WebSocket server
   // and all mobile-related code paths are completely disabled.
   mobileCompanionEnabled: { type: "boolean", default: true },
+  // Remote relay configuration for non-LAN connections
+  relayEnabled: { type: "boolean", default: false },
+  relayUrl: { type: "string", default: "" },
+  relayToken: { type: "string", default: "" },
   // Background update-check toggle. When true, the scheduler in updater.js
   // runs a quiet GitHub discovery on a 12-hour cycle (packaged builds only).
   // Default on per #329.

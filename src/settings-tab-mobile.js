@@ -248,6 +248,119 @@
 
   // ── Main render ──
 
+  // ── Section 4: Remote Relay ──
+
+  function renderRelaySection(container, core) {
+    const box = document.createElement("div");
+    box.className = "mobile-section mobile-relay-section";
+
+    const label = document.createElement("div");
+    label.className = "mobile-section-label";
+    label.textContent = t("relayTitle") || "Remote Relay（远程中继）";
+    box.appendChild(label);
+
+    const desc = document.createElement("div");
+    desc.className = "mobile-section-desc";
+    desc.textContent = t("relayDesc") || "通过远程服务器中继连接，支持非局域网环境。";
+    box.appendChild(desc);
+
+    // 从 snapshot 读取当前值
+    const snapshot = core.state?.snapshot || {};
+    const currentUrl = snapshot.relayUrl || "";
+    const currentToken = snapshot.relayToken || "";
+    const isEnabled = snapshot.relayEnabled || false;
+
+    // Relay URL input
+    const urlRow = document.createElement("div");
+    urlRow.className = "settings-row";
+    const urlLabel = document.createElement("label");
+    urlLabel.textContent = t("relayUrl") || "Relay URL";
+    const urlInput = document.createElement("input");
+    urlInput.type = "text";
+    urlInput.placeholder = "wss://your-vps-ip:7891";
+    urlInput.value = currentUrl;
+    urlInput.className = "settings-input";
+    urlRow.appendChild(urlLabel);
+    urlRow.appendChild(urlInput);
+    box.appendChild(urlRow);
+
+    // Admin Token input
+    const tokenRow = document.createElement("div");
+    tokenRow.className = "settings-row";
+    const tokenLabel = document.createElement("label");
+    tokenLabel.textContent = t("relayToken") || "Admin Token";
+    const tokenInput = document.createElement("input");
+    tokenInput.type = "password";
+    tokenInput.placeholder = "输入 Admin Token";
+    tokenInput.value = currentToken;
+    tokenInput.className = "settings-input";
+    tokenRow.appendChild(tokenLabel);
+    tokenRow.appendChild(tokenInput);
+    box.appendChild(tokenRow);
+
+    // Enable toggle + status
+    const actionRow = document.createElement("div");
+    actionRow.className = "settings-row";
+
+    const enableBtn = document.createElement("button");
+    enableBtn.className = "settings-btn";
+    enableBtn.textContent = isEnabled
+      ? (t("relayDisable") || "断开 Relay")
+      : (t("relayEnable") || "连接 Relay");
+    enableBtn.onclick = () => {
+      const currentlyEnabled = state?.snapshot?.relayEnabled || false;
+      if (!currentlyEnabled) {
+        // 保存配置并启用
+        window.settingsAPI.update("relayUrl", urlInput.value.trim());
+        window.settingsAPI.update("relayToken", tokenInput.value.trim());
+        window.settingsAPI.update("relayEnabled", true);
+        enableBtn.textContent = t("relayDisable") || "断开 Relay";
+      } else {
+        window.settingsAPI.update("relayEnabled", false);
+        enableBtn.textContent = t("relayEnable") || "连接 Relay";
+      }
+    };
+    actionRow.appendChild(enableBtn);
+
+    // Status indicator
+    const statusSpan = document.createElement("span");
+    statusSpan.className = "relay-status";
+    statusSpan.textContent = isEnabled
+      ? (t("relayStatusConnected") || "已启用")
+      : (t("relayStatusDisconnected") || "未连接");
+    actionRow.appendChild(statusSpan);
+
+    box.appendChild(actionRow);
+
+    // API status button
+    const apiRow = document.createElement("div");
+    apiRow.className = "settings-row";
+    const apiBtn = document.createElement("button");
+    apiBtn.className = "settings-btn settings-btn-secondary";
+    apiBtn.textContent = t("relayCheckStatus") || "检查 Relay 状态";
+    apiBtn.onclick = () => {
+      const url = urlInput.value.trim();
+      const token = tokenInput.value.trim();
+      if (!url) return;
+      fetch(`${url}/api/status`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          statusSpan.textContent = `运行中 | 在线: ${data.connections?.pc || 0} PC, ${data.connections?.phone || 0} Phone`;
+          statusSpan.style.color = "#4CAF50";
+        })
+        .catch(() => {
+          statusSpan.textContent = "无法连接";
+          statusSpan.style.color = "#F44336";
+        });
+    };
+    apiRow.appendChild(apiBtn);
+    box.appendChild(apiRow);
+
+    container.appendChild(box);
+  }
+
   function renderMobileTab(container, core) {
     runtime = core.runtime;
     helpers = core.helpers;
@@ -280,6 +393,12 @@
     infoContainer = document.createElement("div");
     infoContainer.id = "mobile-connection-info";
     section.appendChild(infoContainer);
+
+    // Section 4: Remote Relay
+    const relayContainer = document.createElement("div");
+    relayContainer.id = "mobile-relay-section";
+    section.appendChild(relayContainer);
+    renderRelaySection(relayContainer, core);
 
     container.appendChild(section);
 

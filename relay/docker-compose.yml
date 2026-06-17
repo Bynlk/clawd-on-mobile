@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  clawd-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clawd-relay
+    restart: unless-stopped
+    ports:
+      - "${PORT:-7891}:${PORT:-7891}"
+    env_file:
+      - .env
+    environment:
+      - PORT=${PORT:-7891}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-7891}/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # 可选：nginx 反向代理 + TLS 终止
+  # 如需启用，取消注释以下内容并配置 SSL 证书
+  #
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: clawd-relay-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./certs:/etc/nginx/certs:ro
+  #   depends_on:
+  #     - clawd-relay
