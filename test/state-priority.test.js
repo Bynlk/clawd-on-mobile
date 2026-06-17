@@ -35,6 +35,7 @@ describe("state-priority constants", () => {
       dozing: 1,
       collapsing: 1,
       waking: 1,
+      roam: 1,
       sleeping: 0,
     });
     assert.deepStrictEqual([...SLEEP_SEQUENCE], ["yawning", "dozing", "collapsing", "sleeping", "waking"]);

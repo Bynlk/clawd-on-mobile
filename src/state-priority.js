@@ -23,6 +23,7 @@ const STATE_PRIORITY = Object.freeze({
   dozing: 1,
   collapsing: 1,
   waking: 1,
+  roam: 1,
   sleeping: 0,
 });
 

@@ -1483,6 +1483,7 @@ const _tickCtx = {
   getObjRect,
   getHitRectScreen,
   getAssetPointerPayload,
+  get roam() { return _roam; },
 };
 const _tick = require("./tick")(_tickCtx);
 requestFastTick = (maxDelay) => _tick.scheduleSoon(maxDelay);
@@ -2855,6 +2856,7 @@ const SETTINGS_MIRROR_SETTERS = {
   keepAwakeWhileWorking: (v) => { keepAwakeWhileWorking = v; },
   allowEdgePinning: (v) => { allowEdgePinningCached = v; }, disableMiniMode: (v) => { disableMiniModeCached = v; }, keepSizeAcrossDisplays: (v) => { keepSizeAcrossDisplaysCached = v; },
   mobileMaxClients: (v) => { if (typeof _serverCtx.onMobileMaxClientsChange === "function") _serverCtx.onMobileMaxClientsChange(v); saveMobileState({ mobileMaxClients: v }); },
+  freeRoam: (v) => { _roam.setEnabled(v); },
   textScale: (v) => { textScale = v; textScalePreview = null; },
   textScaleByDisplay: (v) => { textScaleByDisplay = v; textScalePreview = null; },
 };
@@ -3381,6 +3383,37 @@ const _miniCtx = {
 const _mini = require("./mini")(_miniCtx);
 const { enterMiniMode, exitMiniMode, enterMiniViaMenu, miniPeekIn, miniPeekOut,
         checkMiniModeSnap, cancelMiniTransition, animateWindowX, animateWindowParabola } = _mini;
+
+// ── Free Roam — initialized here after state and mini modules ──
+const _roamCtx = {
+  get win() { return win; },
+  getPetWindowBounds,
+  applyPetWindowPosition,
+  syncHitWin: () => syncHitWin(),
+  repositionSessionHud: () => repositionSessionHud(),
+  repositionAnchoredSurfaces: () => repositionAnchoredFloatingSurfaces(),
+  repositionBubbles: () => repositionFloatingBubbles(),
+  get bubbleFollowPet() { return bubbleFollowPet; },
+  get pendingPermissions() { return pendingPermissions; },
+  getNearestWorkArea,
+  clampToScreenVisual,
+  getMiniMode: () => _mini.getMiniMode(),
+  getCurrentState: () => _state.getCurrentState(),
+  get miniTransitioning() { return _mini.getMiniTransitioning(); },
+  applyState: (state, svgOverride, opts) => _state.applyState(state, svgOverride, opts),
+  setState: (state, svgOverride, opts) => _state.setState(state, svgOverride, opts),
+};
+const _roam = require("./roam")(_roamCtx);
+
+// Free roam: initialize from prefs and react to toggle changes
+_roam.setEnabled(_settingsController.get("freeRoam") === true);
+try {
+  _settingsController.subscribeKey("freeRoam", (value) => {
+    _roam.setEnabled(value === true);
+  });
+} catch (err) {
+  console.warn("Clawd: freeRoam subscribeKey failed:", err && err.message);
+}
 
 // Convenience getters for mini state (used throughout main.js)
 Object.defineProperties(this || {}, {}); // no-op placeholder
