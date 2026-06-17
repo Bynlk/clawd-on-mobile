@@ -12,7 +12,20 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert");
 const { loadFocusWithMock } = require("./helpers/load-focus-with-mock");
 
-const VIA_WAIT = 200;        // via path: stone blocks until Space switched, target fires immediately
+function readGhosttyStepSettleMs() {
+  const { initFocus, cleanup } = loadFocusWithMock((cmd, args, opts, cb) => {
+    if (typeof opts === "function") cb = opts;
+    if (cb) cb(null, "", "");
+  });
+  try {
+    return initFocus({}).__test.GHOSTTY_STEP_SETTLE_MS;
+  } finally {
+    cleanup();
+  }
+}
+
+const GHOSTTY_STEP_SETTLE_MS = readGhosttyStepSettleMs();
+const VIA_WAIT = GHOSTTY_STEP_SETTLE_MS + 250; // via path waits for Space settle, then fires target
 const MISS_WAIT = 400 + 300; // thenFn path: runGhosttyScript 400ms delay + buffer
 
 function isGhosttyOsa(args) {
@@ -71,6 +84,52 @@ describe("runWithSteppingStone — via path: probe+stone then final", () => {
       assert.deepStrictEqual(osaOrder, ["probe+stone", "final"],
         "probe+stone (with stone embedded) then final");
       done();
+    }, VIA_WAIT);
+  });
+
+  it("does not fire the final focus inside the settle window", (t, done) => {
+    const osaOrder = [];
+    let finished = false;
+    const { mock } = makeMock({
+      ps: (args, cb) => cb(null, "ghostty\n", ""),
+      osascript: (args, cb) => {
+        if (!isGhosttyOsa(args)) { cb(null, "", ""); return; }
+        if (isProbeOsa(args)) {
+          osaOrder.push("probe+stone");
+          cb(null, "via:stone-1|term-42\n", "");
+          return;
+        }
+        osaOrder.push("final");
+        cb(null, "ok-id\n", "");
+      },
+    });
+    const { initFocus, cleanup } = loadFocusWithMock(mock);
+    const { focusTerminalWindow } = initFocus({});
+    const finish = (err) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      done(err);
+    };
+
+    callGhosttyFocus(focusTerminalWindow);
+
+    setTimeout(() => {
+      if (finished) return;
+      try {
+        assert.deepStrictEqual(osaOrder, ["probe+stone"], "final must not run before Space settle");
+      } catch (err) {
+        finish(err);
+      }
+    }, Math.floor(GHOSTTY_STEP_SETTLE_MS / 2));
+
+    setTimeout(() => {
+      try {
+        assert.deepStrictEqual(osaOrder, ["probe+stone", "final"], "final runs after Space settle");
+        finish();
+      } catch (err) {
+        finish(err);
+      }
     }, VIA_WAIT);
   });
 });

@@ -568,7 +568,10 @@ const MAC_FOCUS_TIMEOUT_MS = 1500;
 // can answer (#465), so that one script gets a human-scale timeout.
 const MAC_FOCUS_CONSENT_TIMEOUT_MS = 15000;
 const MAC_OPEN_TIMEOUT_MS = 3000;
-
+// Ghostty's stone focus can return before WindowServer finishes committing the
+// Space switch. Real-device reload tests still yanked the window at 150ms;
+// Space animations are roughly 300-400ms, so keep a conservative settle gap.
+const GHOSTTY_STEP_SETTLE_MS = 600;
 const WINDOWS_FOCUS_DEDUP_MS = 400;
 const WINDOWS_FOCUS_RESULT_TIMEOUT_MS = 3000;
 const WINDOWS_FOCUS_POSITIVE_REASONS = new Set([
@@ -1018,10 +1021,10 @@ function buildGhosttyIdProbeScript(terminalId) {
 }
 
 // Probe + stone in one script: finds the target terminal, and if its tab is
-// not selected, immediately focuses the stone terminal (blocks for the Space
-// animation) before returning. Node.js receives the callback only after the
-// animation completes, so the target focus can fire without any extra wait.
-// Saves one IPC round-trip vs. separate probe → stone calls.
+// not selected, immediately focuses the stone terminal before returning the
+// target id. Real-device tests showed that WindowServer may still be settling
+// the Space switch when this callback fires, so the caller waits before target
+// focus. This still saves one IPC round-trip vs. separate probe -> stone calls.
 function buildGhosttyIdProbeAndStoneScript(terminalId) {
   const id = normalizeGhosttyTerminalId(terminalId);
   if (!id) return null;
@@ -1636,9 +1639,10 @@ function scheduleGhosttyFocus(sourcePid, cwd, pidChain, ghosttyTerminalId = null
       }, 400);
     };
     // Cross-Space fix: probe+stone in one script finds the target and, if its
-    // tab is not selected, immediately focuses the stepping-stone terminal
-    // (blocking for the Space animation). The callback fires only after the
-    // Space switch is done, so the target focus runs without any extra wait.
+    // tab is not selected, focuses the stepping-stone terminal. The stone focus
+    // can return while WindowServer is still committing the Space switch, so
+    // wait before focusing the real target to avoid yanking its window back to
+    // the current Space.
     const runWithSteppingStone = (probeAndStoneScript, finalScript, finalLabel, thenFn) => {
       if (!probeAndStoneScript) {
         thenFn();
@@ -1652,7 +1656,7 @@ function scheduleGhosttyFocus(sourcePid, cwd, pidChain, ghosttyTerminalId = null
           thenFn();
           return;
         }
-        // via:<stone-id>|<target-id> — stone already focused, Space is active
+        // via:<stone-id>|<target-id> - stone was focused; let the Space switch settle.
         const viaPayload = status.slice(4);
         const sepIdx = viaPayload.indexOf("|");
         const targetId = sepIdx >= 0 ? viaPayload.slice(sepIdx + 1) : null;
@@ -1663,12 +1667,14 @@ function scheduleGhosttyFocus(sourcePid, cwd, pidChain, ghosttyTerminalId = null
           return;
         }
         logGhosttyFocusResult(`probe-via t=${Date.now() - t0}ms`);
-        const tFinal = Date.now();
-        execFile("osascript", ["-e", effectiveFinal], { timeout: MAC_FOCUS_TIMEOUT_MS }, (finalErr, finalOut) => {
-          const finalStatus = normalizeGhosttyScriptStatus(finalLabel, finalErr, finalOut);
-          logGhosttyFocusResult(`${finalStatus} via-stone t=${Date.now() - tFinal}ms`);
-          if (!String(finalStatus || "").startsWith("ok-")) thenFn();
-        });
+        setTimeout(() => {
+          const tFinal = Date.now();
+          execFile("osascript", ["-e", effectiveFinal], { timeout: MAC_FOCUS_TIMEOUT_MS }, (finalErr, finalOut) => {
+            const finalStatus = normalizeGhosttyScriptStatus(finalLabel, finalErr, finalOut);
+            logGhosttyFocusResult(`${finalStatus} via-stone settle=${GHOSTTY_STEP_SETTLE_MS}ms t=${Date.now() - tFinal}ms`);
+            if (!String(finalStatus || "").startsWith("ok-")) thenFn();
+          });
+        }, GHOSTTY_STEP_SETTLE_MS);
       });
     };
 
@@ -2021,6 +2027,7 @@ return {
     buildGhosttyIdProbeAndStoneScript,
     buildGhosttyCwdProbeAndStoneScript,
     buildGhosttyStoneAndFocusScript,
+    GHOSTTY_STEP_SETTLE_MS,
   },
 };
 
