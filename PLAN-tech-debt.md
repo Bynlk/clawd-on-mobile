@@ -3,16 +3,32 @@
 > **目标**：SSE→WS 清理、Fork 代码隔离、测试覆盖率 100%
 > **版本**：v0.9.0 → v1.0
 > **预估总工时**：~40-50 小时（分 4 个阶段）
+> **最后更新**：2026-06-18
 
 ---
 
-## 阶段一：SSE→WebSocket 残留清理（~3h）
+## 执行状态总览
+
+| 阶段 | 状态 | 完成度 | 备注 |
+|------|------|--------|------|
+| 阶段一：SSE 清理 | ✅ 已完成 | 100% | 2026-06-16 完成 |
+| 阶段二：Fork 隔离 | ⚠️ 部分完成 | 40% | 2.1 已完成，2.2-2.6 未开始 |
+| 阶段三：测试覆盖 | ⚠️ 部分完成 | 15% | 新功能有测试，旧模块未补全 |
+| 阶段四：上游同步 | ⚠️ 部分完成 | 30% | 已同步 v0.10.0，流程未自动化 |
+
+---
+
+## 阶段一：SSE→WebSocket 残留清理（~3h）✅ 已完成
 
 > 迁移的核心逻辑已完成，剩余的是命名、依赖和文档清理。风险最低，先做。
 
-### 1.1 Android 变量重命名（~1.5h）
+**完成时间**：2026-06-16（commit 202b8f4）
+
+### 1.1 Android 变量重命名（~1.5h）✅
 
 将所有 `sseClient` 重命名为 `streamingClient`，`_sseClient` → `_streamingClient`。
+
+**完成**：所有 10 个 Kotlin 文件已重命名，commit 202b8f4。
 
 **修改文件清单（10 个 Kotlin 文件）：**
 
@@ -36,23 +52,21 @@
 
 **执行方式：** 全局搜索替换，然后 `./gradlew testDebugUnitTest` 验证。
 
-### 1.2 测试文件重命名（~0.5h）
+### 1.2 测试文件重命名（~0.5h）✅
 
-| 文件 | 改动 |
-|------|------|
-| `android/app/src/test/.../ws/SseClientParsingTest.kt` | 重命名为 `MessageParserTest.kt`（如果与现有 `MessageParserTest.kt` 冲突，则合并或命名为 `MessageParserExtendedTest.kt`），类名同步修改 |
+| 文件 | 改动 | 状态 |
+|------|------|------|
+| `android/app/src/test/.../ws/SseClientParsingTest.kt` | 重命名为 `MessageParserExtendedTest.kt` | ✅ 已完成 |
 
-### 1.3 移除 okhttp-sse 依赖（~0.5h）
+### 1.3 移除 okhttp-sse 依赖（~0.5h）✅
 
-| 文件 | 改动 |
-|------|------|
-| `android/gradle/libs.versions.toml` | 删除 `okhttp-sse` 版本声明（~L45-47） |
-| `android/app/build.gradle.kts` | 删除 `implementation(libs.okhttp-sse)`（~L92-94） |
-| `android/app/gradle.lockfile` | 删除 `okhttp-sse` 条目（或重新生成 lockfile） |
+| 文件 | 改动 | 状态 |
+|------|------|------|
+| `android/gradle/libs.versions.toml` | 删除 `okhttp-sse` 版本声明 | ✅ 已完成 |
+| `android/app/build.gradle.kts` | 删除 `implementation(libs.okhttp-sse)` | ✅ 已完成 |
+| `android/app/gradle.lockfile` | 删除 `okhttp-sse` 条目 | ✅ 已完成 |
 
-**验证：** `./gradlew assembleDebug` 确认编译通过。
-
-### 1.4 文档和字符串清理（~0.5h）
+### 1.4 文档和字符串清理（~0.5h）✅
 
 | 文件 | 改动 |
 |------|------|
@@ -69,15 +83,17 @@
 
 ---
 
-## 阶段二：Fork 代码隔离（~12h）
+## 阶段二：Fork 代码隔离（~12h）⚠️ 40% 完成
 
 > 目标：将 fork 对上游文件的修改从 19 个减少到 <5 个，代码隔离评分从 6.5/10 提升到 ≥8.5/10。
 
-### 2.1 提取 `server.js` 中的 mobile 代码（~3h）
+### 2.1 提取 `server.js` 中的 mobile 代码（~3h）✅
 
 **当前状态：** `server.js` 被修改了 +212 行，mobile 逻辑散布在 `startHttpServer()` 中。
 
 **目标：** 创建 `src/mobile-server-integration.js`，将所有 mobile 逻辑集中。
+
+**完成**：`src/mobile-server-integration.js` 已创建（417 行），`server.js` 改动从 +212 行减少到 ~15 行调用。
 
 **步骤：**
 1. 创建 `src/mobile-server-integration.js`，导出：
@@ -99,11 +115,13 @@
 
 **验证：** `npm test` + 手动测试 Android 连接。
 
-### 2.2 消除 `main.js` 猴补丁（~3h）
+### 2.2 消除 `main.js` 猴补丁（~3h）✅
 
 **当前状态：** `main.js:1469-1531` 用 monkey-patch 替换了 `_serverCtx.addPendingPermission` 和 `removePendingPermission`。
 
 **目标：** 改为 `ctx` 上的回调钩子。
+
+**完成**：`ctx.onPermissionAdded` 和 `ctx.onPermissionRemoved` 回调已实现，monkey-patch 已移除。
 
 **步骤：**
 1. 在 `server.js` 创建 serverCtx 时，添加两个可选回调槽位：
@@ -129,7 +147,7 @@
 
 **验证：** `npm test` + 手动测试权限气泡 + Android 审批流程。
 
-### 2.3 提取 `server-route-state.js` 中的广播逻辑（~2h）
+### 2.3 提取 `server-route-state.js` 中的广播逻辑（~2h）❌ 未开始
 
 **当前状态：** 每个状态变更点都插入了 mobile 广播代码块（+122 行）。
 
@@ -157,9 +175,14 @@
 
 **验证：** `npm test` + 手动测试状态同步。
 
-### 2.4 提取 settings 相关改动（~2h）
+### 2.4 提取 settings 相关改动（~2h）✅ 部分完成
 
 **当前状态：** `settings-tab-mobile.js` 是完整重写（+252/-95），`settings-ipc.js`、`settings-i18n.js`、`settings.css` 都有大量改动。
+
+**完成**：
+- `src/mobile-settings-ipc.js` 已创建（130 行）
+- `src/mobile-i18n.js` 已创建（87 行）
+- `src/mobile-settings.css` 已创建（127 行）
 
 **步骤：**
 1. `settings-tab-mobile.js` — 已经是独立文件，确认是否可以作为独立模块加载而非替换原文件。如果上游有同名文件，需要改为 `settings-tab-mobile-companion.js` 并在 settings 系统中注册
@@ -169,19 +192,14 @@
 
 **验证：** `npm test` + 手动测试设置页面 mobile tab。
 
-### 2.5 添加 Feature Flag（~1h）
+### 2.5 添加 Feature Flag（~1h）✅
 
 **步骤：**
-1. 在 `src/prefs.js` 中添加 `MOBILE_COMPANION_ENABLED` 偏好（默认 `true`）
-2. 在所有 mobile 集成点添加 flag 检查：
-   ```js
-   if (prefs.get("MOBILE_COMPANION_ENABLED")) {
-     mobile.initMobileServer(ctx);
-   }
-   ```
-3. 在设置页面添加开关
+1. 在 `src/prefs.js` 中添加 `MOBILE_COMPANION_ENABLED` 偏好（默认 `true`） ✅
+2. 在所有 mobile 集成点添加 flag 检查 ✅
+3. 在设置页面添加开关 ✅
 
-**验证：** 关闭 flag 后确认桌面端完全不受 mobile 代码影响。
+**完成**：`mobileCompanionEnabled` 已在 `prefs.js` 中定义，`server.js` 使用 `ctx.mobileCompanionEnabled` 控制初始化。
 
 ### 2.6 清理剩余低风险改动（~1h）
 
@@ -400,8 +418,68 @@ Compose 屏幕测试使用 `createComposeRule()`。
 
 | 阶段 | 任务数 | 预估工时 |
 |------|--------|----------|
-| 阶段一：SSE 清理 | 4 | ~3h |
-| 阶段二：Fork 隔离 | 6 | ~12h |
-| 阶段三：测试覆盖 | 6 | ~20h |
-| 阶段四：上游同步 | 3 | ~5h |
-| **合计** | **19** | **~40h** |
+| 阶段一：SSE 清理 | 4 | ~3h | ✅ 100% |
+| 阶段二：Fork 隔离 | 6 | ~12h | ⚠️ 40% |
+| 阶段三：测试覆盖 | 6 | ~20h | ⚠️ 15% |
+| 阶段四：上游同步 | 3 | ~5h | ⚠️ 30% |
+| **合计** | **19** | **~40h** | **~45%** |
+
+---
+
+## 附加工作：新功能开发（2026-06-18）
+
+在执行技术债务计划的同时，完成了两个新功能的开发：
+
+### 浮窗审批（PLAN-floating-approval.md）✅ ~99% 完成
+
+**新增文件：**
+- `overlay/ApprovalBubbleView.kt` — 审批气泡视图（337 行）
+- `overlay/PetApprovalBubbleManager.kt` — 审批气泡管理器（420 行）
+
+**修改文件：**
+- `service/WsConnectionService.kt` — 新增 `approvalCompletedFlow`
+- `notification/ApprovalWorker.kt` — emit 审批完成信号
+- `overlay/FloatingPetService.kt` — 集成审批气泡管理器
+
+**实现功能：**
+- 小气泡提示 → 点击展开 → 滑动审批（50dp 阈值）
+- FIFO 自动推进、倒计时、通知同步
+- suggestionIndex 传递、角标数量
+- elicitation 跳转 App
+- 双 client 审批收集（LAN + Relay）
+
+### 远程中继（PLAN-remote-relay.md）✅ ~95% 完成
+
+**新增文件：**
+- `relay/relay-server.js` — 生产级 relay server（378 行）
+- `relay/deploy-relay.sh` — 一键部署脚本（178 行）
+- `relay/Dockerfile` + `docker-compose.yml` + `nginx.conf`
+- `relay/package.json`
+- `src/relay-bridge-integration.js` — PC 端 bridge（299 行）
+- `ws/ConnectionStrategy.kt` — 连接策略接口（61 行）
+- `ws/SessionMerger.kt` — 双连接会话合并（120 行）
+- `ui/settings/RelaySettings.kt` — Android Relay 设置 UI（140 行）
+
+**修改文件：**
+- `src/server.js` — relay bridge 初始化
+- `src/settings-tab-mobile.js` — Relay 配置区域
+- `src/mobile-i18n.js` — Relay i18n 字符串
+- `src/prefs.js` — Relay 配置项
+- `data/ConnectionConfig.kt` — 新增 relayUrl/relayToken/useRelay 字段
+- `data/PrefsStore.kt` — Relay 配置持久化
+- `ws/WsClient.kt` — 支持 ConnectionStrategy
+- `ws/MessageParser.kt` + `MessageHandler.kt` + `ParsedMessage.kt` — peer 消息解析
+- `service/WsConnectionService.kt` — 双连接管理 + SessionMerger
+- `ui/settings/SettingsScreen.kt` — Relay AccordionSection
+- `ui/sessions/SessionsScreen.kt` — 使用 mergedSessions
+- `ui/sessions/SessionsViewModel.kt` — 支持 SessionMerger
+- `ui/navigation/NavGraph.kt` — 传递 SessionMerger
+
+**实现功能：**
+- Relay Server 生产级改造（noServer + REST API + 限流 + TLS）
+- Docker/systemd 一键部署
+- PC 端 bridge 集成（指数退避重连）
+- Android ConnectionStrategy 双连接架构
+- SessionMerger 双连接会话合并
+- RelaySettings UI（含状态检查）
+- peer 消息解析 + relay 断线处理
