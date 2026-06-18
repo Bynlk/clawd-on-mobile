@@ -426,6 +426,24 @@ Compose 屏幕测试使用 `createComposeRule()`。
 
 ---
 
+## 附加工作：质量提升（2026-06-18）
+
+**Spec**：`docs/plans/PLAN-quality-improvement.md`
+
+**完成内容**：
+- 修复 14 个测试失败 → 0 失败（5326 pass）
+- 恢复 CI 自动触发（push + pull_request）
+- 修复 ADMIN_TOKEN 安全漏洞
+- 添加 LICENSE、CONTRIBUTING.md、docs/README.md
+- 添加缺失 i18n keys（doctorAgentSummaryNoneActive、sessionHudSummaryContextUsage、agentIntegrationUninstallConfirm、rowAutoApproveAll 等）
+- 清理 CSS（移除 size-bubble、size-ticks、size-slider-wrap）
+- 补充 CSS（text-scale-readout、row-label-danger、volume-slider hover、prefers-reduced-motion）
+- loadMobileState 异常日志
+
+**预期评分提升**：74 → 83（+9）
+
+---
+
 ## 附加工作：新功能开发（2026-06-18）
 
 在执行技术债务计划的同时，完成了两个新功能的开发：
