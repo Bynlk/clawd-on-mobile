@@ -1,6 +1,11 @@
 name: Build & Release
 
 on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:

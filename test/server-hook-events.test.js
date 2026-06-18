@@ -89,9 +89,9 @@ describe("recordHookEventInBuffer", () => {
   it("respects custom ringSize", () => {
     const buffer = new Map();
     for (let i = 0; i < 5; i++) {
-      recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => i, ringSize: 3 });
+      recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => i, ringSize: 3 });
     }
-    const events = buffer.get("a");
+    const events = buffer.get("codex");
     assert.strictEqual(events.length, 3);
     assert.strictEqual(events[0].timestamp, 2);
     assert.strictEqual(events[2].timestamp, 4);
@@ -101,9 +101,9 @@ describe("recordHookEventInBuffer", () => {
     assert.strictEqual(HOOK_EVENT_RING_SIZE_PER_AGENT, 50);
     const buffer = new Map();
     for (let i = 0; i < 55; i++) {
-      recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => i });
+      recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => i });
     }
-    assert.strictEqual(buffer.get("a").length, 50);
+    assert.strictEqual(buffer.get("codex").length, 50);
   });
 
   it("separates events by agentId", () => {
@@ -130,17 +130,17 @@ describe("getRecentHookEventsFromBuffer", () => {
 
   it("returns all events when no options", () => {
     const buffer = new Map();
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 1 });
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 2 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 1 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 2 });
     const events = getRecentHookEventsFromBuffer(buffer);
     assert.strictEqual(events.length, 2);
   });
 
   it("filters by since timestamp", () => {
     const buffer = new Map();
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 100 });
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 200 });
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 300 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 100 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 200 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 300 });
     const events = getRecentHookEventsFromBuffer(buffer, { since: 200 });
     assert.strictEqual(events.length, 2);
     assert.strictEqual(events[0].timestamp, 200);
@@ -157,9 +157,9 @@ describe("getRecentHookEventsFromBuffer", () => {
 
   it("sorts events by timestamp ascending", () => {
     const buffer = new Map();
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 3 });
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 1 });
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 2 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 3 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 1 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 2 });
     const events = getRecentHookEventsFromBuffer(buffer);
     assert.strictEqual(events[0].timestamp, 1);
     assert.strictEqual(events[1].timestamp, 2);
@@ -168,15 +168,15 @@ describe("getRecentHookEventsFromBuffer", () => {
 
   it("returns copies, not references", () => {
     const buffer = new Map();
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 1 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 1 });
     const events = getRecentHookEventsFromBuffer(buffer);
     events[0].agentId = "mutated";
-    assert.strictEqual(buffer.get("a")[0].agentId, "a");
+    assert.strictEqual(buffer.get("codex")[0].agentId, "codex");
   });
 
   it("merges events from all agents when no agentId filter", () => {
     const buffer = new Map();
-    recordHookEventInBuffer(buffer, { agent_id: "a" }, "state", "accepted", { now: () => 1 });
+    recordHookEventInBuffer(buffer, { agent_id: "codex" }, "state", "accepted", { now: () => 1 });
     recordHookEventInBuffer(buffer, { agent_id: "b" }, "state", "accepted", { now: () => 2 });
     recordHookEventInBuffer(buffer, { agent_id: "c" }, "state", "accepted", { now: () => 3 });
     const events = getRecentHookEventsFromBuffer(buffer);
