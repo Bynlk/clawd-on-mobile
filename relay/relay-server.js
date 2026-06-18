@@ -85,7 +85,7 @@ function recordRestSuccess(ip) {
 
 // --- Token 验证 ---
 function verifyAdminToken(req) {
-  if (!ADMIN_TOKEN) return true; // 未设置 admin token 则跳过验证
+  if (!ADMIN_TOKEN) return false; // 未设置 admin token 则拒绝管理接口访问
   const authHeader = req.headers["authorization"] || "";
   if (authHeader.startsWith("Bearer ")) {
     return authHeader.slice(7) === ADMIN_TOKEN;
