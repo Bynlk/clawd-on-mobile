@@ -44,7 +44,7 @@ const {
   normalizeTextScaleByDisplay,
 } = require("./text-scale");
 
-const CURRENT_VERSION = 11;
+const CURRENT_VERSION = 12;
 const DEFAULT_INTEGRATION_INSTALLED_IDS = Object.freeze(["claude-code", "codex"]);
 const DEFAULT_INTEGRATION_INSTALLED_SET = new Set(DEFAULT_INTEGRATION_INSTALLED_IDS);
 
@@ -96,7 +96,13 @@ const SCHEMA = {
   // Pure data prefs
   lang: { type: "string", default: "en", enum: ["en", "zh", "zh-TW", "ko", "ja"] },
   showTray: { type: "boolean", default: true },
-  showDock: { type: "boolean", default: true },
+  // Default off (macOS): a fresh install runs as an accessory/agent app — pet +
+  // menu-bar icon, no Dock tile. Existing users keep their Dock — a persisted
+  // showDock is kept (save() bakes the full snapshot), and the v11->v12 migration
+  // backfills showDock=true for any pre-v12 file that lacks the key — so ONLY
+  // brand-new installs (which never run migrate) pick up this off default.
+  // showTray stays default-on so there is always one access point (menu bar).
+  showDock: { type: "boolean", default: false },
   manageClaudeHooksAutomatically: { type: "boolean", default: true },
   autoStartWithClaude: { type: "boolean", default: false },
   // System-backed: actual truth lives in OS login items / autostart files.
@@ -577,6 +583,17 @@ function migrate(raw) {
       }
     }
     out.version = 11;
+  }
+  // v11 -> v12: showDock now defaults OFF for FRESH INSTALLS ONLY (a new install
+  // runs as a menu-bar/pet accessory with no Dock tile). Existing files normally
+  // carry showDock explicitly (save() bakes the full snapshot), but a file from a
+  // pre-showDock build or hand-trimmed by the user lacks it — without this
+  // backfill validate() would hand those users the new off default and hide their
+  // Dock. Pin the old on-default for every pre-v12 file; fresh installs never run
+  // migrate().
+  if (out.version < 12) {
+    if (!("showDock" in out)) out.showDock = true;
+    out.version = 12;
   }
   if ((typeof out.version === "number" ? out.version : 0) < CURRENT_VERSION) {
     out.version = CURRENT_VERSION;

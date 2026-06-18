@@ -3057,8 +3057,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(coreSource.includes("row-label-danger"));
     assert.ok(css.includes(".row-label.row-label-danger"));
     // Simple title + localized confirm strings exist.
-    assert.ok(i18nSource.includes('rowAutoApproveAll: "Auto-pilot"'));
-    assert.ok(i18nSource.includes('rowAutoApproveAll: "自动驾驶"'));
+    assert.ok(i18nSource.includes('rowAutoApproveAll: "Auto-approve all requests"'));
+    assert.ok(i18nSource.includes('rowAutoApproveAll: "自动放行所有请求"'));
     assert.ok(i18nSource.includes("autoApproveAllConfirmTitle"));
     // Lives in its own Permissions section, not under Bubbles.
     assert.ok(generalSource.includes('t("sectionPermissions")'));
