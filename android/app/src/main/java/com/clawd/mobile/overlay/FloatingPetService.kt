@@ -308,7 +308,7 @@ class FloatingPetService : Service() {
             windowManager = windowManager!!,
             getPetView = { petView },
             onDragStart = {
-                approvalBubbleManager?.let { if (it.isShowing()) it.stop() else {} }
+                approvalBubbleManager?.let { if (it.isShowing()) it.dismissBubble() else {} }
                 bubbleManager?.dismiss()
                 stateManager.triggerDragReaction()
             },

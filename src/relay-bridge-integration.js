@@ -11,6 +11,7 @@ const TAG = "[relay-bridge]";
 // 重连参数
 const RECONNECT_INITIAL_MS = 5000;
 const RECONNECT_MAX_MS = 60000;
+const RECONNECT_BACKOFF_MULTIPLIER = 2;
 const MSG_BUFFER_MAX = 50;
 
 class RelayBridge extends EventEmitter {
@@ -113,6 +114,7 @@ class RelayBridge extends EventEmitter {
       console.log(TAG, "已连接到 relay");
       this.relayWs = ws;
       this._status = "connected";
+      this._reconnectAttempt = 0;
       this.emit("status", this._status);
       this.clearRelayReconnect();
       // 连接本地 hook server
@@ -243,10 +245,13 @@ class RelayBridge extends EventEmitter {
   }
 
   getReconnectDelay() {
-    // 简单的指数退避 + jitter
-    const base = RECONNECT_INITIAL_MS;
-    const jitter = Math.random() * base * 0.5;
-    return Math.min(base + jitter, RECONNECT_MAX_MS);
+    // 指数退避 + jitter
+    if (!this._reconnectAttempt) this._reconnectAttempt = 0;
+    this._reconnectAttempt++;
+    const base = RECONNECT_INITIAL_MS * Math.pow(RECONNECT_BACKOFF_MULTIPLIER, this._reconnectAttempt - 1);
+    const jitter = Math.random() * base * 0.3;
+    const delay = Math.min(base + jitter, RECONNECT_MAX_MS);
+    return delay;
   }
 
   clearRelayReconnect() {

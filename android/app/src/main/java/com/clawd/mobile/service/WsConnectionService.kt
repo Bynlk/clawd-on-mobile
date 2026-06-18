@@ -25,6 +25,8 @@ import com.clawd.mobile.ws.ConnectionState
 import com.clawd.mobile.ws.ConnectionTag
 import com.clawd.mobile.ws.LanConnectionStrategy
 import com.clawd.mobile.ws.RelayConnectionStrategy
+import com.clawd.mobile.ws.SessionMerger
+import com.clawd.mobile.ws.TaggedSession
 import com.clawd.mobile.util.SafeExecutor
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -121,6 +123,13 @@ class WsConnectionService : Service() {
          * extraBufferCapacity=16 ensures ApprovalWorker emit never suspends.
          */
         val approvalCompletedFlow = MutableSharedFlow<String>(extraBufferCapacity = 16)
+
+        /** Relay peer 连接状态（PC 在线/离线） */
+        private val _relayPeerState = MutableStateFlow<String>("disconnected")
+        val relayPeerState: StateFlow<String> = _relayPeerState.asStateFlow()
+
+        /** Session merger — 合并 LAN + Relay 的 sessions */
+        fun getSessionMerger(): SessionMerger? = instance?.sessionMerger
     }
 
     private val prefsStore by lazy { PrefsStore.getInstance(this) }
@@ -131,6 +140,7 @@ class WsConnectionService : Service() {
     var relayClient: StreamingClient? = null
         private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var sessionMerger: SessionMerger? = null
     private var stateCollectorJob: Job? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -144,11 +154,16 @@ class WsConnectionService : Service() {
         streamingClient = WsClient(prefsStore)
         _clientReady.trySend(streamingClient!!)
 
+        // 创建 session merger
+        sessionMerger = SessionMerger(scope)
+        sessionMerger?.register(ConnectionTag.LAN, streamingClient!!.sessions)
+
         // 创建 relay client（如果配置了 relay）
         val config = prefsStore.loadConfig()
         if (config?.useRelay == true && !config.relayUrl.isNullOrBlank()) {
-            relayClient = WsClient(prefsStore)
+            relayClient = WsClient(prefsStore, RelayConnectionStrategy())
             _clientReady.trySend(relayClient!!)
+            sessionMerger?.register(ConnectionTag.RELAY, relayClient!!.sessions)
         }
     }
 
@@ -177,6 +192,7 @@ class WsConnectionService : Service() {
             }
             ACTION_DISCONNECT -> {
                 streamingClient?.disconnect()
+                relayClient?.disconnect()
                 releaseLocks()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -186,6 +202,7 @@ class WsConnectionService : Service() {
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.status_disconnected)))
                 acquireLocks()
                 streamingClient?.reconnect()
+                relayClient?.reconnect()
                 startStateCollector()
             }
         }
@@ -269,6 +286,27 @@ class WsConnectionService : Service() {
                 }
                 previousState = state
             }
+
+            // Relay client state collector
+            relayClient?.connectionState?.collect { state ->
+                val relayStatus = when (state) {
+                    ConnectionState.CONNECTED -> "Relay 已连接"
+                    ConnectionState.CONNECTING -> "Relay 连接中"
+                    ConnectionState.RECONNECTING -> "Relay 重连中"
+                    ConnectionState.AUTH_FAILED -> "Relay 认证失败"
+                    ConnectionState.DISCONNECTED -> "Relay 已断开"
+                    ConnectionState.CIRCUIT_OPEN -> "Relay 连接暂停"
+                    else -> "Relay 状态未知"
+                }
+                android.util.Log.d("WsConnectionService", "Relay state: $relayStatus")
+                // 更新通知（如果有 relay 连接）
+                if (state == ConnectionState.CONNECTED || state == ConnectionState.DISCONNECTED) {
+                    SafeExecutor.tryOrNull("WS") {
+                        val nm = getSystemService(android.app.NotificationManager::class.java)
+                        nm.notify(NOTIFICATION_ID, buildNotification(relayStatus))
+                    }
+                }
+            }
         }
     }
 
@@ -289,10 +327,8 @@ class WsConnectionService : Service() {
     }
 
     private fun acquireLocks() {
-        // WiFi lock 仅在 LAN 模式下获取（relay 模式可能走蜂窝网络）
-        val config = prefsStore.loadConfig()
-        val needWifiLock = config?.useRelay != true  // 非 relay 模式才需要 WiFi lock
-        if (wifiLock == null && needWifiLock) {
+        // WiFi lock 始终获取 — LAN 连接需要它，relay 连接可能走蜂窝但不影响
+        if (wifiLock == null) {
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "clawd:ws").apply {
                 setReferenceCounted(false)
@@ -381,10 +417,13 @@ class WsConnectionService : Service() {
 
     override fun onDestroy() {
         stateCollectorJob?.cancel()
+        sessionMerger?.clear()
+        sessionMerger = null
         releaseLocks()
         scope.cancel()
         streamingClient?.destroy()
         relayClient?.destroy()
+        relayClient = null
         streamingClient = null
         instance = null
         super.onDestroy()

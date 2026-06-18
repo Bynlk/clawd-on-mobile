@@ -71,9 +71,16 @@ class PetApprovalBubbleManager(
     fun start() {
         if (permissionCollectJob != null) return  // already started
 
-        val ws = WsConnectionService.getClient()
-        if (ws != null) {
-            collectPermissionRequests(ws)
+        // Collect from LAN client
+        val lanClient = WsConnectionService.getClient()
+        if (lanClient != null) {
+            collectPermissionRequests(lanClient)
+        }
+
+        // Collect from Relay client (if available)
+        val relayClient = WsConnectionService.getClientByTag(com.clawd.mobile.ws.ConnectionTag.RELAY)
+        if (relayClient != null) {
+            collectPermissionRequestsFromRelay(relayClient)
         }
 
         // Collect approval completions from notification path
@@ -99,6 +106,8 @@ class PetApprovalBubbleManager(
     fun stop() {
         permissionCollectJob?.cancel()
         permissionCollectJob = null
+        relayPermissionCollectJob?.cancel()
+        relayPermissionCollectJob = null
         completionCollectJob?.cancel()
         completionCollectJob = null
         countdownJob?.cancel()
@@ -116,35 +125,50 @@ class PetApprovalBubbleManager(
 
     // --- Permission request collection ---
 
+    private var relayPermissionCollectJob: Job? = null
+
     private fun collectPermissionRequests(client: StreamingClient) {
         permissionCollectJob?.cancel()
         permissionCollectJob = scope.launch {
             client.permissionRequests.collect { request ->
-                val reqId = request.requestId ?: return@collect
-                if (respondedRequestIds.contains(reqId)) {
-                    Log.d(TAG, "Skipping already-responded request: $reqId")
-                    return@collect
-                }
+                handlePermissionRequest(request, client)
+            }
+        }
+    }
 
-                val suggestions = request.suggestions.map { it.label }.ifEmpty { null }
-                val isElicitation = request.elicitationQuestions.isNotEmpty()
+    private fun collectPermissionRequestsFromRelay(client: StreamingClient) {
+        relayPermissionCollectJob?.cancel()
+        relayPermissionCollectJob = scope.launch {
+            client.permissionRequests.collect { request ->
+                handlePermissionRequest(request, client)
+            }
+        }
+    }
 
-                val pending = PendingApproval(
-                    requestId = reqId,
-                    toolName = request.toolName ?: "Unknown",
-                    summary = request.toolInputSummary ?: "",
-                    suggestions = suggestions,
-                    isElicitation = isElicitation,
-                    timeoutMs = request.timeout,
-                    sourceClient = client
-                )
+    private fun handlePermissionRequest(request: com.clawd.mobile.data.PermissionRequestData, client: StreamingClient) {
+        val reqId = request.requestId ?: return
+        if (respondedRequestIds.contains(reqId)) {
+            Log.d(TAG, "Skipping already-responded request: $reqId")
+            return
+        }
 
-                mainHandler.post {
-                    pendingRequests.add(pending)
-                    if (bubbleView == null) {
-                        showNextRequest()
-                    }
-                }
+        val suggestions = request.suggestions.map { it.label }.ifEmpty { null }
+        val isElicitation = request.elicitationQuestions.isNotEmpty()
+
+        val pending = PendingApproval(
+            requestId = reqId,
+            toolName = request.toolName ?: "Unknown",
+            summary = request.toolInputSummary ?: "",
+            suggestions = suggestions,
+            isElicitation = isElicitation,
+            timeoutMs = request.timeout,
+            sourceClient = client
+        )
+
+        mainHandler.post {
+            pendingRequests.add(pending)
+            if (bubbleView == null) {
+                showNextRequest()
             }
         }
     }
@@ -265,7 +289,7 @@ class PetApprovalBubbleManager(
         updateWindowFlags(false)
     }
 
-    private fun dismissBubble() {
+    fun dismissBubble() {
         countdownJob?.cancel()
         countdownJob = null
         bubbleView?.let {

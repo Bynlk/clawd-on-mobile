@@ -11,10 +11,17 @@ import okio.ByteString
 /**
  * WebSocket transport using OkHttp.
  * Delegates shared logic to [AbstractStreamingClient].
+ *
+ * @param connectionStrategy Optional strategy for URL/auth header construction.
+ *        When null, uses default LAN behavior (cfg.streamUrl() / cfg.authHeader()).
+ *        When provided (e.g. RelayConnectionStrategy), uses strategy.streamUrl() / strategy.authHeader().
  */
-class WsClient(prefsStore: PrefsStore) : AbstractStreamingClient(prefsStore) {
+class WsClient(
+    prefsStore: PrefsStore,
+    private val connectionStrategy: ConnectionStrategy? = null
+) : AbstractStreamingClient(prefsStore) {
 
-    override val tag = "WsClient"
+    override val tag = "WsClient" + if (connectionStrategy != null) ":${connectionStrategy.tag}" else ""
     override val watchdogTimeoutMs = 90_000L
 
     @Volatile
@@ -26,16 +33,17 @@ class WsClient(prefsStore: PrefsStore) : AbstractStreamingClient(prefsStore) {
         doConnectPreamble()
         closeTransport()
 
-        val url = cfg.streamUrl()
+        val url = connectionStrategy?.streamUrl(cfg) ?: cfg.streamUrl()
+        val authHeader = connectionStrategy?.authHeader(cfg) ?: cfg.authHeader()
         currentUrl = url
-        Log.d(tag, "doConnect → ${cfg.streamUrlMasked()}")
-        ConnectionLog.d(tag, "doConnect → ${cfg.streamUrlMasked()}")
+        Log.d(tag, "doConnect → $url")
+        ConnectionLog.d(tag, "doConnect → $url")
 
         try {
             val httpClient = HttpClientProvider.getStreamingClient(cfg)
             val request = Request.Builder()
                 .url(url)
-                .addHeader("Authorization", cfg.authHeader())
+                .addHeader("Authorization", authHeader)
                 .build()
 
             val socket = httpClient.newWebSocket(request, object : WebSocketListener() {
@@ -83,6 +91,24 @@ class WsClient(prefsStore: PrefsStore) : AbstractStreamingClient(prefsStore) {
         }
     }
 
+    /**
+     * Override to skip saveConfig when using a relay strategy.
+     * Relay client should not overwrite the LAN config in prefs.
+     */
+    override fun connect(config: ConnectionConfig) {
+        if (connectionStrategy != null) {
+            // Relay mode: don't save config, don't overwrite LAN config
+            android.util.Log.d(tag, "connect(relay) → ${connectionStrategy.streamUrl(config)}")
+            this.config = config
+            reconnectDelay = 1000L
+            reconnectAttempts = 0
+            doConnect()
+        } else {
+            // LAN mode: use default behavior (saves config)
+            super.connect(config)
+        }
+    }
+
     override fun closeTransport() {
         try {
             ws?.close(1000, "Client disconnect")
@@ -120,6 +146,7 @@ class WsClient(prefsStore: PrefsStore) : AbstractStreamingClient(prefsStore) {
 
     /** @return true if sent, false if not connected or send failed. */
     override fun sendMessage(json: String): Boolean {
+
         val socket = ws
         if (socket == null || connectionState.value != ConnectionState.CONNECTED) {
             Log.w(tag, "sendMessage skipped: not connected (state=${connectionState.value})")

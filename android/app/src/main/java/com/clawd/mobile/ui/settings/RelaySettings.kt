@@ -99,6 +99,7 @@ fun RelaySettings(
             OutlinedButton(
                 onClick = {
                     val url = relayUrl.trim()
+                    val token = relayToken.trim()
                     if (url.isBlank()) {
                         statusText = "请输入 Relay 地址"
                         statusColor = colorScheme.error
@@ -106,8 +107,28 @@ fun RelaySettings(
                     }
                     statusText = "检查中..."
                     statusColor = colorScheme.onSurface
-                    // TODO: 实际检查 relay API 状态
-                    statusText = "功能开发中"
+                    // 检查 relay API 状态
+                    Thread {
+                        try {
+                            val apiUrl = "$url/api/status"
+                            val conn = java.net.URL(apiUrl).openConnection() as java.net.HttpURLConnection
+                            conn.setRequestProperty("Authorization", "Bearer $token")
+                            conn.connectTimeout = 5000
+                            conn.readTimeout = 5000
+                            val response = conn.inputStream.bufferedReader().readText()
+                            conn.disconnect()
+                            // 简单解析 JSON
+                            val pcMatch = Regex("\"pc\":(\\d+)").find(response)
+                            val phoneMatch = Regex("\"phone\":(\\d+)").find(response)
+                            val pc = pcMatch?.groupValues?.get(1) ?: "0"
+                            val phone = phoneMatch?.groupValues?.get(1) ?: "0"
+                            statusText = "运行中 | PC: $pc, Phone: $phone"
+                            statusColor = colorScheme.primary
+                        } catch (e: Exception) {
+                            statusText = "无法连接: ${e.message?.take(30)}"
+                            statusColor = colorScheme.error
+                        }
+                    }.start()
                 }
             ) {
                 Text("检查状态")

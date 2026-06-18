@@ -288,7 +288,7 @@
     const tokenRow = document.createElement("div");
     tokenRow.className = "settings-row";
     const tokenLabel = document.createElement("label");
-    tokenLabel.textContent = t("relayToken") || "Admin Token";
+    tokenLabel.textContent = t("relayToken") || "Connection Token";
     const tokenInput = document.createElement("input");
     tokenInput.type = "password";
     tokenInput.placeholder = "输入 Admin Token";
