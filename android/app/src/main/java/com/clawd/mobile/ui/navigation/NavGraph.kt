@@ -125,7 +125,8 @@ fun ClawdNavGraph() {
                     navController = navController,
                     streamingClient = ws,
                     approvalViewModel = approvalViewModel,
-                    prefsStore = prefsStore
+                    prefsStore = prefsStore,
+                    sessionMerger = com.clawd.mobile.service.WsConnectionService.getSessionMerger()
                 )
             }
             composable("scan") {

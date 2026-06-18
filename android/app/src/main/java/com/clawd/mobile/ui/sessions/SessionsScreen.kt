@@ -25,6 +25,7 @@ import com.clawd.mobile.ui.approval.ApprovalViewModel
 import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ws.ConnectionState
+import com.clawd.mobile.ws.SessionMerger
 import com.clawd.mobile.ws.StreamingClient
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,17 +34,24 @@ fun SessionsScreen(
     navController: NavController,
     streamingClient: StreamingClient,
     approvalViewModel: ApprovalViewModel,
-    prefsStore: PrefsStore
+    prefsStore: PrefsStore,
+    sessionMerger: SessionMerger? = null
 ) {
     val connectionState by streamingClient.connectionState.collectAsState()
     val sessionsMap by streamingClient.sessions.collectAsState()
     val syncing by streamingClient.syncing.collectAsState()
+    // Use merged sessions if available for dual-connection mode
+    val mergedSessionsMap = sessionMerger?.mergedSessions?.collectAsState()?.value
     val pendingRequests by approvalViewModel.pendingRequests.collectAsState()
     val countdowns by approvalViewModel.countdowns.collectAsState()
     val notificationRequestId by approvalViewModel.notificationRequestId.collectAsState()
 
-    val sessions = remember(sessionsMap) {
-        sessionsMap.map { (id, data) -> Session(id, data) }
+    // Use merged sessions if available (dual LAN+Relay), otherwise LAN-only
+    val sessions = remember(sessionsMap, mergedSessionsMap) {
+        val mapToUse = mergedSessionsMap?.flatMap { (id, taggedList) ->
+            taggedList.filter { it.session.isVisible }.map { tagged -> id to tagged.session }
+        }?.toMap() ?: sessionsMap
+        mapToUse.map { (id, data) -> Session(id, data) }
             .filter { it.data.isVisible }
             .sortedWith(compareByDescending<Session> { Session.statePriority(it.data.state) }
                 .thenByDescending { it.data.updatedAt ?: 0L })
