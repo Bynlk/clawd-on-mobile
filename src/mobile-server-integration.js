@@ -39,7 +39,10 @@ function initMobileServer(ctx, options = {}) {
     try {
       const data = fs.readFileSync(MOBILE_STATE_PATH, "utf8");
       return JSON.parse(data);
-    } catch { return {}; }
+    } catch (e) {
+      console.warn("[mobile] loadMobileState failed:", e.message);
+      return {};
+    }
   }
 
   function saveMobileState(patch) {
