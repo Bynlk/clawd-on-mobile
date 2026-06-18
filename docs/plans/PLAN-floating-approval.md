@@ -1,11 +1,10 @@
 # Spec：Android 浮窗内审批
 
-> 状态：已完成（单 client 版本，双 client 待 relay 功能完成后适配）
-> 分支：`feat/floating-approval`
-> 预估工时：~8h
-> 完成度：~90%
-> 已实现：approvalCompletedFlow、ConcurrentHashMap 去重、窗口标志切换、FIFO 自动推进、滑动操作（50dp 阈值）、倒计时、通知同步、suggestionIndex 传递、角标数量、elicitation 跳转 App
-> 待完成：双 client 审批收集（依赖 relay 功能）
+> 状态：已完成
+> 分支：`feat/floating-approval` → 已合并 main
+> 完成度：~99%
+> 已实现：approvalCompletedFlow、ConcurrentHashMap 去重、窗口标志切换、FIFO 自动推进、滑动操作（50dp 阈值）、倒计时、通知同步、suggestionIndex 传递、角标数量、elicitation 跳转 App、双 client 审批收集、拖拽 bug 修复
+> 已修复：拖拽后审批收集停止、双 client 收集（LAN + Relay）
 
 ## 目标
 

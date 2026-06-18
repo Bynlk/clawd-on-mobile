@@ -1,7 +1,9 @@
 # Spec：远程中继服务
 
-> 状态：已完成（基础版本，双连接 SessionMerger 待完善）
-> 完成度：~85%
+> 状态：已完成
+> 完成度：~92%
+> 已实现：relay server（noServer + REST API + 限流 + TLS）、Docker/systemd 部署、PC 端 bridge 集成（指数退避重连）、设置页 Relay UI、Android ConnectionStrategy、WsClient 策略模式、SessionMerger 双连接合并、RelaySettings UI（含状态检查）、peer 消息解析、relay 断线处理、WiFi Lock 修复、审批响应路由
+> 待完善：deep link relay 配置、relayPeerState UI 展示
 > 分支：`feat/remote-relay`
 > 预估工时：~22h（含双连接改造）
 > 修正项：prefs-direct 初始化、策略模式双连接、bridge 端口修正、WiFi Lock 条件获取、ADMIN_TOKEN 生命周期、noServer 重构方案、去重逻辑与独立显示一致性、multi-pair 明确、改动规模量化、SessionMerger 设计、Android 自签证书信任、审批响应路由、saveConfig 冲突避免、信任模型文档化、REST API rate limit
