@@ -1,304 +1,562 @@
-<p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
-</p>
-<h1 align="center">Clawd 桌宠</h1>
-<p align="center">
-  <a href="README.md">English</a>
-  ·
-  <a href="README.zh-TW.md">繁體中文</a>
-  ·
-  <a href="README.ko-KR.md">한국어</a>
-  ·
-  <a href="README.ja-JP.md">日本語</a>
-</p>
-<p align="center">
-  <a href="https://github.com/rullerzhou-afk/clawd-on-desk/releases"><img src="https://img.shields.io/github/v/release/rullerzhou-afk/clawd-on-desk" alt="Version"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
-</p>
-<p align="center">
-  <a href="https://github.com/rullerzhou-afk/clawd-on-desk/stargazers"><img src="https://img.shields.io/github/stars/rullerzhou-afk/clawd-on-desk?style=flat&logo=github&color=yellow" alt="Stars"></a>
-  <a href="https://github.com/hesreallyhim/awesome-claude-code"><img src="https://awesome.re/mentioned-badge-flat.svg" alt="Mentioned in Awesome Claude Code"></a>
-</p>
+# Clawd Mobile — Android 伴侣应用
 
-<p align="center">
-  <img src="assets/hero.gif" alt="Clawd 桌宠动画演示：像素螃蟹会随 AI 编程助手状态实时切换，在睡觉、思考、工具运行时打字、单个子代理时戴耳机律动、多个子代理并行时三球杂耍、权限请求弹出时提醒、任务完成后庆祝。支持 Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、CodeWhale、Pi、OpenClaw 等。">
-</p>
+> 📖 **桌面端用户？** 请查看 [桌面端 README](README-desk.zh-CN.md) | [English](README-desk.md) | [繁體中文](README-desk.zh-TW.md) | [日本語](README-desk.ja-JP.md) | [한국어](README-desk.ko-KR.md)
 
-Clawd 住在你的桌面上，实时感知 AI 编程助手正在做什么。发起一个长任务，起身去做点别的，等螃蟹告诉你任务完成了再回来。
+[![Android Build](https://github.com/Bynlk/clawd-on-mobile/actions/workflows/android.yml/badge.svg)](https://github.com/Bynlk/clawd-on-mobile/actions/workflows/android.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../LICENSE)
+[![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-green.svg)](https://developer.android.com/about/versions/oreo)
+[![API 26+](https://img.shields.io/badge/API-26%2B-brightgreen.svg)](https://developer.android.com/studio/releases/platforms#android-8.0)
 
-你提问时它思考，工具运行时它打字，子代理工作时它会戴耳机律动或三球杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。内置三套主题：**Clawd**（像素螃蟹）、**Calico**（三花猫）和 **Cloudling**（云宝），支持自定义主题，也支持导入 Codex Pet 动画包。
+> **基于 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 桌面端的社区 Android 移植版。** 原项目由 [@rullerzhou-afk](https://github.com/rullerzhou-afk)（鹿鹿）创建，本 Android 端由 [Bynlk](https://github.com/Bynlk) 开发维护。
 
-> 支持 Windows 11、macOS 和 Ubuntu/Linux。Windows 发布包提供独立的 x64 和 ARM64 安装包。源码运行需要 Node.js。支持 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Antigravity CLI (agy)**、**Cursor Agent**、**CodeBuddy**、**Kiro CLI**、**Kimi Code CLI（Kimi-CLI）**、**Qwen Code**、**CodeWhale**、**opencode**、**Pi**、**OpenClaw**、**Hermes Agent**、**Qoder** 与 **Reasonix CLI**。
+通过局域网连接 Clawd on Desk 桌面端，远程监控 AI 编码会话状态，随时审批权限请求，手机变身桌面宠物遥控器。
 
-## 功能特性
+> **需要配合桌面端使用** — 前往 [Releases](https://github.com/Bynlk/clawd-on-desk/releases) 下载 `app-release.apk`。
 
-### 多 Agent 支持
-- **Claude Code** — 通过 command hook + HTTP 权限 hook 完整集成
-- **Codex CLI** — official hooks 为主、JSONL 日志轮询（`~/.codex/sessions/`）兜底，默认自动同步并支持真实权限气泡
-- **Copilot CLI** — 可选 command hook，写入 `~/.copilot/hooks/hooks.json`（从 Settings → Agents 安装；手动 JSON 备选见 Copilot 指南）
-- **Gemini CLI** — 可选 command hook，写入 `~/.gemini/settings.json`（从 Settings → Agents 安装，或执行 `npm run install:gemini-hooks`）
-- **Antigravity CLI (agy)** — 可选 command hook，写入 `~/.gemini/config/hooks.json`（从 Settings → Agents 安装，或执行 `npm run install:antigravity-hooks`）；**仅状态同步**：Clawd 不会为 agy 弹任何权限气泡，所有 Allow / Deny / Always-allow 都在 agy 自己的终端菜单里完成
-- **Cursor Agent** — 可选 [Cursor IDE hooks](https://cursor.com/docs/agent/hooks)，写入 `~/.cursor/hooks.json`（从 Settings → Agents 安装，或执行 `npm run install:cursor-hooks`）
-- **CodeBuddy** — 可选 Claude Code 兼容 command hook + HTTP 权限 hook，写入 `~/.codebuddy/settings.json`（从 Settings → Agents 安装，或执行 `node hooks/codebuddy-install.js`）
-- **Kiro CLI** — 可选 command hooks，注入到 `~/.kiro/agents/` 下的自定义 agent 配置中，并自动创建一个 `clawd` agent；安装集成后 Clawd 会继续从内置 `kiro_default` 同步它，尽量保持与默认 agent 一致。macOS 与 Windows 上状态动效已验证可用；需要时可用 `kiro-cli --agent clawd` 或在会话内执行 `/agent swap clawd` 启用 hooks
-- **Kimi Code CLI（Kimi-CLI）** — 可选 command hooks，写入 `~/.kimi/config.toml`（`[[hooks]]` 条目）（从 Settings → Agents 安装，或执行 `npm run install:kimi-hooks`）
-- **Qwen Code** — 可选 command hooks，写入 `~/.qwen/settings.json`（从 Settings → Agents 安装，或执行 `npm run install:qwen-hooks`）；支持状态追踪和 Qwen `PermissionRequest` 桌面权限气泡
-- **CodeWhale** — 可选 state-only lifecycle hooks，写入 `~/.codewhale/config.toml`（`[[hooks.hooks]]` 条目）（从 Settings → Agents 安装，或执行 `npm run install:codewhale-hooks`）；Phase 1 只驱动 idle、thinking、working、sleeping、error、attention、sweeping 等状态动画，不接权限气泡和子代理追踪
-- **Reasonix CLI** — 可选 state-only command hooks，写入 `~/.reasonix/settings.json`（从 Settings → Agents 安装，或执行 `npm run install:reasonix-hooks`）；Phase 1 只驱动生命周期、工具调用、通知、压缩和子代理结束动效，权限决策仍留在 Reasonix 自己的终端流程
-- **opencode** — 可选 [plugin 集成](https://opencode.ai/docs/plugins)，写入 `~/.config/opencode/opencode.json`（从 Settings → Agents 安装，或执行 `node hooks/opencode-install.js`）；零延迟事件流、Allow/Always/Deny 权限气泡、`task` 工具分派并行子代理时自动播放建筑动画
-- **Pi** — 可选全局 extension，写入 `~/.pi/agent/extensions/clawd-on-desk`（从 Settings → Agents 安装，或执行 `npm run install:pi-extension`）；仅同步交互式 Pi 会话生命周期和工具活动状态，并保留 Pi 默认 YOLO 行为
-- **OpenClaw** — 可选 state-only plugin，写入 `~/.openclaw/openclaw.json`（从 Settings → Agents 安装，或执行 `npm run install:openclaw-plugin`；OpenClaw 还需要已有配置）；Phase 1 面向本地 `openclaw tui --local` 会话，只驱动动画，不接权限气泡和终端聚焦
-- **Hermes Agent** — 可选 [plugin 集成](https://hermes-agent.org/)，写入 Hermes 的托管 plugin 目录（从 Settings → Agents 安装，或执行 `npm run install:hermes-plugin`）；支持状态、会话、SessionEnd 和终端聚焦
-- **Qoder** — 可选 state-only command hooks，写入 `~/.qoder/settings.json`（从 Settings → Agents 安装，或执行 `npm run install:qoder-hooks`）；Phase 1 只驱动动画，权限请求仅作为通知观察，Clawd 不弹权限气泡也不代答，所有 Allow / Deny 都在 Qoder 自己的权限流程里完成
-- **多 Agent 共存** — 多个 Agent 可同时运行，Clawd 独立追踪每个会话
+---
 
-### 动画与交互
-- **实时状态感知** — 通过 Agent hook 和日志轮询自动驱动动画
-- **12 种动画状态** — 待机、思考、打字、建造、耳机律动、多子代理三球杂耍、报错、开心、通知、扫地、搬运、睡觉
-- **Codex Pet 导入** — 在 `设置…` → `主题` 中导入 Codex Pet zip 包，Clawd 会把 atlas 动画适配成可管理主题
-- **眼球追踪** — 待机状态下 Clawd 跟随鼠标，身体微倾，影子拉伸
-- **睡眠序列** — 60 秒无活动 → 打哈欠 → 打盹 → 倒下 → 睡觉；移动鼠标触发惊醒弹起动画
-- **点击反应** — 双击戳戳，连点 4 下东张西望
-- **任意状态拖拽** — 随时抓起 Clawd（Pointer Capture 防止快甩丢失），松手恢复当前动画
-- **极简模式** — 拖到右边缘或右键"极简模式"；Clawd 藏在屏幕边缘，悬停探头招手，通知/完成有迷你动画，抛物线跳跃过渡
+## 🚀 项目简介
 
-### 权限审批气泡
-- **桌面端权限审批** — 当 Claude Code、Codex CLI、CodeBuddy 或 opencode 请求受支持的工具权限时，Clawd 会弹出浮动卡片，无需切回终端
-- **允许 / 拒绝 / Agent 原生扩展项** — 一键批准或拒绝；如果该 Agent 支持，还会显示权限规则 / `Always` 一类的额外操作
-- **全局快捷键** — `Ctrl+Shift+Y` 允许、`Ctrl+Shift+N` 拒绝最新的权限气泡（仅在气泡可见时注册）
-- **堆叠布局** — 多个权限请求从屏幕右下角向上堆叠
-- **自动关闭** — 如果你先在终端回答了，气泡自动消失
-- **按 Agent 单独关闭** — 打开 `设置…` → `Agents`，选中对应 Agent，关闭 `显示弹窗`，权限提示就会回到该 Agent 自己的终端 / TUI 里处理
+**Clawd Mobile** 是一款基于 **Kotlin 2.1 + Coroutines + WebSocket + WebView SVG + Jetpack Compose** 的原生 Android 客户端。它不是桌面端的"缩小版"，而是桌面端在移动端的**忠实数字分身**——一只住在你手机屏幕上的小螃蟹/三花猫/白云，实时感知 PC 端 AI Agent 的每一个呼吸。
 
-### 会话智能
-- **多会话追踪** — 所有已支持 Agent 的会话统一解析到最高优先级状态
-- **子代理感知** — 1 个子代理耳机律动，2 个以上三球杂耍
-- **会话 Dashboard + HUD** — 右键或托盘 → `打开 Dashboard` 查看活跃会话、最近事件、别名，并可跳转终端；Clawd 附近的轻量 HUD 会持续显示当前 live session
-- **终端聚焦** — Dashboard / HUD 操作可跳转到指定会话的终端窗口；通知/注意状态会自动聚焦相关终端
-- **进程存活检测** — 检测已崩溃/退出的受支持 Agent 进程，并在 10 秒内清理孤儿会话
-- **启动恢复** — 如果 Clawd 重启时仍有受支持的 Agent 在运行，它会保持清醒等待后续事件，而不是直接睡觉
+### 三大核心卖点
 
-### 手机伴侣（PWA）
-- **手机实时镜像** — 在 `设置…` → `Mobile / PWA` 开启后，用手机打开配对链接，「Clawd Mobile」网页应用就会实时显示各 Agent 会话和它们的状态
-- **只读设计** — 局域网桥只向外广播状态，手机端无法操作你的电脑（远程审批已在路线图上）
-- **仅限局域网 + 令牌防护** — 配对需要令牌，令牌自动轮换并带宽限期，可一键重新生成或重置访问
-- **可安装** — 标准 PWA，添加到主屏幕即可获得类原生体验
-> 手机伴侣这条线——从最初原型到令牌轮换——由核心贡献者 [@Bynlk](https://github.com/Bynlk) 一手打造并持续主导，他还维护着自带原生安卓 App 的姊妹项目 [clawd-on-mobile](https://github.com/Bynlk/clawd-on-mobile)。
+| 卖点 | 实现机制 | 体感 |
+|------|----------|------|
+| **毫秒级状态同步** | WebSocket 长连接 + `StateFlow` 响应式管道，PC 端 `displayState` 变化到手机 SVG 切换 < 200ms | 桌面端小螃蟹开始打字，手机上的小螃蟹**同时**开始打字 |
+| **纯血角色隔离** | 服务器端 `displayState` + `PetStateManager` 决策引擎，三花猫/白云/黑白猫各自有独立的状态映射 | ≥2 会话时，三花猫变指挥家，黑白猫变杂耍师 |
+| **极低功耗挂机** | `WifiLock` + `WakeLock` 双锁保活 + 30s 看门狗 + 指数退避重连（1s→30s），后台运行功耗 < 50mW | 手机放口袋一整天，小螃蟹依然在线 |
 
-### 系统
-- **点击穿透** — 透明区域的点击直接穿透到下方窗口，只有角色本体可交互
-- **位置记忆** — 重启后 Clawd 回到上次的位置（包括极简模式）
-- **单实例锁** — 防止重复启动
-- **自动启动** — Claude Code 的 SessionStart hook 可在 Clawd 未运行时自动拉起
-- **免打扰模式** — 右键或托盘菜单进入休眠，所有 hook 事件静默，直到手动唤醒。免打扰期间不弹权限气泡——Codex 和 opencode 会回退到原生命令行确认，Claude Code 和 CodeBuddy 会回退到各自内置的权限确认流程。Antigravity 和 Pi 都是仅状态同步集成
-- **提示音效** — 任务完成和权限请求时播放短音效（右键菜单可开关；10 秒冷却，免打扰模式自动静音）
-- **系统托盘** — 调大小（S/M/L）、免打扰、语言切换、开机自启、检查更新
-- **国际化** — 支持英文、简体中文、繁体中文、韩文和日文界面，右键菜单或托盘切换
-- **自动更新** — 检查 GitHub release；Windows 退出时安装 NSIS 更新包，macOS/Linux 源码运行时通过 `git pull` + 重启自动更新
+### 技术栈速览
 
-## 动画一览
+| 类别 | 技术 | 版本 |
+|------|------|------|
+| 语言 | Kotlin | 2.1.0 |
+| UI 框架 | Jetpack Compose + Material 3 | BOM 2024.12.01 |
+| 网络 | WebSocket (nv-websocket-client) | 2.14 |
+| 序列化 | kotlinx.serialization | 1.7.3 |
+| 动画渲染 | WebView + SVG/APNG + CSS 动画 | — |
+| 二维码 | CameraX + ZXing | 1.4.1 / 3.5.3 |
+| 加密存储 | EncryptedSharedPreferences (AES-256-GCM) | 1.1.0-alpha06 |
+| 导航 | Navigation Compose | 2.8.5 |
+| 构建 | Gradle + AGP | 8.11.1 / 8.7.3 |
+| 最低版本 | Android 8.0（API 26） | — |
+| 目标版本 | Android 15（API 35） | — |
+| ABI | arm64-v8a | — |
+| JVM Target | 17 | — |
 
-<table>
-  <tr>
-    <td align="center"><img src="assets/gif/clawd-idle.gif" width="100"><br><sub>待机</sub></td>
-    <td align="center"><img src="assets/gif/clawd-thinking.gif" width="100"><br><sub>思考泡泡</sub></td>
-    <td align="center"><img src="assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
-    <td align="center"><img src="assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
-    <td align="center"><img src="assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>耳机律动</sub></td>
-    <td align="center"><img src="assets/gif/clawd-juggling.gif" width="100"><br><sub>三球杂耍</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>三花待机</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>三花杂耍</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>三花指挥</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/gif/cloudling-idle.gif" width="120"><br><sub>云宝待机</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-thinking.gif" width="120"><br><sub>云宝思考</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-typing.gif" width="120"><br><sub>云宝打字</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-building.gif" width="120"><br><sub>云宝建造</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-juggling.gif" width="120"><br><sub>云宝杂耍</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-conducting.gif" width="120"><br><sub>云宝指挥</sub></td>
-  </tr>
-</table>
+---
 
-完整事件映射表、极简模式、点击彩蛋见：**[docs/guides/state-mapping.zh-CN.md](docs/guides/state-mapping.zh-CN.md)**
+## 🏛️ 响应式单管道架构
 
-## 多显示器支持
+### 从"上帝类"到"大脑-躯壳"分离
 
-Clawd 适配多显示器场景：按启动时所在显示器做等比缩放，竖屏显示器有尺寸加成防止宠物过小，也可以跨屏拖动。
+早期的 `FloatingPetService` 是一个 800+ 行的"上帝类"：它同时承担了 WebSocket 会话收集、状态优先级计算、sleep 序列管理、badge 转换检测、SVG 加载调度、悬浮窗手势处理、气泡 UI 构建……所有逻辑纠缠在一个 `Service` 里。
 
-<p align="center"><sub>想看多显示器下的实际效果？可以<a href="assets/videos/clawd-multi-monitor-demo.mp4">打开仓库里的演示视频</a>。</sub></p>
+重构的核心思想是**将"业务大脑"从"视图躯壳"中剥离**，并通过**单管道（Single-pipe）架构**统一所有状态变更和 SVG 加载指令：
 
-## 快速开始
-
-普通用户建议直接从 **[GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest)** 下载最新预构建安装包：
-
-- **Windows**：`Clawd-on-Desk-Setup-<version>-x64.exe` 或 `Clawd-on-Desk-Setup-<version>-arm64.exe`
-- **macOS**：`.dmg`
-- **Linux**：`.AppImage` 或 `.deb`
-
-安装后启动 Clawd。全新安装只会自动同步 Claude Code 和 Codex；其他本机 agent 需要用到时，再到 **Settings → Agents** 安装对应集成。
-
-只有在参与开发、测试未发布代码或调试集成时，才建议从源码运行。源码安装会下载 Electron / 打包工具，并生成较大的 `node_modules`。
-
-```bash
-# 克隆仓库
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
-cd clawd-on-desk
-
-# 安装依赖
-npm install
-
-# 启动 Clawd（启动时会自动注册 Claude Code 和 Codex hooks；如需预先手动注册 Claude，可单独执行 `node hooks/install.js`）
-npm start
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        PC 端 Electron                           │
+│                (WebSocket push on LAN:23334)                     │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ WebSocket messages: state / snapshot / badge
+                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    SseClient (OkHttp EventSource)                │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ StateFlow<Map<sessionId, SessionData>>   ← 会话数据流     │   │
+│  │ StateFlow<ConnectionState>               ← 连接状态流     │   │
+│  │ SharedFlow<PermissionRequestData>        ← 审批请求流     │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ sessions.collect()
+                           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│              PetStateManager（业务大脑 / 决策引擎）                │
+│                                                                  │
+│  输入: Map<sessionId, SessionData>                               │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ 1. filter { isVisible }                                   │   │
+│  │ 2. resolveDisplayState() → 遍历取最高 priority            │   │
+│  │ 3. checkBadgeTransitions() → 1.5s Happy 插播             │   │
+│  │ 4. sleep sequence 管理 → Yawning→Collapsing→Sleeping      │   │
+│  │ 5. pickIdleAnimPath() → 随机 idle SVG 动画变体            │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  输出: 单管道 (StateCommand)                                      │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │ StateFlow<StateCommand>                                    │ │
+│  │ ├── StateChanged(state, count) → 持久状态切换              │ │
+│  │ ├── SvgLoad(path, force)       → 一次性动画 (idle variant) │ │
+│  │ └── ReactionSvg(path)          → 反应动画 (Happy/Waking)   │ │
+│  └────────────────────────────┬───────────────────────────────┘ │
+└───────────────────────────────┼─────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│              FloatingPetService（纯视图组件 / 躯壳）              │
+│                                                                  │
+│  单一 collector: stateFlow.collect { command → handleCommand() } │
+│                                                                  │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────────┐   │
+│  │FloatingPetView │  │ PetBubbleView │  │    SvgLoader      │   │
+│  │ (WebView SVG)  │  │  (信息气泡)    │  │ (SVG/APNG 解析)   │   │
+│  └───────────────┘  └───────────────┘  └───────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-**Claude Code**、**Codex CLI** 会自动注册 hooks，开箱即用。**Copilot CLI**、**Gemini CLI**、**Antigravity CLI (agy)**、**Cursor Agent**、**CodeBuddy**、**Kiro CLI**、**Kimi Code CLI（Kimi-CLI）**、**Qwen Code**、**CodeWhale**、**opencode**、**Pi**、**OpenClaw**、**Hermes Agent**、**Qoder** 需要先在 **Settings → Agents** 安装对应集成；安装且启用后，Clawd 才会在启动时继续同步。也涵盖远程 SSH、WSL 及平台说明（macOS / Linux）：**[docs/guides/setup-guide.zh-CN.md](docs/guides/setup-guide.zh-CN.md)**
+### 数据流详解
 
-想在远程服务器上跑 Claude Code / Codex CLI 并把状态和权限气泡转发到本地 Clawd？应用内 **Settings → 远程 SSH → 一键部署** 即可。完整步骤、Doctor 边界和 FAQ 见：**[docs/guides/guide-remote-ssh.zh-CN.md](docs/guides/guide-remote-ssh.zh-CN.md)**
+**上行（PC → 手机）**：桌面端通过 WebSocket 推送会话状态，`StreamingClient` 解析后更新 `StateFlow<Map<String, SessionData>>`。零本地推断——所有状态在 PC 端计算完毕，手机端只做消费和视觉映射。
 
-关于 `Codex + WSL` 的官方现状、Clawd 当前实现边界、以及为什么容易被误解，见：**[docs/guides/codex-wsl-clarification.zh-CN.md](docs/guides/codex-wsl-clarification.zh-CN.md)**
+**决策层（大脑）**：`PetStateManager` 订阅 `sessions` Flow，经过管道（过滤→优先级→badge 检测→睡眠管理→idle 变体）输出单条 `StateCommand` 管道：
 
-## 已知限制
+| 命令类型 | 承载内容 | 生命周期 | 消费方式 |
+|----------|----------|----------|----------|
+| `StateChanged(state, count)` | **持久状态**：Working、Idle、Sleeping 等 + session 数量 | 持续存在 | `handleCommand()` → `SvgLoader.loadSvg()` |
+| `SvgLoad(path, force)` | **一次性动画**：idle 变体（reading/bubble） | 触发一次消费一次 | `handleCommand()` → `SvgLoader.loadSvg()` |
+| `ReactionSvg(path)` | **反应动画**：Happy 插播、Waking 动画 | 触发一次消费一次 | `handleCommand()` → `SvgLoader.loadSvg(loop=false)` |
 
-部分 Agent 存在功能差异（无权限气泡、轮询延迟、无法跳转终端等）。完整列表见：**[docs/guides/known-limitations.zh-CN.md](docs/guides/known-limitations.zh-CN.md)**
+**下行（手机 → 用户）**：`FloatingPetService` 作为纯躯壳，collect 单条 `stateFlow`，按顺序处理每个 `StateCommand`。`SvgLoader` 通过候选链解析 SVG/APNG 资源路径，`FloatingPetView`（WebView）渲染带 CSS 动画的 SVG。
 
-## 自定义主题
+### 单管道架构：为什么合并为一个 `StateFlow`？
 
-Clawd 支持自定义主题——用你自己的角色和动画替换默认的螃蟹。如果你已有 Codex Pet 包，也可以在 `设置…` → `主题` → `导入宠物 zip` 直接导入，Clawd 会自动把 atlas 转成托管主题。
+早期设计使用双管道（`StateFlow<PetState>` + `Channel<GifLoadEvent>`），存在竞态窗口：两个 collector 并发调用 `loadSvg()` 时会丢失中间帧。
 
-**快速开始：**
-1. 先生成一个主题骨架：
-   ```bash
-   node scripts/create-theme.js my-theme
-   # 或
-   npm run create-theme -- my-theme
-   ```
-   不传参数也可以，脚手架会自动在你的用户主题目录里生成下一个可用的 `my-theme`。
-2. 编辑 `theme.json`，创建你的素材（SVG、GIF、APNG、WebP、PNG、JPG 或 JPEG）
-3. 重启 Clawd，或打开 `设置…` → `主题` 选择你的主题
+合并为单管道后，所有命令在同一个 collector 中**串行处理**，彻底消除并发 SVG 加载：
 
-**最小可用主题：** 1 个 SVG（带眼球追踪的 idle）+ 7 个 GIF/APNG 文件（thinking、working、error、happy、notification、sleeping、waking）。关闭眼球追踪后所有状态都可以用任意格式。
-
-校验主题：
-```bash
-node scripts/validate-theme.js path/to/your-theme
+```kotlin
+// FloatingPetService — 单一 collector，串行处理所有命令
+commandCollectorJob = scope.launch(Dispatchers.Main) {
+    stateManager.start(this)
+    stateManager.stateFlow.collect { command ->
+        handleCommand(command)  // 每个命令串行执行，无并发
+    }
+}
 ```
 
-`设置…` → `主题` 里的主题卡现在会显示能力角标，例如 `Tracked idle`、`静态主题`、`Mini`、`直睡`、`无 reactions`，方便用户在切换前看出主题差异。
+### 为什么要"数字越大越优先"？
 
-详见 [docs/guides/guide-theme-creation.md](docs/guides/guide-theme-creation.md)（主题创作完整指南，含入门/进阶/高级路径、theme.json 字段说明、素材规范）。
+PC 端的优先级约定是 **`Error=8 > Notification=7 > ... > Sleeping=0`**——数字越大，优先级越高。`PetState` 的 `priority` 字段直接对齐 PC 端：
 
-> 第三方 SVG 文件会被自动消毒，确保安全。
+```kotlin
+sealed class PetState(val priority: Int, val themeKey: String) {
+    data object Error       : PetState(8, "error")        // 最高优先级
+    data object Notification: PetState(7, "notification")
+    data object Sweeping    : PetState(6, "sweeping")
+    data object Attention   : PetState(5, "attention")
+    data object Conducting  : PetState(4, "conducting")   // 同级: conducting/juggling/carrying/debugger
+    data object Juggling    : PetState(4, "juggling")
+    data object Carrying    : PetState(4, "carrying")
+    data object Debugger    : PetState(4, "debugger")
+    data object Working     : PetState(3, "working")
+    data object Thinking    : PetState(2, "thinking")
+    data object Idle        : PetState(1, "idle")
+    data object Yawning     : PetState(1, "yawning")      // 睡眠序列，同 Idle 优先级
+    data object Dozing      : PetState(1, "dozing")
+    data object Collapsing  : PetState(1, "collapsing")
+    data object Waking      : PetState(1, "waking")
+    data object Sleeping    : PetState(0, "sleeping")     // 最低优先级
+}
+```
 
-### 未来计划
+---
 
-一些我们想探索的方向：
+## 🐱 PC 端全量状态对齐矩阵
 
-- Codex 终端聚焦（通过 `codex.exe` PID 反查进程树）
-- 主题注册表 + 应用内下载
-- Hook 卸载脚本（干净移除应用）
-- 手机伴侣：在手机上远程审批权限（推进中，由 [@Bynlk](https://github.com/Bynlk) 主导）
+### PetState 完整状态矩阵（16 个状态）
 
-## 参与贡献
+| 状态 | priority | themeKey | 类别 | Oneshot | 说明 |
+|------|:--------:|----------|------|:-------:|------|
+| `Error` | 8 | `error` | 主动 | ✅ | 会话出错，需要关注 |
+| `Notification` | 7 | `notification` | 主动 | ✅ | 新通知到达 |
+| `Sweeping` | 6 | `sweeping` | 主动 | ✅ | 清扫/收尾工作 |
+| `Attention` | 5 | `attention` | 主动 | ✅ | 需要用户注意（也是 Happy 插播的载体） |
+| `Conducting` | 4 | `conducting` | 主动 | ❌ | 多任务指挥（≥2 会话，服务器端映射） |
+| `Juggling` | 4 | `juggling` | 主动 | ❌ | 多任务杂耍（≥2 会话，服务器端映射） |
+| `Carrying` | 4 | `carrying` | 主动 | ✅ | 搬运/传输中 |
+| `Debugger` | 4 | `debugger` | 主动 | ❌ | 调试模式 |
+| `Working` | 3 | `working` | 主动 | ❌ | 正常工作中（tier 变体） |
+| `Thinking` | 2 | `thinking` | 主动 | ❌ | 思考中 |
+| `Idle` | 1 | `idle` | 空闲 | ❌ | 基线空闲状态 |
+| `Yawning` | 1 | `yawning` | 睡眠序列 | ❌ | 打哈欠（睡眠第一步） |
+| `Dozing` | 1 | `dozing` | 睡眠序列 | ❌ | 打盹（仅 Calico/Cloudling） |
+| `Collapsing` | 1 | `collapsing` | 睡眠序列 | ❌ | 倒下（Calico: 5.2s, Cloudling: 4.7s） |
+| `Waking` | 1 | `waking` | 睡眠序列 | ❌ | 唤醒动画 |
+| `Sleeping` | 0 | `sleeping` | 睡眠序列 | ❌ | 深睡（最低优先级） |
 
-Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/rullerzhou-afk/clawd-on-desk/issues) 里聊或直接提交 PR。
+### 多任务场景
 
-### 维护者
+当可见会话 ≥ 2 时，**服务器端**自动设置 `displayState` 为 `juggling`（Clawd）或 `conducting`（Calico/Cloudling）。手机端直接消费，无需本地映射。
 
-<table>
-  <tr>
-    <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · 创建者</sub></a></td>
-    <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />维护者</sub></a></td>
-    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />核心贡献者 · Mobile / PWA</sub></a></td>
-  </tr>
-</table>
+### SVG 资源解析：`SvgLoader.resolveSvgAsset()`
 
-### 贡献者
+SVG 解析采用**动态候选链**机制——按优先级尝试多个资源名，第一个存在的生效。支持 Working/Juggling tier（基于 session 数量）：
 
-感谢每一位让 Clawd 变得更好的贡献者：
+```kotlin
+// Working tier — session 数量决定动画
+sessionCount >= 3 → building (多任务建造)
+sessionCount >= 2 → headphones-groove / juggling (双任务)
+sessionCount >= 1 → typing (单任务)
+```
 
-<a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/AooooooZzzz"><img src="https://github.com/AooooooZzzz.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/purefkh"><img src="https://github.com/purefkh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Tobeabellwether"><img src="https://github.com/Tobeabellwether.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Jasonhonghh"><img src="https://github.com/Jasonhonghh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/crashchen"><img src="https://github.com/crashchen.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/hongbigtou"><img src="https://github.com/hongbigtou.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/InTimmyDate"><img src="https://github.com/InTimmyDate.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/NeizhiTouhu"><img src="https://github.com/NeizhiTouhu.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/xu3stones-cmd"><img src="https://github.com/xu3stones-cmd.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Ye-0413"><img src="https://github.com/Ye-0413.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/WanfengzzZ"><img src="https://github.com/WanfengzzZ.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/androidZzT"><img src="https://github.com/androidZzT.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/TaoXieSZ"><img src="https://github.com/TaoXieSZ.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/ssly"><img src="https://github.com/ssly.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/stickycandy"><img src="https://github.com/stickycandy.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Rladmsrl"><img src="https://github.com/Rladmsrl.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Kevin7Qi"><img src="https://github.com/Kevin7Qi.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/sefuzhou770801-hub"><img src="https://github.com/sefuzhou770801-hub.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Tonic-Jin"><img src="https://github.com/Tonic-Jin.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/seoki180"><img src="https://github.com/seoki180.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/sophie-haynes"><img src="https://github.com/sophie-haynes.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/PeterShanxin"><img src="https://github.com/PeterShanxin.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/CHIANGANGSTER"><img src="https://github.com/CHIANGANGSTER.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/JaeHyeon-KAIST"><img src="https://github.com/JaeHyeon-KAIST.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/hhhzxyhhh"><img src="https://github.com/hhhzxyhhh.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/TVpoet"><img src="https://github.com/TVpoet.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/zeus6768"><img src="https://github.com/zeus6768.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/anhtrinh919"><img src="https://github.com/anhtrinh919.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/tomaioo"><img src="https://github.com/tomaioo.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/v-avuso"><img src="https://github.com/v-avuso.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/livlign"><img src="https://github.com/livlign.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/tongguang2"><img src="https://github.com/tongguang2.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Ziy1-Tan"><img src="https://github.com/Ziy1-Tan.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/tatsuyanakanogaroinc"><img src="https://github.com/tatsuyanakanogaroinc.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/yeonhub"><img src="https://github.com/yeonhub.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/joshua-wu"><img src="https://github.com/joshua-wu.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/nmsn"><img src="https://github.com/nmsn.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/sunnysonx"><img src="https://github.com/sunnysonx.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/YuChenYunn"><img src="https://github.com/YuChenYunn.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/jhseo-b"><img src="https://github.com/jhseo-b.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Hwasowl"><img src="https://github.com/Hwasowl.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/XiangZheng2002"><img src="https://github.com/XiangZheng2002.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/keiyo118"><img src="https://github.com/keiyo118.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/pan93412"><img src="https://github.com/pan93412.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/taehwanis"><img src="https://github.com/taehwanis.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/linnin233"><img src="https://github.com/linnin233.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/xiyouMc"><img src="https://github.com/xiyouMc.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/zxypro1"><img src="https://github.com/zxypro1.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/NeroAyase"><img src="https://github.com/NeroAyase.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/divergentD"><img src="https://github.com/divergentD.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Ne9roni"><img src="https://github.com/Ne9roni.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/QingXB"><img src="https://github.com/QingXB.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/29206394"><img src="https://github.com/29206394.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Tsdsj"><img src="https://github.com/Tsdsj.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/godlockin"><img src="https://github.com/godlockin.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/sLingli"><img src="https://github.com/sLingli.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/ustin-star"><img src="https://github.com/ustin-star.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/cod3hulk"><img src="https://github.com/cod3hulk.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/lxgxhsy"><img src="https://github.com/lxgxhsy.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/rebootcrab-blip"><img src="https://github.com/rebootcrab-blip.png" width="50" style="border-radius:50%" /></a>
+### 各角色 SVG 资源矩阵
 
-## 致谢
+| 动画 | Clawd | Calico | Cloudling | 格式 |
+|------|:-----:|:------:|:---------:|------|
+| idle | ✅ | ✅ | ✅ | SVG |
+| idle_look | ✅ | ❌ | ❌ | SVG |
+| idle_bubble | ✅ | ❌ | ❌ | SVG |
+| idle_reading | ✅ | ❌ | ✅ | SVG |
+| typing | ✅ | ✅ | ✅ | SVG/APNG |
+| thinking | ✅ | ✅ | ✅ | SVG/APNG |
+| building | ✅ | ✅ | ✅ | SVG/APNG |
+| juggling | ✅ | ✅ | ✅ | SVG/APNG |
+| carrying | ✅ | ✅ | ✅ | SVG/APNG |
+| sweeping | ✅ | ✅ | ✅ | SVG/APNG |
+| conducting | ✅ | ✅ | ✅ | SVG/APNG |
+| notification | ✅ | ✅ | ✅ | SVG/APNG |
+| error | ✅ | ✅ | ✅ | SVG/APNG |
+| happy | ✅ | ✅ | ✅ | SVG/APNG |
+| attention | ❌ | ❌ | ✅ | SVG |
+| headphones-groove | ✅ | ❌ | ❌ | SVG |
+| debugger | ✅ | ❌ | ❌ | SVG |
+| sleeping | ✅ | ✅ | ✅ | SVG/APNG |
+| yawning | ✅ | ✅ | ✅ | SVG/APNG |
+| dozing | ✅ | ✅ | ✅ | SVG/APNG |
+| collapsing | ✅ | ✅ | ✅ | SVG/APNG |
+| waking | ✅ | ✅ | ✅ | SVG/APNG |
 
-- Clawd 像素画参考自 [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- 本项目在 [LINUX DO](https://linux.do/) 社区推广
+---
 
-## 许可证
+## 💤 灵性视觉控制链
 
-源代码基于 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）开源。
+### 独立时序睡眠长蛇阵
 
-**美术素材和内置主题素材（包括 `assets/` 与 `themes/*/assets/`）不适用 AGPL-3.0 许可。** 所有权利归各自版权持有人所有，详见 [assets/LICENSE](assets/LICENSE) 及下列说明。
+睡眠不是简单的 `Idle → Sleeping` 一刀切。它是一条精心编排的**动画序列**，每个角色有不同的时间参数，完全对齐 PC 端的 `theme.json`。深睡期间每 30 秒随机抽取一个 idle SVG 动画变体（reading / bubble / look），让小螃蟹看起来更"活"：
 
-- **Clawd** 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为非官方粉丝作品，与 Anthropic 无官方关联。
-- **三花猫** 素材由 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)) 创作，保留所有权利。
-- **Cloudling（云宝）** 素材由 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)) 创作，保留所有权利。云宝的视觉方向包含对 OpenAI Codex logo 的致敬；Codex / OpenAI 相关标识仍归 OpenAI 所有，本项目与 OpenAI 无官方关联，也未获 OpenAI 背书。
-- **第三方画师作品**：版权归各自作者所有。
+```
+                    ┌──────────────────────────────────────────────────────┐
+                    │            Per-Character Sleep Config                │
+                    ├──────────┬──────────┬──────────────┬────────────────┤
+                    │ yawnMs   │collapseMs│ wakeMs       │ deepSleepMs    │
+                    ├──────────┼──────────┼──────────────┼────────────────┤
+                    │ Clawd    │ 3,000ms  │    0ms (跳过)│   1,500ms      │ 600,000ms │
+                    │ Calico   │ 8,000ms  │ 5,200ms      │   5,800ms      │ 600,000ms │
+                    │ Cloudling│ 9,030ms  │ 4,700ms      │   3,650ms      │ 600,000ms │
+                    └──────────┴──────────┴──────────────┴────────────────┘
+```
+
+**Clawd 的特殊性**：`collapseMs = 0`，Clawd 跳过 Collapsing 阶段，直接从 Yawning 进入 Sleeping——因为 Clawd 的 `yawning` SVG 本身已经包含了"倒下"的动画。
+
+### 异步防诈尸唤醒守卫（`gifGeneration`）
+
+当小螃蟹处于深睡状态时，一个新会话的到来会触发唤醒序列。`gifGeneration` 世代守卫确保只有**最后一次**反应的恢复回调会生效：
+
+```kotlin
+private fun playWakingAndRestore(targetState: PetState, scope: CoroutineScope) {
+    cancelSleepSequence()
+    val gen = gifGeneration.incrementAndGet()  // ← 世代号 +1
+    if (SvgLoader.hasSvgForState(PetState.Waking, character)) {
+        emitState(PetState.Waking)
+        scope.launch {
+            delay(sleepConfig.wakeMs)
+            if (gifGeneration.get() != gen) return@launch  // ← 世代不匹配，放弃
+            emitState(targetState)
+        }
+    } else {
+        emitState(targetState)  // 无 waking SVG，直接切
+    }
+}
+```
+
+### 1.5s Happy 插播
+
+当 session 的 badge 从 `running` 变为 `done` 时，系统会播放一个 1.5s 的 Happy 庆祝动画。`gifGeneration` 代际防覆盖保证快速连续完成时只有最后一次恢复生效。
+
+---
+
+## 🎨 WebView SVG 渲染
+
+### 为什么用 WebView 而不是 ImageView？
+
+早期使用 Glide + ImageView + Matrix 缩放渲染 GIF。迁移到 SVG + WebView 的原因：
+
+| 维度 | GIF + ImageView | SVG + WebView |
+|------|----------------|---------------|
+| 动画保真度 | 逐帧 GIF，CSS 动画丢失 | CSS breathe/blink/tail-sway 完整保留 |
+| 包体积 | ~8MB GIF 资源 | ~2MB SVG 资源（-75%） |
+| 内存占用 | 每帧解码 Bitmap | 矢量渲染，内存恒定 |
+| 缩放质量 | 位图缩放模糊 | 矢量无限缩放，始终清晰 |
+
+### 渲染架构
+
+```
+SvgLoader.loadSvg()
+    ↓
+HTML 模板 (svg_template.html / apng_template.html)
+    ↓ 替换 {{URL}} / {{LOOP_STYLE}} / {{ANIM_END_SCRIPT}}
+WebView.loadDataWithBaseURL("https://appassets.androidplatform.net/")
+    ↓
+WebViewAssetLoader 拦截 → assets/svg/ 文件
+    ↓
+CSS 动画渲染 (breathe, blink, tail-sway, etc.)
+```
+
+- `FloatingPetView` 是自定义 `WebView` 子类
+- 通过 `WebViewAssetLoader` 将 `assets/svg/` 映射为 HTTPS URL
+- 像素级透明点击穿透：JS canvas 采样 + bitmap 命中测试
+- SVG 视觉边距通过 JS bridge 回调
+
+---
+
+## 📡 通信协议
+
+### 连接方式
+
+```
+WebSocket:  ws://<host>:23334/mobile/ws
+审批回传:  POST http://<host>:23334/mobile/approve
+Deep Link: clawd://<host>:<port>/<token>
+```
+
+> Token 通过 `Authorization: Bearer <token>` header 传输。
+
+### WebSocket 消息类型（服务端 → 客户端）
+
+| type | 说明 |
+|------|------|
+| `ping` | 心跳保活 |
+| `connected` | 连接成功确认 |
+| `clear_sessions` | 清空本地会话缓存 |
+| `snapshot` | 全量会话快照 |
+| `state` | 单会话状态更新 |
+| `tool_output` | 工具输出片段 |
+| `session_deleted` | 会话删除 |
+| `permission_request` | 权限/交互式审批请求 |
+
+---
+
+## 📂 项目结构
+
+```
+android/
+├── app/src/main/
+│   ├── java/com/clawd/mobile/
+│   │   ├── MainActivity.kt              # 入口 Activity + 权限流 + Deep Link
+│   │   ├── ClawdApp.kt                  # Application + 通知渠道
+│   │   │
+│   │   ├── data/                        # 数据层
+│   │   │   ├── Session.kt               # SessionData 模型
+│   │   │   ├── ConnectionConfig.kt      # 连接配置 + URL 生成 + Deep Link 解析
+│   │   │   ├── PrefsStore.kt            # EncryptedSharedPreferences 封装
+│   │   │   └── WsMessage.kt             # WebSocket 消息信封 + 权限请求模型
+│   │   │
+│   │   ├── ws/                          # 网络层
+│   │   │   ├── StreamingClient.kt       # 接口定义
+│   │   │   ├── AbstractStreamingClient.kt # 共享实现
+│   │   │   ├── WsClient.kt             # WebSocket 客户端实现
+│   │   │   ├── MessageParser.kt         # 消息解析器
+│   │   │   ├── MessageHandler.kt        # 消息处理器
+│   │   │   ├── ParsedMessage.kt         # 解析后的消息类型
+│   │   │   ├── ConnectionStrategy.kt    # LAN/Relay 连接策略
+│   │   │   └── ConnectionState.kt       # 连接状态枚举
+│   │   │
+│   │   ├── service/                     # 服务层
+│   │   │   └── WsConnectionService.kt   # WebSocket 前台服务（dataSync 类型）
+│   │   │
+│   │   ├── overlay/                     # 悬浮宠物层（核心）
+│   │   │   ├── PetState.kt              # 16 态密封类 + PC 对齐优先级
+│   │   │   ├── PetStateManager.kt       # 状态决策引擎（单管道架构）
+│   │   │   ├── FloatingPetService.kt    # 悬浮窗前台服务（纯视图躯壳）
+│   │   │   ├── FloatingPetView.kt       # WebView 子类 + SVG 渲染 + 透明穿透
+│   │   │   ├── PetWindowController.kt   # 窗口创建/尺寸/边缘吸附/位置持久化
+│   │   │   ├── PetGestureHandler.kt     # 手势处理（拖拽/单击/双击）
+│   │   │   ├── PetBubbleManager.kt      # 信息气泡生命周期管理
+│   │   │   ├── PetBubbleView.kt         # 信息气泡 View
+│   │   │   └── SvgLoader.kt             # SVG/APNG 资源解析 + WebView 加载
+│   │   │
+│   │   ├── notification/                # 通知层
+│   │   │   ├── NotificationHelper.kt    # 通知构建器
+│   │   │   ├── StatusNotifier.kt        # 状态变化通知逻辑
+│   │   │   ├── NotificationIcons.kt     # 彩色圆点图标生成
+│   │   │   └── ApprovalReceiver.kt      # 通知按钮广播接收器
+│   │   │
+│   │   ├── util/                        # 工具层
+│   │   │   ├── HttpClientProvider.kt    # OkHttpClient 单例 + 证书固定
+│   │   │   └── SafeExecutor.kt          # 统一异常处理（3 级 severity）
+│   │   │
+│   │   └── ui/                          # UI 层
+│   │       ├── navigation/NavGraph.kt   # NavHost + 服务绑定 + 通知接线
+│   │       ├── sessions/                # 主界面（6 文件）
+│   │       ├── scan/ScanScreen.kt       # CameraX + ZXing 二维码扫描
+│   │       ├── manual/ManualScreen.kt   # 手动连接 + 连接历史
+│   │       ├── settings/SettingsScreen.kt # 设置页
+│   │       ├── approval/ApprovalViewModel.kt # 审批请求生命周期管理
+│   │       ├── components/              # 共享组件
+│   │       │   ├── ClawdIcons.kt        # 24 个自绘矢量图标
+│   │       │   └── PermissionDialog.kt  # 权限请求对话框
+│   │       └── theme/                   # Material 3 主题
+│   │
+│   ├── assets/
+│   │   ├── svg/                         # SVG/APNG 动画资源
+│   │   │   ├── clawd/                   # Clawd 动画（30+ 文件）
+│   │   │   ├── calico/                  # Calico 动画（20+ 文件）
+│   │   │   └── cloudling/               # Cloudling 动画（20+ 文件）
+│   │   └── html/                        # WebView HTML 模板
+│   │       ├── svg_template.html
+│   │       └── apng_template.html
+│   │
+│   ├── res/
+│   │   ├── values/strings.xml           # 默认字符串
+│   │   ├── values-zh/strings.xml        # 中文本地化
+│   │   └── xml/network_security_config.xml
+│   │
+│   └── AndroidManifest.xml
+│
+├── app/src/test/                        # 单元测试（10 文件，197 测试）
+│   ├── data/
+│   │   ├── ConnectionConfigTest.kt      # URL 解析、host 校验、LAN 检测
+│   │   └── SessionTest.kt               # 数据模型
+│   ├── overlay/
+│   │   ├── PetStateManagerLogicTest.kt  # 状态机逻辑
+│   │   ├── PetStateTest.kt              # 状态密封类
+│   │   ├── SvgLoaderLookupTest.kt       # SVG 资源解析
+│   │   └── SvgLoaderTest.kt             # SVG 加载器
+│   ├── util/
+│   │   ├── HttpClientProviderTest.kt    # HTTP 客户端
+│   │   └── SafeExecutorTest.kt          # 异常处理
+│   └── ws/
+│       ├── MessageParserTest.kt         # 消息解析器测试
+│       ├── MessageParserExtendedTest.kt # 扩展解析测试
+│       ├── WsClientTest.kt             # WebSocket 客户端测试
+│       └── ConnectionStateTest.kt       # 连接状态枚举
+│
+├── build.gradle.kts
+├── app/build.gradle.kts
+├── gradle/libs.versions.toml
+└── README.md
+```
+
+---
+
+## 🔐 权限清单
+
+| 权限 | 用途 | 运行时请求 |
+|------|------|:----------:|
+| `INTERNET` | LAN 通信 | ❌ |
+| `CAMERA` | 二维码扫描 | ✅ |
+| `POST_NOTIFICATIONS` | 通知推送（Android 13+） | ✅ |
+| `VIBRATE` | 通知振动 | ❌ |
+| `WAKE_LOCK` | 保持 CPU 唤醒 | ❌ |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | 防止 Doze 杀后台 | ✅ |
+| `FOREGROUND_SERVICE` | 前台服务 | ❌ |
+| `FOREGROUND_SERVICE_DATA_SYNC` | WebSocketService 类型 | ❌ |
+| `FOREGROUND_SERVICE_SPECIAL_USE` | FloatingPetService 类型 | ❌ |
+| `SYSTEM_ALERT_WINDOW` | 悬浮窗 | ✅ |
+
+启动时按顺序弹窗请求 4 项运行时权限，每项带说明对话框（Allow / Skip）。
+
+---
+
+## 🔧 开发
+
+### 环境要求
+
+- Android Studio Hedgehog (2023.1.1) 或更高版本
+- JDK 17
+- Android SDK 35
+- arm64-v8a 设备或模拟器
+
+### 构建
+
+```bash
+cd android
+
+# 构建 debug APK
+./gradlew assembleDebug
+
+# 构建 release APK（需要环境变量）
+KEYSTORE_FILE=release-keystore.jks \
+STORE_PASSWORD=xxx \
+KEY_ALIAS=clawd \
+KEY_PASSWORD=xxx \
+./gradlew assembleRelease
+
+# 安装到设备
+./gradlew installDebug
+
+# 运行单元测试（197 tests）
+./gradlew test
+```
+
+### CI/CD
+
+推送到 `main` 分支且修改 `android/` 目录下的文件时，GitHub Actions 自动构建 debug + release APK 并上传为 artifacts。
+
+---
+
+## ✨ v0.10.0 新增功能
+
+### 🐾 浮窗审批气泡
+
+悬浮窗上直接审批权限请求，无需打开 App：
+
+- **提示态**：小药丸显示"审批（点击展开）"或"问题（打开App）"
+- **展开态**：工具名、摘要、左右滑动拒绝/允许、倒计时进度条
+- **FIFO 队列**：多个审批请求排队处理
+- **通知同步**：通知与浮窗审批双向同步（`approvalCompletedFlow`）
+- **suggestionIndex**：支持"始终允许此工具"等快捷选项
+
+### 🌐 远程中继（Relay）
+
+通过远程 VPS 中继连接 PC 端，**支持非局域网环境**：
+
+- `ConnectionStrategy` 策略模式：LAN 直连与 Relay 中继完全解耦
+- `SessionMerger` 合并 LAN + Relay 双连接的会话为统一视图
+- `RelaySettings` UI：配置 Relay 地址、Token、状态检查
+- Relay 客户端网络切换即时重连
+
+### 🌍 应用内语言切换
+
+- 支持中/英文实时切换，无需重启 App
+- 三语言 strings.xml 完全同步（values/values-en/values-zh）
+
+### 🔒 安全与鲁棒性改进
+
+- 签名密码从 `gradle.properties` 移除，改用环境变量注入
+- ProGuard 添加 release 构建 `Log.d`/`Log.v`/`Log.i` 移除规则
+- `network_security_config.xml` 全局 `cleartextTrafficPermitted=false`
+- `PrefsStore.loadConfig()` 整体 try-catch，防止崩溃
+
+### 🧪 测试提升
+
+- 新增 5 个测试文件，103 个测试，总计 548 个全部通过
+
+---
+
+## 📋 已知技术债务与改进计划
+
+详细的系统性评估和修复计划见 **[docs/plans/INDEX.md](docs/plans/INDEX.md)**（14 个计划，21 工时）。
+
+| 级别 | 项 | 说明 |
+|------|---|------|
+| ~~**S**~~ | ~~ClawdWebSocket.kt 命名误导~~ | ✅ 已迁移到 WebSocket + 重命名为 StreamingClient |
+| ~~**A**~~ | ~~安全: Token URL 泄露~~ | ✅ Token 已移至 Authorization header |
+| ~~**A**~~ | ~~安全: 非 LAN 无 TOFU pinning~~ | ✅ 已实现 TOFU 证书固定 |
+| ~~**A**~~ | ~~ApprovalReceiver 协程泄漏~~ | ✅ 已迁移到 WorkManager |
+| **B** | PetStateManager 静态耦合 | 直接访问 WsConnectionService.getClient()，应改为注入 |
+| **B** | consumedDoneSessions 无清理 | 长时间运行后内存无限增长 |
+| ~~**C**~~ | ~~SvgLoader 线程安全~~ | ✅ 已迁移到 ConcurrentHashMap |
+
+---
+
+## 📄 许可证
+
+- **代码**: [AGPL-3.0](../LICENSE)
+- **美术素材**: 版权保留（All Rights Reserved）
+
+**Clawd** 角色是 [Anthropic](https://www.anthropic.com) 的财产。这是一个非官方的粉丝项目，与 Anthropic 无关，也未获得 Anthropic 的认可。
+
+Android 端基于 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 桌面端开发，原项目由 [@rullerzhou-afk](https://github.com/rullerzhou-afk)（鹿鹿）创建。
