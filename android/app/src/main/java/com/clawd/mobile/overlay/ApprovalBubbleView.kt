@@ -12,6 +12,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import com.clawd.mobile.R
 import kotlin.math.abs
 
 /**
@@ -71,7 +72,7 @@ class ApprovalBubbleView(context: Context) : FrameLayout(context) {
 
         // Hint view
         hintView = TextView(context).apply {
-            text = "审批（点击展开）"
+            text = context.getString(R.string.approval_hint)
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setTypeface(null, Typeface.BOLD)
@@ -141,7 +142,7 @@ class ApprovalBubbleView(context: Context) : FrameLayout(context) {
         }
 
         swipeLabel = TextView(context).apply {
-            text = "← 拒绝    滑动    允许 →"
+            text = context.getString(R.string.approval_swipe_hint)
             setTextColor(Color.parseColor("#88FFFFFF"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
@@ -187,15 +188,15 @@ class ApprovalBubbleView(context: Context) : FrameLayout(context) {
                         when {
                             progress >= 1f -> {
                                 swipeBar.background.setTint(Color.parseColor("#444CAF50"))
-                                swipeLabel.text = "← 拒绝          允许 ✓"
+                                swipeLabel.text = context.getString(R.string.approval_swipe_allow)
                             }
                             progress <= -1f -> {
                                 swipeBar.background.setTint(Color.parseColor("#44F44336"))
-                                swipeLabel.text = "← 拒绝 ✓        允许 →"
+                                swipeLabel.text = context.getString(R.string.approval_swipe_deny)
                             }
                             else -> {
                                 swipeBar.background.setTint(Color.parseColor("#44444444"))
-                                swipeLabel.text = "← 拒绝    滑动    允许 →"
+                                swipeLabel.text = context.getString(R.string.approval_swipe_hint)
                             }
                         }
                     }
@@ -212,7 +213,7 @@ class ApprovalBubbleView(context: Context) : FrameLayout(context) {
                     }
                     // Reset swipe bar
                     swipeBar.background.setTint(Color.parseColor("#44444444"))
-                    swipeLabel.text = "← 拒绝    滑动    允许 →"
+                    swipeLabel.text = context.getString(R.string.approval_swipe_hint)
                     isSwiping = false
                     true
                 }
@@ -263,7 +264,7 @@ class ApprovalBubbleView(context: Context) : FrameLayout(context) {
         requestId = reqId
         toolNameView.text = toolName
         summaryView.text = summary
-        hintView.text = if (pendingCount > 1) "审批（${pendingCount}）（点击展开）" else "审批（点击展开）"
+        hintView.text = if (pendingCount > 1) context.getString(R.string.approval_hint_count, pendingCount) else context.getString(R.string.approval_hint)
         isExpanded = false
         hintView.visibility = VISIBLE
         panelView.visibility = GONE
@@ -273,7 +274,7 @@ class ApprovalBubbleView(context: Context) : FrameLayout(context) {
     /** Show collapsed hint for an elicitation request (jump to app). */
     fun showElicitationHint(reqId: String) {
         requestId = reqId
-        hintView.text = "问题（打开App）"
+        hintView.text = context.getString(R.string.approval_elicitation_hint)
         isExpanded = false
         hintView.visibility = VISIBLE
         panelView.visibility = GONE

@@ -1,6 +1,6 @@
 # Clawd Mobile — Android 伴侣应用
 
-[![Android Build](https://github.com/Bynlk/clawd-on-desk/actions/workflows/android.yml/badge.svg)](https://github.com/Bynlk/clawd-on-desk/actions/workflows/android.yml)
+[![Android Build](https://github.com/Bynlk/clawd-on-mobile/actions/workflows/android.yml/badge.svg)](https://github.com/Bynlk/clawd-on-mobile/actions/workflows/android.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../LICENSE)
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-green.svg)](https://developer.android.com/about/versions/oreo)
 [![API 26+](https://img.shields.io/badge/API-26%2B-brightgreen.svg)](https://developer.android.com/studio/releases/platforms#android-8.0)

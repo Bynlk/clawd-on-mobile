@@ -222,4 +222,37 @@
     <string name="settings_language_desc">Choose the app display language. Takes effect immediately.</string>
     <string name="settings_language_zh">中文</string>
     <string name="settings_language_en">English</string>
+    <string name="settings_relay">Remote Relay</string>
+
+    <!-- Relay settings -->
+    <string name="relay_address">Relay Address</string>
+    <string name="relay_token">Connection Token</string>
+    <string name="relay_token_placeholder">Enter Connection Token</string>
+    <string name="relay_enabled">Enabled</string>
+    <string name="relay_disconnected">Disconnected</string>
+    <string name="relay_disconnect">Disconnect Relay</string>
+    <string name="relay_connect">Connect Relay</string>
+    <string name="relay_enter_address">Please enter Relay address</string>
+    <string name="relay_checking">Checking…</string>
+    <string name="relay_running">Running | PC: %s, Phone: %s</string>
+    <string name="relay_connect_failed">Connection failed: %s</string>
+    <string name="relay_check_status">Check Status</string>
+    <string name="relay_description">Connect via remote relay server for non-LAN environments. Requires relay server deployed on Linux VPS.</string>
+
+    <!-- Approval bubble (overlay) -->
+    <string name="approval_hint">Approval (tap to expand)</string>
+    <string name="approval_hint_count">Approval (%d) (tap to expand)</string>
+    <string name="approval_swipe_hint">← Deny    Swipe    Allow →</string>
+    <string name="approval_swipe_allow">← Deny          Allow ✓</string>
+    <string name="approval_swipe_deny">← Deny ✓        Allow →</string>
+    <string name="approval_elicitation_hint">Question (open App)</string>
+
+    <!-- Relay connection status -->
+    <string name="relay_status_connected">Relay connected</string>
+    <string name="relay_status_connecting">Relay connecting</string>
+    <string name="relay_status_reconnecting">Relay reconnecting</string>
+    <string name="relay_status_auth_failed">Relay auth failed</string>
+    <string name="relay_status_disconnected">Relay disconnected</string>
+    <string name="relay_status_circuit_open">Relay paused</string>
+    <string name="relay_status_unknown">Relay status unknown</string>
 </resources>

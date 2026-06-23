@@ -78,7 +78,7 @@ fun SettingsScreen(
             }
 
             AccordionSection(
-                title = "远程中继",
+                title = stringResource(R.string.settings_relay),
                 icon = ClawdIcons.Activity,
                 defaultExpanded = false
             ) {

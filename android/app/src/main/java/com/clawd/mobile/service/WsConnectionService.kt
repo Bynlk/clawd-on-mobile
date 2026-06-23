@@ -151,19 +151,25 @@ class WsConnectionService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        streamingClient = WsClient(prefsStore)
-        _clientReady.trySend(streamingClient!!)
+        val lanClient = WsClient(prefsStore)
+        streamingClient = lanClient
+        _clientReady.trySend(lanClient)
 
         // 创建 session merger
-        sessionMerger = SessionMerger(scope)
-        sessionMerger?.register(ConnectionTag.LAN, streamingClient!!.sessions)
+        val merger = SessionMerger(scope)
+        sessionMerger = merger
+        merger.register(ConnectionTag.LAN, lanClient.sessions)
 
         // 创建 relay client（如果配置了 relay）
-        val config = prefsStore.loadConfig()
+        val config = try { prefsStore.loadConfig() } catch (e: Exception) {
+            android.util.Log.e("WsConnectionService", "Failed to load config: ${e.message}")
+            null
+        }
         if (config?.useRelay == true && !config.relayUrl.isNullOrBlank()) {
-            relayClient = WsClient(prefsStore, RelayConnectionStrategy())
-            _clientReady.trySend(relayClient!!)
-            sessionMerger?.register(ConnectionTag.RELAY, relayClient!!.sessions)
+            val relay = WsClient(prefsStore, RelayConnectionStrategy())
+            relayClient = relay
+            _clientReady.trySend(relay)
+            merger.register(ConnectionTag.RELAY, relay.sessions)
         }
     }
 
@@ -290,13 +296,13 @@ class WsConnectionService : Service() {
             // Relay client state collector
             relayClient?.connectionState?.collect { state ->
                 val relayStatus = when (state) {
-                    ConnectionState.CONNECTED -> "Relay 已连接"
-                    ConnectionState.CONNECTING -> "Relay 连接中"
-                    ConnectionState.RECONNECTING -> "Relay 重连中"
-                    ConnectionState.AUTH_FAILED -> "Relay 认证失败"
-                    ConnectionState.DISCONNECTED -> "Relay 已断开"
-                    ConnectionState.CIRCUIT_OPEN -> "Relay 连接暂停"
-                    else -> "Relay 状态未知"
+                    ConnectionState.CONNECTED -> getString(R.string.relay_status_connected)
+                    ConnectionState.CONNECTING -> getString(R.string.relay_status_connecting)
+                    ConnectionState.RECONNECTING -> getString(R.string.relay_status_reconnecting)
+                    ConnectionState.AUTH_FAILED -> getString(R.string.relay_status_auth_failed)
+                    ConnectionState.DISCONNECTED -> getString(R.string.relay_status_disconnected)
+                    ConnectionState.CIRCUIT_OPEN -> getString(R.string.relay_status_circuit_open)
+                    else -> getString(R.string.relay_status_unknown)
                 }
                 android.util.Log.d("WsConnectionService", "Relay state: $relayStatus")
                 // 更新通知（如果有 relay 连接）
@@ -351,6 +357,7 @@ class WsConnectionService : Service() {
                     lastNetworkReconnectMs = now
                     android.util.Log.d("WsConnectionService", "Network available — triggering reconnect")
                     (streamingClient as? com.clawd.mobile.ws.WsClient)?.reconnectOnNetworkChange()
+                    (relayClient as? com.clawd.mobile.ws.WsClient)?.reconnectOnNetworkChange()
                 }
             }
             networkCallback = callback

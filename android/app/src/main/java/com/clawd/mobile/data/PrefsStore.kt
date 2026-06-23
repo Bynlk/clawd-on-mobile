@@ -99,8 +99,13 @@ class PrefsStore private constructor(context: Context) {
     }
 
     fun loadConfig(): ConnectionConfig? {
-        val str = prefs.getString(KEY_CONFIG, null) ?: return null
-        return try { json.decodeFromString(str) } catch (e: Exception) { Log.w(TAG, "loadConfig decode failed", e); null }
+        return try {
+            val str = prefs.getString(KEY_CONFIG, null) ?: return null
+            json.decodeFromString(str)
+        } catch (e: Exception) {
+            Log.w(TAG, "loadConfig failed", e)
+            null
+        }
     }
 
     fun clearConfig() {

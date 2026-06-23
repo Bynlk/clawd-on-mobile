@@ -206,4 +206,37 @@
     <string name="scan_need_camera">需要摄像头权限</string>
     <string name="scan_grant_camera">授予权限</string>
     <string name="scan_qr_hint">将 QR 码放入框内</string>
+    <string name="settings_relay">远程中继</string>
+
+    <!-- Relay settings -->
+    <string name="relay_address">Relay 地址</string>
+    <string name="relay_token">连接 Token</string>
+    <string name="relay_token_placeholder">输入 Connection Token</string>
+    <string name="relay_enabled">已启用</string>
+    <string name="relay_disconnected">已断开</string>
+    <string name="relay_disconnect">断开 Relay</string>
+    <string name="relay_connect">连接 Relay</string>
+    <string name="relay_enter_address">请输入 Relay 地址</string>
+    <string name="relay_checking">检查中…</string>
+    <string name="relay_running">运行中 | PC: %s, Phone: %s</string>
+    <string name="relay_connect_failed">无法连接: %s</string>
+    <string name="relay_check_status">检查状态</string>
+    <string name="relay_description">通过远程服务器中继连接，支持非局域网环境。需要在 Linux VPS 上部署 relay 服务器。</string>
+
+    <!-- Approval bubble (overlay) -->
+    <string name="approval_hint">审批（点击展开）</string>
+    <string name="approval_hint_count">审批（%d）（点击展开）</string>
+    <string name="approval_swipe_hint">← 拒绝    滑动    允许 →</string>
+    <string name="approval_swipe_allow">← 拒绝          允许 ✓</string>
+    <string name="approval_swipe_deny">← 拒绝 ✓        允许 →</string>
+    <string name="approval_elicitation_hint">问题（打开App）</string>
+
+    <!-- Relay connection status -->
+    <string name="relay_status_connected">Relay 已连接</string>
+    <string name="relay_status_connecting">Relay 连接中</string>
+    <string name="relay_status_reconnecting">Relay 重连中</string>
+    <string name="relay_status_auth_failed">Relay 认证失败</string>
+    <string name="relay_status_disconnected">Relay 已断开</string>
+    <string name="relay_status_circuit_open">Relay 连接暂停</string>
+    <string name="relay_status_unknown">Relay 状态未知</string>
 </resources>

@@ -5,7 +5,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.clawd.mobile.R
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.ws.StreamingClient
 
@@ -19,6 +22,7 @@ fun RelaySettings(
     streamingClient: StreamingClient?,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var relayUrl by remember { mutableStateOf(prefsStore.getRelayUrl()) }
     var relayToken by remember { mutableStateOf(prefsStore.getRelayToken()) }
     var useRelay by remember { mutableStateOf(prefsStore.isRelayEnabled()) }
@@ -26,12 +30,19 @@ fun RelaySettings(
     val colorScheme = MaterialTheme.colorScheme
     var statusColor by remember { mutableStateOf(colorScheme.onSurface) }
 
+    // Pre-compute strings for use in non-@Composable contexts (onClick, Thread)
+    val strRelayEnabled = stringResource(R.string.relay_enabled)
+    val strRelayDisconnected = stringResource(R.string.relay_disconnected)
+    val strRelayEnterAddress = stringResource(R.string.relay_enter_address)
+    val strRelayChecking = stringResource(R.string.relay_checking)
+    val strRelayRunning = stringResource(R.string.relay_running)
+    val strRelayConnectFailed = stringResource(R.string.relay_connect_failed)
+
     Column(modifier = modifier.padding(vertical = 8.dp)) {
-        // Relay URL
         OutlinedTextField(
             value = relayUrl,
             onValueChange = { relayUrl = it },
-            label = { Text("Relay 地址") },
+            label = { Text(stringResource(R.string.relay_address)) },
             placeholder = { Text("wss://your-vps-ip:7891") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
@@ -40,12 +51,11 @@ fun RelaySettings(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Relay Token
         OutlinedTextField(
             value = relayToken,
             onValueChange = { relayToken = it },
-            label = { Text("连接 Token") },
-            placeholder = { Text("输入 Connection Token") },
+            label = { Text(stringResource(R.string.relay_token)) },
+            placeholder = { Text(stringResource(R.string.relay_token_placeholder)) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             enabled = !useRelay
@@ -53,7 +63,6 @@ fun RelaySettings(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 状态显示
         if (statusText.isNotEmpty()) {
             Text(
                 text = statusText,
@@ -63,28 +72,24 @@ fun RelaySettings(
             )
         }
 
-        // 操作按钮行
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 启用/禁用按钮
             Button(
                 onClick = {
                     if (!useRelay) {
-                        // 保存配置并启用
                         prefsStore.setRelayUrl(relayUrl.trim())
                         prefsStore.setRelayToken(relayToken.trim())
                         prefsStore.setRelayEnabled(true)
                         useRelay = true
-                        statusText = "已启用"
+                        statusText = strRelayEnabled
                         statusColor = colorScheme.primary
                     } else {
-                        // 禁用
                         prefsStore.setRelayEnabled(false)
                         useRelay = false
-                        statusText = "已断开"
+                        statusText = strRelayDisconnected
                         statusColor = colorScheme.onSurface
                     }
                 },
@@ -92,22 +97,20 @@ fun RelaySettings(
                     containerColor = if (useRelay) colorScheme.error else colorScheme.primary
                 )
             ) {
-                Text(if (useRelay) "断开 Relay" else "连接 Relay")
+                Text(if (useRelay) stringResource(R.string.relay_disconnect) else stringResource(R.string.relay_connect))
             }
 
-            // 检查状态按钮
             OutlinedButton(
                 onClick = {
                     val url = relayUrl.trim()
                     val token = relayToken.trim()
                     if (url.isBlank()) {
-                        statusText = "请输入 Relay 地址"
+                        statusText = strRelayEnterAddress
                         statusColor = colorScheme.error
                         return@OutlinedButton
                     }
-                    statusText = "检查中..."
+                    statusText = strRelayChecking
                     statusColor = colorScheme.onSurface
-                    // 检查 relay API 状态
                     Thread {
                         try {
                             val apiUrl = "$url/api/status"
@@ -117,28 +120,26 @@ fun RelaySettings(
                             conn.readTimeout = 5000
                             val response = conn.inputStream.bufferedReader().readText()
                             conn.disconnect()
-                            // 简单解析 JSON
                             val pcMatch = Regex("\"pc\":(\\d+)").find(response)
                             val phoneMatch = Regex("\"phone\":(\\d+)").find(response)
                             val pc = pcMatch?.groupValues?.get(1) ?: "0"
                             val phone = phoneMatch?.groupValues?.get(1) ?: "0"
-                            statusText = "运行中 | PC: $pc, Phone: $phone"
+                            statusText = String.format(strRelayRunning, pc, phone)
                             statusColor = colorScheme.primary
                         } catch (e: Exception) {
-                            statusText = "无法连接: ${e.message?.take(30)}"
+                            statusText = String.format(strRelayConnectFailed, e.message?.take(30) ?: "")
                             statusColor = colorScheme.error
                         }
                     }.start()
                 }
             ) {
-                Text("检查状态")
+                Text(stringResource(R.string.relay_check_status))
             }
         }
 
-        // 说明文字
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "通过远程服务器中继连接，支持非局域网环境。需要在 Linux VPS 上部署 relay 服务器。",
+            text = stringResource(R.string.relay_description),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
