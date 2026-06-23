@@ -1,6 +1,6 @@
 # Clawd Mobile — Android 伴侣应用
 
-[![Android Build](https://github.com/Bynlk/clawd-on-mobile/actions/workflows/android.yml/badge.svg)](https://github.com/Bynlk/clawd-on-mobile/actions/workflows/android.yml)
+[![Android Build](https://github.com/Bynlk/clawd-on-desk/actions/workflows/android.yml/badge.svg)](https://github.com/Bynlk/clawd-on-desk/actions/workflows/android.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../LICENSE)
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-green.svg)](https://developer.android.com/about/versions/oreo)
 [![API 26+](https://img.shields.io/badge/API-26%2B-brightgreen.svg)](https://developer.android.com/studio/releases/platforms#android-8.0)
@@ -15,13 +15,13 @@
 
 ## 🚀 项目简介
 
-**Clawd Mobile** 是一款基于 **Kotlin 2.1 + Coroutines + WebSocket + WebView SVG + Jetpack Compose** 的原生 Android 客户端。它不是桌面端的"缩小版"，而是桌面端在移动端的**忠实数字分身**——一只住在你手机屏幕上的小螃蟹/三花猫/白云，实时感知 PC 端 AI Agent 的每一个呼吸。
+**Clawd Mobile** 是一款基于 **Kotlin 2.1 + Coroutines + OkHttp SSE + WebView SVG + Jetpack Compose** 的原生 Android 客户端。它不是桌面端的"缩小版"，而是桌面端在移动端的**忠实数字分身**——一只住在你手机屏幕上的小螃蟹/三花猫/白云，实时感知 PC 端 AI Agent 的每一个呼吸。
 
 ### 三大核心卖点
 
 | 卖点 | 实现机制 | 体感 |
 |------|----------|------|
-| **毫秒级状态同步** | WebSocket 长连接 + `StateFlow` 响应式管道，PC 端 `displayState` 变化到手机 SVG 切换 < 200ms | 桌面端小螃蟹开始打字，手机上的小螃蟹**同时**开始打字 |
+| **毫秒级状态同步** | SSE 长连接 + `StateFlow` 响应式管道，PC 端 `displayState` 变化到手机 SVG 切换 < 200ms | 桌面端小螃蟹开始打字，手机上的小螃蟹**同时**开始打字 |
 | **纯血角色隔离** | 服务器端 `displayState` + `PetStateManager` 决策引擎，三花猫/白云/黑白猫各自有独立的状态映射 | ≥2 会话时，三花猫变指挥家，黑白猫变杂耍师 |
 | **极低功耗挂机** | `WifiLock` + `WakeLock` 双锁保活 + 30s 看门狗 + 指数退避重连（1s→30s），后台运行功耗 < 50mW | 手机放口袋一整天，小螃蟹依然在线 |
 
@@ -31,7 +31,7 @@
 |------|------|------|
 | 语言 | Kotlin | 2.1.0 |
 | UI 框架 | Jetpack Compose + Material 3 | BOM 2024.12.01 |
-| 网络 | WebSocket (nv-websocket-client) | 2.14 |
+| 网络 | OkHttp SSE（Server-Sent Events） | 4.12.0 |
 | 序列化 | kotlinx.serialization | 1.7.3 |
 | 动画渲染 | WebView + SVG/APNG + CSS 动画 | — |
 | 二维码 | CameraX + ZXing | 1.4.1 / 3.5.3 |
@@ -56,12 +56,12 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        PC 端 Electron                           │
-│                (WebSocket push on LAN:23334)                     │
+│                   (SSE push on LAN:23334)                       │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │ WebSocket messages: state / snapshot / badge
+                           │ SSE events: state / snapshot / badge
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                   StreamingClient (nv-websocket-client)          │
+│                    SseClient (OkHttp EventSource)                │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │ StateFlow<Map<sessionId, SessionData>>   ← 会话数据流     │   │
 │  │ StateFlow<ConnectionState>               ← 连接状态流     │   │
@@ -106,7 +106,7 @@
 
 ### 数据流详解
 
-**上行（PC → 手机）**：桌面端通过 WebSocket 推送会话状态，`StreamingClient` 解析后更新 `StateFlow<Map<String, SessionData>>`。零本地推断——所有状态在 PC 端计算完毕，手机端只做消费和视觉映射。
+**上行（PC → 手机）**：桌面端通过 SSE 推送会话状态，`SseClient` 解析后更新 `StateFlow<Map<String, SessionData>>`。零本地推断——所有状态在 PC 端计算完毕，手机端只做消费和视觉映射。
 
 **决策层（大脑）**：`PetStateManager` 订阅 `sessions` Flow，经过管道（过滤→优先级→badge 检测→睡眠管理→idle 变体）输出单条 `StateCommand` 管道：
 
@@ -314,14 +314,14 @@ CSS 动画渲染 (breathe, blink, tail-sway, etc.)
 ### 连接方式
 
 ```
-WebSocket:  ws://<host>:23334/mobile/ws
-审批回传:   POST http://<host>:23334/mobile/approve
-Deep Link:  clawd://<host>:<port>/<token>
+SSE 流:    GET  http://<host>:23334/mobile/stream
+审批回传:  POST http://<host>:23334/mobile/approve
+Deep Link: clawd://<host>:<port>/<token>
 ```
 
 > Token 通过 `Authorization: Bearer <token>` header 传输。
 
-### WebSocket 消息类型（服务端 → 客户端）
+### SSE 消息类型（服务端 → 客户端）
 
 | type | 说明 |
 |------|------|
@@ -349,19 +349,14 @@ android/
 │   │   │   ├── Session.kt               # SessionData 模型
 │   │   │   ├── ConnectionConfig.kt      # 连接配置 + URL 生成 + Deep Link 解析
 │   │   │   ├── PrefsStore.kt            # EncryptedSharedPreferences 封装
-│   │   │   └── WsMessage.kt             # WebSocket 消息信封 + 权限请求模型
+│   │   │   └── WsMessage.kt             # SSE 消息信封 + 权限请求模型
 │   │   │
 │   │   ├── ws/                          # 网络层
-│   │   │   ├── StreamingClient.kt       # 接口定义
-│   │   │   ├── AbstractStreamingClient.kt # 共享实现
-│   │   │   ├── WsClient.kt             # nv-websocket-client 实现
-│   │   │   ├── MessageParser.kt         # 消息解析器
-│   │   │   ├── MessageHandler.kt        # 消息处理器
-│   │   │   ├── ParsedMessage.kt         # 解析后的消息类型
+│   │   │   ├── ClawdWebSocket.kt        # OkHttp SSE 客户端 + 消息处理 + 重连
 │   │   │   └── ConnectionState.kt       # 连接状态枚举
 │   │   │
 │   │   ├── service/                     # 服务层
-│   │   │   └── WsConnectionService.kt   # WebSocket 前台服务（dataSync 类型）
+│   │   │   └── WebSocketService.kt      # SSE 前台服务（dataSync 类型）
 │   │   │
 │   │   ├── overlay/                     # 悬浮宠物层（核心）
 │   │   │   ├── PetState.kt              # 16 态密封类 + PC 对齐优先级
@@ -425,9 +420,7 @@ android/
 │   │   ├── HttpClientProviderTest.kt    # HTTP 客户端
 │   │   └── SafeExecutorTest.kt          # 异常处理
 │   └── ws/
-│       ├── MessageParserTest.kt         # 消息解析器测试
-│       ├── MessageParserExtendedTest.kt # 扩展解析测试
-│       ├── WsClientTest.kt             # WebSocket 客户端测试
+│       ├── ClawdWebSocketParsingTest.kt # SSE 消息解析
 │       └── ConnectionStateTest.kt       # 连接状态枚举
 │
 ├── build.gradle.kts
@@ -500,7 +493,7 @@ KEY_PASSWORD=xxx \
 
 | 级别 | 项 | 说明 |
 |------|---|------|
-| ~~**S**~~ | ~~ClawdWebSocket.kt 命名误导~~ | ✅ 已迁移到 WebSocket + 重命名为 StreamingClient |
+| **S** | ClawdWebSocket.kt 命名误导 | 实际是 SSE client，需重命名为 SseClient |
 | **A** | 安全: Token URL 泄露 | streamUrl 中 token 应移至 header only |
 | **A** | 安全: 非 LAN 无 TOFU pinning | 首次远程连接无证书固定，存在 MITM 风险 |
 | **A** | ApprovalReceiver 协程泄漏 | goAsync() + 裸协程，应迁移到 WorkManager |
