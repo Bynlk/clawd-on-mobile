@@ -13,14 +13,14 @@
 
 ## 🚀 项目简介
 
-**Clawd Mobile** 是一款基于 **Kotlin 2.1 + Coroutines + OkHttp SSE + WindowManager** 的高性能赛博桌宠原生 Android 客户端。它不是桌面端的"缩小版"，而是桌面端在移动端的**忠实数字分身**——一只住在你手机屏幕上的小螃蟹，实时感知 PC 端 Claude Code 的每一个呼吸。
+**Clawd Mobile** 是一款基于 **Kotlin 2.1 + Coroutines + WebSocket + WebView SVG + Jetpack Compose** 的原生 Android 客户端。它不是桌面端的"缩小版"，而是桌面端在移动端的**忠实数字分身**——一只住在你手机屏幕上的小螃蟹/三花猫/白云，实时感知 PC 端 AI Agent 的每一个呼吸。
 
 ### 三大核心卖点
 
 | 卖点 | 实现机制 | 体感 |
 |------|----------|------|
-| **毫秒级状态同步** | SSE 长连接 + `StateFlow` 响应式管道，PC 端 `displayState` 变化到手机 GIF 切换 < 200ms | 桌面端小螃蟹开始打字，手机上的小螃蟹**同时**开始打字 |
-| **纯血角色隔离** | `resolveDisplayState()` + `applyConductingMapping()` 双重决策引擎，三花猫/白云/黑白猫各自有独立的状态映射逻辑 | ≥2 会话时，三花猫变指挥家，黑白猫变杂耍师 |
+| **毫秒级状态同步** | WebSocket 长连接 + `StateFlow` 响应式管道，PC 端 `displayState` 变化到手机 SVG 切换 < 200ms | 桌面端小螃蟹开始打字，手机上的小螃蟹**同时**开始打字 |
+| **纯血角色隔离** | 服务器端 `displayState` + `PetStateManager` 决策引擎，三花猫/白云/黑白猫各自有独立的状态映射 | ≥2 会话时，三花猫变指挥家，黑白猫变杂耍师 |
 | **极低功耗挂机** | `WifiLock` + `WakeLock` 双锁保活 + 30s 看门狗 + 指数退避重连（1s→30s），后台运行功耗 < 50mW | 手机放口袋一整天，小螃蟹依然在线 |
 
 ### 技术栈速览
@@ -29,10 +29,11 @@
 |------|------|------|
 | 语言 | Kotlin | 2.1.0 |
 | UI 框架 | Jetpack Compose + Material 3 | BOM 2024.12.01 |
-| 网络 | OkHttp SSE（Server-Sent Events） | 4.12.0 |
+| 网络 | WebSocket (nv-websocket-client) | 2.14 |
 | 序列化 | kotlinx.serialization | 1.7.3 |
+| 动画渲染 | WebView + SVG/APNG + CSS 动画 | — |
 | 二维码 | CameraX + ZXing | 1.4.1 / 3.5.3 |
-| GIF 加载 | Glide | 4.16.0 |
+| 加密存储 | EncryptedSharedPreferences (AES-256-GCM) | 1.1.0-alpha06 |
 | 导航 | Navigation Compose | 2.8.5 |
 | 构建 | Gradle + AGP | 8.11.1 / 8.7.3 |
 | 最低版本 | Android 8.0（API 26） | — |
@@ -53,12 +54,12 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        PC 端 Electron                           │
-│                   (SSE push on LAN:23334)                       │
+│                (WebSocket push on LAN:23334)                     │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │ SSE events: state / snapshot / badge
+                           │ WebSocket messages: state / snapshot / badge
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                    ClawdWebSocket (SSE Client)                   │
+│                   StreamingClient (WebSocket)                    │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │ StateFlow<Map<sessionId, SessionData>>   ← 会话数据流     │   │
 │  │ StateFlow<ConnectionState>               ← 连接状态流     │   │
@@ -104,7 +105,7 @@
 
 ### 数据流详解
 
-**上行（PC → 手机）**：桌面端通过 SSE 推送会话状态，`ClawdWebSocket` 解析后更新 `StateFlow<Map<String, SessionData>>`。零本地推断——所有状态在 PC 端计算完毕，手机端只做消费和视觉映射。
+**上行（PC → 手机）**：桌面端通过 WebSocket 推送会话状态，`StreamingClient` 解析后更新 `StateFlow<Map<String, SessionData>>`。零本地推断——所有状态在 PC 端计算完毕，手机端只做消费和视觉映射。
 
 **决策层（大脑）**：`PetStateManager` 订阅 `sessions` Flow，经过 6 级管道（过滤→优先级→角色映射→badge 检测→睡眠管理→idle 变体）输出单条 `StateCommand` 管道：
 
@@ -733,12 +734,12 @@ private fun resIdByName(name: String): Int? {
 ### 连接方式
 
 ```
-SSE 流:    GET  http://<host>:23334/mobile/stream?token=<token>
+WebSocket:  ws://<host>:23334/mobile/ws
 审批回传:  POST http://<host>:23334/mobile/approve
 Deep Link: clawd://<host>:<port>/<token>
 ```
 
-### SSE 消息类型（服务端 → 客户端）
+### WebSocket 消息类型（服务端 → 客户端）
 
 | type | 说明 | 数据结构 |
 |------|------|----------|
@@ -791,7 +792,13 @@ android/
 │   │   │   └── WsMessage.kt             # SSE 消息信封 + 权限/选择请求模型
 │   │   │
 │   │   ├── ws/                          # 网络层
-│   │   │   ├── ClawdWebSocket.kt        # OkHttp SSE 客户端 + 消息处理 + 重连逻辑
+│   │   │   ├── StreamingClient.kt       # 接口定义
+│   │   │   ├── AbstractStreamingClient.kt # 共享实现
+│   │   │   ├── WsClient.kt             # WebSocket 客户端实现
+│   │   │   ├── MessageParser.kt         # 消息解析器
+│   │   │   ├── MessageHandler.kt        # 消息处理器
+│   │   │   ├── ParsedMessage.kt         # 解析后的消息类型
+│   │   │   ├── ConnectionStrategy.kt    # LAN/Relay 连接策略
 │   │   │   └── ConnectionState.kt       # 连接状态枚举
 │   │   │
 │   │   ├── service/                     # 服务层
@@ -930,6 +937,48 @@ KEY_PASSWORD=xxx \
 | **Day 3** | 05-31 | CI/CD 签名构建、版本号重置（0.1.0）、keystore 修复、README 编写、About 对齐桌面端、状态机重构、sleep 序列、双管道架构、Matrix 缩放重构、全量 i18n |
 | **Day 4** | 06-01 | 单管道架构（消灭双管道竞态）、多会话自动 Juggling/Conducting 映射、随机 idle 动画变体、死代码清理（enterIdleCycle / getReadingGifResId） |
 
+## ✨ v0.10.0 新增功能
+
+### 🐾 浮窗审批气泡
+
+悬浮窗上直接审批权限请求，无需打开 App：
+
+- **提示态**：小药丸显示"审批（点击展开）"或"问题（打开App）"
+- **展开态**：工具名、摘要、左右滑动拒绝/允许、倒计时进度条
+- **FIFO 队列**：多个审批请求排队处理
+- **通知同步**：通知与浮窗审批双向同步（`approvalCompletedFlow`）
+- **suggestionIndex**：支持"始终允许此工具"等快捷选项
+
+### 🌐 远程中继（Relay）
+
+通过远程 VPS 中继连接 PC 端，**支持非局域网环境**：
+
+- `ConnectionStrategy` 策略模式：LAN 直连与 Relay 中继完全解耦
+- `SessionMerger` 合并 LAN + Relay 双连接的会话为统一视图
+- `RelaySettings` UI：配置 Relay 地址、Token、状态检查
+- Relay 客户端网络切换即时重连
+- Peer 连接状态监控（PC 在线/离线）
+
+### 🌍 应用内语言切换
+
+- 支持中/英文实时切换，无需重启 App
+- 三语言 strings.xml 完全同步（values/values-en/values-zh）
+
+### 🔒 安全改进
+
+- 签名密码从 `gradle.properties` 移除，改用环境变量注入
+- ProGuard 添加 release 构建 `Log.d`/`Log.v`/`Log.i` 移除规则
+- `network_security_config.xml` 全局 `cleartextTrafficPermitted=false`
+- `PrefsStore.loadConfig()` 整体 try-catch，防止 EncryptedSharedPreferences 损坏时崩溃
+
+### 🧪 测试提升
+
+- 新增 5 个测试文件，103 个测试
+- 总计 548 个测试全部通过
+- 覆盖：SessionMerger、ConnectionLog、TimedConsumeSet、ConnectionStrategy、MessageHandler
+
+---
+
 ### 版本历史
 
 | 版本 | versionCode | 说明 |
@@ -940,7 +989,9 @@ KEY_PASSWORD=xxx \
 | 0.1.2 | 3 | keystore 路径修复 |
 | 0.1.3 | 4 | keystore 从 rootProject 解析 |
 | **0.1.4** | **5** | 状态机重构、sleep 序列、双管道架构、Matrix 无损缩放、全量 i18n |
-| **0.1.5** | **6** | **当前版本** — 单管道架构、多会话自动 Juggling/Conducting、随机 idle 变体、死代码清理 |
+| **0.1.5** | **6** | 单管道架构、多会话自动 Juggling/Conducting、随机 idle 变体、死代码清理 |
+| **0.9.0** | **10** | SSE → WebSocket 迁移、WebView SVG 渲染、TOFU 证书固定、EncryptedSharedPreferences |
+| **0.10.0** | **32** | **当前版本** — 浮窗审批气泡、远程中继、应用内语言切换、安全加固、测试覆盖提升 |
 
 ---
 
@@ -948,7 +999,7 @@ KEY_PASSWORD=xxx \
 
 | 级别 | 项 | 说明 |
 |------|---|------|
-| **S** | ClawdWebSocket.kt | 类名误导（实际是 SSE），协议层与业务逻辑耦合，职责过重 |
+| ~~**S**~~ | ~~ClawdWebSocket.kt~~ | ✅ 已迁移到 WebSocket + 重命名为 StreamingClient |
 | **A** | 零测试覆盖 | 仅 5 个 ConnectionConfig 单元测试，无 UI/集成测试 |
 | **A** | 无 Room 数据库 | 全部走 SharedPreferences，会话数据无法持久化查询 |
 | **B** | 静态单例模式 | WebSocketService.instance 紧耦合，不利于测试和解耦 |
