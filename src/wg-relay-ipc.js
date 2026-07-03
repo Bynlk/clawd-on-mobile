@@ -221,7 +221,7 @@ function registerWgRelayIpc(options = {}) {
     // Even if the profile was deleted we still try to tear down by id/ifName.
     const ifName = profile ? ifNameFor(profile) : "clawd0";
     try {
-      const r = await bringDownFn({ ifName, deps: { spawn } });
+      const r = await bringDownFn({ ifName, privilegeEscalator, deps: { spawn } });
       if (id) {
         wgRelayRuntime.setStatus(id, { status: "idle", ifName: null, address: null, message: null });
       }

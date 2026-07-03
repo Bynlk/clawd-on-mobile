@@ -4111,14 +4111,20 @@ const _remoteSshIpc = registerRemoteSshIpc({
 // goes through `wg-relay-ipc.js`. Pure-additive; touches nothing in remote-ssh.
 const { createWgRelayRuntime } = require("./wg-relay-runtime");
 const { registerWgRelayIpc } = require("./wg-relay-ipc");
+const { createPrivilegeEscalator } = require("./wg-privilege");
 const _wgRelayRuntime = createWgRelayRuntime({
   log: (...args) => console.warn("Clawd wg-relay:", ...args),
 });
+// Single-dialog native privilege escalator for the desktop tunnel (D-UX).
+// Linux = pkexec today; macOS/Windows return a "denied" escalator until their
+// helpers land, so the UI honestly reports EX-10 instead of failing silently.
+const _wgPrivilegeEscalator = createPrivilegeEscalator({});
 const _wgRelayIpc = registerWgRelayIpc({
   ipcMain,
   settingsController: _settingsController,
   wgRelayRuntime: _wgRelayRuntime,
   BrowserWindow,
+  privilegeEscalator: _wgPrivilegeEscalator,
 });
 
 // ── Settings panel window ──
