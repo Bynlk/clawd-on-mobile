@@ -4103,6 +4103,24 @@ const _remoteSshIpc = registerRemoteSshIpc({
   isPackaged: app.isPackaged,
 });
 
+// ── WireGuard relay (Phase 3) ──
+//
+// Runtime owner of relay deploy + desktop userspace tunnel state. Profile CRUD
+// goes through settings-controller (commands "wgRelay.add" / .update / .remove
+// / .applyReadback); runtime state (Deploy / Tunnel Up / Tunnel Down / status)
+// goes through `wg-relay-ipc.js`. Pure-additive; touches nothing in remote-ssh.
+const { createWgRelayRuntime } = require("./wg-relay-runtime");
+const { registerWgRelayIpc } = require("./wg-relay-ipc");
+const _wgRelayRuntime = createWgRelayRuntime({
+  log: (...args) => console.warn("Clawd wg-relay:", ...args),
+});
+const _wgRelayIpc = registerWgRelayIpc({
+  ipcMain,
+  settingsController: _settingsController,
+  wgRelayRuntime: _wgRelayRuntime,
+  BrowserWindow,
+});
+
 // ── Settings panel window ──
 //
 // Single-instance, non-modal, system-titlebar BrowserWindow that hosts the
@@ -5021,6 +5039,12 @@ if (!gotTheLock) {
     } catch {}
     try {
       _remoteSshRuntime.cleanup();
+    } catch {}
+    try {
+      _wgRelayIpc.dispose();
+    } catch {}
+    try {
+      _wgRelayRuntime.cleanup();
     } catch {}
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
   });
