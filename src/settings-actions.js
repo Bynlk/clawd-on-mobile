@@ -95,6 +95,12 @@ const {
   repairAgentIntegration,
 } = require("./settings-actions-agents");
 const {
+  wgRelayAddProfile,
+  wgRelayUpdateProfile,
+  wgRelayRemoveProfile,
+  wgRelayApplyReadback,
+} = require("./settings-actions-wg-relay");
+const {
   ANIMATION_OVERRIDES_EXPORT_VERSION,
   ONESHOT_OVERRIDE_STATES,
   importAnimationOverrides,
@@ -1338,6 +1344,10 @@ const commandRegistry = {
   "remoteSsh.delete": remoteSshDeleteProfile,
   "remoteSsh.markDeployed": remoteSshMarkDeployed,
   "remoteSsh.markRemoteNode": remoteSshMarkRemoteNode,
+  "wgRelay.add": wgRelayAddProfile,
+  "wgRelay.update": wgRelayUpdateProfile,
+  "wgRelay.remove": wgRelayRemoveProfile,
+  "wgRelay.applyReadback": wgRelayApplyReadback,
   "telegramApproval.setToken": telegramApprovalSetToken,
   "telegramApproval.deleteTokenFile": telegramApprovalDeleteTokenFile,
   "telegramApproval.status": telegramApprovalStatus,
