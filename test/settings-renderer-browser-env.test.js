@@ -3152,7 +3152,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes('key: "hideBubbles"'));
     assert.ok(generalSource.includes("rowHideBubbles"));
     assert.ok(generalSource.includes("setAllBubblesHidden"));
-    assert.ok(generalSource.includes("{ hidden: nextRaw }"));
+    assert.ok(generalSource.includes("hidden: nextRaw"));
     assert.ok(generalSource.includes('keys.includes("hideBubbles")'));
     assert.ok(generalSource.includes("buildBubblePolicyRow()"));
     assert.ok(generalSource.includes("setBubbleCategoryEnabled"));

@@ -3335,7 +3335,6 @@
         "すべてのagentからのすべての権限リクエストが自動的に承認されます。シェルコマンドの実行やファイルの削除も含まれます。Clawdは最初に確認しません。agentの行動を完全に信頼している場合のみ有効にしてください。",
       autoApproveAllConfirmEnable: "オートパイロットを有効にする",
       autoApproveAllConfirmCancel: "キャンセル",
-      sectionBubbles: "吹き出し",
       hardwareBuddyTitle: "Hardware Buddy",
       hardwareBuddyDesc:
         "別途インストールした Clawstick runtime 経由で、ペアリング済みの BLE デスクデバイスに接続します。権限応答は明示的に有効化され、安全なリンクの場合のみオンになります。",
