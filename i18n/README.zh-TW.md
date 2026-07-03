@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd Mobile">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd Mobile">
 </p>
 
 <h1 align="center">Clawd Mobile</h1>
@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero-mobile.gif" alt="Clawd Mobile 主畫面,一隻像素風桌寵即時感知你的 AI 編碼 Agent。由左至右展示四種工作階段狀態:Thinking 思考、Working 工作、Approval 等待審批、Done 完成。">
+  <img src="../assets/hero-mobile.gif" alt="Clawd Mobile 主畫面,一隻像素風桌寵即時感知你的 AI 編碼 Agent。由左至右展示四種工作階段狀態:Thinking 思考、Working 工作、Approval 等待審批、Done 完成。">
 </p>
 
 <p align="center">

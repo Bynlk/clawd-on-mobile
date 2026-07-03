@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd">
 </p>
 <h1 align="center">Clawd 桌寵 (Desktop)</h1>
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Clawd 桌寵動畫示範：像素螃蟹會跟著 AI 程式設計助理的狀態即時切換，睡覺、思考、工具執行時打字、單一子代理時戴耳機律動、多個子代理並行時三球雜耍、權限請求出現時提醒、任務完成後慶祝。支援 Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw 等。">
+  <img src="../assets/hero.gif" alt="Clawd 桌寵動畫示範：像素螃蟹會跟著 AI 程式設計助理的狀態即時切換，睡覺、思考、工具執行時打字、單一子代理時戴耳機律動、多個子代理並行時三球雜耍、權限請求出現時提醒、任務完成後慶祝。支援 Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw 等。">
 </p>
 
 Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。發起一個長任務，起身做點別的，等螃蟹告訴你任務完成了再回來。
@@ -100,28 +100,28 @@ Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。�
 
 <table>
   <tr>
-    <td align="center"><img src="assets/gif/clawd-idle.gif" width="100"><br><sub>待機</sub></td>
-    <td align="center"><img src="assets/gif/clawd-thinking.gif" width="100"><br><sub>思考泡泡</sub></td>
-    <td align="center"><img src="assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
-    <td align="center"><img src="assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
-    <td align="center"><img src="assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>耳機律動</sub></td>
-    <td align="center"><img src="assets/gif/clawd-juggling.gif" width="100"><br><sub>三球雜耍</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-idle.gif" width="100"><br><sub>待機</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-thinking.gif" width="100"><br><sub>思考泡泡</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>耳機律動</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-juggling.gif" width="100"><br><sub>三球雜耍</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>三花待機</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>三花雜耍</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>三花指揮</sub></td>
+    <td align="center"><img src="../assets/gif/calico-idle.gif" width="80"><br><sub>三花待機</sub></td>
+    <td align="center"><img src="../assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
+    <td align="center"><img src="../assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
+    <td align="center"><img src="../assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
+    <td align="center"><img src="../assets/gif/calico-juggling.gif" width="80"><br><sub>三花雜耍</sub></td>
+    <td align="center"><img src="../assets/gif/calico-conducting.gif" width="80"><br><sub>三花指揮</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/cloudling-idle.gif" width="120"><br><sub>雲寶待機</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-thinking.gif" width="120"><br><sub>雲寶思考</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-typing.gif" width="120"><br><sub>雲寶打字</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-building.gif" width="120"><br><sub>雲寶建造</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-juggling.gif" width="120"><br><sub>雲寶雜耍</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-conducting.gif" width="120"><br><sub>雲寶指揮</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-idle.gif" width="120"><br><sub>雲寶待機</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-thinking.gif" width="120"><br><sub>雲寶思考</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-typing.gif" width="120"><br><sub>雲寶打字</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-building.gif" width="120"><br><sub>雲寶建造</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-juggling.gif" width="120"><br><sub>雲寶雜耍</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-conducting.gif" width="120"><br><sub>雲寶指揮</sub></td>
   </tr>
 </table>
 
@@ -131,7 +131,7 @@ Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。�
 
 Clawd 支援多螢幕場景：按啟動時所在螢幕做等比縮放，直立螢幕有尺寸加成防止寵物過小，也可以跨螢幕拖動。
 
-<p align="center"><sub>想看多螢幕下的實際效果？可以<a href="assets/videos/clawd-multi-monitor-demo.mp4">開啟儲存庫裡的示範影片</a>。</sub></p>
+<p align="center"><sub>想看多螢幕下的實際效果？可以<a href="../assets/videos/clawd-multi-monitor-demo.mp4">開啟儲存庫裡的示範影片</a>。</sub></p>
 
 ## 快速開始
 

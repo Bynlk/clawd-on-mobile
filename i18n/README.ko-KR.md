@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd Mobile">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd Mobile">
 </p>
 
 <h1 align="center">Clawd Mobile</h1>
@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero-mobile.gif" alt="Clawd Mobile 홈 화면. 픽셀아트 펫이 AI 코딩 에이전트에 실시간으로 반응합니다. 왼쪽부터 오른쪽으로 4가지 세션 상태 표시: 생각 중 Thinking, 작업 중 Working, 승인 대기 Approval, 완료를 축하하는 Done.">
+  <img src="../assets/hero-mobile.gif" alt="Clawd Mobile 홈 화면. 픽셀아트 펫이 AI 코딩 에이전트에 실시간으로 반응합니다. 왼쪽부터 오른쪽으로 4가지 세션 상태 표시: 생각 중 Thinking, 작업 중 Working, 승인 대기 Approval, 완료를 축하하는 Done.">
 </p>
 
 <p align="center">

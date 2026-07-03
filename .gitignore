@@ -4,6 +4,7 @@ dist/
 __pycache__/
 *.pyc
 .DS_Store
+.ebtemp/
 Thumbs.db
 
 # Claude Code local config
@@ -141,3 +142,4 @@ android/build-release.log
 Editor/script backups
 *.bak
 plaintext
+
