@@ -128,3 +128,15 @@ android/release-keystore.b64
 android/keystore-base64.txt
 android/ks_b64.tmp
 coverage/
+
+# Release signing key (distributed via GitHub Releases, not git)
+android/release.keystore
+
+# Build artifacts (distributed via GitHub Releases, not git)
+artifacts/
+.ebtmp/
+android/build-debug.log
+android/build-release.log
+Editor/script backups
+*.bak
+plaintext

@@ -27,6 +27,14 @@
   <img src="https://img.shields.io/badge/API-26%2B-brightgreen.svg" alt="API 26+">
 </p>
 
+<p align="center">
+  <img src="assets/hero-mobile.png" alt="Clawd Mobile home screen with a pixel-art pet that reacts to your AI coding agent in real time. Four session states shown left to right: Thinking with a thought bubble, Working typing at a terminal, Approval raising a claw with an alert bubble, and Done celebrating with sparkles.">
+</p>
+
+<p align="center">
+  <sub>Your pet reacts in real time — <b>Thinking</b> · <b>Working</b> · <b>Approval</b> · <b>Done</b></sub>
+</p>
+
 ---
 
 > **🙏 致敬原作者**
@@ -47,6 +55,7 @@
 - [Communication Protocol](#-communication-protocol)
 - [Development](#-development)
 - [Contributing](#-contributing)
+- [What's Next · 未来功能](#-whats-next--未来功能)
 - [Roadmap](#-roadmap)
 - [FAQ](#-faq)
 - [Contributors](#-contributors)
@@ -101,11 +110,17 @@
 
 ## 📸 Screenshots
 
-> _Screenshots coming soon. The app displays an animated pet on your phone screen that reacts to your AI agent's activity in real time._
+The pet on your phone mirrors exactly what your AI agent is doing on the desktop. Each session state has its own animation and status badge:
 
-| Floating Pet | Approval Bubble | Settings |
-|:---:|:---:|:---:|
-| _Screenshot_ | _Screenshot_ | _Screenshot_ |
+| Thinking / 思考中 | Working / 工作中 |
+|:---:|:---:|
+| <img src="assets/mobile/state-thinking.jpeg" width="260" alt="Thinking state — the pet shows a thought bubble while the agent reads the codebase"> | <img src="assets/mobile/state-working.jpeg" width="260" alt="Working state — the crab types at a terminal while edit/bash tools run"> |
+| The crab shows a thought bubble while the agent is reasoning. | The crab types at a terminal while tools are running. |
+
+| Approval / 待审批 | Done / 已完成 |
+|:---:|:---:|
+| <img src="assets/mobile/state-permission.jpeg" width="260" alt="Approval state — the crab raises a claw with an alert bubble when a permission request is pending"> | <img src="assets/mobile/state-done.jpeg" width="260" alt="Done state — the crab celebrates with sparkles when the task completes"> |
+| The crab raises a claw when a permission request needs you. | The crab celebrates when the task is complete. |
 
 ---
 
@@ -295,6 +310,26 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
+## 🔮 What's Next · 未来功能
+
+Clawd Mobile already lets you watch your agent and approve permissions over the LAN or a self-hosted relay. Two bigger capabilities are on the way — both aim at the same goal: **stay in control of your agent even when you're away from your desk.**
+
+### 1. 🌐 Hosted server relay · 服务器中继（出门在外也能审批）
+
+Today's relay is something you deploy yourself on a VPS. The next step is a **turn-key, always-on relay** so your phone stays connected to your desktop agent no matter where you are — different network, cellular data, or on the road. When your agent hits a permission request while you're out, the approval bubble reaches your phone and you can **Allow / Deny on the go**, without being on the same Wi-Fi and without any manual server setup.
+
+- Approve / deny permission requests from anywhere, over cellular
+- Zero-config connection — no self-hosted VPS required
+- End-to-end secured, building on the existing TOFU cert-pinning foundation
+
+### 2. 📬 Content push · 内容推送（1:1 同步终端显示）
+
+Beyond animated state, we want the phone to **mirror what the terminal actually shows — 1:1** — so you can read what your agent is doing, not just infer it from the pet's mood. The exact scope, delivery format, and privacy model are **still under discussion**, and this section will be filled in once the design settles.
+
+> 💡 Have thoughts on either feature? Open an [issue](https://github.com/Bynlk/clawd-on-mobile/issues) or a [discussion](https://github.com/Bynlk/clawd-on-mobile/discussions) — feedback is very welcome while these are still being shaped.
+
+---
+
 ## 🗺️ Roadmap
 
 | Priority | Item | Status |
@@ -302,12 +337,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 | ✅ | WebSocket migration (from SSE) | Done |
 | ✅ | TOFU certificate pinning | Done |
 | ✅ | Overlay approval bubble | Done |
-| ✅ | Remote relay support | Done |
+| ✅ | Remote relay support (self-hosted) | Done |
 | ✅ | In-app language switch | Done |
 | ✅ | Security hardening | Done |
 | 🔄 | Hilt dependency injection | Planned |
 | 🔄 | Repository pattern | Planned |
 | 🔄 | AbstractStreamingClient tests | Planned |
+| 🔮 | Hosted server relay (approve anywhere) | Exploring |
+| 🔮 | Content push (1:1 terminal mirror) | Under discussion |
 
 See [android/docs/ROADMAP.md](android/docs/ROADMAP.md) for the full roadmap.
 

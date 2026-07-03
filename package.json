@@ -171,7 +171,8 @@
         "owner": "Bynlk",
         "repo": "clawd-on-mobile"
       }
-    ]
+    ],
+    "compression": "store"
   },
   "devDependencies": {
     "electron": "^41.0.2",
