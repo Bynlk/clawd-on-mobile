@@ -1,7 +1,7 @@
 <p align="center">
   <img src="assets/tray-icon.png" width="128" alt="Clawd">
 </p>
-<h1 align="center">Clawd on Mobile</h1>
+<h1 align="center">Clawd on Desk</h1>
 <p align="center">
   <sub>🍴 <a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a>の Fork、原作者 <a href="https://github.com/rullerzhou-afk">@rullerzhou-afk</a> — <a href="LICENSE">AGPL-3.0</a> ライセンス</sub>
 </p>
@@ -130,9 +130,9 @@ Clawd はマルチモニター環境に適応します。起動したディス�
 
 ## クイックスタート
 
-通常利用では、**[GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest)** から最新のビルド済みインストーラーをダウンロードしてください。
+通常利用では、**[GitHub Releases](https://github.com/Bynlk/clawd-on-mobile/releases/latest)** から最新のビルド済みインストーラーをダウンロードしてください。
 
-- **Windows**: `Clawd-on-Desk-Setup-<version>-x64.exe` または `Clawd-on-Desk-Setup-<version>-arm64.exe`
+- **Windows**: `Clawd-on-Mobile-Setup-<version>-x64.exe` または `Clawd-on-Mobile-Setup-<version>-arm64.exe`
 - **macOS**: `.dmg`
 - **Linux**: `.AppImage` または `.deb`
 
@@ -142,8 +142,8 @@ Clawd はマルチモニター環境に適応します。起動したディス�
 
 ```bash
 # リポジトリを clone
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
-cd clawd-on-desk
+git clone https://github.com/Bynlk/clawd-on-mobile.git
+cd clawd-on-mobile
 
 # 依存関係をインストール
 npm install
@@ -200,7 +200,7 @@ node scripts/validate-theme.js path/to/your-theme
 
 ## コントリビュート
 
-Clawd on Desk はコミュニティ主導のプロジェクトです。バグ報告、機能案、Pull Request を歓迎します。相談したい場合は [issue](https://github.com/rullerzhou-afk/clawd-on-desk/issues) を開くか、直接 PR を送ってください。
+Clawd on Desk はコミュニティ主導のプロジェクトです。バグ報告、機能案、Pull Request を歓迎します。相談したい場合は [issue](https://github.com/Bynlk/clawd-on-mobile/issues) を開くか、直接 PR を送ってください。
 
 ### メンテナー
 
@@ -208,6 +208,7 @@ Clawd on Desk はコミュニティ主導のプロジェクトです。バグ報
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · creator</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />maintainer</sub></a></td>
+    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />core contributor · Mobile / PWA</sub></a></td>
   </tr>
 </table>
 

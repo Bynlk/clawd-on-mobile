@@ -1,230 +1,214 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
+  <img src="assets/tray-icon.png" width="128" alt="Clawd Mobile">
 </p>
-<h1 align="center">Clawd 桌寵</h1>
+
+<h1 align="center">Clawd Mobile</h1>
+<p align="center">
+  <strong><a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a> 的 Android 夥伴應用 — 一隻即時感知 AI 編碼 Agent 的賽博桌寵。</strong>
+</p>
+
 <p align="center">
   <a href="README.md">English</a>
   ·
-  <a href="README.zh-CN.md">簡體中文</a>
+  <a href="README.zh-CN.md">简体中文</a>
+  ·
+  <a href="README.ja-JP.md">日本語</a>
   ·
   <a href="README.ko-KR.md">한국어</a>
   ·
-  <a href="README.ja-JP.md">日本語</a>
-</p>
-<p align="center">
-  <a href="https://github.com/rullerzhou-afk/clawd-on-desk/releases"><img src="https://img.shields.io/github/v/release/rullerzhou-afk/clawd-on-desk" alt="Version"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
-</p>
-<p align="center">
-  <a href="https://github.com/rullerzhou-afk/clawd-on-desk/stargazers"><img src="https://img.shields.io/github/stars/rullerzhou-afk/clawd-on-desk?style=flat&logo=github&color=yellow" alt="Stars"></a>
-  <a href="https://github.com/hesreallyhim/awesome-claude-code"><img src="https://awesome.re/mentioned-badge-flat.svg" alt="Mentioned in Awesome Claude Code"></a>
+  <a href="README-desk.md">Desktop Version</a>
 </p>
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Clawd 桌寵動畫示範：像素螃蟹會跟著 AI 程式設計助理的狀態即時切換，睡覺、思考、工具執行時打字、單一子代理時戴耳機律動、多個子代理並行時三球雜耍、權限請求出現時提醒、任務完成後慶祝。支援 Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw 等。">
+  <a href="https://github.com/Bynlk/clawd-on-mobile/actions/workflows/android.yml"><img src="https://github.com/Bynlk/clawd-on-mobile/actions/workflows/android.yml/badge.svg" alt="Android Build"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/Bynlk/clawd-on-mobile/releases"><img src="https://img.shields.io/github/v/release/Bynlk/clawd-on-mobile" alt="Version"></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B-green.svg" alt="Android 8.0+">
+  <img src="https://img.shields.io/badge/API-26%2B-brightgreen.svg" alt="API 26+">
 </p>
 
-Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。發起一個長任務，起身做點別的，等螃蟹告訴你任務完成了再回來。
+<p align="center">
+  <img src="assets/hero-mobile.gif" alt="Clawd Mobile 主畫面,一隻像素風桌寵即時感知你的 AI 編碼 Agent。由左至右展示四種工作階段狀態:Thinking 思考、Working 工作、Approval 等待審批、Done 完成。">
+</p>
 
-你提問時牠思考，工具執行時牠打字，子代理在跑時牠會戴耳機律動或三球雜耍，審查權限時牠彈卡片，任務完成時牠慶祝，你離開時牠睡覺。內建三套主題：**Clawd**（像素螃蟹）、**Calico**（三花貓）和 **Cloudling**（雲寶），支援自訂主題，也支援匯入 Codex Pet 動畫套件。
+<p align="center">
+  <sub>你的桌寵即時做出反應 — <b>Thinking</b> · <b>Working</b> · <b>Approval</b> · <b>Done</b></sub>
+</p>
 
-> 支援 Windows 11、macOS 和 Ubuntu/Linux。Windows 發布版本提供獨立的 x64 和 ARM64 安裝檔。從原始碼執行需要 Node.js。支援 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Antigravity CLI (agy)**、**Cursor Agent**、**CodeBuddy**、**Kiro CLI**、**Kimi Code CLI（Kimi-CLI）**、**Qwen Code**、**opencode**、**Pi**、**OpenClaw**、**Hermes Agent** 與 **Qoder**。
+---
 
-## 功能特色
+> **🙏 致敬原作者**
+>
+> 本專案基於 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)（Clawd on Desk）桌面端開發。原專案由 [@rullerzhou-afk](https://github.com/rullerzhou-afk)（鹿鹿 / Ruller_Lulu）建立——一隻住在你桌面上的小螃蟹,即時感知 AI 編碼 Agent 的每一次呼吸。
+>
+> Android 端由社群開發者 [@Bynlk](https://github.com/Bynlk) 移植並維護,感謝所有為專案做出貢獻的[開發者們](#-貢獻者)。
 
-### 多 Agent 支援
+---
 
-- **Claude Code** — 以 command hook + HTTP 權限 hook 完整整合
-- **Codex CLI** — official hooks 為主、JSONL 日誌輪詢（`~/.codex/sessions/`）備援，會自動註冊並支援真實的權限對話框
-- **Copilot CLI** — 在 `~/.copilot/hooks/hooks.json` 設定 command hook
-- **Gemini CLI** — 在 `~/.gemini/settings.json` 設定 command hook（Clawd 啟動時自動註冊，或執行 `npm run install:gemini-hooks`）
-- **Antigravity CLI (agy)** — 在 `~/.gemini/config/hooks.json` 設定 command hook（已有 Antigravity 設定時 Clawd 啟動會自動註冊，或執行 `npm run install:antigravity-hooks`）；**僅同步狀態**：Clawd 不會為 agy 顯示任何權限對話框，所有 Allow / Deny / Always-allow 都在 agy 自己的終端機選單完成
-- **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks)，設定在 `~/.cursor/hooks.json`（Clawd 啟動時自動註冊，或執行 `npm run install:cursor-hooks`）
-- **CodeBuddy** — 以 Claude Code 相容的 command hook + HTTP 權限 hook 整合，設定寫入 `~/.codebuddy/settings.json`（Clawd 啟動時自動註冊，或執行 `node hooks/codebuddy-install.js`）
-- **Kiro CLI** — command hooks 注入到 `~/.kiro/agents/` 下的自訂 agent 設定，並自動建立 `clawd` agent；Clawd 每次啟動都會從內建的 `kiro_default` 重新同步它，盡量和預設 agent 保持一致。macOS 與 Windows 上狀態動效已驗證可用；需要時可用 `kiro-cli --agent clawd` 或在工作階段內執行 `/agent swap clawd` 啟用 hooks（Clawd 啟動時自動註冊，或執行 `npm run install:kiro-hooks`）
-- **Kimi Code CLI（Kimi-CLI）** — 在 `~/.kimi/config.toml` 的 `[[hooks]]` 條目設定 command hooks（Clawd 啟動時自動註冊，或執行 `npm run install:kimi-hooks`）
-- **Qwen Code** — 在 `~/.qwen/settings.json` 設定 command hooks（Clawd 啟動時自動註冊，或執行 `npm run install:qwen-hooks`）；支援狀態追蹤和 Qwen `PermissionRequest` 桌面權限對話框
-- **opencode** — [外掛整合](https://opencode.ai/docs/plugins)，寫入 `~/.config/opencode/opencode.json`（Clawd 啟動時自動註冊）；零延遲事件流、Allow/Always/Deny 權限對話框、`task` 工具分派平行子代理時自動播放建築動畫
-- **Pi** — 以全域擴充功能整合，寫入 `~/.pi/agent/extensions/clawd-on-desk`（Clawd 啟動時自動註冊，或執行 `npm run install:pi-extension`）；僅同步互動式 Pi 工作階段生命週期和工具活動狀態，並保留 Pi 預設 YOLO 行為
-- **OpenClaw** — 靠 `~/.openclaw/openclaw.json` 裡的外掛路徑做狀態感知（OpenClaw 設定已存在時 Clawd 啟動會自動註冊，或執行 `npm run install:openclaw-plugin`）；Phase 1 針對本機 `openclaw tui --local` 工作階段，只驅動動畫，沒接權限對話框和終端機焦點
-- **Hermes Agent** — [外掛整合](https://hermes-agent.org/)，寫入 Hermes 受管理的外掛目錄（偵測到 Hermes 後 Clawd 啟動時自動註冊，或執行 `npm run install:hermes-plugin`）；支援狀態、工作階段、SessionEnd 和終端機焦點
-- **Qoder** — 在 `~/.qoder/settings.json` 設定 command hooks（`~/.qoder/` 目錄已存在時 Clawd 啟動會自動註冊，或執行 `npm run install:qoder-hooks`）；**僅同步狀態**：Phase 1 只驅動動畫，權限請求僅以通知方式觀察，Clawd 不顯示權限對話框也不代答，所有 Allow / Deny 都在 Qoder 自己的權限流程完成
-- **多 Agent 並存** — 多個 Agent 可以同時跑，Clawd 會獨立追蹤每個工作階段
+## 📖 目錄
 
-### 動畫與互動
+- [什麼是 Clawd Mobile？](#-什麼是-clawd-mobile)
+- [功能特性](#-功能特性)
+- [螢幕截圖](#-螢幕截圖)
+- [快速開始](#-快速開始)
+- [架構設計](#-架構設計)
+- [通訊協定](#-通訊協定)
+- [開發指南](#-開發指南)
+- [參與貢獻](#-參與貢獻)
+- [未來功能](#-未來功能)
+- [路線圖](#-路線圖)
+- [常見問題](#-常見問題)
+- [貢獻者](#-貢獻者)
+- [授權條款](#-授權條款)
+- [致謝](#-致謝)
 
-- **即時狀態感知** — 由 Agent hook 和日誌輪詢自動驅動動畫
-- **12 種動畫狀態** — 待機、思考、打字、建造、戴耳機律動、多個子代理三球雜耍、報錯、開心、通知、掃地、搬運、睡覺
-- **Codex Pet 匯入** — 在 `設定…` → `主題` 內匯入 Codex Pet zip 套件，Clawd 會把 atlas 動畫轉成可管理主題
-- **眼球追蹤** — 待機狀態下 Clawd 跟著滑鼠，身體微傾，影子拉伸
-- **睡眠序列** — 60 秒沒活動 → 打哈欠 → 打盹 → 倒下 → 睡覺；移動滑鼠觸發驚醒彈起動畫
-- **點按反應** — 點兩下會戳一下，連點 4 下會東張西望
-- **任意狀態拖曳** — 隨時抓起 Clawd（Pointer Capture 防止快甩丟失），放手後回到目前動畫
-- **迷你模式** — 拖到右邊緣或右鍵「迷你模式」；Clawd 藏在螢幕邊緣，滑鼠移過去探頭招手，通知/完成有迷你動畫，拋物線跳躍過場
+---
 
-### 權限審查對話框
+## 🐾 什麼是 Clawd Mobile？
 
-- **桌面端權限審查** — Claude Code、Codex CLI、CodeBuddy 或 opencode 請求工具權限時，Clawd 會彈出浮動卡片，不用切回終端機
-- **允許 / 拒絕 / Agent 原生擴充功能** — 一鍵允許或拒絕；如果該 Agent 支援，還會顯示權限規則或 `Always` 之類的額外動作
-- **全域快速鍵** — `Ctrl+Shift+Y` 允許、`Ctrl+Shift+N` 拒絕最新的權限對話框（只在對話框可見時註冊）
-- **堆疊版面** — 多個權限請求從螢幕右下角往上堆疊
-- **自動關閉** — 如果你先在終端機回答了，對話框會自動消失
-- **依 Agent 個別關閉** — 開啟 `設定…` → `Agents`，選取對應 Agent，關掉 `顯示彈出視窗`，權限提示就會回到該 Agent 自己的終端機或 TUI 處理
+**Clawd Mobile** 是一個原生 Android 客戶端,連接到 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) 桌面端。它透過 **區域網路或遠端中繼** 即時監控你的 AI 編碼 Agent 活動,並在手機螢幕上顯示一隻會動的桌寵,即時感知 Agent 的每一個動作。
 
-### 工作階段智慧體
+| 特性 | 實作機制 | 體感 |
+|------|----------|------|
+| **毫秒級狀態同步** | WebSocket + `StateFlow` 管道,延遲 < 200ms | 小螃蟹和你的 Agent 同時開始打字 |
+| **純血角色隔離** | 伺服器端 `displayState` + `PetStateManager` 決策引擎 | 三隻角色（螃蟹/三花貓/白雲）獨立狀態映射 |
+| **極低功耗掛機** | `WifiLock` + `WakeLock` + 30s 看門狗 + 指數退避（1s→30s） | 背景功耗 < 50mW,掛機一整天 |
+| **浮窗審批** | 在懸浮氣泡上左右滑動審批權限請求 | 無需開啟 App |
+| **遠端中繼** | 透過 VPS 中繼伺服器連接 | 隨時隨地監控你的 Agent |
 
-- **多工作階段追蹤** — 所有已支援 Agent 的工作階段統一解析到最高優先順序狀態
-- **子代理感知** — 1 個子代理戴耳機律動，2 個以上三球雜耍
-- **工作階段 Dashboard + HUD** — 右鍵或系統匣 → `開啟 Dashboard` 看進行中的工作階段、最近事件、別名，並可跳到終端機；Clawd 附近的輕量 HUD 會持續顯示目前的 live session
-- **終端機焦點** — Dashboard 或 HUD 操作可跳到指定工作階段的終端機視窗；通知/注意狀態會自動聚焦相關終端機
-- **行程存活偵測** — 偵測已當掉或結束的受支援 Agent 行程，並在 10 秒內清理孤兒工作階段
-- **啟動回復** — 如果 Clawd 重新啟動時還有受支援的 Agent 在跑，牠會保持清醒等後續事件，而不是直接睡覺
+---
 
-### 手機伴侶（PWA）
+## ✨ 功能特性
 
-- **手機即時鏡像** — 在 `設定…` → `Mobile / PWA` 開啟後，用手機開啟配對連結，「Clawd Mobile」網頁應用就會即時顯示各 Agent 工作階段與狀態
-- **唯讀設計** — 區網橋接只對外廣播狀態，手機端無法操作你的電腦（遠端審批已在規劃中）
-- **僅限區域網路 + 權杖防護** — 配對需要權杖，權杖會自動輪換並附寬限期，可一鍵重新產生或重設存取
-- **可安裝** — 標準 PWA，加入主畫面即可獲得近原生體驗
-> 手機伴侶這條線——從最初原型到權杖輪換——由核心貢獻者 [@Bynlk](https://github.com/Bynlk) 一手打造並持續主導，他還維護著內建原生 Android App 的姊妹專案 [clawd-on-mobile](https://github.com/Bynlk/clawd-on-mobile)。
+### 核心體驗
+- 🐾 **動畫懸浮寵物** — SVG/APNG + CSS 動畫（呼吸、眨眼、尾巴搖擺）
+- 📱 **16 種狀態** — Working、Thinking、Idle、Sleeping、Error、Notification 等
+- 🎯 **靈性睡眠序列** — Yawning → Dozing → Collapsing → Sleeping + 隨機 idle 變體
+- 🏆 **Happy 慶祝動畫** — 任務完成時播放 1.5s 慶祝動畫
 
-### 系統
+### v0.10.0 — 最新版本
+- 🐾 **浮窗審批氣泡** — 在懸浮氣泡上左右滑動審批/拒絕權限請求
+- 🌐 **遠端中繼** — 透過 VPS 中繼伺服器連接,支援非區域網路環境
+- 🌍 **應用內語言切換** — 中/英文即時切換,無需重啟
+- 🔒 **安全加固** — 加密儲存、TOFU 憑證固定、日誌清理
+- 🧪 **548 個測試** — 全部通過,新增 103 個測試
 
-- **滑鼠穿透** — 透明區域的滑鼠事件會直接穿到下層視窗，只有角色本體可互動
-- **位置記憶** — 重新啟動後 Clawd 回到上次的位置（包括迷你模式）
-- **單一執行個體鎖** — 防止重複啟動
-- **自動啟動** — Claude Code 的 SessionStart hook 可在 Clawd 沒在跑時自動啟動它
-- **勿擾模式** — 右鍵或系統匣選單進入休眠，所有 hook 事件靜默，直到手動喚醒。勿擾期間不彈權限對話框——Codex 和 opencode 會退回原生的命令列確認，Claude Code 和 CodeBuddy 會退回各自內建的權限確認流程；Antigravity 和 Pi 都是僅同步狀態的整合
-- **提示音效** — 任務完成和權限請求時播放短音效（右鍵選單可開關；10 秒冷卻，勿擾模式自動靜音）
-- **系統匣** — 調大小（S/M/L）、勿擾、語言切換、登入時啟動、檢查更新
-- **國際化** — 支援英文、簡體中文、繁體中文、韓文和日文介面，可從右鍵選單或系統匣切換
-- **自動更新** — 檢查 GitHub release；Windows 結束時安裝 NSIS 更新檔，macOS/Linux 從原始碼跑時以 `git pull` + 重新啟動自動更新
+---
 
-## 動畫一覽
+## 📸 螢幕截圖
 
-<table>
-  <tr>
-    <td align="center"><img src="assets/gif/clawd-idle.gif" width="100"><br><sub>待機</sub></td>
-    <td align="center"><img src="assets/gif/clawd-thinking.gif" width="100"><br><sub>思考泡泡</sub></td>
-    <td align="center"><img src="assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
-    <td align="center"><img src="assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
-    <td align="center"><img src="assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>耳機律動</sub></td>
-    <td align="center"><img src="assets/gif/clawd-juggling.gif" width="100"><br><sub>三球雜耍</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>三花待機</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>三花雜耍</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>三花指揮</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/gif/cloudling-idle.gif" width="120"><br><sub>雲寶待機</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-thinking.gif" width="120"><br><sub>雲寶思考</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-typing.gif" width="120"><br><sub>雲寶打字</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-building.gif" width="120"><br><sub>雲寶建造</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-juggling.gif" width="120"><br><sub>雲寶雜耍</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-conducting.gif" width="120"><br><sub>雲寶指揮</sub></td>
-  </tr>
-</table>
+> _截圖即將加入。App 在手機螢幕上顯示一隻會動的桌寵,即時感知你的 AI Agent 活動——思考、工作、等待審批,以及任務完成時的慶祝。_
 
-完整事件對應表、迷你模式、互動彩蛋見：**[狀態對應指南（簡體中文）](docs/guides/state-mapping.zh-CN.md)**
+| 懸浮寵物 | 審批氣泡 | 設定頁面 |
+|:---:|:---:|:---:|
+| _截圖_ | _截圖_ | _截圖_ |
 
-## 多螢幕支援
+---
 
-Clawd 支援多螢幕場景：按啟動時所在螢幕做等比縮放，直立螢幕有尺寸加成防止寵物過小，也可以跨螢幕拖動。
+## ⚡ 快速開始
 
-<p align="center"><sub>想看多螢幕下的實際效果？可以<a href="assets/videos/clawd-multi-monitor-demo.mp4">開啟儲存庫裡的示範影片</a>。</sub></p>
+### 前置條件
+- Android 8.0+ (API 26) 裝置,arm64-v8a 架構
+- PC 端執行 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)
 
-## 快速開始
+### 安裝步驟
 
-一般使用者建議直接從 **[GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest)** 下載最新的預先建置安裝檔：
+1. 從 [Releases](https://github.com/Bynlk/clawd-on-mobile/releases) 下載最新 `app-release.apk`
+2. 在 Android 裝置上安裝 APK
+3. 開啟 App,掃描 PC 端顯示的 QR Code,或手動輸入連線資訊
+4. 授予請求的權限（通知、相機、懸浮窗）
+5. 你的寵物上線了！🎉
 
-- **Windows**：`Clawd-on-Desk-Setup-<version>-x64.exe` 或 `Clawd-on-Desk-Setup-<version>-arm64.exe`
-- **macOS**：`.dmg`
-- **Linux**：`.AppImage` 或 `.deb`
+### 連線方式
 
-安裝後啟動 Clawd；支援的 agent hooks 或外掛會在啟動時自動同步。
+| 方式 | 適用場景 |
+|------|---------|
+| **QR Code 掃描** | PC 和手機在同一區域網路 — 最快 |
+| **手動輸入** | 手動輸入 PC 的 IP、連接埠和 Token |
+| **遠端中繼** | 透過 VPS 中繼伺服器連接,支援非區域網路環境 |
 
-只有參與開發、測試還沒發布的程式碼或除錯整合時，才建議從原始碼跑。從原始碼安裝會下載 Electron 和打包工具，並產生比較大的 `node_modules`。
+---
 
-```bash
-# clone 儲存庫
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
-cd clawd-on-desk
+## 🏛️ 架構設計
 
-# 安裝相依套件
-npm install
+Clawd Mobile 採用**單管道架構**,所有狀態變更透過一條統一的 `StateFlow` 流轉:
 
-# 啟動 Clawd（啟動時會自動註冊 Claude Code hooks；要先手動註冊的話，可以單獨跑 `node hooks/install.js`）
-npm start
+```
+PC (WebSocket) → StreamingClient → PetStateManager → FloatingPetService
+                                          ↓
+                                    StateCommand (單管道)
+                                          ↓
+                              SvgLoader → FloatingPetView (WebView SVG)
 ```
 
-**Claude Code**、**Codex CLI**、**Copilot CLI** 會自動註冊 hooks，開箱即用。**Gemini CLI**、**Antigravity CLI (agy)**、**Cursor Agent**、**CodeBuddy**、**Kiro CLI**、**Kimi Code CLI（Kimi-CLI）**、**Qwen Code**、**opencode**、**Pi**、**OpenClaw**、**Hermes Agent**、**Qoder** 在已安裝的前提下，會在 Clawd 啟動時自動同步（OpenClaw 還需要已有設定）。也涵蓋遠端 SSH、WSL 及平台說明（macOS 與 Linux）：**[設定指南（簡體中文）](docs/guides/setup-guide.zh-CN.md)**
+**核心設計決策:**
+- **單管道** — 消除並行 SVG 載入競態
+- **模板方法模式**（`StreamingClient` → `AbstractStreamingClient` → `WsClient`）— 易於擴充傳輸協定
+- **策略模式**（`ConnectionStrategy`）— LAN/Relay 連接解耦
+- **SessionMerger** — 統一 LAN + Relay 工作階段為一個檢視
 
-關於 `Codex + WSL` 的官方現況、Clawd 目前實作的邊界、以及為什麼容易被誤解，見：**[Codex / WSL 說明（簡體中文）](docs/guides/codex-wsl-clarification.zh-CN.md)**
+詳細架構文件見 [android/README.md](android/README.md)。
 
-## 已知限制
+---
 
-有些 Agent 存在功能差異（沒有權限對話框、輪詢延遲、不能跳到終端機等）。完整列表見：**[已知限制（簡體中文）](docs/guides/known-limitations.zh-CN.md)**
+## 📡 通訊協定
 
-## 自訂主題
-
-Clawd 支援自訂主題——用你自己的角色和動畫取代預設的螃蟹。如果你已經有 Codex Pet 套件，也可以在 `設定…` → `主題` → `匯入寵物 zip` 直接匯入，Clawd 會自動把 atlas 轉成可管理主題。
-
-**快速開始：**
-
-1. 先產生一個主題骨架：
-   ```bash
-   node scripts/create-theme.js my-theme
-   # 或
-   npm run create-theme -- my-theme
-   ```
-   不傳參數也行，腳手架會自動在你的使用者主題目錄裡產生下一個可用的 `my-theme`。
-2. 編輯 `theme.json`，做出你自己的素材（SVG、GIF、APNG、WebP、PNG、JPG 或 JPEG）
-3. 重新啟動 Clawd，或開啟 `設定…` → `主題` 選你的主題
-
-**最小可用主題：** 1 個 SVG（帶眼球追蹤的閒置狀態）+ 7 個 GIF/APNG 檔案（thinking、working、error、happy、notification、sleeping、waking）。關掉眼球追蹤後所有狀態都可以用任意格式。
-
-驗證主題：
-
-```bash
-node scripts/validate-theme.js path/to/your-theme
+```
+WebSocket:  ws://<host>:23334/mobile/ws
+審批回傳:   POST http://<host>:23334/mobile/approve
+Deep Link:  clawd://<host>:<port>/<token>
 ```
 
-`設定…` → `主題` 裡的主題卡現在會顯示支援項目，例如 `游標跟隨閒置狀態`、`靜態主題`、`迷你模式`、`直接睡`、`無 reactions`，方便使用者在切換前比較主題差異。
+| 訊息類型 | 方向 | 說明 |
+|---------|------|------|
+| `ping` | 伺服端 → 客戶端 | 心跳保活 |
+| `connected` | 伺服端 → 客戶端 | 連線確認 |
+| `snapshot` | 伺服端 → 客戶端 | 全量工作階段快照 |
+| `state` | 伺服端 → 客戶端 | 單工作階段狀態更新 |
+| `permission_request` | 伺服端 → 客戶端 | 審批請求 |
+| `reaction` | 伺服端 → 客戶端 | SVG 反應動畫 |
 
-詳見 [docs/guides/guide-theme-creation.md](docs/guides/guide-theme-creation.md)（主題創作完整指南，含入門/進階/高階路徑、theme.json 欄位說明、素材規範）。
+---
 
-> 第三方 SVG 檔案會自動消毒，確保安全。
+## 🔧 開發指南
 
-### 未來規劃
+### 環境要求
+- Android Studio Hedgehog (2023.1.1)+
+- JDK 17
+- Android SDK 35
+- arm64-v8a 裝置或模擬器
 
-幾個我們想試試的方向：
+### 建置
 
-- Codex 終端機焦點（從 `codex.exe` PID 反查行程樹）
-- 主題註冊表 + 應用內下載
-- Hook 解除安裝腳本（乾淨移除應用程式）
-- 手機伴侶：在手機上遠端審批權限（推進中，由 [@Bynlk](https://github.com/Bynlk) 主導）
+```bash
+cd android
 
-## 參與貢獻
+# Debug APK
+./gradlew assembleDebug
 
-Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/rullerzhou-afk/clawd-on-desk/issues) 聊聊或直接送 PR。
+# Release APK（需要簽章設定）
+KEYSTORE_FILE=release.keystore \
+STORE_PASSWORD=xxx \
+KEY_ALIAS=clawd \
+KEY_PASSWORD=xxx \
+./gradlew assembleRelease
 
-### 維護者
+# 執行測試（548 個測試）
+./gradlew testDebugUnitTest
+```
 
-<table>
-  <tr>
-    <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · 建立者</sub></a></td>
-    <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />維護者</sub></a></td>
-    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />核心貢獻者 · Mobile / PWA</sub></a></td>
-  </tr>
-</table>
+### CI/CD
 
-### 貢獻者
+推送到 `main` 分支且修改 `android/` 目錄下的檔案時,GitHub Actions 自動觸發:lint → build → test → artifact 上傳。
 
-謝謝每一位讓 Clawd 變得更好的貢獻者：
+---
+
+## 🤝 參與貢獻
+Clawd on Mobile 是基於 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) 的二創專案,在桌面端基礎上增加了 Android 夥伴應用、浮窗審批、遠端中繼等功能。
+
+向本專案貢獻請參考 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+
+### 上游貢獻者（Clawd on Desk）
 
 <a href="https://github.com/PixelCookie-zyf"><img src="https://github.com/PixelCookie-zyf.png" width="50" style="border-radius:50%" /></a>
 <a href="https://github.com/yujiachen-y"><img src="https://github.com/yujiachen-y.png" width="50" style="border-radius:50%" /></a>
@@ -298,18 +282,133 @@ Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —�
 <a href="https://github.com/undownding"><img src="https://github.com/undownding.png" width="50" style="border-radius:50%" /></a>
 <a href="https://github.com/chrono-meta"><img src="https://github.com/chrono-meta.png" width="50" style="border-radius:50%" /></a>
 
-## 致謝
+我們歡迎貢獻！以下是參與方式:
 
-- Clawd 像素畫參考自 [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- 本專案在 [LINUX DO](https://linux.do/) 社群推廣
+1. **Fork** 本儲存庫
+2. **建立** 功能分支:`git checkout -b feat/my-feature`
+3. **提交** 清晰的 commit:`git commit -m "feat: add my feature"`
+4. **Push** 到你的 fork:`git push origin feat/my-feature`
+5. **發起** Pull Request
 
-## 授權
+### 貢獻規範
+- 遵循 Kotlin 編碼規範
+- 新功能請新增測試
+- 如有需要請更新文件
+- PR 描述中引用相關 Issue
 
-原始碼以 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）授權釋出。
+詳見 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-**美術素材和內建主題素材（包括 `assets/` 與 `themes/*/assets/`）不適用 AGPL-3.0 授權。** 所有權利歸各自著作權人所有，詳見 [assets/LICENSE](assets/LICENSE) 及下列說明。
+---
 
-- **Clawd** 角色設計屬於 [Anthropic](https://www.anthropic.com)。本專案為非官方粉絲作品，與 Anthropic 沒有官方關聯。
-- **三花貓** 素材由 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)) 創作，保留所有權利。
-- **Cloudling（雲寶）** 素材由 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)) 創作，保留所有權利。雲寶的視覺方向包含對 OpenAI Codex logo 的致敬；Codex 與 OpenAI 相關標誌仍歸 OpenAI 所有，本專案與 OpenAI 沒有官方關聯，也未獲 OpenAI 背書。
-- **第三方畫師作品**：著作權歸各自作者所有。
+## 🔮 未來功能
+
+Clawd Mobile 目前已支援透過區域網路或自建中繼即時觀察 Agent 並審批權限。接下來有兩個更大的能力正在路上——目標一致:**即使人不在電腦前,也能掌控你的 Agent。**
+
+### 1. 🌐 伺服器中繼(出門在外也能審批)
+
+現在的中繼需要你自己在 VPS 上部署。下一步是提供**開箱即用、始終在線的中繼**,讓手機無論身處何種網路(不同 Wi-Fi、行動數據、在路上)都能與桌面 Agent 保持連接。當你外出時 Agent 觸發權限請求,審批氣泡會推送到手機,你可以**隨時隨地 Allow / Deny**,無需處於同一區域網路,也無需手動架設伺服器。
+
+- 透過行動網路在任意位置批准 / 拒絕權限請求
+- 零設定連接 —— 無需自建 VPS
+- 端到端加密,基於現有的 TOFU 憑證固定機制
+
+### 2. 📬 內容推送(1:1 同步終端顯示)
+
+除了動畫狀態,我們還希望手機能**1:1 鏡像終端實際顯示的內容**,這樣你可以直接閱讀 Agent 在做什麼,而不只是從桌寵的情緒去推測。具體範圍、傳輸格式和隱私模型**仍在討論中**,設計確定後會補充本節。
+
+> 💡 對這兩個功能有想法?歡迎提 [issue](https://github.com/Bynlk/clawd-on-mobile/issues) 或 [discussion](https://github.com/Bynlk/clawd-on-mobile/discussions) —— 在它們成形階段,你的回饋非常寶貴。
+
+---
+
+## 🗺️ 路線圖
+
+| 優先級 | 項目 | 狀態 |
+|--------|------|------|
+| ✅ | WebSocket 遷移（從 SSE） | 已完成 |
+| ✅ | TOFU 憑證固定 | 已完成 |
+| ✅ | 浮窗審批氣泡 | 已完成 |
+| ✅ | 遠端中繼支援 | 已完成 |
+| ✅ | 應用內語言切換 | 已完成 |
+| ✅ | 安全加固 | 已完成 |
+| 🔄 | Hilt 相依注入 | 計劃中 |
+| 🔄 | Repository 模式 | 計劃中 |
+| 🔄 | AbstractStreamingClient 測試 | 計劃中 |
+| 🔮 | 伺服器中繼(隨時隨地審批) | 探索中 |
+| 🔮 | 內容推送(1:1 終端鏡像) | 討論中 |
+
+完整路線圖見 [android/docs/ROADMAP.md](android/docs/ROADMAP.md)。
+
+---
+
+## ❓ 常見問題
+
+**Q: 需要安裝桌面端嗎？**
+A: 是的。Clawd Mobile 是夥伴應用,需要連接到 PC 端執行的 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)。
+
+**Q: 可以在家以外的網路使用嗎？**
+A: 可以！v0.10.0 新增了遠端中繼支援。在 VPS 上部署中繼伺服器,即可從任何地方連接。
+
+**Q: 支援哪些 AI Agent？**
+A: 支援所有 Clawd on Desk 相容的 Agent — Claude Code、Codex、Cursor、Copilot、Gemini 等。
+
+**Q: 寵物不動 / 一直顯示 idle**
+A: 確保桌面端已連接且有活躍工作階段。在 App 設定頁檢查連線狀態。
+
+**Q: 如何更新？**
+A: 從 [Releases](https://github.com/Bynlk/clawd-on-mobile/releases) 下載最新 APK,覆蓋安裝即可,資料會保留。
+
+---
+
+## 👥 貢獻者
+
+### Android 移植
+- [@Bynlk](https://github.com/Bynlk) — Android 移植開發者 & 維護者
+
+### 桌面端貢獻者
+以下開發者為 Clawd 生態（桌面端 + 移動端）做出了貢獻:
+
+| 貢獻者 | 貢獻內容 |
+|--------|---------|
+| [@rullerzhou-afk](https://github.com/rullerzhou-afk) (鹿鹿) | Clawd on Desk 原作者 |
+| [@Ruller_Lulu](https://github.com/Ruller_Lulu) | 核心開發 |
+| [@Yoimiya](https://github.com/Yoimiya) | 重大貢獻 |
+| [@Lyu Bingrong](https://github.com/LyuBingrong) | 功能與修復 |
+| [@hwasowl](https://github.com/hwasowl) | 功能與修復 |
+| [@nmsn](https://github.com/nmsn) | 功能與修復 |
+| [@zxypro](https://github.com/zxypro) | Telegram 審批狀態 |
+| [@sLingli](https://github.com/sLingli) | Reasonix CLI 整合 |
+| [@cod3hulk](https://github.com/cod3hulk) | tmux 焦點支援 |
+| [@lxgxhsy](https://github.com/lxgxhsy) | Windows 焦點快取 |
+| [@rebootcrab-blip](https://github.com/rebootcrab-blip) | Agent asar 打包修復 |
+| [@ustin-star](https://github.com/ustin-star) | CodeWhale 配接器 |
+
+> 🙏 **感謝所有為 Clawd 專案做出貢獻的開發者！** 無論是程式碼、文件、Bug 回報還是功能建議,每一份貢獻都讓這個專案變得更好。
+>
+> 如果你曾做過貢獻但名字不在列表中,請發 Issue 或 PR 新增自己。
+
+---
+
+## 📄 授權條款
+
+- **程式碼**: [AGPL-3.0](LICENSE)
+- **美術素材**: 版權保留（All Rights Reserved）
+
+**Clawd** 角色是 [Anthropic](https://www.anthropic.com) 的財產。這是一個非官方的粉絲專案,與 Anthropic 無關,也未獲得 Anthropic 的認可。
+
+---
+
+## 🙏 致謝
+
+- **[rullerzhou-afk](https://github.com/rullerzhou-afk)**（鹿鹿 / Ruller_Lulu）— [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) 的創作者,感謝你建立了這個精彩的專案並將其開源。
+
+- **[Anthropic](https://www.anthropic.com)** — 創造了啟發這個專案的 Claude。
+
+- **所有[貢獻者](#-貢獻者)** — 感謝你們的時間、程式碼和熱情。
+
+- **開源社群** — 感謝讓這一切成為可能的工具和函式庫:Kotlin、Jetpack Compose、OkHttp、kotlinx.serialization、CameraX、ZXing 等。
+
+---
+
+<p align="center">
+  <sub>⭐ 如果你喜歡這個專案,請在 <a href="https://github.com/Bynlk/clawd-on-mobile">GitHub</a> 上給它一個 Star！</sub>
+</p>

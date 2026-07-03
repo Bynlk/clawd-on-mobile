@@ -1,7 +1,7 @@
 <p align="center">
   <img src="assets/tray-icon.png" width="128" alt="Clawd">
 </p>
-<h1 align="center">Clawd 桌寵 (Mobile)</h1>
+<h1 align="center">Clawd 桌寵 (Desktop)</h1>
 <p align="center">
   <sub>🍴 基於 <a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a> 的 Fork，原作者 <a href="https://github.com/rullerzhou-afk">@rullerzhou-afk</a> — 許可證 <a href="LICENSE">AGPL-3.0</a></sub>
 </p>
@@ -135,9 +135,9 @@ Clawd 支援多螢幕場景：按啟動時所在螢幕做等比縮放，直立�
 
 ## 快速開始
 
-一般使用者建議直接從 **[GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest)** 下載最新的預先建置安裝檔：
+一般使用者建議直接從 **[GitHub Releases](https://github.com/Bynlk/clawd-on-mobile/releases/latest)** 下載最新的預先建置安裝檔：
 
-- **Windows**：`Clawd-on-Desk-Setup-<version>-x64.exe` 或 `Clawd-on-Desk-Setup-<version>-arm64.exe`
+- **Windows**：`Clawd-on-Mobile-Setup-<version>-x64.exe` 或 `Clawd-on-Mobile-Setup-<version>-arm64.exe`
 - **macOS**：`.dmg`
 - **Linux**：`.AppImage` 或 `.deb`
 
@@ -147,8 +147,8 @@ Clawd 支援多螢幕場景：按啟動時所在螢幕做等比縮放，直立�
 
 ```bash
 # clone 儲存庫
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
-cd clawd-on-desk
+git clone https://github.com/Bynlk/clawd-on-mobile.git
+cd clawd-on-mobile
 
 # 安裝相依套件
 npm install
@@ -205,7 +205,7 @@ node scripts/validate-theme.js path/to/your-theme
 
 ## 參與貢獻
 
-Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/rullerzhou-afk/clawd-on-desk/issues) 聊聊或直接送 PR。
+Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/Bynlk/clawd-on-mobile/issues) 聊聊或直接送 PR。
 
 ### 維護者
 
@@ -213,6 +213,7 @@ Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —�
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · 建立者</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />維護者</sub></a></td>
+    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />核心貢獻者 · 行動端 / PWA</sub></a></td>
   </tr>
 </table>
 

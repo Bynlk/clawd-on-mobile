@@ -1,7 +1,7 @@
 <p align="center">
   <img src="assets/tray-icon.png" width="128" alt="Clawd">
 </p>
-<h1 align="center">Clawd on Mobile</h1>
+<h1 align="center">Clawd on Desk</h1>
 <p align="center">
   <sub>🍴 Fork of <a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a> by <a href="https://github.com/rullerzhou-afk">@rullerzhou-afk</a> — Licensed under <a href="LICENSE">AGPL-3.0</a></sub>
 </p>
@@ -230,6 +230,7 @@ This is a fork of [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-des
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · creator</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />maintainer</sub></a></td>
+    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />core contributor · Mobile / PWA</sub></a></td>
   </tr>
 </table>
 
