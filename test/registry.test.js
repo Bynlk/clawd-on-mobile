@@ -42,7 +42,7 @@ describe("Agent Registry", () => {
     assert.strictEqual(registry.getAgent("openclaw").name, "OpenClaw");
     assert.strictEqual(registry.getAgent("hermes").name, "Hermes Agent");
     assert.strictEqual(registry.getAgent("qoder").name, "Qoder");
-    assert.strictEqual(registry.getAgent("reasonix").name, "Reasonix CLI");
+    assert.strictEqual(registry.getAgent("reasonix").name, "Reasonix");
     assert.strictEqual(registry.getAgent("nonexistent"), undefined);
   });
 

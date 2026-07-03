@@ -194,6 +194,10 @@ function createHarness(overrides = {}) {
     getQuickCommandPresets: overrides.getQuickCommandPresets,
     sendQuickCommand: overrides.sendQuickCommand,
     checkForUpdates: (manual) => calls.push(["checkForUpdates", manual]),
+    showTutorial: overrides.showTutorial || (() => {
+      calls.push(["showTutorial"]);
+      return { status: "ok" };
+    }),
     aboutHeroSvgPath: overrides.aboutHeroSvgPath || path.join(__dirname, "missing-about-hero.svg"),
     getLanWsServer: overrides.getLanWsServer || (() => null),
     getMobileToken: overrides.getMobileToken || (() => null),
@@ -212,6 +216,7 @@ test("settings IPC registers owned channels and leaves animation override channe
   assert.ok(ipcMain.handlers.has("settings:test-hardware-buddy-approval"));
   assert.ok(ipcMain.handlers.has("settings:get-quick-command-presets"));
   assert.ok(ipcMain.handlers.has("settings:send-quick-command"));
+  assert.ok(ipcMain.handlers.has("settings:show-tutorial"));
   assert.ok(ipcMain.handlers.has("settings:open-user-themes-dir"));
   assert.ok(ipcMain.handlers.has("settings:import-user-theme-zip"));
   assert.ok(ipcMain.handlers.has("settings:refresh-codex-pets"));
@@ -230,6 +235,16 @@ test("settings IPC registers owned channels and leaves animation override channe
 
   assert.strictEqual(ipcMain.handlers.size, 0);
   assert.strictEqual(ipcMain.listeners.size, 0);
+});
+
+test("settings IPC opens the tutorial from Settings", async () => {
+  const { ipcMain, runtime, calls } = createHarness();
+
+  const result = await ipcMain.invoke("settings:show-tutorial");
+
+  assert.deepStrictEqual(result, { status: "ok" });
+  assert.deepStrictEqual(calls, [["showTutorial"]]);
+  runtime.dispose();
 });
 
 test("mobile connection info reports starting until the LAN bridge has a port", async () => {

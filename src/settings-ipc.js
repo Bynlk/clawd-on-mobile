@@ -2,11 +2,20 @@
 
 const defaultFs = require("fs");
 const defaultPath = require("path");
-const { detectAgentInstallations: defaultDetectAgentInstallations } = require("./agent-installation-detector");
+const {
+  detectAgentInstallations: defaultDetectAgentInstallations,
+} = require("./agent-installation-detector");
 const settingsThemeImporter = require("./settings-theme-importer");
 const { registerMobileSettingsIpc } = require("./mobile-settings-ipc");
 
-const SOUND_OVERRIDE_ASSET_EXTS = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"]);
+const SOUND_OVERRIDE_ASSET_EXTS = new Set([
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".m4a",
+  ".aac",
+  ".flac",
+]);
 const SOUND_OVERRIDE_DIALOG_STRINGS = {
   en: { title: "Choose a sound file", filterName: "Audio" },
   zh: { title: "选择音效文件", filterName: "音频" },
@@ -20,7 +29,8 @@ const REMOVE_THEME_DIALOG_STRINGS = {
     delete: "Delete",
     cancel: "Cancel",
     message: (name) => `Delete theme "${name}"?`,
-    detail: "This cannot be undone. All files for this theme will be removed from disk.",
+    detail:
+      "This cannot be undone. All files for this theme will be removed from disk.",
   },
   zh: {
     delete: "删除",
@@ -38,13 +48,15 @@ const REMOVE_THEME_DIALOG_STRINGS = {
     delete: "삭제",
     cancel: "취소",
     message: (name) => `테마 "${name}"을(를) 삭제할까요?`,
-    detail: "이 작업은 되돌릴 수 없습니다. 이 테마의 모든 파일이 디스크에서 제거됩니다.",
+    detail:
+      "이 작업은 되돌릴 수 없습니다. 이 테마의 모든 파일이 디스크에서 제거됩니다.",
   },
   ja: {
     delete: "削除",
     cancel: "キャンセル",
     message: (name) => `テーマ "${name}" を削除しますか？`,
-    detail: "この操作は元に戻せません。このテーマのすべてのファイルがディスクから削除されます。",
+    detail:
+      "この操作は元に戻せません。このテーマのすべてのファイルがディスクから削除されます。",
   },
 };
 
@@ -59,24 +71,47 @@ function isPlainObject(value) {
 
 function getSettingsDialogParent(event, { BrowserWindow, getSettingsWindow }) {
   const sender = event && event.sender;
-  const fromSender = sender && BrowserWindow && typeof BrowserWindow.fromWebContents === "function"
-    ? BrowserWindow.fromWebContents(sender)
-    : null;
-  return fromSender || (typeof getSettingsWindow === "function" ? getSettingsWindow() : null) || null;
+  const fromSender =
+    sender &&
+    BrowserWindow &&
+    typeof BrowserWindow.fromWebContents === "function"
+      ? BrowserWindow.fromWebContents(sender)
+      : null;
+  return (
+    fromSender ||
+    (typeof getSettingsWindow === "function" ? getSettingsWindow() : null) ||
+    null
+  );
 }
 
-function cleanupSiblingSoundOverrides(fs, path, overridesDir, soundName, keepExt) {
+function cleanupSiblingSoundOverrides(
+  fs,
+  path,
+  overridesDir,
+  soundName,
+  keepExt,
+) {
   let entries;
-  try { entries = fs.readdirSync(overridesDir); }
-  catch { return; }
+  try {
+    entries = fs.readdirSync(overridesDir);
+  } catch {
+    return;
+  }
   for (const entry of entries) {
     if (path.parse(entry).name !== soundName) continue;
     if (path.extname(entry).toLowerCase() === keepExt) continue;
-    try { fs.unlinkSync(path.join(overridesDir, entry)); } catch {}
+    try {
+      fs.unlinkSync(path.join(overridesDir, entry));
+    } catch {}
   }
 }
 
-function rememberRuntimeSoundOverrideFile({ getActiveTheme }, themeId, soundName, absPath) {
+function rememberRuntimeSoundOverrideFile(
+  { getActiveTheme },
+  themeId,
+  soundName,
+  absPath,
+) {
   const activeTheme = getActiveTheme();
   if (!activeTheme || activeTheme._id !== themeId) return;
   if (typeof soundName !== "string" || !soundName) return;
@@ -99,13 +134,19 @@ function mapAgentMetadata(agent) {
 
 function registerSettingsIpc(options = {}) {
   const ipcMain = requiredDependency(options.ipcMain, "ipcMain");
-  const settingsController = requiredDependency(options.settingsController, "settingsController");
+  const settingsController = requiredDependency(
+    options.settingsController,
+    "settingsController",
+  );
   const themeLoader = requiredDependency(options.themeLoader, "themeLoader");
   const codexPetMain = requiredDependency(options.codexPetMain, "codexPetMain");
   const dialog = requiredDependency(options.dialog, "dialog");
   const shell = requiredDependency(options.shell, "shell");
   const app = requiredDependency(options.app, "app");
-  const BrowserWindow = requiredDependency(options.BrowserWindow, "BrowserWindow");
+  const BrowserWindow = requiredDependency(
+    options.BrowserWindow,
+    "BrowserWindow",
+  );
   const fs = options.fs || defaultFs;
   const path = options.path || defaultPath;
   const getSettingsWindow = options.getSettingsWindow || (() => null);
@@ -113,46 +154,58 @@ function registerSettingsIpc(options = {}) {
   const getLang = options.getLang || (() => "en");
   const settingsSizePreviewSession = requiredDependency(
     options.settingsSizePreviewSession,
-    "settingsSizePreviewSession"
+    "settingsSizePreviewSession",
   );
   const isValidSizePreviewKey = requiredDependency(
     options.isValidSizePreviewKey,
-    "isValidSizePreviewKey"
+    "isValidSizePreviewKey",
   );
   const sendToRenderer = options.sendToRenderer || (() => {});
   const getDoNotDisturb = options.getDoNotDisturb || (() => false);
   const getSoundMuted = options.getSoundMuted || (() => false);
   const getSoundVolume = options.getSoundVolume || (() => 1);
-  const previewTextScale = options.previewTextScale
-    || (() => ({ status: "error", message: "text scale preview unavailable" }));
-  const endTextScalePreview = options.endTextScalePreview
-    || (() => ({ status: "error", message: "text scale preview unavailable" }));
-  const getTextScaleContext = options.getTextScaleContext
-    || (() => ({ percent: 100 }));
+  const previewTextScale =
+    options.previewTextScale ||
+    (() => ({ status: "error", message: "text scale preview unavailable" }));
+  const endTextScalePreview =
+    options.endTextScalePreview ||
+    (() => ({ status: "error", message: "text scale preview unavailable" }));
+  const getTextScaleContext =
+    options.getTextScaleContext || (() => ({ percent: 100 }));
   const getAllAgents = requiredDependency(options.getAllAgents, "getAllAgents");
-  const detectAgentInstallations = options.detectAgentInstallations || defaultDetectAgentInstallations;
+  const detectAgentInstallations =
+    options.detectAgentInstallations || defaultDetectAgentInstallations;
   const checkForUpdates = options.checkForUpdates || (() => {});
   const getHardwareBuddyStatus = options.getHardwareBuddyStatus || (() => null);
-  const testHardwareBuddyApproval = options.testHardwareBuddyApproval || (async () => ({
-    status: "error",
-    message: "Hardware Buddy test approval is unavailable",
-  }));
-  const getQuickCommandPresets = options.getQuickCommandPresets || (() => ({
-    enabled: false,
-    presets: [],
-  }));
-  const sendQuickCommand = options.sendQuickCommand || (() => ({
-    status: "error",
-    code: "quick_commands_unavailable",
-    message: "Quick Commands are unavailable",
-  }));
-  const getMobileWS = options.getMobileWS || (() => null);
-  const getMobileToken = options.getMobileToken || (() => null);
-  const getHookServerPort = options.getHookServerPort || (() => null);
-  const QRCode = options.QRCode || null;
+  const testHardwareBuddyApproval =
+    options.testHardwareBuddyApproval ||
+    (async () => ({
+      status: "error",
+      message: "Hardware Buddy test approval is unavailable",
+    }));
+  const getQuickCommandPresets =
+    options.getQuickCommandPresets ||
+    (() => ({
+      enabled: false,
+      presets: [],
+    }));
+  const sendQuickCommand =
+    options.sendQuickCommand ||
+    (() => ({
+      status: "error",
+      code: "quick_commands_unavailable",
+      message: "Quick Commands are unavailable",
+    }));
+  const showTutorial =
+    options.showTutorial ||
+    (() => ({
+      status: "error",
+      message: "Tutorial is unavailable",
+    }));
   const now = options.now || (() => Date.now());
-  const aboutHeroSvgPath = options.aboutHeroSvgPath
-    || path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg");
+  const aboutHeroSvgPath =
+    options.aboutHeroSvgPath ||
+    path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg");
   const disposers = [];
 
   function handle(channel, listener) {
@@ -161,7 +214,10 @@ function registerSettingsIpc(options = {}) {
   }
 
   function sanitizeQuickCommandPayload(payload) {
-    const object = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+    const object =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? payload
+        : {};
     return {
       id: object.id,
       clientRequestId: object.clientRequestId,
@@ -175,28 +231,46 @@ function registerSettingsIpc(options = {}) {
   handle("settings:get-snapshot", () => settingsController.getSnapshot());
   handle("settings:update", (_event, payload) => {
     if (!payload || typeof payload !== "object") {
-      return { status: "error", message: "settings:update payload must be { key, value }" };
+      return {
+        status: "error",
+        message: "settings:update payload must be { key, value }",
+      };
     }
     if (payload.key === "tgMigration") {
-      return { status: "error", message: "tgMigration is internal; use telegramMigration.dispatch" };
+      return {
+        status: "error",
+        message: "tgMigration is internal; use telegramMigration.dispatch",
+      };
     }
     // DANGER "auto-pilot": never let a plain settings:update flip this on. It
     // must go through the setAutoApproveAll command, which demands confirmed:true.
     // This makes the confirmation dialog a real boundary instead of UI-only.
     if (payload.key === "autoApproveAllPermissions") {
-      return { status: "error", message: "autoApproveAllPermissions is gated; use the setAutoApproveAll command" };
+      return {
+        status: "error",
+        message:
+          "autoApproveAllPermissions is gated; use the setAutoApproveAll command",
+      };
     }
     return settingsController.applyUpdate(payload.key, payload.value);
   });
-  handle("settings:begin-size-preview", () => settingsSizePreviewSession.begin());
+  handle("settings:begin-size-preview", () =>
+    settingsSizePreviewSession.begin(),
+  );
   handle("settings:preview-size", (_event, value) => {
     if (!isValidSizePreviewKey(value)) {
       return { status: "error", message: `invalid preview size "${value}"` };
     }
-    return settingsSizePreviewSession.preview(value).then(() => ({ status: "ok" }));
+    return settingsSizePreviewSession
+      .preview(value)
+      .then(() => ({ status: "ok" }));
   });
   handle("settings:end-size-preview", (_event, value) => {
-    if (value !== null && value !== undefined && !isValidSizePreviewKey(value)) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      !isValidSizePreviewKey(value)
+    ) {
       return { status: "error", message: `invalid preview size "${value}"` };
     }
     return settingsSizePreviewSession.end(value || null);
@@ -217,39 +291,62 @@ function registerSettingsIpc(options = {}) {
   // window currently sits on.
   handle("settings:get-text-scale-context", () => getTextScaleContext());
   handle("settings:get-preview-sound-url", () => {
-    try { return themeLoader.getPreviewSoundUrl(); }
-    catch { return null; }
+    try {
+      return themeLoader.getPreviewSoundUrl();
+    } catch {
+      return null;
+    }
   });
   handle("settings:command", async (_event, payload) => {
     if (!payload || typeof payload !== "object") {
-      return { status: "error", message: "settings:command payload must be { action, payload }" };
+      return {
+        status: "error",
+        message: "settings:command payload must be { action, payload }",
+      };
     }
     return settingsController.applyCommand(payload.action, payload.payload);
   });
 
   handle("settings:pick-sound-file", async (event, payload) => {
     if (!payload || typeof payload !== "object") {
-      return { status: "error", message: "pickSoundFile payload must be an object" };
+      return {
+        status: "error",
+        message: "pickSoundFile payload must be an object",
+      };
     }
     const { soundName } = payload;
     if (typeof soundName !== "string" || !soundName) {
-      return { status: "error", message: "pickSoundFile.soundName must be a non-empty string" };
+      return {
+        status: "error",
+        message: "pickSoundFile.soundName must be a non-empty string",
+      };
     }
     if (!/^[a-zA-Z0-9_-]+$/.test(soundName)) {
-      return { status: "error", message: `pickSoundFile.soundName "${soundName}" contains invalid characters` };
+      return {
+        status: "error",
+        message: `pickSoundFile.soundName "${soundName}" contains invalid characters`,
+      };
     }
 
     const activeTheme = getActiveTheme();
     if (!activeTheme) return { status: "error", message: "no active theme" };
     const themeId = activeTheme._id;
     if (!isPlainObject(activeTheme.sounds) || !activeTheme.sounds[soundName]) {
-      return { status: "error", message: `sound "${soundName}" not declared by theme "${themeId}"` };
+      return {
+        status: "error",
+        message: `sound "${soundName}" not declared by theme "${themeId}"`,
+      };
     }
     const overridesDir = themeLoader.getSoundOverridesDir(themeId);
-    if (!overridesDir) return { status: "error", message: "sound-overrides directory unavailable" };
+    if (!overridesDir)
+      return {
+        status: "error",
+        message: "sound-overrides directory unavailable",
+      };
 
     const lang = getLang();
-    const strings = SOUND_OVERRIDE_DIALOG_STRINGS[lang] || SOUND_OVERRIDE_DIALOG_STRINGS.en;
+    const strings =
+      SOUND_OVERRIDE_DIALOG_STRINGS[lang] || SOUND_OVERRIDE_DIALOG_STRINGS.en;
     const extList = [...SOUND_OVERRIDE_ASSET_EXTS].map((ext) => ext.slice(1));
     let result;
     try {
@@ -259,7 +356,10 @@ function registerSettingsIpc(options = {}) {
         properties: ["openFile"],
       });
     } catch (err) {
-      return { status: "error", message: `pick dialog failed: ${err && err.message}` };
+      return {
+        status: "error",
+        message: `pick dialog failed: ${err && err.message}`,
+      };
     }
     if (result.canceled || !result.filePaths || !result.filePaths[0]) {
       return { status: "cancel" };
@@ -268,11 +368,20 @@ function registerSettingsIpc(options = {}) {
     const sourcePath = result.filePaths[0];
     const ext = path.extname(sourcePath).toLowerCase();
     if (!SOUND_OVERRIDE_ASSET_EXTS.has(ext)) {
-      return { status: "error", message: `unsupported audio extension: ${ext || "(none)"}` };
+      return {
+        status: "error",
+        message: `unsupported audio extension: ${ext || "(none)"}`,
+      };
     }
 
-    try { fs.mkdirSync(overridesDir, { recursive: true }); }
-    catch (err) { return { status: "error", message: `mkdir failed: ${err && err.message}` }; }
+    try {
+      fs.mkdirSync(overridesDir, { recursive: true });
+    } catch (err) {
+      return {
+        status: "error",
+        message: `mkdir failed: ${err && err.message}`,
+      };
+    }
 
     const destFilename = `${soundName}${ext}`;
     const destPath = path.join(overridesDir, destFilename);
@@ -283,16 +392,26 @@ function registerSettingsIpc(options = {}) {
     }
     cleanupSiblingSoundOverrides(fs, path, overridesDir, soundName, ext);
 
-    const cmdResult = await settingsController.applyCommand("setSoundOverride", {
+    const cmdResult = await settingsController.applyCommand(
+      "setSoundOverride",
+      {
+        themeId,
+        soundName,
+        file: destFilename,
+        originalName: path.basename(sourcePath),
+      },
+    );
+    if (!cmdResult || cmdResult.status !== "ok") {
+      return (
+        cmdResult || { status: "error", message: "setSoundOverride failed" }
+      );
+    }
+    rememberRuntimeSoundOverrideFile(
+      { getActiveTheme },
       themeId,
       soundName,
-      file: destFilename,
-      originalName: path.basename(sourcePath),
-    });
-    if (!cmdResult || cmdResult.status !== "ok") {
-      return cmdResult || { status: "error", message: "setSoundOverride failed" };
-    }
-    rememberRuntimeSoundOverrideFile({ getActiveTheme }, themeId, soundName, destPath);
+      destPath,
+    );
     const newUrl = themeLoader.getSoundUrl(soundName);
     if (newUrl) {
       sendToRenderer("invalidate-sound-cache", newUrl);
@@ -303,11 +422,17 @@ function registerSettingsIpc(options = {}) {
 
   handle("settings:preview-sound", (_event, payload) => {
     if (!payload || typeof payload !== "object") {
-      return { status: "error", message: "previewSound payload must be an object" };
+      return {
+        status: "error",
+        message: "previewSound payload must be an object",
+      };
     }
     const { soundName } = payload;
     if (typeof soundName !== "string" || !soundName) {
-      return { status: "error", message: "previewSound.soundName must be a non-empty string" };
+      return {
+        status: "error",
+        message: "previewSound.soundName must be a non-empty string",
+      };
     }
     if (getDoNotDisturb()) return { status: "skipped", reason: "dnd" };
     if (getSoundMuted()) return { status: "skipped", reason: "muted" };
@@ -322,8 +447,14 @@ function registerSettingsIpc(options = {}) {
     const activeTheme = getActiveTheme();
     if (!activeTheme) return { status: "error", message: "no active theme" };
     const dir = themeLoader.getSoundOverridesDir(activeTheme._id);
-    if (!dir) return { status: "error", message: "sound-overrides directory unavailable" };
-    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    if (!dir)
+      return {
+        status: "error",
+        message: "sound-overrides directory unavailable",
+      };
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch {}
     const openResult = await shell.openPath(dir);
     if (openResult) return { status: "error", message: openResult };
     return { status: "ok", path: dir };
@@ -337,7 +468,7 @@ function registerSettingsIpc(options = {}) {
         codexPetMain.decorateThemeMetadata({
           ...theme,
           active: theme.id === activeId,
-        })
+        }),
       );
     } catch (err) {
       console.warn("Clawd: settings:list-themes failed:", err && err.message);
@@ -346,10 +477,12 @@ function registerSettingsIpc(options = {}) {
   });
 
   handle("settings:open-user-themes-dir", async () => {
-    const dir = typeof themeLoader.ensureUserThemesDir === "function"
-      ? themeLoader.ensureUserThemesDir()
-      : null;
-    if (!dir) return { status: "error", message: "user themes directory unavailable" };
+    const dir =
+      typeof themeLoader.ensureUserThemesDir === "function"
+        ? themeLoader.ensureUserThemesDir()
+        : null;
+    if (!dir)
+      return { status: "error", message: "user themes directory unavailable" };
     const openResult = await shell.openPath(dir);
     if (openResult) return { status: "error", message: openResult };
     return { status: "ok", path: dir };
@@ -363,16 +496,25 @@ function registerSettingsIpc(options = {}) {
         filters: [{ name: "Clawd theme zip", extensions: ["zip"] }],
       });
     } catch (err) {
-      return { status: "error", message: `theme zip picker failed: ${err && err.message}` };
+      return {
+        status: "error",
+        message: `theme zip picker failed: ${err && err.message}`,
+      };
     }
-    if (!result || result.canceled || !result.filePaths || !result.filePaths[0]) {
+    if (
+      !result ||
+      result.canceled ||
+      !result.filePaths ||
+      !result.filePaths[0]
+    ) {
       return { status: "cancel" };
     }
 
     try {
-      const userThemesDir = typeof themeLoader.ensureUserThemesDir === "function"
-        ? themeLoader.ensureUserThemesDir()
-        : null;
+      const userThemesDir =
+        typeof themeLoader.ensureUserThemesDir === "function"
+          ? themeLoader.ensureUserThemesDir()
+          : null;
       return settingsThemeImporter.importUserThemeZip(result.filePaths[0], {
         fs,
         path,
@@ -383,17 +525,24 @@ function registerSettingsIpc(options = {}) {
     }
   });
 
-  handle("settings:refresh-codex-pets", () => codexPetMain.refreshFromSettings());
+  handle("settings:refresh-codex-pets", () =>
+    codexPetMain.refreshFromSettings(),
+  );
   handle("settings:open-codex-pets-dir", () => codexPetMain.openCodexPetsDir());
-  handle("settings:import-codex-pet-zip", (event) => codexPetMain.importCodexPetZip(event));
-  handle("settings:remove-codex-pet", (_event, themeId) => codexPetMain.removeCodexPet(themeId));
+  handle("settings:import-codex-pet-zip", (event) =>
+    codexPetMain.importCodexPetZip(event),
+  );
+  handle("settings:remove-codex-pet", (_event, themeId) =>
+    codexPetMain.removeCodexPet(themeId),
+  );
 
   handle("settings:confirm-remove-theme", async (event, themeId) => {
     if (typeof themeId !== "string" || !themeId) return { confirmed: false };
     const meta = themeLoader.getThemeMetadata(themeId);
     const displayName = (meta && meta.name) || themeId;
     const lang = getLang();
-    const strings = REMOVE_THEME_DIALOG_STRINGS[lang] || REMOVE_THEME_DIALOG_STRINGS.en;
+    const strings =
+      REMOVE_THEME_DIALOG_STRINGS[lang] || REMOVE_THEME_DIALOG_STRINGS.en;
     try {
       const { response } = await dialog.showMessageBox(getDialogParent(event), {
         type: "warning",
@@ -406,7 +555,10 @@ function registerSettingsIpc(options = {}) {
       });
       return { confirmed: response === 0 };
     } catch (err) {
-      console.warn("Clawd: confirm-remove-theme dialog failed:", err && err.message);
+      console.warn(
+        "Clawd: confirm-remove-theme dialog failed:",
+        err && err.message,
+      );
       return { confirmed: false };
     }
   });
@@ -424,7 +576,10 @@ function registerSettingsIpc(options = {}) {
     try {
       return detectAgentInstallations({ fs, path, now });
     } catch (err) {
-      console.warn("Clawd: settings:detect-agent-installations failed:", err && err.message);
+      console.warn(
+        "Clawd: settings:detect-agent-installations failed:",
+        err && err.message,
+      );
       return {
         checkedAt: now(),
         agents: [],
@@ -444,14 +599,17 @@ function registerSettingsIpc(options = {}) {
     let pendingUpdateVersion = "";
     let autoUpdateCheck = true;
     try {
-      pendingUpdateVersion = String(settingsController.get("pendingUpdateVersion") || "");
+      pendingUpdateVersion = String(
+        settingsController.get("pendingUpdateVersion") || "",
+      );
       autoUpdateCheck = settingsController.get("autoUpdateCheck") !== false;
     } catch {}
     return {
       version: app.getVersion(),
       repoUrl: "https://github.com/Bynlk/clawd-on-mobile",
       license: "AGPL-3.0",
-      copyright: "\u00a9 2026 Bynlk (Fork) / \u00a9 2026 Ruller_Lulu (Original)",
+      copyright:
+        "\u00a9 2026 Bynlk (Fork) / \u00a9 2026 Ruller_Lulu (Original)",
       authorName: "Bynlk (Fork) / Ruller_Lulu / \u9e7f\u9e7f (Original)",
       authorUrl: "https://github.com/Bynlk",
       heroSvgContent,
@@ -469,10 +627,23 @@ function registerSettingsIpc(options = {}) {
     }
   });
 
+  handle("settings:show-tutorial", async () => {
+    try {
+      const result = await showTutorial();
+      return result || { status: "ok" };
+    } catch (err) {
+      return { status: "error", message: (err && err.message) || String(err) };
+    }
+  });
+
   handle("settings:get-hardware-buddy-status", () => getHardwareBuddyStatus());
-  handle("settings:test-hardware-buddy-approval", () => testHardwareBuddyApproval());
+  handle("settings:test-hardware-buddy-approval", () =>
+    testHardwareBuddyApproval(),
+  );
   handle("settings:get-quick-command-presets", () => getQuickCommandPresets());
-  handle("settings:send-quick-command", (_event, payload) => sendQuickCommand(sanitizeQuickCommandPayload(payload)));
+  handle("settings:send-quick-command", (_event, payload) =>
+    sendQuickCommand(sanitizeQuickCommandPayload(payload)),
+  );
 
   handle("settings:open-external", async (_event, url) => {
     if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
@@ -489,17 +660,20 @@ function registerSettingsIpc(options = {}) {
   // Mobile companion IPC handlers — extracted to mobile-settings-ipc.js
   registerMobileSettingsIpc({
     ipcMain,
-    getMobileWS,
-    getMobileToken,
+    getMobileWS: options.getMobileWS || (() => null),
+    getMobileToken: options.getMobileToken || (() => null),
     sendToRenderer,
-    QRCode,
+    QRCode: options.QRCode || null,
     _disposers: disposers,
   });
 
   handle("settings:regenerate-mobile-token", async () => {
     try {
-      const lanWsServer = options.getLanWsServer ? options.getLanWsServer() : null;
-      if (!lanWsServer) return { status: "error", message: "LAN bridge not available" };
+      const lanWsServer = options.getLanWsServer
+        ? options.getLanWsServer()
+        : null;
+      if (!lanWsServer)
+        return { status: "error", message: "LAN bridge not available" };
       const newToken = lanWsServer.regenerateToken();
       return { status: "ok", token: newToken };
     } catch (err) {
@@ -509,8 +683,11 @@ function registerSettingsIpc(options = {}) {
 
   handle("settings:reset-mobile-access", async () => {
     try {
-      const lanWsServer = options.getLanWsServer ? options.getLanWsServer() : null;
-      if (!lanWsServer) return { status: "error", message: "LAN bridge not available" };
+      const lanWsServer = options.getLanWsServer
+        ? options.getLanWsServer()
+        : null;
+      if (!lanWsServer)
+        return { status: "error", message: "LAN bridge not available" };
       const newToken = lanWsServer.resetMobileAccess();
       return { status: "ok", token: newToken };
     } catch (err) {
@@ -522,7 +699,9 @@ function registerSettingsIpc(options = {}) {
     dispose() {
       while (disposers.length) {
         const dispose = disposers.pop();
-        try { dispose(); } catch {}
+        try {
+          dispose();
+        } catch {}
       }
     },
   };

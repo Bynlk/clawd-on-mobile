@@ -5,33 +5,42 @@
     en: {
       settingsTitle: "Settings",
       settingsSubtitle: "Configure how Clawd behaves on your desktop.",
+      settingsTutorialReplayLink: "Show getting started guide",
+      settingsTutorialReplayFailed: "Couldn't open the guide",
       sidebarGeneral: "General",
       sidebarAgents: "Agents",
       sidebarTheme: "Theme",
-      sidebarAnimMap: "Animation Map",
-      sidebarAnimOverrides: "Animation & Sound Overrides",
+      sidebarAnimOverrides: "Animation & Sound",
       sidebarShortcuts: "Shortcuts",
       sidebarAbout: "About",
       sidebarRemoteSsh: "Remote SSH",
       sidebarTelegramApproval: "Remote Approval",
       remoteApprovalTitle: "Remote Approval",
-      remoteApprovalSubtitle: "Route local permission prompts to a remote channel. Tokens stay outside prefs and the desktop bubble remains the local fallback. Telegram is the only channel today; more (Discord, …) are planned.",
+      remoteApprovalSubtitle:
+        "Route local permission prompts to a remote channel. Tokens stay outside prefs and the desktop bubble remains the local fallback. Telegram is the only channel today; more (Discord, …) are planned.",
       telegramApprovalChannelName: "Telegram",
       telegramApprovalCardKind_incomplete: "Setup incomplete",
       telegramApprovalCardKind_ready: "Ready to enable",
       telegramApprovalCardKind_starting: "Starting…",
       telegramApprovalCardKind_running: "Running",
       telegramApprovalCardKind_failed: "Failed",
-      telegramApprovalCardMissingBoth: "Save a bot token and a recipient user id below to continue.",
+      telegramApprovalCardMissingBoth:
+        "Save a bot token and a recipient user id below to continue.",
       telegramApprovalCardMissingToken: "Save a bot token below to continue.",
-      telegramApprovalCardMissingRecipient: "Save the recipient user id below to continue.",
-      telegramApprovalCardReadyToEnable: "Token and recipient are saved. Flip the switch in step 3 to start.",
-      telegramApprovalCardStarting: "Connecting to the Telegram approval sidecar…",
-      telegramApprovalCardRunning: "Telegram approval is live. Approvals will route to your bot.",
-      telegramApprovalCardFailed: "Sidecar reported a failure. Check the message below or restart.",
+      telegramApprovalCardMissingRecipient:
+        "Save the recipient user id below to continue.",
+      telegramApprovalCardReadyToEnable:
+        "Token and recipient are saved. Flip the switch in step 3 to start.",
+      telegramApprovalCardStarting:
+        "Connecting to the Telegram approval sidecar…",
+      telegramApprovalCardRunning:
+        "Telegram approval is live. Approvals will route to your bot.",
+      telegramApprovalCardFailed:
+        "Sidecar reported a failure. Check the message below or restart.",
       telegramApprovalStep1Title: "1. Bot Token",
       telegramApprovalBotToken: "Bot token",
-      telegramApprovalBotTokenHintHtml: "Create a bot with [@BotFather](https://t.me/botfather) using /newbot, then paste the token here. It is stored in the user-data env file, never in clawd-prefs.json.",
+      telegramApprovalBotTokenHintHtml:
+        "Create a bot with [@BotFather](https://t.me/botfather) using /newbot, then paste the token here. It is stored in the user-data env file, never in clawd-prefs.json.",
       telegramApprovalBotTokenPlaceholder: "Paste new bot token",
       telegramApprovalSaveToken: "Save token",
       telegramApprovalSaving: "Saving…",
@@ -40,31 +49,40 @@
       telegramApprovalTokenSaveFailed: "Could not save Telegram bot token.",
       telegramApprovalTokenConfiguredLabel: "Token configured",
       telegramApprovalTokenConfiguredNoMask: "(stored)",
-      telegramApprovalTokenConfiguredDesc: "The bot token is saved on disk. Replace it if you rotated the bot.",
+      telegramApprovalTokenConfiguredDesc:
+        "The bot token is saved on disk. Replace it if you rotated the bot.",
       telegramApprovalReplaceToken: "Replace token",
       telegramApprovalCancel: "Cancel",
       telegramApprovalTokenCurrent: "Current: {masked}",
-      telegramApprovalTokenReplaceHintHtml: "Pasting a new token replaces the saved one. Get a fresh one from [@BotFather](https://t.me/botfather) if needed.",
+      telegramApprovalTokenReplaceHintHtml:
+        "Pasting a new token replaces the saved one. Get a fresh one from [@BotFather](https://t.me/botfather) if needed.",
       telegramApprovalStep2Title: "2. Recipient",
       telegramApprovalRecipientLabel: "Your Telegram user id",
-      telegramApprovalRecipientHintHtml: "Open [@userinfobot](https://t.me/userinfobot) in Telegram and send /start to get your numeric id. Clawd uses it both as the allowed approver and as the chat to send approval cards. Send /start to your own bot at least once first.",
+      telegramApprovalRecipientHintHtml:
+        "Open [@userinfobot](https://t.me/userinfobot) in Telegram and send /start to get your numeric id. Clawd uses it both as the allowed approver and as the chat to send approval cards. Send /start to your own bot at least once first.",
       telegramApprovalRecipientPlaceholder: "e.g. 123456789",
       telegramApprovalRecipientEmpty: "Enter your Telegram user id first.",
-      telegramApprovalRecipientInvalid: "Telegram user id must be a number with at least 5 digits.",
+      telegramApprovalRecipientInvalid:
+        "Telegram user id must be a number with at least 5 digits.",
       telegramApprovalSaveRecipient: "Save recipient",
       telegramApprovalConfigSaved: "Telegram approval config saved.",
       telegramApprovalStep3Title: "3. Enable & Test",
       telegramApprovalToggle: "Enable Telegram approval",
-      telegramApprovalToggleDesc: "When configured, actionable local permission bubbles also send an approval card to Telegram.",
+      telegramApprovalToggleDesc:
+        "When configured, actionable local permission bubbles also send an approval card to Telegram.",
       telegramApprovalCompletionOutput: "Completion output",
-      telegramApprovalCompletionOutputDesc: "Controls whether Telegram completion pings include assistant text. Full answer may include code, file contents, or secrets if the assistant wrote them.",
+      telegramApprovalCompletionOutputDesc:
+        "Controls whether Telegram completion pings include assistant text. Full answer may include code, file contents, or secrets if the assistant wrote them.",
       telegramApprovalCompletionOutput_off: "Off",
       telegramApprovalCompletionOutput_full: "Full answer",
-      telegramApprovalCompletionOutputFullConfirm: "Full answer sends the assistant's final text to Telegram. It may include code, file contents, or secrets if the assistant wrote them. Continue?",
+      telegramApprovalCompletionOutputFullConfirm:
+        "Full answer sends the assistant's final text to Telegram. It may include code, file contents, or secrets if the assistant wrote them. Continue?",
       telegramApprovalDirectSend: "Direct Send (paste-only)",
-      telegramApprovalDirectSendDesc: "When you reply to a Clawd completion notification, focus the matching local terminal and paste one line. It does not send Enter.",
+      telegramApprovalDirectSendDesc:
+        "When you reply to a Clawd completion notification, focus the matching local terminal and paste one line. It does not send Enter.",
       telegramApprovalTest: "Test message",
-      telegramApprovalTestDesc: "Sends a standalone test approval card. It is not attached to any agent permission request.",
+      telegramApprovalTestDesc:
+        "Sends a standalone test approval card. It is not attached to any agent permission request.",
       telegramApprovalSendTest: "Send test",
       telegramApprovalTesting: "Waiting…",
       telegramApprovalTestSent: "Telegram test completed.",
@@ -74,22 +92,27 @@
       telegramApprovalPrereqMissingToken: "bot token",
       telegramApprovalPrereqMissingRecipient: "recipient user id",
       remoteSshTitle: "Remote SSH",
-      remoteSshSubtitle: "Manage one-click SSH tunnels for remote AI coding sessions. Profiles never store passwords or passphrases — Clawd relies on your existing ssh-agent / SSH keys.",
+      remoteSshSubtitle:
+        "Manage one-click SSH tunnels for remote AI coding sessions. Profiles never store passwords or passphrases — Clawd relies on your existing ssh-agent / SSH keys.",
       remoteSshSectionProfiles: "Profiles",
       remoteSshAddProfile: "+ Add profile",
-      remoteSshEmpty: "No profiles yet. Click \"Add profile\" to set up your first remote SSH tunnel.",
+      remoteSshEmpty:
+        'No profiles yet. Click "Add profile" to set up your first remote SSH tunnel.',
       remoteSshConnect: "Connect",
       remoteSshDisconnect: "Disconnect",
       remoteSshAuthenticate: "Authenticate",
-      remoteSshAuthenticateHint: "Open a system terminal to complete first-time host key confirmation or load your SSH key.",
+      remoteSshAuthenticateHint:
+        "Open a system terminal to complete first-time host key confirmation or load your SSH key.",
       remoteSshOpenTerminal: "Open Terminal",
       remoteSshDeploy: "Deploy / Repair Hooks",
       remoteSshDeploying: "Deploying…",
       remoteSshDeploySuccess: "Hook files deployed.",
-      remoteSshDeployDriftWarning: "Deploy ran against the previous configuration — please redeploy",
+      remoteSshDeployDriftWarning:
+        "Deploy ran against the previous configuration — please redeploy",
       remoteSshEdit: "Edit",
       remoteSshDelete: "Delete",
-      remoteSshDeleteConfirm: "Delete profile \"{label}\"? This cannot be undone.",
+      remoteSshDeleteConfirm:
+        'Delete profile "{label}"? This cannot be undone.',
       remoteSshAddTitle: "Add Remote SSH Profile",
       remoteSshEditTitle: "Edit Remote SSH Profile",
       remoteSshSave: "Save",
@@ -100,11 +123,15 @@
       remoteSshFieldHost: "Host",
       remoteSshFieldPort: "SSH Port (default 22)",
       remoteSshFieldIdentityFile: "Identity File (optional)",
-      remoteSshFieldIdentityFileHint: "Absolute path to a private key. Leave empty to use ssh-agent or ~/.ssh/config.",
+      remoteSshFieldIdentityFileHint:
+        "Absolute path to a private key. Leave empty to use ssh-agent or ~/.ssh/config.",
       remoteSshFieldRemoteForwardPort: "Remote Forward Port",
       remoteSshFieldHostPrefix: "Host Prefix (optional)",
-      remoteSshFieldHostPrefixHint: "Short name shown in Sessions menu. Avoid control characters, quotes, backslash, $, `, and !.",
-      remoteSshFieldAutoStartCodex: "Auto-start Codex fallback monitor on connect",
+      remoteSshFieldHostPrefixHint:
+        "Short name shown in Sessions menu. Avoid control characters, quotes, backslash, $, `, and !.",
+      remoteSshFieldAutoStartCodex:
+        "Auto-start Codex fallback monitor on connect",
+      remoteSshFieldConnectOnLaunch: "Connect automatically when Clawd starts",
       remoteSshStatus_idle: "Idle",
       remoteSshStatus_connecting: "Connecting…",
       remoteSshStatus_connected: "Connected",
@@ -119,27 +146,41 @@
       "remoteSshStep_install-codex": "Register Codex hooks",
       "remoteSshStep_install-copilot": "Register Copilot hooks",
       "remoteSshStep_remote-shell": "Probe remote shell",
-      remoteSshErrAuthDenied: "Authentication failed. Click Authenticate to complete first-time host key confirmation or load your SSH key.",
-      remoteSshErrHostKey: "Host key not yet trusted. Click Authenticate to confirm the fingerprint in a terminal.",
-      remoteSshErrForwardFailed: "Remote port unavailable. Try a different Remote Forward Port (23333-23337).",
-      remoteSshErrBadConfig: "ssh refused the configuration. Check the profile fields.",
-      remoteSshErrIdentityMissing: "Identity file not accessible. Check the path and permissions.",
+      remoteSshErrAuthDenied:
+        "Authentication failed. Click Authenticate to complete first-time host key confirmation or load your SSH key.",
+      remoteSshErrHostKey:
+        "Host key not yet trusted. Click Authenticate to confirm the fingerprint in a terminal.",
+      remoteSshErrForwardFailed:
+        "Remote port unavailable. Try a different Remote Forward Port (23333-23337).",
+      remoteSshErrBadConfig:
+        "ssh refused the configuration. Check the profile fields.",
+      remoteSshErrIdentityMissing:
+        "Identity file not accessible. Check the path and permissions.",
       remoteSshErrDns: "Could not resolve hostname.",
       remoteSshErrNetTimeout: "Network timeout. Will retry shortly.",
       remoteSshErrNetUnreachable: "Network unreachable. Will retry shortly.",
       remoteSshErrBrokenPipe: "Connection dropped. Will retry shortly.",
       remoteSshErrSpawnFailed: "Could not spawn ssh process.",
-      remoteSshErrSshMissing: "OpenSSH client not found. On Windows, install via Settings → Apps → Optional Features → Add OpenSSH Client.",
-      remoteSshErrWindowsOpenSshLegacy: "This Windows OpenSSH version is too old for reliable Remote SSH. Upgrade OpenSSH to 8.x or newer.",
-      remoteSshErrWindowsCmdShell: "Remote default shell is Windows cmd.exe. Remote SSH needs a POSIX shell (mkdir -p / ~ expansion / sh -c). On the remote, set OpenSSH DefaultShell to Git Bash or WSL bash, then click Deploy again. PowerShell: New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
+      remoteSshErrSshMissing:
+        "OpenSSH client not found. On Windows, install via Settings → Apps → Optional Features → Add OpenSSH Client.",
+      remoteSshErrWindowsOpenSshLegacy:
+        "This Windows OpenSSH version is too old for reliable Remote SSH. Upgrade OpenSSH to 8.x or newer.",
+      remoteSshErrWindowsCmdShell:
+        "Remote default shell is Windows cmd.exe. Remote SSH needs a POSIX shell (mkdir -p / ~ expansion / sh -c). On the remote, set OpenSSH DefaultShell to Git Bash or WSL bash, then click Deploy again. PowerShell: New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
       remoteSshErrNoLocalPort: "Local Clawd server is not yet running.",
-      remoteSshErrUnknownStrikes: "Multiple unrecognized errors in a row — please check the profile and logs.",
-      remoteSshProbeLocalUnhealthy: "Tunnel established but local Clawd server is not healthy.",
-      remoteSshProbeUnresponsive: "Tunnel established but Clawd is not responding. Make sure Clawd is running.",
-      remoteSshProbePortHijack: "Remote port is occupied by another HTTP service. Try a different Remote Forward Port.",
+      remoteSshErrUnknownStrikes:
+        "Multiple unrecognized errors in a row — please check the profile and logs.",
+      remoteSshProbeLocalUnhealthy:
+        "Tunnel established but local Clawd server is not healthy.",
+      remoteSshProbeUnresponsive:
+        "Tunnel established but Clawd is not responding. Make sure Clawd is running.",
+      remoteSshProbePortHijack:
+        "Remote port is occupied by another HTTP service. Try a different Remote Forward Port.",
       remoteSshProbeHttpTimeout: "Remote HTTP timed out. Will retry shortly.",
-      remoteSshProbeNodeNotExec: "Remote node binary is not executable. Check permissions.",
-      remoteSshProbeNodeMissing: "Remote node not found. Run Deploy first or install Node on the remote.",
+      remoteSshProbeNodeNotExec:
+        "Remote node binary is not executable. Check permissions.",
+      remoteSshProbeNodeMissing:
+        "Remote node not found. Run Deploy first or install Node on the remote.",
       remoteSshProbeSignal: "Probe interrupted. Will retry shortly.",
       remoteSshHooksLabel: "Hooks:",
       remoteSshHooksNever: "Never deployed",
@@ -147,8 +188,10 @@
       remoteSshHooksDeployedAgoMin: "Deployed {n} min ago",
       remoteSshHooksDeployedAgoHr: "Deployed {n} hr ago",
       remoteSshHooksDeployedAgoDay: "Deployed {n} day(s) ago",
-      remoteSshConnectWarnNoDeploy: "Hooks are not deployed yet. Connect alone only builds the SSH tunnel — Clawd will not react to remote sessions until you click Deploy / Repair Hooks.",
-      codexHookReviewReminder: "Next step: open Codex CLI and run /hooks to review and activate the new hooks (Codex requires this before they fire).",
+      remoteSshConnectWarnNoDeploy:
+        "Hooks are not deployed yet. Connect alone only builds the SSH tunnel — Clawd will not react to remote sessions until you click Deploy / Repair Hooks.",
+      codexHookReviewReminder:
+        "Next step: open Codex CLI and run /hooks to review and activate the new hooks (Codex requires this before they fire).",
       doctorSidebarLabel: "Doctor",
       doctorTitle: "Clawd Doctor",
       doctorStatusUnknown: "Unknown",
@@ -164,11 +207,13 @@
       doctorAgentSummaryAttention: (count) => `${count} need attention`,
       doctorAgentSummaryNeedsAttention: "need attention",
       doctorAgentSummarySkipped: (count) => `${count} skipped`,
-      doctorAgentSummaryNoneActive: "No active integrations — enable at least one to get started.",
+      doctorAgentSummaryNoneActive:
+        "No active integrations — enable at least one to get started.",
       doctorCheckPermissionBubbles: "Permission bubbles",
       doctorCheckTheme: "Theme",
       doctorCheckUnknown: "Check",
-      doctorPrivacy: "Privacy notice: this report is generated locally. Clawd does not upload data. User paths and secrets are redacted before copying.",
+      doctorPrivacy:
+        "Privacy notice: this report is generated locally. Clawd does not upload data. User paths and secrets are redacted before copying.",
       doctorCopyReport: "Copy diagnostic report",
       doctorRerun: "Re-run checks",
       doctorClose: "Close",
@@ -179,33 +224,39 @@
       doctorFixing: "Fixing",
       doctorFixApplied: "Repair finished.",
       doctorFixFailed: "Could not repair this issue.",
-      doctorFixConfirmCodex: "Clawd will set [features].hooks = true in your Codex config. Continue?",
+      doctorFixConfirmCodex:
+        "Clawd will set [features].hooks = true in your Codex config. Continue?",
       doctorFixConfirmCodexTitle: "Enable Codex hooks?",
-      doctorFixConfirmCodexDetail: "This repair will change your Codex config and set [features].hooks = true. Clawd will not make that change unless you confirm it here.",
+      doctorFixConfirmCodexDetail:
+        "This repair will change your Codex config and set [features].hooks = true. Clawd will not make that change unless you confirm it here.",
       doctorFixConfirmCodexAction: "Enable and repair",
       doctorFixConfirmCancel: "Cancel",
       doctorRestartButton: "Restart Clawd",
       doctorRestarting: "Restarting",
       doctorRestartConfirmTitle: "Restart Clawd?",
-      doctorRestartConfirmDetail: "Clawd will close and reopen. In-flight requests from your AI coding agents will be dropped. The Doctor window will close as part of the restart.",
+      doctorRestartConfirmDetail:
+        "Clawd will close and reopen. In-flight requests from your AI coding agents will be dropped. The Doctor window will close as part of the restart.",
       doctorRestartConfirmAction: "Restart now",
       doctorNoResult: "No diagnostic result yet.",
       doctorConnectionTitle: "Test connection",
-      doctorConnectionInstruction: "Send a message in any AI coding agent, then come back after the countdown.",
+      doctorConnectionInstruction:
+        "Send a message in any AI coding agent, then come back after the countdown.",
       doctorConnectionIdle: "Not tested",
       doctorConnectionTesting: "Waiting {seconds}s",
       doctorConnectionHttpVerified: "HTTP path verified",
       doctorConnectionHttpDropped: "HTTP works, events dropped",
       doctorConnectionHttpBlocked: "HTTP blocked",
       doctorConnectionNoActivity: "No activity",
-      doctorConnectionNoActivityHint: "Send a message in any AI coding agent to test the connection.",
+      doctorConnectionNoActivityHint:
+        "Send a message in any AI coding agent to test the connection.",
       doctorConnectionError: "Connection test failed",
       doctorTestConnection: "Test connection",
       doctorOpenLog: "Open debug log",
       doctorOpenLogOpened: "Debug log opened",
       doctorOpenLogFailed: "Could not open debug log.",
       shortcutsTitle: "Shortcuts",
-      shortcutsSubtitle: "Set global shortcuts for pet visibility and permission actions. Leave a field empty to unbind it.",
+      shortcutsSubtitle:
+        "Set global shortcuts for pet visibility and permission actions. Leave a field empty to unbind it.",
       shortcutLabelBubbleNextOption: "Bubble: Next option",
       shortcutLabelBubblePrevOption: "Bubble: Previous option",
       shortcutLabelBubbleToggleOption: "Bubble: Toggle option",
@@ -221,8 +272,10 @@
       shortcutErrorSystemConflict: "Already in use by system or another app.",
       shortcutErrorReserved: "This combination is reserved. Try another key.",
       shortcutErrorInvalid: "That key combination is not supported.",
-      shortcutErrorNeedsModifier: "Shortcut must include at least one modifier key.",
-      shortcutErrorRegistrationFailed: "Saved, but currently not active due to system conflict. Rebind or try again later.",
+      shortcutErrorNeedsModifier:
+        "Shortcut must include at least one modifier key.",
+      shortcutErrorRegistrationFailed:
+        "Saved, but currently not active due to system conflict. Rebind or try again later.",
       shortcutLabelTogglePet: "Toggle pet visibility",
       shortcutLabelPermissionAllow: "Permission: Allow",
       shortcutLabelPermissionDeny: "Permission: Deny",
@@ -230,34 +283,46 @@
       sidebarSoon: "Soon",
       sectionAppearance: "Appearance",
       sectionSession: "Session management",
-      sectionSystem: "System",
-      sectionStartup: "Startup",
+      sectionAlerts: "Alerts & feedback",
+      sectionBehavior: "Behavior & position",
+      sectionSystemStartup: "System & startup",
       sectionMobile: "Mobile",
-      sectionBubbles: "Bubbles",
       sectionPermissions: "Permissions",
-      rowAutoApproveAll: "Auto-pilot",
-      menuAutoApproveAll: "Auto-pilot (auto-approve all)",
-      autoApproveAllConfirmTitle: "Turn on auto-pilot?",
-      autoApproveAllConfirmDetail: "Every permission request from every agent will be approved automatically, including running shell commands and deleting files. Clawd will not ask you first. Only enable this if you fully trust what your agents are doing.",
-      autoApproveAllConfirmEnable: "Enable auto-pilot",
+      rowAutoApproveAll: "Auto-approve all requests",
+      rowAutoApproveAllDesc:
+        "DANGER: auto-approve every agent permission request — commands, file edits, deletions — with no prompt. Per-agent toggles and Do Not Disturb still apply.",
+      menuAutoApproveAll: "Auto-approve all requests",
+      autoApproveAllConfirmTitle: "Turn on auto-approve all requests?",
+      autoApproveAllConfirmDetail:
+        "Every permission request from every agent will be approved automatically, including running shell commands and deleting files. Clawd will not ask you first. Only enable this if you fully trust what your agents are doing.",
+      autoApproveAllConfirmEnable: "Enable auto-approve all",
       autoApproveAllConfirmCancel: "Cancel",
       hardwareBuddyTitle: "Hardware Buddy",
-      hardwareBuddyDesc: "Connect a paired BLE desk device through the separate Clawstick runtime. Permission replies stay off unless explicitly enabled and the link is secure.",
+      hardwareBuddyDesc:
+        "Connect a paired BLE desk device through the separate Clawstick runtime. Permission replies stay off unless explicitly enabled and the link is secure.",
       hardwareBuddyEnable: "Enable Hardware Buddy",
-      hardwareBuddyEnableDesc: "Start the BLE sidecar and send state-only session snapshots by default.",
+      hardwareBuddyEnableDesc:
+        "Start the BLE sidecar and send state-only session snapshots by default.",
       hardwareBuddyAddress: "BLE address",
-      hardwareBuddyAddressDesc: "Optional fixed device address. Leave empty to scan by name prefix.",
+      hardwareBuddyAddressDesc:
+        "Optional fixed device address. Leave empty to scan by name prefix.",
       hardwareBuddyNamePrefix: "Device name prefix",
-      hardwareBuddyNamePrefixDesc: "Scan for devices whose advertised name starts with this text.",
+      hardwareBuddyNamePrefixDesc:
+        "Scan for devices whose advertised name starts with this text.",
       hardwareBuddyPermissions: "Allow hardware permission replies",
-      hardwareBuddyPermissionsDesc: "Requires this opt-in plus a secure paired transport before Allow/Deny prompts appear on the device.",
+      hardwareBuddyPermissionsDesc:
+        "Requires this opt-in plus a secure paired transport before Allow/Deny prompts appear on the device.",
       hardwareBuddyQuickCommands: "Enable Quick Commands",
-      hardwareBuddyQuickCommandsDesc: "Expose local preset buttons that create adapter-owned quick_command events. Clawd does not paste text or run shell commands.",
+      hardwareBuddyQuickCommandsDesc:
+        "Expose local preset buttons that create adapter-owned quick_command events. Clawd does not paste text or run shell commands.",
       hardwareBuddyQuickCommandPresets: "Quick Command presets",
-      hardwareBuddyQuickCommandPresetsDesc: "Click a preset to enqueue a validated event for the active-session adapter.",
-      hardwareBuddyQuickCommandsDisabled: "Turn on Quick Commands to enable preset buttons.",
+      hardwareBuddyQuickCommandPresetsDesc:
+        "Click a preset to enqueue a validated event for the active-session adapter.",
+      hardwareBuddyQuickCommandsDisabled:
+        "Turn on Quick Commands to enable preset buttons.",
       hardwareBuddyQuickCommandsLoading: "Loading presets...",
-      hardwareBuddyQuickCommandsUnavailable: "Quick Commands are not available.",
+      hardwareBuddyQuickCommandsUnavailable:
+        "Quick Commands are not available.",
       hardwareBuddyQuickCommandSent: "Quick Command queued.",
       hardwareBuddyQuickCommandFailed: "Quick Command failed: ",
       hardwareBuddyRepliesOn: "Replies on",
@@ -266,19 +331,28 @@
       hardwareBuddyTest: "Test approval",
       hardwareBuddyTestButton: "Send test",
       hardwareBuddyTestWaiting: "Waiting...",
-      hardwareBuddyTestDesc: "Send a harmless approval request to the paired device.",
+      hardwareBuddyTestDesc:
+        "Send a harmless approval request to the paired device.",
       hardwareBuddyTestPending: "Waiting for a button press on the device.",
       hardwareBuddyTestOk: "Device replied: {decision}",
       hardwareBuddyTestError: "Test approval failed.",
       hardwareBuddyTestErr_disabled: "Hardware Buddy is not enabled.",
-      hardwareBuddyTestErr_permissions_off: "Hardware permission replies are disabled.",
-      hardwareBuddyTestErr_not_secure: "Hardware Buddy is not connected over a secure link.",
-      hardwareBuddyTestErr_timeout: "The device did not reply before the test timed out.",
-      hardwareBuddyTestErr_no_decision: "Hardware Buddy test did not receive a decision.",
-      hardwareBuddyTestErr_internal_error: "Hardware Buddy test failed inside Clawd.",
-      hardwareBuddyTestDisabled: "Enable Hardware Buddy before testing approvals.",
-      hardwareBuddyTestRepliesOff: "Turn on hardware permission replies before testing approvals.",
-      hardwareBuddyTestNeedsSecure: "Connect over a secure paired link before testing approvals.",
+      hardwareBuddyTestErr_permissions_off:
+        "Hardware permission replies are disabled.",
+      hardwareBuddyTestErr_not_secure:
+        "Hardware Buddy is not connected over a secure link.",
+      hardwareBuddyTestErr_timeout:
+        "The device did not reply before the test timed out.",
+      hardwareBuddyTestErr_no_decision:
+        "Hardware Buddy test did not receive a decision.",
+      hardwareBuddyTestErr_internal_error:
+        "Hardware Buddy test failed inside Clawd.",
+      hardwareBuddyTestDisabled:
+        "Enable Hardware Buddy before testing approvals.",
+      hardwareBuddyTestRepliesOff:
+        "Turn on hardware permission replies before testing approvals.",
+      hardwareBuddyTestNeedsSecure:
+        "Connect over a secure paired link before testing approvals.",
       hardwareBuddyTestToastOk: "Hardware Buddy test reply received.",
       hardwareBuddyTestToastError: "Hardware Buddy test failed: ",
       hardwareBuddyStatus: "Connection status",
@@ -290,10 +364,13 @@
       hardwareBuddyStatus_error: "Needs attention",
       hardwareBuddyStatusOffDetail: "Hardware Buddy is disabled.",
       hardwareBuddyStatusError: "Needs attention",
-      hardwareBuddyStatusErrorDetail: "Check the Hardware Buddy sidecar status.",
-      hardwareBuddyStatusConnectedDetail: "{device} connected, secure link {secure}",
+      hardwareBuddyStatusErrorDetail:
+        "Check the Hardware Buddy sidecar status.",
+      hardwareBuddyStatusConnectedDetail:
+        "{device} connected, secure link {secure}",
       hardwareBuddyStatusAddressDetail: "Looking for {address}.",
-      hardwareBuddyStatusPrefixDetail: "Scanning for names starting with {prefix}.",
+      hardwareBuddyStatusPrefixDetail:
+        "Scanning for names starting with {prefix}.",
       hardwareBuddySecureOn: "on",
       hardwareBuddySecureOff: "off",
       hardwareBuddyErr_missing_bleak: "Install bleak",
@@ -307,7 +384,8 @@
       collapsibleExpand: "Expand section",
       collapsibleCollapse: "Collapse section",
       agentsTitle: "Agents",
-      agentsSubtitle: "Turn tracking on or off per agent. Disabled agents stop log monitors and drop hook events at the HTTP boundary — they won't drive the pet, show permission bubbles, or keep sessions.",
+      agentsSubtitle:
+        "Turn tracking on or off per agent. Disabled agents stop log monitors and drop hook events at the HTTP boundary — they won't drive the pet, show permission bubbles, or keep sessions.",
       agentsEmpty: "No agents registered.",
       eventSourceHook: "Hook",
       eventSourceLogPoll: "Log poll",
@@ -315,35 +393,57 @@
       eventSourceExtension: "Extension",
       badgePermissionBubble: "Permission bubble",
       rowAgentPermissions: "Show pop-up bubbles",
-      rowAgentPermissionsDesc: "Turn off to let this agent handle prompts in its own terminal instead of showing a Clawd bubble.",
+      rowAgentPermissionsDesc:
+        "Turn off to let this agent handle prompts in its own terminal instead of showing a Clawd bubble.",
       rowCodexPermissionMode: "Codex permission mode",
-      rowCodexPermissionModeDesc: "Native keeps Codex AutoReview and terminal prompts in charge. Intercept shows Clawd Allow/Deny bubbles.",
+      rowCodexPermissionModeDesc:
+        "Native keeps Codex AutoReview and terminal prompts in charge. Intercept shows Clawd Allow/Deny bubbles.",
       codexPermissionModeNative: "Native",
       codexPermissionModeIntercept: "Intercept",
       rowCodexNativeNotificationSound: "Native notification sound",
-      rowCodexNativeNotificationSoundDesc: "When off, Codex Native permission prompts still show the notification animation without the prompt sound. Completion sound still plays.",
+      rowCodexNativeNotificationSoundDesc:
+        "When off, Codex Native permission prompts still show the notification animation without the prompt sound. Completion sound still plays.",
+      agentCodexHookNeedsAttention: "Needs attention",
+      codexHookHealthReasonDisabled:
+        "Codex hooks are turned off in config ([features].hooks=false), so Codex never runs the approval hook. Enable them, or run Doctor → Fix.",
+      codexHookHealthReasonNeedsReview:
+        "Clawd's Codex hooks are registered but need approval in Codex — run /hooks in Codex, or use Doctor → Fix.",
+      codexHookHealthReasonInactive:
+        "Clawd's Codex hook isn't active, so approval prompts won't appear. Reinstall the integration or run Doctor → Fix.",
+      rowCodexHookHealthNotify: "Warn when the Codex hook is inactive",
+      rowCodexHookHealthNotifyDesc:
+        "On launch, show a one-time tray notification if Codex's official approval hook is disabled or needs review. Shown once per issue, not every launch.",
       rowAgentIdleAlerts: "Wait-for-input alerts",
-      rowAgentIdleAlertsDesc: "Bell animation + sound triggered by this agent's Notification hook (e.g. Claude Code fires one after ~60s idle). Permission bubbles are unaffected.",
-      agentIntegrationUninstallConfirm: "Uninstall this agent integration? This will remove Clawd-managed hooks and disable the agent.",
+      rowAgentIdleAlertsDesc:
+        "Bell animation + sound triggered by this agent's Notification hook (e.g. Claude Code fires one after ~60s idle). Permission bubbles are unaffected.",
+      agentIntegrationUninstallConfirm:
+        "Uninstall this agent integration? This will remove Clawd-managed hooks and disable the agent.",
       rowLanguage: "Language",
       rowLanguageDesc: "Interface language for menus and bubbles.",
       rowSound: "Sound effects",
       rowSoundEnabled: "Enable sound effects",
-      rowSoundDesc: "Play a chime when Clawd finishes a task or asks for input.",
+      rowSoundDesc:
+        "Play a chime when Clawd finishes a task or asks for input.",
       rowVolume: "Volume",
-      rowVolumeDesc: "Adjust sound effect volume. Disabled when sound effects are off.",
+      rowVolumeDesc:
+        "Adjust sound effect volume. Disabled when sound effects are off.",
       rowLowPowerIdleMode: "Low power idle",
-      rowLowPowerIdleModeDesc: "Pause idle SVG animation after Clawd has been still for a few seconds; activity resumes animation immediately.",
+      rowLowPowerIdleModeDesc:
+        "Pause idle SVG animation after Clawd has been still for a few seconds; activity resumes animation immediately.",
       rowKeepAwakeWhileWorking: "Block sleep while working",
-      rowKeepAwakeWhileWorkingDesc: "Prevent the computer from sleeping while an agent task is in progress; sleep is allowed again once tasks finish.",
+      rowKeepAwakeWhileWorkingDesc:
+        "Prevent the computer from sleeping while an agent task is in progress; sleep is allowed again once tasks finish.",
       rowFlashTaskbarOnComplete: "Flash tray icon on complete",
-      rowFlashTaskbarOnCompleteDesc: "Flash the system tray icon when an AI task completes, so you notice even when working in another window.",
+      rowFlashTaskbarOnCompleteDesc:
+        "Flash the system tray icon when an AI task completes, so you notice even when working in another window.",
       rowFlash: "Flash tray icon",
       rowFlashDesc: "Configure system tray icon flashing on task completion.",
       rowFlashInterval: "Flash interval",
-      rowFlashIntervalDesc: "How fast the tray icon toggles between normal and highlight.",
+      rowFlashIntervalDesc:
+        "How fast the tray icon toggles between normal and highlight.",
       rowFlashDuration: "Flash duration",
-      rowFlashDurationDesc: "How long the flashing lasts. Set to 0 to flash until manually dismissed.",
+      rowFlashDurationDesc:
+        "How long the flashing lasts. Set to 0 to flash until manually dismissed.",
       unitMilliseconds: "ms",
       valueAlways: "Always",
       rowSessionHud: "Session HUD",
@@ -355,63 +455,95 @@
       sessionHudSummaryCleanup: "Auto-clear: {state}",
       sessionHudSummaryContextUsage: "Context: {state}",
       rowSessionHudStateLabels: "Show state labels",
-      rowSessionHudStateLabelsDesc: "Display compact status chips for working, thinking, waiting, and other active sessions. Completed sessions still use the bell.",
+      rowSessionHudStateLabelsDesc:
+        "Display compact status chips for working, thinking, waiting, and other active sessions. Completed sessions still use the bell.",
       rowSessionHudElapsed: "Show HUD time",
-      rowSessionHudElapsedDesc: "Display elapsed time in the Session HUD. Turning this off makes the HUD narrower.",
+      rowSessionHudElapsedDesc:
+        "Display elapsed time in the Session HUD. Turning this off makes the HUD narrower.",
       shortcutLabelPetReveal: "Click pet: Show Session HUD",
       shortcutLabelOpenDashboard: "Ctrl/Cmd + Click pet: Open Dashboard",
       sessionHudPinTooltip: "Pin HUD",
       sessionHudUnpinTooltip: "Unpin HUD",
       sessionHudFocusUnavailableTooltip: "Terminal focus unavailable",
-      sessionHudRemoteFocusUnavailableTooltip: "Remote session - terminal focus unavailable",
+      sessionHudRemoteFocusUnavailableTooltip:
+        "Remote session - terminal focus unavailable",
       rowSessionHudCleanupDetached: "Auto-clear detached sessions",
-      rowSessionHudCleanupDetachedDesc: "Hide ended sessions after their terminal closes, then remove them from the session list shortly after.",
+      rowSessionHudCleanupDetachedDesc:
+        "Hide ended sessions after their terminal closes, then remove them from the session list shortly after.",
       rowSessionCleanupGroup: "Session cleanup",
-      rowSessionCleanupGroupDesc: "How long Clawd waits before clearing inactive sessions. Mainly affects remote SSH sessions where the terminal isn't visible — raise the limit for long-running remote work, or set Session timeout to 0 to never clear by time.",
+      rowSessionCleanupGroupDesc:
+        "How long Clawd waits before clearing inactive sessions. Mainly affects remote SSH sessions where the terminal isn't visible — raise the limit for long-running remote work, or set Session timeout to 0 to never clear by time.",
       rowStaleSession: "Session timeout (idle)",
-      rowStaleSessionDesc: "Remote SSH sessions are removed after this much idle time. Local sessions whose terminal is still open are not removed — they just dim to idle. Default 10 min. 0 = never remove by time. Must be at least as long as Working timeout.",
+      rowStaleSessionDesc:
+        "Remote SSH sessions are removed after this much idle time. Local sessions whose terminal is still open are not removed — they just dim to idle. Default 10 min. 0 = never remove by time. Must be at least as long as Working timeout.",
       rowStaleWorking: "Working timeout",
-      rowStaleWorkingDesc: "If a session is stuck in working/thinking, mark it idle after this long. Default 5 min. Capped at the Session timeout when that is non-zero.",
+      rowStaleWorkingDesc:
+        "If a session is stuck in working/thinking, mark it idle after this long. Default 5 min. Capped at the Session timeout when that is non-zero.",
       rowStaleDetached: "Cleanup delay after terminal closes",
-      rowStaleDetachedDesc: "Only active when 'Auto-clear detached sessions' is on. After a session's terminal window closes, wait this many seconds before removing it from the HUD. Default 30 s.",
+      rowStaleDetachedDesc:
+        "Only active when 'Auto-clear detached sessions' is on. After a session's terminal window closes, wait this many seconds before removing it from the HUD. Default 30 s.",
       unitMinutes: "min",
       unitSeconds: "s",
       valueDisabled: "Disabled",
       actionResetSessionCleanup: "Reset to defaults",
       rowSessionDashboard: "Sessions dashboard",
-      rowSessionDashboardDesc: "Open a window listing every active Claude Code, Codex, and other agent session.",
+      rowSessionDashboardDesc:
+        "Open a window listing every active Claude Code, Codex, and other agent session.",
       actionOpenDashboard: "Open",
       rowOpenAtLogin: "Open at login",
       rowOpenAtLoginDesc: "Start Clawd automatically when you log in.",
       rowManageClaudeHooks: "Manage Claude hooks automatically",
-      rowManageClaudeHooksDesc: "Sync Claude hooks at startup and restore them if ~/.claude/settings.json gets overwritten.",
-      rowManageClaudeHooksOffNote: "Turning this off stops future automatic management only. Existing Claude hooks stay installed unless you disconnect them.",
+      rowManageClaudeHooksDesc:
+        "Sync Claude hooks at startup and restore them if ~/.claude/settings.json gets overwritten.",
+      rowManageClaudeHooksOffNote:
+        "Turning this off stops future automatic management only. Existing Claude hooks stay installed unless you disconnect them.",
       actionDisconnectClaudeHooks: "Disconnect",
-      claudeHooksDisableConfirmTitle: "Turn off automatic Claude hook management?",
-      claudeHooksDisableConfirmDetail: "If you only turn management off, the Claude hooks already installed in ~/.claude/settings.json will stay in place. Start with Claude Code will be kept for later re-enable.",
+      claudeHooksDisableConfirmTitle:
+        "Turn off automatic Claude hook management?",
+      claudeHooksDisableConfirmDetail:
+        "If you only turn management off, the Claude hooks already installed in ~/.claude/settings.json will stay in place. Start with Claude Code will be kept for later re-enable.",
       claudeHooksDisableConfirmDisconnect: "Disable and remove installed hooks",
       claudeHooksDisableConfirmDisableOnly: "Disable automatic management only",
       claudeHooksDisableConfirmKeep: "Keep automatic management",
       claudeHooksDisconnectConfirmTitle: "Disconnect Claude hooks?",
-      claudeHooksDisconnectConfirmDetail: "This removes Clawd-managed Claude hooks from ~/.claude/settings.json and turns off automatic management. Start with Claude Code will be kept for later re-enable.",
+      claudeHooksDisconnectConfirmDetail:
+        "This removes Clawd-managed Claude hooks from ~/.claude/settings.json and turns off automatic management. Start with Claude Code will be kept for later re-enable.",
       claudeHooksDisconnectConfirmAction: "Disconnect hooks",
       claudeHooksDisconnectConfirmKeep: "Keep connected",
       rowStartWithClaude: "Start with Claude Code",
-      rowStartWithClaudeDesc: "Auto-launch Clawd whenever a Claude Code session starts.",
-      rowStartWithClaudeDisabledDesc: "Requires automatic Claude hook management. Port changes and overwritten settings will not be reconciled while management is off.",
+      rowStartWithClaudeDesc:
+        "Auto-launch Clawd whenever a Claude Code session starts.",
+      rowStartWithClaudeDisabledDesc:
+        "Requires automatic Claude hook management. Port changes and overwritten settings will not be reconciled while management is off.",
       rowHideBubbles: "Hide bubbles",
-      rowHideBubblesDesc: "Hide permission, notification, and update bubbles across Clawd.",
+      rowHideBubblesDesc:
+        "Hide permission, notification, and update bubbles across Clawd.",
       rowBubbleFollow: "Bubbles follow Clawd",
-      rowBubbleFollowDesc: "Place permission and update bubbles next to the pet instead of the screen corner.",
+      rowBubbleFollowDesc:
+        "Place permission and update bubbles next to the pet instead of the screen corner.",
+      rowAutoApproveAll: "Auto-approve all requests",
+      rowAutoApproveAllDesc:
+        "DANGER: auto-approve every agent permission request — commands, file edits, deletions — with no prompt. Per-agent toggles and Do Not Disturb still apply.",
+      menuAutoApproveAll: "Auto-approve all requests",
+      autoApproveAllConfirmTitle: "Turn on auto-approve all requests?",
+      autoApproveAllConfirmDetail:
+        "Every permission request from every agent will be approved automatically, including running shell commands and deleting files. Clawd will not ask you first. Only enable this if you fully trust what your agents are doing.",
+      autoApproveAllConfirmEnable: "Enable auto-approve all",
+      autoApproveAllConfirmCancel: "Cancel",
       rowBubblePolicy: "Bubble display and auto close",
-      rowBubblePolicyDesc: "Choose which bubble categories appear and how long passive bubbles stay visible.",
+      rowBubblePolicyDesc:
+        "Choose which bubble categories appear and how long passive bubbles stay visible.",
       bubblePermissionLabel: "Permission / interaction bubbles",
-      bubblePermissionDesc: "Off sends approval prompts back to the agent terminal/TUI. Plan review and AskUserQuestion prompts stay visible to avoid agent hangs. Seconds is an optional auto-dismiss for stuck bubbles when the hook connection stays half-alive (0 = off).",
+      bubblePermissionDesc:
+        "Off sends approval prompts back to the agent terminal/TUI. Plan review and AskUserQuestion prompts stay visible to avoid agent hangs. Seconds is an optional auto-dismiss for stuck bubbles when the hook connection stays half-alive (0 = off).",
       bubbleNotificationLabel: "Notification bubbles",
-      bubbleNotificationDesc: "Switch controls Codex / Kimi CLI passive notices. Seconds sets the auto-close upper bound; later session states may dismiss it earlier. 0 hides them.",
+      bubbleNotificationDesc:
+        "Switch controls Codex / Kimi Code passive notices. Seconds sets the auto-close upper bound; later session states may dismiss it earlier. 0 hides them.",
       bubbleUpdateLabel: "Update bubbles",
-      bubbleUpdateDesc: "Switch controls update checking, download, success, failure, and restart prompts. Seconds controls how long they stay visible.",
-      bubbleUpdateWarning: "Hiding update bubbles is not recommended; you may miss errors or restart prompts.",
+      bubbleUpdateDesc:
+        "Switch controls update checking, download, success, failure, and restart prompts. Seconds controls how long they stay visible.",
+      bubbleUpdateWarning:
+        "Hiding update bubbles is not recommended; you may miss errors or restart prompts.",
       bubbleSecondsPrefix: "Stay",
       bubbleSecondsUnit: "s",
       bubbleSecondsInvalid: "Seconds must be an integer from 0 to 3600",
@@ -421,29 +553,39 @@
       bubblePolicySummaryOn: "on",
       bubblePolicySummaryOff: "off",
       updateBubbleDisableConfirmTitle: "Hide update bubbles?",
-      updateBubbleDisableConfirmDetail: "You may miss update failures, download-complete messages, and restart prompts. The update flow itself will still run, but Clawd will not show update bubbles.",
+      updateBubbleDisableConfirmDetail:
+        "You may miss update failures, download-complete messages, and restart prompts. The update flow itself will still run, but Clawd will not show update bubbles.",
       updateBubbleDisableConfirmAction: "Hide update bubbles",
       updateBubbleDisableConfirmCancel: "Keep showing them",
       rowAllowEdgePinning: "Allow pinning to screen edges",
-      rowAllowEdgePinningDesc: "Top/bottom decorations (sparkles, buildings, bubbles, …) may be clipped by the screen edge",
+      rowAllowEdgePinningDesc:
+        "Top/bottom decorations (sparkles, buildings, bubbles, …) may be clipped by the screen edge",
       rowDisableMiniMode: "Disable mini mode",
-      rowDisableMiniModeDesc: "Prevent Clawd from entering mini mode from edge snap or the menu",
+      rowDisableMiniModeDesc:
+        "Prevent Clawd from entering mini mode from edge snap or the menu",
       rowFreeRoam: "Free roam",
-      rowFreeRoamDesc: "Let Clawd wander freely around the desk when idle. Movement stops when you move the mouse.",
+      rowFreeRoamDesc:
+        "Let Clawd wander freely around the desk when idle. Movement stops when you move the mouse.",
       rowKeepSizeAcrossDisplays: "Keep size across displays",
-      rowKeepSizeAcrossDisplaysDesc: "Don't auto-resize when moving to another monitor. The slider still adjusts the pet on whichever display it's on.",
+      rowKeepSizeAcrossDisplaysDesc:
+        "Don't auto-resize when moving to another monitor. The slider still adjusts the pet on whichever display it's on.",
+      rowFullscreenOverlay: "Float over fullscreen games",
+      rowFullscreenOverlayDesc:
+        "On Windows, keep the pet usable over fullscreen games — it stays on top, stays draggable, and won't steal the game's focus. Off restores the unoptimized default. A borderless-fullscreen game always keeps the pet on top; to remove it use Hide Pet. (Behavior over exclusive-fullscreen games may vary.)",
       rowSize: "Size",
       rowSizeDesc: "Drag to resize the pet.",
       placeholderTitle: "Coming soon",
-      placeholderDesc: "This panel will land in a future Clawd release. The plan lives in docs/plans/plan-settings-panel.md.",
+      placeholderDesc:
+        "This panel will land in a future Clawd release. The plan lives in docs/plans/plan-settings-panel.md.",
       toastSaveFailed: "Couldn't save: ",
       langEnglish: "English",
-      langChinese: "简中",
-      langTraditionalChinese: "繁中",
+      langChinese: "简体中文",
+      langTraditionalChinese: "繁體中文",
       langKorean: "한국어",
       langJapanese: "日本語",
       themeTitle: "Theme",
-      themeSubtitle: "Pick a theme for Clawd. Cards show built-in + capability badges so you can see tracked/static/mini differences before switching.",
+      themeSubtitle:
+        "Pick a theme for Clawd. Cards show built-in + capability badges so you can see tracked/static/mini differences before switching.",
       themeEmpty: "No themes available.",
       themeBadgeBuiltin: "Built-in",
       themeBadgeCodexPet: "Codex Pet",
@@ -454,7 +596,8 @@
       themeImportPetZip: "Import Codex Pet package (.zip)",
       themeOpenCodexPetsFolder: "Open Codex Pet folder",
       themeImportUserThemeZip: "Import Clawd theme package (.zip)",
-      themeImportUserThemeZipHint: "Clawd theme zip: root or one top-level folder must contain theme.json. Put SVG, GIF, APNG, PNG, WebP, JPG, or JPEG assets in assets/. Use Codex Pet import for Codex Pet packages.",
+      themeImportUserThemeZipHint:
+        "Clawd theme zip: root or one top-level folder must contain theme.json. Put SVG, GIF, APNG, PNG, WebP, JPG, or JPEG assets in assets/. Use Codex Pet import for Codex Pet packages.",
       themeOpenUserThemesFolder: "Open themes folder",
       themeRefreshThemes: "Refresh themes",
       themeGroupBuiltIn: "Built-in",
@@ -466,6 +609,7 @@
       themeCapabilityStatic: "Static theme",
       themeCapabilityMini: "Mini",
       themeCapabilityDirectSleep: "Direct sleep",
+      themeCapabilityFineMotion: "Fine motion",
       themeCapabilityNoReactions: "No reactions",
       themeActiveIndicator: "\u2713 Active",
       themeThumbMissing: "\u{1F3AD}",
@@ -473,34 +617,53 @@
       themeVariantStripLabel: "Variants",
       toastThemeDeleted: "Theme deleted.",
       toastThemeDeleteFailed: "Couldn't delete theme: ",
-      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+      toastCodexPetsRefreshOk: (
+        imported,
+        updated,
+        unchanged,
+        removed,
+        invalid,
+        switched,
+      ) =>
         `Codex Pets refreshed: ${imported} new, ${updated} updated, ${unchanged} unchanged, ${removed} removed${invalid ? `, ${invalid} invalid` : ""}${switched ? "; active theme reset to Clawd" : ""}.`,
-      toastCodexPetsRefreshFailed: (message) => `Couldn't refresh Codex Pets: ${message}`,
+      toastCodexPetsRefreshFailed: (message) =>
+        `Couldn't refresh Codex Pets: ${message}`,
       toastCodexPetsFolderFailed: "Couldn't open Codex Pet folder: ",
       toastUserThemesFolderFailed: "Couldn't open themes folder: ",
       toastUserThemeZipImportOk: (name) => `Imported theme "${name}".`,
-      toastUserThemeZipImportFailed: (message) => `Couldn't import theme (.zip): ${message}`,
-      toastCodexPetZipImportOk: (name) => `Imported "${name}" and switched to it.`,
-      toastCodexPetZipImportFailed: (message) => `Couldn't import Codex Pet (.zip): ${message}`,
-      toastCodexPetRemoveOk: (name, switched) => `Uninstalled "${name}"${switched ? " and switched back to Clawd" : ""}.`,
-      toastCodexPetRemoveFailed: (message) => `Couldn't uninstall imported pet: ${message}`,
+      toastUserThemeZipImportFailed: (message) =>
+        `Couldn't import theme (.zip): ${message}`,
+      toastCodexPetZipImportOk: (name) =>
+        `Imported "${name}" and switched to it.`,
+      toastCodexPetZipImportFailed: (message) =>
+        `Couldn't import Codex Pet (.zip): ${message}`,
+      toastCodexPetRemoveOk: (name, switched) =>
+        `Uninstalled "${name}"${switched ? " and switched back to Clawd" : ""}.`,
+      toastCodexPetRemoveFailed: (message) =>
+        `Couldn't uninstall imported pet: ${message}`,
       animMapTitle: "Animation Map",
-      animMapSubtitle: "Silence individual interrupt animations. Events still fire — Clawd just skips the visual and sound for the selected states.",
-      animMapSemanticsNote: "Disable = no visual + no sound. Permission bubbles, sessions, and terminal focus still work.",
+      animMapSubtitle:
+        "Silence individual interrupt animations. Events still fire — Clawd just skips the visual and sound for the selected states.",
+      animMapSemanticsNote:
+        "Disable = no visual + no sound. Permission bubbles, sessions, and terminal focus still work.",
       animMapResetAll: "Reset all",
       animMapAttentionLabel: "Task complete (happy)",
-      animMapAttentionDesc: "The happy bounce when the agent finishes a turn (Stop).",
+      animMapAttentionDesc:
+        "The happy bounce when the agent finishes a turn (Stop).",
       animMapErrorLabel: "Error flash",
       animMapErrorDesc: "The shake animation when a tool call fails.",
       animMapSweepingLabel: "Context sweep",
-      animMapSweepingDesc: "The broom animation during PreCompact / context clearing.",
+      animMapSweepingDesc:
+        "The broom animation during PreCompact / context clearing.",
       animMapNotificationLabel: "Notification",
-      animMapNotificationDesc: "The bell animation for permission requests and elicitations.",
+      animMapNotificationDesc:
+        "The bell animation for permission requests and elicitations.",
       animMapCarryingLabel: "Worktree carry",
       animMapCarryingDesc: "The carrying animation when a worktree is created.",
       toastAnimMapResetOk: "Animation and sound overrides cleared.",
-      animOverridesTitle: "Animation & Sound Overrides",
-      animOverridesSubtitle: "Swap per-card animation files, adjust fade / return timing, and replace the theme's sound effects.",
+      animOverridesTitle: "Animation & Sound",
+      animOverridesSubtitle:
+        "Swap per-card animation files, adjust fade / return timing, and replace the theme's sound effects.",
       animOverridesLoading: "Loading animation and sound overrides…",
       animOverridesCurrentTheme: "Current theme",
       animOverridesReplacementConfig: "Animation override settings",
@@ -525,13 +688,15 @@
       animOverridesSaveFade: "Save fade",
       animOverridesDuration: "Auto-return",
       animOverridesSaveDuration: "Save timing",
-      animOverridesContinuousHint: "Continuous state: no auto-return editor here.",
+      animOverridesContinuousHint:
+        "Continuous state: no auto-return editor here.",
       animOverridesAssetCycle: "Asset cycle",
       animOverridesSuggestedTiming: "Suggested timing",
       animOverridesTimingEstimated: "estimated",
       animOverridesTimingFallback: "theme default",
       animOverridesTimingUnavailable: "unavailable",
-      animOverridesDisplayHintWarning: "displayHintMap can override this slot at runtime.",
+      animOverridesDisplayHintWarning:
+        "displayHintMap can override this slot at runtime.",
       animOverridesFallbackHint: "This slot currently falls back to {state}.",
       animOverridesOverriddenTooltip: "Modified from default",
       animOverridesUseOwnFile: "Use own file",
@@ -553,12 +718,15 @@
       animReactionAnnoyed: "Annoyed (rapid poke)",
       animReactionDouble: "Double-tap",
       animOverridesWideHitboxToggle: "Wide hitbox",
-      animOverridesWideHitboxDesc: "Use a wider click zone for this frame. Helpful when the visual reaches beyond the default pet silhouette.",
+      animOverridesWideHitboxDesc:
+        "Use a wider click zone for this frame. Helpful when the visual reaches beyond the default pet silhouette.",
       animOverridesWideHitboxResetToTheme: "Reset to theme default",
-      animOverridesAspectWarning: "This asset's aspect ratio differs from the original by {pct}% — the hitbox and positioning may need manual tuning.",
+      animOverridesAspectWarning:
+        "This asset's aspect ratio differs from the original by {pct}% — the hitbox and positioning may need manual tuning.",
       animOverridesExpandRow: "Expand",
       animOverridesModalTitle: "Choose an asset file",
-      animOverridesModalSubtitle: "Add files to the current theme assets folder, then refresh the list here.",
+      animOverridesModalSubtitle:
+        "Add files to the current theme assets folder, then refresh the list here.",
       animOverridesModalEmpty: "No supported assets found in this theme yet.",
       animOverridesModalSelected: "Selected file",
       animOverridesModalUse: "Use this file",
@@ -566,8 +734,10 @@
       animOverridesRefresh: "Refresh list",
       animOverridesSubtabAnimations: "Animations",
       animOverridesSubtabSounds: "Sounds",
+      animOverridesSubtabMap: "On / off",
       soundOverridesSectionTitle: "Sound effects",
-      soundOverridesSectionSubtitle: "Replace the theme's audio files. Picked files are copied into a per-theme overrides folder.",
+      soundOverridesSectionSubtitle:
+        "Replace the theme's audio files. Picked files are copied into a per-theme overrides folder.",
       soundOverridesLabelComplete: "Task complete (complete)",
       soundOverridesLabelConfirm: "Permission prompt (confirm)",
       soundOverridesPreview: "Play",
@@ -576,9 +746,11 @@
       soundOverridesOpenDir: "Open overrides folder",
       soundOverridesOverriddenTooltip: "Overridden",
       soundOverridesEmpty: "This theme declares no sound effects.",
-      toastSoundOverrideSetOk: (name, file) => `Replaced '${name}' with ${file}`,
+      toastSoundOverrideSetOk: (name, file) =>
+        `Replaced '${name}' with ${file}`,
       toastSoundOverrideResetOk: (name) => `Reset '${name}' to theme default`,
-      toastSoundOverrideFailed: (message) => `Sound override failed: ${message}`,
+      toastSoundOverrideFailed: (message) =>
+        `Sound override failed: ${message}`,
       aboutTitle: "About Clawd",
       aboutSubtitle: "The pixel crab that watches your AI coding sessions.",
       aboutTagline: "A desktop companion for your AI coding journey.",
@@ -586,7 +758,8 @@
       aboutCheckForUpdates: "Check for Updates",
       aboutUpdateAvailableHint: "Update available: v{version}",
       autoUpdateCheck: "Automatically check for updates",
-      autoUpdateCheckDescription: "Quietly checks GitHub every 12 hours. Only notifies you when a new version is available.",
+      autoUpdateCheckDescription:
+        "Quietly checks GitHub every 12 hours. Only notifies you when a new version is available.",
       aboutRepositoryLabel: "Repository",
       aboutLicenseLabel: "License",
       aboutAuthorLabel: "Made by",
@@ -594,44 +767,54 @@
       aboutContributorsLabel: "Contributors",
       aboutFooter: "Clawd is open source. Built with care by the community.",
       aboutCleanupButton: "Remove Clawd integrations…",
-      aboutCleanupConfirm: "Remove Clawd hooks/plugins from local agents and disable all agent integrations in Clawd? This does not delete agent apps or user configs.",
+      aboutCleanupConfirm:
+        "Remove Clawd hooks/plugins from local agents and disable all agent integrations in Clawd? This does not delete agent apps or user configs.",
       aboutCleanupRunning: "Removing integrations…",
-      aboutCleanupSuccess: "Removed {removed} item(s) from {affected} integration(s). Failed: {failed}.",
+      aboutCleanupSuccess:
+        "Removed {removed} item(s) from {affected} integration(s). Failed: {failed}.",
       aboutCleanupFailed: "Integration cleanup failed",
-      aboutCleanupKiroNote: "Kiro clawd.json is kept; only hook entries were removed.",
-      aboutEasterEggToast: "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
+      aboutCleanupKiroNote:
+        "Kiro clawd.json is kept; only hook entries were removed.",
+      aboutEasterEggToast:
+        "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
       aboutOpenExternalFailed: "Couldn't open the link in your browser.",
     },
     zh: {
       settingsTitle: "设置",
       settingsSubtitle: "配置 Clawd 在桌面上的行为。",
+      settingsTutorialReplayLink: "重新打开新手指南",
+      settingsTutorialReplayFailed: "无法打开新手指南",
       sidebarGeneral: "通用",
       sidebarAgents: "Agent 管理",
       sidebarTheme: "主题",
-      sidebarAnimMap: "动画映射",
-      sidebarAnimOverrides: "动画 / 音效替换",
+      sidebarAnimOverrides: "动画 / 音效",
       sidebarShortcuts: "快捷键",
       sidebarAbout: "关于",
       sidebarRemoteSsh: "远程 SSH",
       sidebarTelegramApproval: "远程审批",
       remoteApprovalTitle: "远程审批",
-      remoteApprovalSubtitle: "把本地权限请求路由到远程渠道。Token 不写入 prefs，本地权限气泡仍然保留作为兜底。目前支持 Telegram，后续会加入 Discord 等更多渠道。",
+      remoteApprovalSubtitle:
+        "把本地权限请求路由到远程渠道。Token 不写入 prefs，本地权限气泡仍然保留作为兜底。目前支持 Telegram，后续会加入 Discord 等更多渠道。",
       telegramApprovalChannelName: "Telegram",
       telegramApprovalCardKind_incomplete: "未完成配置",
       telegramApprovalCardKind_ready: "可启用",
       telegramApprovalCardKind_starting: "启动中…",
       telegramApprovalCardKind_running: "运行中",
       telegramApprovalCardKind_failed: "失败",
-      telegramApprovalCardMissingBoth: "请在下方保存 bot token 和接收 user id 后继续。",
+      telegramApprovalCardMissingBoth:
+        "请在下方保存 bot token 和接收 user id 后继续。",
       telegramApprovalCardMissingToken: "请在下方保存 bot token 后继续。",
       telegramApprovalCardMissingRecipient: "请在下方保存接收 user id 后继续。",
-      telegramApprovalCardReadyToEnable: "Token 和接收人都已保存，在第 3 步打开开关即可启动。",
+      telegramApprovalCardReadyToEnable:
+        "Token 和接收人都已保存，在第 3 步打开开关即可启动。",
       telegramApprovalCardStarting: "正在连接 Telegram 审批 sidecar…",
-      telegramApprovalCardRunning: "Telegram 审批运行中，审批请求会发到你的 bot。",
+      telegramApprovalCardRunning:
+        "Telegram 审批运行中，审批请求会发到你的 bot。",
       telegramApprovalCardFailed: "Sidecar 报错，看下方信息或重启。",
       telegramApprovalStep1Title: "1. Bot Token",
       telegramApprovalBotToken: "Bot token",
-      telegramApprovalBotTokenHintHtml: "去 [@BotFather](https://t.me/botfather) 用 /newbot 创建机器人，把 token 贴到这里。Token 存到 userData env 文件，不会写入 clawd-prefs.json。",
+      telegramApprovalBotTokenHintHtml:
+        "去 [@BotFather](https://t.me/botfather) 用 /newbot 创建机器人，把 token 贴到这里。Token 存到 userData env 文件，不会写入 clawd-prefs.json。",
       telegramApprovalBotTokenPlaceholder: "粘贴新的 bot token",
       telegramApprovalSaveToken: "保存 token",
       telegramApprovalSaving: "保存中…",
@@ -640,31 +823,40 @@
       telegramApprovalTokenSaveFailed: "无法保存 Telegram bot token。",
       telegramApprovalTokenConfiguredLabel: "Token 已配置",
       telegramApprovalTokenConfiguredNoMask: "（已存）",
-      telegramApprovalTokenConfiguredDesc: "Bot token 已经保存到磁盘。如果你换了机器人，可以替换。",
+      telegramApprovalTokenConfiguredDesc:
+        "Bot token 已经保存到磁盘。如果你换了机器人，可以替换。",
       telegramApprovalReplaceToken: "更换 token",
       telegramApprovalCancel: "取消",
       telegramApprovalTokenCurrent: "当前：{masked}",
-      telegramApprovalTokenReplaceHintHtml: "贴新 token 会覆盖原来的。需要新 token 就再去 [@BotFather](https://t.me/botfather) 申请。",
+      telegramApprovalTokenReplaceHintHtml:
+        "贴新 token 会覆盖原来的。需要新 token 就再去 [@BotFather](https://t.me/botfather) 申请。",
       telegramApprovalStep2Title: "2. 接收人",
       telegramApprovalRecipientLabel: "你的 Telegram 用户 ID",
-      telegramApprovalRecipientHintHtml: "去 Telegram 找 [@userinfobot](https://t.me/userinfobot) 私聊 /start 拿到你的数字 ID。Clawd 会用它既作为唯一可审批者，也作为接收审批卡的 chat。记得先去你自己的机器人发一条 /start 激活私聊。",
+      telegramApprovalRecipientHintHtml:
+        "去 Telegram 找 [@userinfobot](https://t.me/userinfobot) 私聊 /start 拿到你的数字 ID。Clawd 会用它既作为唯一可审批者，也作为接收审批卡的 chat。记得先去你自己的机器人发一条 /start 激活私聊。",
       telegramApprovalRecipientPlaceholder: "例如：123456789",
       telegramApprovalRecipientEmpty: "请先填你的 Telegram 用户 ID。",
-      telegramApprovalRecipientInvalid: "Telegram 用户 ID 必须是至少 5 位的数字。",
+      telegramApprovalRecipientInvalid:
+        "Telegram 用户 ID 必须是至少 5 位的数字。",
       telegramApprovalSaveRecipient: "保存接收人",
       telegramApprovalConfigSaved: "Telegram 审批配置已保存。",
       telegramApprovalStep3Title: "3. 启用与测试",
       telegramApprovalToggle: "启用 Telegram 审批",
-      telegramApprovalToggleDesc: "配置完成后，可操作的本地权限气泡会同时发送一张 Telegram 审批卡片。",
+      telegramApprovalToggleDesc:
+        "配置完成后，可操作的本地权限气泡会同时发送一张 Telegram 审批卡片。",
       telegramApprovalCompletionOutput: "完成提醒输出",
-      telegramApprovalCompletionOutputDesc: "控制 Telegram 完成提醒是否附带 assistant 文本。完整回答可能包含代码、文件内容或 assistant 写出的敏感信息。",
+      telegramApprovalCompletionOutputDesc:
+        "控制 Telegram 完成提醒是否附带 assistant 文本。完整回答可能包含代码、文件内容或 assistant 写出的敏感信息。",
       telegramApprovalCompletionOutput_off: "关闭",
       telegramApprovalCompletionOutput_full: "完整回答",
-      telegramApprovalCompletionOutputFullConfirm: "完整回答会把 assistant 最后一条文本发送到 Telegram。如果 assistant 写出了代码、文件内容或敏感信息，也可能一并发送。继续吗？",
+      telegramApprovalCompletionOutputFullConfirm:
+        "完整回答会把 assistant 最后一条文本发送到 Telegram。如果 assistant 写出了代码、文件内容或敏感信息，也可能一并发送。继续吗？",
       telegramApprovalDirectSend: "Direct Send（仅粘贴）",
-      telegramApprovalDirectSendDesc: "回复 Clawd 完成通知时，聚焦对应的本地终端并粘贴单行文本。不会按 Enter。",
+      telegramApprovalDirectSendDesc:
+        "回复 Clawd 完成通知时，聚焦对应的本地终端并粘贴单行文本。不会按 Enter。",
       telegramApprovalTest: "测试消息",
-      telegramApprovalTestDesc: "发送一张独立测试审批卡片，不绑定任何 agent 权限请求。",
+      telegramApprovalTestDesc:
+        "发送一张独立测试审批卡片，不绑定任何 agent 权限请求。",
       telegramApprovalSendTest: "发送测试",
       telegramApprovalTesting: "等待中…",
       telegramApprovalTestSent: "Telegram 测试完成。",
@@ -674,22 +866,25 @@
       telegramApprovalPrereqMissingToken: "bot token",
       telegramApprovalPrereqMissingRecipient: "接收人 user id",
       remoteSshTitle: "远程 SSH",
-      remoteSshSubtitle: "管理一键 SSH 隧道，让远程 AI 编码会话像本地一样工作。Clawd 不存任何密码或私钥口令——依赖你已配置的 ssh-agent / SSH 密钥。",
+      remoteSshSubtitle:
+        "管理一键 SSH 隧道，让远程 AI 编码会话像本地一样工作。Clawd 不存任何密码或私钥口令——依赖你已配置的 ssh-agent / SSH 密钥。",
       remoteSshSectionProfiles: "配置",
       remoteSshAddProfile: "+ 新增配置",
-      remoteSshEmpty: "还没有配置。点击\"新增配置\"添加你的第一个远程 SSH 隧道。",
+      remoteSshEmpty: '还没有配置。点击"新增配置"添加你的第一个远程 SSH 隧道。',
       remoteSshConnect: "连接",
       remoteSshDisconnect: "断开",
       remoteSshAuthenticate: "首次认证",
-      remoteSshAuthenticateHint: "在系统终端打开一次以完成 host key 确认或加载 SSH 密钥。",
+      remoteSshAuthenticateHint:
+        "在系统终端打开一次以完成 host key 确认或加载 SSH 密钥。",
       remoteSshOpenTerminal: "打开终端",
       remoteSshDeploy: "部署 / 修复 Hook",
       remoteSshDeploying: "部署中…",
       remoteSshDeploySuccess: "Hook 文件部署完成。",
-      remoteSshDeployDriftWarning: "部署期间配置被改动，已部署的是旧配置 — 请重新部署",
+      remoteSshDeployDriftWarning:
+        "部署期间配置被改动，已部署的是旧配置 — 请重新部署",
       remoteSshEdit: "编辑",
       remoteSshDelete: "删除",
-      remoteSshDeleteConfirm: "确定删除配置\"{label}\"？此操作不可撤销。",
+      remoteSshDeleteConfirm: '确定删除配置"{label}"？此操作不可撤销。',
       remoteSshAddTitle: "新增远程 SSH 配置",
       remoteSshEditTitle: "编辑远程 SSH 配置",
       remoteSshSave: "保存",
@@ -700,11 +895,14 @@
       remoteSshFieldHost: "主机",
       remoteSshFieldPort: "SSH 端口（默认 22）",
       remoteSshFieldIdentityFile: "私钥文件（可选）",
-      remoteSshFieldIdentityFileHint: "私钥的绝对路径。留空则使用 ssh-agent 或 ~/.ssh/config。",
+      remoteSshFieldIdentityFileHint:
+        "私钥的绝对路径。留空则使用 ssh-agent 或 ~/.ssh/config。",
       remoteSshFieldRemoteForwardPort: "远端转发端口",
       remoteSshFieldHostPrefix: "主机前缀（可选）",
-      remoteSshFieldHostPrefixHint: "在 Sessions 菜单显示的简短名称。避免控制字符、引号、反斜杠、$、` 和 !。",
+      remoteSshFieldHostPrefixHint:
+        "在 Sessions 菜单显示的简短名称。避免控制字符、引号、反斜杠、$、` 和 !。",
       remoteSshFieldAutoStartCodex: "连接时自动启动 Codex 兜底监控",
+      remoteSshFieldConnectOnLaunch: "Clawd 启动时自动连接",
       remoteSshStatus_idle: "未连接",
       remoteSshStatus_connecting: "连接中…",
       remoteSshStatus_connected: "已连接",
@@ -719,9 +917,11 @@
       "remoteSshStep_install-codex": "注册 Codex hooks",
       "remoteSshStep_install-copilot": "注册 Copilot hooks",
       "remoteSshStep_remote-shell": "探测远端 shell",
-      remoteSshErrAuthDenied: "认证失败。点击\"首次认证\"在终端完成 host key 确认或加载密钥。",
-      remoteSshErrHostKey: "Host key 尚未确认。点击\"首次认证\"在终端确认指纹。",
-      remoteSshErrForwardFailed: "远端端口不可用。请换一个远端转发端口（23333-23337）。",
+      remoteSshErrAuthDenied:
+        '认证失败。点击"首次认证"在终端完成 host key 确认或加载密钥。',
+      remoteSshErrHostKey: 'Host key 尚未确认。点击"首次认证"在终端确认指纹。',
+      remoteSshErrForwardFailed:
+        "远端端口不可用。请换一个远端转发端口（23333-23337）。",
       remoteSshErrBadConfig: "ssh 拒绝了配置。请检查配置项。",
       remoteSshErrIdentityMissing: "无法读取私钥文件。请检查路径和权限。",
       remoteSshErrDns: "无法解析主机名。",
@@ -729,17 +929,23 @@
       remoteSshErrNetUnreachable: "网络不可达，稍后将重试。",
       remoteSshErrBrokenPipe: "连接断开，稍后将重连。",
       remoteSshErrSpawnFailed: "无法启动 ssh 进程。",
-      remoteSshErrSshMissing: "未检测到 OpenSSH 客户端。Windows：设置 → 应用 → 可选功能 → 添加 OpenSSH 客户端。",
-      remoteSshErrWindowsOpenSshLegacy: "当前 Windows OpenSSH 版本过旧，Remote SSH 健康检查不可靠。请升级到 OpenSSH 8.x 或更新版本。",
-      remoteSshErrWindowsCmdShell: "远端默认 shell 是 Windows cmd.exe，Remote SSH 依赖 POSIX shell（mkdir -p / ~ 展开 / sh -c）。请在远端把 OpenSSH 的 DefaultShell 改成 Git Bash 或 WSL bash 后再点 Deploy。PowerShell 一条命令：New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
+      remoteSshErrSshMissing:
+        "未检测到 OpenSSH 客户端。Windows：设置 → 应用 → 可选功能 → 添加 OpenSSH 客户端。",
+      remoteSshErrWindowsOpenSshLegacy:
+        "当前 Windows OpenSSH 版本过旧，Remote SSH 健康检查不可靠。请升级到 OpenSSH 8.x 或更新版本。",
+      remoteSshErrWindowsCmdShell:
+        "远端默认 shell 是 Windows cmd.exe，Remote SSH 依赖 POSIX shell（mkdir -p / ~ 展开 / sh -c）。请在远端把 OpenSSH 的 DefaultShell 改成 Git Bash 或 WSL bash 后再点 Deploy。PowerShell 一条命令：New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
       remoteSshErrNoLocalPort: "本地 Clawd 服务尚未启动。",
       remoteSshErrUnknownStrikes: "连续多次未识别错误，请检查配置和日志。",
       remoteSshProbeLocalUnhealthy: "隧道已建立但本地 Clawd 服务异常。",
-      remoteSshProbeUnresponsive: "隧道已建立但 Clawd 无响应，请确认 Clawd 在运行。",
-      remoteSshProbePortHijack: "远端端口被另一个 HTTP 服务占用。请换一个远端转发端口。",
+      remoteSshProbeUnresponsive:
+        "隧道已建立但 Clawd 无响应，请确认 Clawd 在运行。",
+      remoteSshProbePortHijack:
+        "远端端口被另一个 HTTP 服务占用。请换一个远端转发端口。",
       remoteSshProbeHttpTimeout: "远端 HTTP 响应超时，稍后将重试。",
       remoteSshProbeNodeNotExec: "远端 node 二进制不可执行。请检查权限。",
-      remoteSshProbeNodeMissing: "远端找不到 Node。请先 Deploy 或在远端安装 Node。",
+      remoteSshProbeNodeMissing:
+        "远端找不到 Node。请先 Deploy 或在远端安装 Node。",
       remoteSshProbeSignal: "Probe 进程被中断，稍后将重试。",
       remoteSshHooksLabel: "Hook 状态：",
       remoteSshHooksNever: "从未部署",
@@ -747,8 +953,10 @@
       remoteSshHooksDeployedAgoMin: "{n} 分钟前部署",
       remoteSshHooksDeployedAgoHr: "{n} 小时前部署",
       remoteSshHooksDeployedAgoDay: "{n} 天前部署",
-      remoteSshConnectWarnNoDeploy: "Hook 文件还没部署。Connect 只建 SSH 隧道，不部署 hook——必须点 Deploy / Repair Hooks 之后 Clawd 才会响应远端会话。",
-      codexHookReviewReminder: "下一步：打开 Codex 命令行，输入 /hooks 走一遍 review 激活新 hook（Codex 要求 review 后才会触发）。",
+      remoteSshConnectWarnNoDeploy:
+        "Hook 文件还没部署。Connect 只建 SSH 隧道，不部署 hook——必须点 Deploy / Repair Hooks 之后 Clawd 才会响应远端会话。",
+      codexHookReviewReminder:
+        "下一步：打开 Codex 命令行，输入 /hooks 走一遍 review 激活新 hook（Codex 要求 review 后才会触发）。",
       doctorSidebarLabel: "Doctor",
       doctorTitle: "Clawd Doctor",
       doctorStatusUnknown: "未知",
@@ -768,7 +976,8 @@
       doctorCheckPermissionBubbles: "权限气泡",
       doctorCheckTheme: "主题",
       doctorCheckUnknown: "检查项",
-      doctorPrivacy: "隐私说明：诊断报告只在本机生成，Clawd 不会上传数据。复制前会脱敏用户路径和密钥。",
+      doctorPrivacy:
+        "隐私说明：诊断报告只在本机生成，Clawd 不会上传数据。复制前会脱敏用户路径和密钥。",
       doctorCopyReport: "复制诊断报告",
       doctorRerun: "重新检查",
       doctorClose: "关闭",
@@ -779,26 +988,31 @@
       doctorFixing: "修复中",
       doctorFixApplied: "修复已完成。",
       doctorFixFailed: "无法修复该问题。",
-      doctorFixConfirmCodex: "Clawd 会把 Codex 配置里的 [features].hooks 设为 true。继续吗？",
+      doctorFixConfirmCodex:
+        "Clawd 会把 Codex 配置里的 [features].hooks 设为 true。继续吗？",
       doctorFixConfirmCodexTitle: "启用 Codex hooks？",
-      doctorFixConfirmCodexDetail: "这次修复会修改你的 Codex 配置，把 [features].hooks 设为 true。只有你在这里确认后，Clawd 才会做这个改动。",
+      doctorFixConfirmCodexDetail:
+        "这次修复会修改你的 Codex 配置，把 [features].hooks 设为 true。只有你在这里确认后，Clawd 才会做这个改动。",
       doctorFixConfirmCodexAction: "启用并修复",
       doctorFixConfirmCancel: "取消",
       doctorRestartButton: "重启 Clawd",
       doctorRestarting: "重启中",
       doctorRestartConfirmTitle: "重启 Clawd？",
-      doctorRestartConfirmDetail: "Clawd 会关闭并重新启动。AI coding agent 正在进行的请求会被中断。重启过程中 Doctor 窗口也会一起关闭。",
+      doctorRestartConfirmDetail:
+        "Clawd 会关闭并重新启动。AI coding agent 正在进行的请求会被中断。重启过程中 Doctor 窗口也会一起关闭。",
       doctorRestartConfirmAction: "立即重启",
       doctorNoResult: "暂无诊断结果。",
       doctorConnectionTitle: "连接测试",
-      doctorConnectionInstruction: "在任意 AI coding agent 里发送一条消息，然后倒计时结束后回来查看结果。",
+      doctorConnectionInstruction:
+        "在任意 AI coding agent 里发送一条消息，然后倒计时结束后回来查看结果。",
       doctorConnectionIdle: "未测试",
       doctorConnectionTesting: "等待 {seconds} 秒",
       doctorConnectionHttpVerified: "HTTP 链路已验证",
       doctorConnectionHttpDropped: "HTTP 可达，但事件被丢弃",
       doctorConnectionHttpBlocked: "HTTP 被拦截",
       doctorConnectionNoActivity: "没有活动",
-      doctorConnectionNoActivityHint: "在任意 AI coding agent 中发送一条消息来测试连接。",
+      doctorConnectionNoActivityHint:
+        "在任意 AI coding agent 中发送一条消息来测试连接。",
       doctorConnectionError: "连接测试失败",
       doctorTestConnection: "测试连接",
       doctorOpenLog: "打开调试日志",
@@ -822,7 +1036,8 @@
       shortcutErrorReserved: "该组合键属于保留快捷键，请换一个。",
       shortcutErrorInvalid: "暂不支持这个组合键。",
       shortcutErrorNeedsModifier: "快捷键至少要包含一个修饰键。",
-      shortcutErrorRegistrationFailed: "已保存，但当前因系统冲突未生效。请重新绑定或稍后再试。",
+      shortcutErrorRegistrationFailed:
+        "已保存，但当前因系统冲突未生效。请重新绑定或稍后再试。",
       shortcutLabelTogglePet: "显示/隐藏桌宠",
       shortcutLabelPermissionAllow: "权限：允许",
       shortcutLabelPermissionDeny: "权限：拒绝",
@@ -830,19 +1045,23 @@
       sidebarSoon: "待推出",
       sectionAppearance: "外观",
       sectionSession: "会话管理",
-      sectionSystem: "系统",
-      sectionStartup: "启动",
+      sectionAlerts: "提醒与反馈",
+      sectionBehavior: "行为与位置",
+      sectionSystemStartup: "系统与启动",
       sectionMobile: "移动端",
-      sectionBubbles: "气泡",
       sectionPermissions: "权限",
-      rowAutoApproveAll: "自动驾驶",
-      menuAutoApproveAll: "自动驾驶（全部自动通过）",
-      autoApproveAllConfirmTitle: "开启自动驾驶？",
-      autoApproveAllConfirmDetail: "所有 agent 的每一个权限请求都会被自动通过，包括执行 shell 命令和删除文件。Clawd 不会再先问你。只有在你完全信任 agent 的行为时才开启。",
-      autoApproveAllConfirmEnable: "开启自动驾驶",
+      rowAutoApproveAll: "自动放行所有请求",
+      rowAutoApproveAllDesc:
+        "危险：自动通过所有 agent 的权限请求——执行命令、修改文件、删除文件——不再询问。各 agent 的开关和「勿扰打扰」仍然生效。",
+      menuAutoApproveAll: "自动放行所有请求",
+      autoApproveAllConfirmTitle: "开启自动放行所有请求？",
+      autoApproveAllConfirmDetail:
+        "所有 agent 的每一个权限请求都会被自动通过，包括执行 shell 命令和删除文件。Clawd 不会再先问你。只有在你完全信任 agent 的行为时才开启。",
+      autoApproveAllConfirmEnable: "开启自动放行",
       autoApproveAllConfirmCancel: "取消",
       hardwareBuddyTitle: "Hardware Buddy",
-      hardwareBuddyDesc: "通过单独安装的 Clawstick runtime 连接已配对 BLE 桌面设备。权限回复默认关闭，必须显式开启且链路安全才会启用。",
+      hardwareBuddyDesc:
+        "通过单独安装的 Clawstick runtime 连接已配对 BLE 桌面设备。权限回复默认关闭，必须显式开启且链路安全才会启用。",
       hardwareBuddyEnable: "启用 Hardware Buddy",
       hardwareBuddyEnableDesc: "启动 BLE sidecar，默认只发送会话状态快照。",
       hardwareBuddyAddress: "BLE 地址",
@@ -850,12 +1069,16 @@
       hardwareBuddyNamePrefix: "设备名前缀",
       hardwareBuddyNamePrefixDesc: "扫描广播名称以该文本开头的设备。",
       hardwareBuddyPermissions: "允许硬件权限回复",
-      hardwareBuddyPermissionsDesc: "需要此开关和安全配对链路同时成立，设备上才会显示允许/拒绝提示。",
+      hardwareBuddyPermissionsDesc:
+        "需要此开关和安全配对链路同时成立，设备上才会显示允许/拒绝提示。",
       hardwareBuddyQuickCommands: "启用 Quick Commands",
-      hardwareBuddyQuickCommandsDesc: "显示本地 preset 按钮，只创建由 adapter 处理的 quick_command 事件；Clawd 不粘贴文本，也不运行 shell。",
+      hardwareBuddyQuickCommandsDesc:
+        "显示本地 preset 按钮，只创建由 adapter 处理的 quick_command 事件；Clawd 不粘贴文本，也不运行 shell。",
       hardwareBuddyQuickCommandPresets: "Quick Command presets",
-      hardwareBuddyQuickCommandPresetsDesc: "点击 preset 会为 active-session adapter 写入一个已校验事件。",
-      hardwareBuddyQuickCommandsDisabled: "打开 Quick Commands 后才能使用 preset 按钮。",
+      hardwareBuddyQuickCommandPresetsDesc:
+        "点击 preset 会为 active-session adapter 写入一个已校验事件。",
+      hardwareBuddyQuickCommandsDisabled:
+        "打开 Quick Commands 后才能使用 preset 按钮。",
       hardwareBuddyQuickCommandsLoading: "正在加载 presets...",
       hardwareBuddyQuickCommandsUnavailable: "Quick Commands 当前不可用。",
       hardwareBuddyQuickCommandSent: "Quick Command 已入队。",
@@ -872,10 +1095,12 @@
       hardwareBuddyTestError: "测试审批失败。",
       hardwareBuddyTestErr_disabled: "Hardware Buddy 尚未启用。",
       hardwareBuddyTestErr_permissions_off: "硬件权限回复尚未开启。",
-      hardwareBuddyTestErr_not_secure: "Hardware Buddy 尚未通过安全配对链路连接。",
+      hardwareBuddyTestErr_not_secure:
+        "Hardware Buddy 尚未通过安全配对链路连接。",
       hardwareBuddyTestErr_timeout: "设备未在测试超时前回复。",
       hardwareBuddyTestErr_no_decision: "Hardware Buddy 测试没有收到明确决定。",
-      hardwareBuddyTestErr_internal_error: "Clawd 内部执行 Hardware Buddy 测试失败。",
+      hardwareBuddyTestErr_internal_error:
+        "Clawd 内部执行 Hardware Buddy 测试失败。",
       hardwareBuddyTestDisabled: "先启用 Hardware Buddy，才能测试审批。",
       hardwareBuddyTestRepliesOff: "先打开硬件权限回复，才能测试审批。",
       hardwareBuddyTestNeedsSecure: "先连接到安全配对链路，才能测试审批。",
@@ -907,7 +1132,8 @@
       collapsibleExpand: "展开分组",
       collapsibleCollapse: "收起分组",
       agentsTitle: "Agent 管理",
-      agentsSubtitle: "按 agent 类型开关追踪。关闭后会停掉日志监视器、在 HTTP 入口丢弃 hook 事件——不会再驱动桌宠、不弹权限气泡、不记会话。",
+      agentsSubtitle:
+        "按 agent 类型开关追踪。关闭后会停掉日志监视器、在 HTTP 入口丢弃 hook 事件——不会再驱动桌宠、不弹权限气泡、不记会话。",
       agentsEmpty: "没有已注册的 agent。",
       eventSourceHook: "Hook",
       eventSourceLogPoll: "日志轮询",
@@ -915,16 +1141,31 @@
       eventSourceExtension: "扩展",
       badgePermissionBubble: "权限气泡",
       rowAgentPermissions: "显示弹窗",
-      rowAgentPermissionsDesc: "关闭后让该 agent 在自己的终端里处理提示，不再弹 Clawd 气泡。",
+      rowAgentPermissionsDesc:
+        "关闭后让该 agent 在自己的终端里处理提示，不再弹 Clawd 气泡。",
       rowCodexPermissionMode: "Codex 权限模式",
-      rowCodexPermissionModeDesc: "Native 保持 Codex AutoReview 和终端原生提示接管；Intercept 显示 Clawd 允许/拒绝气泡。",
+      rowCodexPermissionModeDesc:
+        "Native 保持 Codex AutoReview 和终端原生提示接管；Intercept 显示 Clawd 允许/拒绝气泡。",
       codexPermissionModeNative: "Native",
       codexPermissionModeIntercept: "Intercept",
       rowCodexNativeNotificationSound: "Native 通知音",
-      rowCodexNativeNotificationSoundDesc: "关闭后，Codex Native 权限提示仍显示通知动画，但不播放提示音；完成音效仍会播放。",
+      rowCodexNativeNotificationSoundDesc:
+        "关闭后，Codex Native 权限提示仍显示通知动画，但不播放提示音；完成音效仍会播放。",
+      agentCodexHookNeedsAttention: "需要注意",
+      codexHookHealthReasonDisabled:
+        "Codex hooks 在配置里被关闭（[features].hooks=false），Codex 不会运行审批 hook。请启用，或用 Doctor → Fix 修复。",
+      codexHookHealthReasonNeedsReview:
+        "Clawd 的 Codex hooks 已注册但需在 Codex 里确认——在 Codex 运行 /hooks，或用 Doctor → Fix。",
+      codexHookHealthReasonInactive:
+        "Clawd 的 Codex hook 未生效，审批提示不会弹出。请重装集成或用 Doctor → Fix 修复。",
+      rowCodexHookHealthNotify: "Codex hook 失效时提醒",
+      rowCodexHookHealthNotifyDesc:
+        "启动时若 Codex 官方审批 hook 被禁用或需检查，弹一次性托盘通知。每种问题只提醒一次，不会每次启动都弹。",
       rowAgentIdleAlerts: "等待输入提醒",
-      rowAgentIdleAlertsDesc: "当前 agent 的 Notification hook 触发的铃铛动画和音效（例如 Claude Code 闲置约 60 秒时发送）。权限气泡不受影响。",
-      agentIntegrationUninstallConfirm: "卸载此 agent 集成？这将移除 Clawd 管理的 hooks 并禁用该 agent。",
+      rowAgentIdleAlertsDesc:
+        "当前 agent 的 Notification hook 触发的铃铛动画和音效（例如 Claude Code 闲置约 60 秒时发送）。权限气泡不受影响。",
+      agentIntegrationUninstallConfirm:
+        "卸载此 agent 集成？这将移除 Clawd 管理的 hooks 并禁用该 agent。",
       rowLanguage: "语言",
       rowLanguageDesc: "菜单和气泡的界面语言。",
       rowSound: "音效",
@@ -933,17 +1174,21 @@
       rowVolume: "音量",
       rowVolumeDesc: "调整音效音量。关闭音效时不可用。",
       rowLowPowerIdleMode: "低功耗 idle",
-      rowLowPowerIdleModeDesc: "Clawd 静止几秒后暂停 idle SVG 动画；有活动时会立即恢复动画。",
+      rowLowPowerIdleModeDesc:
+        "Clawd 静止几秒后暂停 idle SVG 动画；有活动时会立即恢复动画。",
       rowKeepAwakeWhileWorking: "工作时阻止休眠",
-      rowKeepAwakeWhileWorkingDesc: "有任务进行中时阻止电脑休眠；任务完成后恢复允许休眠。",
+      rowKeepAwakeWhileWorkingDesc:
+        "有任务进行中时阻止电脑休眠；任务完成后恢复允许休眠。",
       rowFlashTaskbarOnComplete: "任务完成时闪烁系统托盘图标",
-      rowFlashTaskbarOnCompleteDesc: "AI 完成任务时系统托盘图标闪烁提醒，即使在其他窗口工作也能注意到。",
+      rowFlashTaskbarOnCompleteDesc:
+        "AI 完成任务时系统托盘图标闪烁提醒，即使在其他窗口工作也能注意到。",
       rowFlash: "系统托盘闪烁",
       rowFlashDesc: "设置任务完成后系统托盘图标的闪烁行为。",
       rowFlashInterval: "闪烁间隔",
       rowFlashIntervalDesc: "图标在正常和高亮之间切换的速度。",
       rowFlashDuration: "闪烁时长",
-      rowFlashDurationDesc: "闪烁持续多久。设为 0 表示一直闪烁，直到手动点击停止。",
+      rowFlashDurationDesc:
+        "闪烁持续多久。设为 0 表示一直闪烁，直到手动点击停止。",
       unitMilliseconds: "毫秒",
       valueAlways: "一直闪烁",
       rowSessionHud: "会话 HUD",
@@ -955,9 +1200,11 @@
       sessionHudSummaryCleanup: "自动清理: {state}",
       sessionHudSummaryContextUsage: "上下文: {state}",
       rowSessionHudStateLabels: "显示状态标签",
-      rowSessionHudStateLabelsDesc: "为工作中、思考中、等待中等活跃会话显示紧凑状态标签。已完成会话仍显示铃铛。",
+      rowSessionHudStateLabelsDesc:
+        "为工作中、思考中、等待中等活跃会话显示紧凑状态标签。已完成会话仍显示铃铛。",
       rowSessionHudElapsed: "显示 HUD 时间",
-      rowSessionHudElapsedDesc: "在会话 HUD 中显示经过时间。关闭后 HUD 会变窄。",
+      rowSessionHudElapsedDesc:
+        "在会话 HUD 中显示经过时间。关闭后 HUD 会变窄。",
       shortcutLabelPetReveal: "单击桌宠：显示会话 HUD",
       shortcutLabelOpenDashboard: "Ctrl / ⌘ + 单击桌宠：打开会话面板",
       sessionHudPinTooltip: "固定 HUD",
@@ -965,53 +1212,77 @@
       sessionHudFocusUnavailableTooltip: "无法跳转终端",
       sessionHudRemoteFocusUnavailableTooltip: "远程会话无法跳转终端",
       rowSessionHudCleanupDetached: "自动清理已分离会话",
-      rowSessionHudCleanupDetachedDesc: "会话结束且终端关闭后，先从 HUD 隐藏，再在稍后从会话列表移除。",
+      rowSessionHudCleanupDetachedDesc:
+        "会话结束且终端关闭后，先从 HUD 隐藏，再在稍后从会话列表移除。",
       rowSessionCleanupGroup: "会话清理",
-      rowSessionCleanupGroupDesc: "Clawd 等待多久才清理不活跃会话。主要影响远程 SSH 会话（看不到终端窗口）——远程长任务可调大；设为 0 则永远不按时间清理。",
+      rowSessionCleanupGroupDesc:
+        "Clawd 等待多久才清理不活跃会话。主要影响远程 SSH 会话（看不到终端窗口）——远程长任务可调大；设为 0 则永远不按时间清理。",
       rowStaleSession: "会话超时（空闲）",
-      rowStaleSessionDesc: "远程 SSH 会话空闲达到该时长后移除。本地会话只要终端还开着就不会被移除，只会变灰为 idle。默认 10 分钟。0 = 永不按时间移除。必须不短于“工作超时”。",
+      rowStaleSessionDesc:
+        "远程 SSH 会话空闲达到该时长后移除。本地会话只要终端还开着就不会被移除，只会变灰为 idle。默认 10 分钟。0 = 永不按时间移除。必须不短于“工作超时”。",
       rowStaleWorking: "工作超时",
-      rowStaleWorkingDesc: "会话长时间卡在 working/thinking 状态时，到达该时长后改为 idle。默认 5 分钟。当“会话超时”非 0 时，最大不会超过它。",
+      rowStaleWorkingDesc:
+        "会话长时间卡在 working/thinking 状态时，到达该时长后改为 idle。默认 5 分钟。当“会话超时”非 0 时，最大不会超过它。",
       rowStaleDetached: "终端关闭后清理延迟",
-      rowStaleDetachedDesc: "仅当“自动清理已分离会话”开启时生效。会话的终端窗口关闭后，等待这么多秒再从 HUD 移除。默认 30 秒。",
+      rowStaleDetachedDesc:
+        "仅当“自动清理已分离会话”开启时生效。会话的终端窗口关闭后，等待这么多秒再从 HUD 移除。默认 30 秒。",
       unitMinutes: "分钟",
       unitSeconds: "秒",
       valueDisabled: "关闭",
       actionResetSessionCleanup: "恢复默认",
       rowSessionDashboard: "会话面板",
-      rowSessionDashboardDesc: "打开窗口查看所有 Claude Code、Codex 等 agent 的活跃会话。",
+      rowSessionDashboardDesc:
+        "打开窗口查看所有 Claude Code、Codex 等 agent 的活跃会话。",
       actionOpenDashboard: "打开",
       rowOpenAtLogin: "开机自启",
       rowOpenAtLoginDesc: "登录系统时自动启动 Clawd。",
       rowManageClaudeHooks: "自动管理 Claude hooks",
-      rowManageClaudeHooksDesc: "启动时同步 Claude hooks，并在 `~/.claude/settings.json` 被其他工具覆盖后自动补回。",
-      rowManageClaudeHooksOffNote: "关闭后只会停止后续自动管理。当前已安装的 Claude hooks 会保留，除非你主动断开。",
+      rowManageClaudeHooksDesc:
+        "启动时同步 Claude hooks，并在 `~/.claude/settings.json` 被其他工具覆盖后自动补回。",
+      rowManageClaudeHooksOffNote:
+        "关闭后只会停止后续自动管理。当前已安装的 Claude hooks 会保留，除非你主动断开。",
       actionDisconnectClaudeHooks: "断开",
       claudeHooksDisableConfirmTitle: "关闭 Claude hooks 自动管理？",
-      claudeHooksDisableConfirmDetail: "如果只关闭自动管理，`~/.claude/settings.json` 里当前已安装的 Claude hooks 会继续保留。`随 Claude Code 启动` 的偏好也会保留，方便以后重新启用。",
+      claudeHooksDisableConfirmDetail:
+        "如果只关闭自动管理，`~/.claude/settings.json` 里当前已安装的 Claude hooks 会继续保留。`随 Claude Code 启动` 的偏好也会保留，方便以后重新启用。",
       claudeHooksDisableConfirmDisconnect: "关闭并移除当前 hooks",
       claudeHooksDisableConfirmDisableOnly: "只关闭自动管理",
       claudeHooksDisableConfirmKeep: "继续保留自动管理",
       claudeHooksDisconnectConfirmTitle: "断开 Claude hooks？",
-      claudeHooksDisconnectConfirmDetail: "这会从 `~/.claude/settings.json` 移除 Clawd 管理的 Claude hooks，并关闭自动管理。`随 Claude Code 启动` 的偏好会保留，方便以后重新启用。",
+      claudeHooksDisconnectConfirmDetail:
+        "这会从 `~/.claude/settings.json` 移除 Clawd 管理的 Claude hooks，并关闭自动管理。`随 Claude Code 启动` 的偏好会保留，方便以后重新启用。",
       claudeHooksDisconnectConfirmAction: "断开 hooks",
       claudeHooksDisconnectConfirmKeep: "继续保留",
       rowStartWithClaude: "随 Claude Code 启动",
       rowStartWithClaudeDesc: "Claude Code 会话开始时自动拉起 Clawd。",
-      rowStartWithClaudeDisabledDesc: "需要先开启 Claude hooks 自动管理。关闭期间，端口变化和外部覆盖都不会被自动修补。",
+      rowStartWithClaudeDisabledDesc:
+        "需要先开启 Claude hooks 自动管理。关闭期间，端口变化和外部覆盖都不会被自动修补。",
       rowHideBubbles: "隐藏气泡",
       rowHideBubblesDesc: "隐藏 Clawd 的权限、通知和更新气泡。",
       rowBubbleFollow: "气泡跟随 Clawd",
       rowBubbleFollowDesc: "把权限气泡和更新气泡放在桌宠旁边，而不是屏幕角落。",
+      rowAutoApproveAll: "自动放行所有请求",
+      rowAutoApproveAllDesc:
+        "危险：自动通过所有 agent 的权限请求——执行命令、修改文件、删除文件——不再询问。各 agent 的开关和「请勿打扰」仍然生效。",
+      menuAutoApproveAll: "自动放行所有请求",
+      autoApproveAllConfirmTitle: "开启自动放行所有请求？",
+      autoApproveAllConfirmDetail:
+        "所有 agent 的每一个权限请求都会被自动通过，包括执行 shell 命令和删除文件。Clawd 不会再先问你。只有在你完全信任 agent 的行为时才开启。",
+      autoApproveAllConfirmEnable: "开启自动放行",
+      autoApproveAllConfirmCancel: "取消",
       rowBubblePolicy: "气泡显示与自动关闭",
       rowBubblePolicyDesc: "分别控制各类气泡是否显示，以及被动气泡停留多久。",
       bubblePermissionLabel: "权限 / 交互气泡",
-      bubblePermissionDesc: "关闭后审批提示会回到 agent 终端 / TUI 处理。Plan review 和 AskUserQuestion 仍会显示，避免 agent 卡住。秒数是可选的超时自动关闭，用于 hook 连接挂死但等不到决定的场景（0 = 不自动关闭）。",
+      bubblePermissionDesc:
+        "关闭后审批提示会回到 agent 终端 / TUI 处理。Plan review 和 AskUserQuestion 仍会显示，避免 agent 卡住。秒数是可选的超时自动关闭，用于 hook 连接挂死但等不到决定的场景（0 = 不自动关闭）。",
       bubbleNotificationLabel: "通知气泡",
-      bubbleNotificationDesc: "开关控制 Codex / Kimi CLI 被动通知。秒数表示自动关闭上限；后续状态可能提前关闭。0 表示隐藏。",
+      bubbleNotificationDesc:
+        "开关控制 Codex / Kimi Code 被动通知。秒数表示自动关闭上限；后续状态可能提前关闭。0 表示隐藏。",
       bubbleUpdateLabel: "更新气泡",
-      bubbleUpdateDesc: "开关控制检查更新、下载、成功、失败和重启提示。秒数控制它们停留多久。",
-      bubbleUpdateWarning: "不建议隐藏更新气泡，否则可能错过失败原因或重启提示。",
+      bubbleUpdateDesc:
+        "开关控制检查更新、下载、成功、失败和重启提示。秒数控制它们停留多久。",
+      bubbleUpdateWarning:
+        "不建议隐藏更新气泡，否则可能错过失败原因或重启提示。",
       bubbleSecondsPrefix: "停留",
       bubbleSecondsUnit: "秒",
       bubbleSecondsInvalid: "秒数必须是 0 到 3600 的整数",
@@ -1021,29 +1292,38 @@
       bubblePolicySummaryOn: "开",
       bubblePolicySummaryOff: "关",
       updateBubbleDisableConfirmTitle: "隐藏更新气泡？",
-      updateBubbleDisableConfirmDetail: "隐藏后可能错过更新失败原因、下载完成提示和重启安装提示。更新流程本身仍会继续，但 Clawd 不再显示更新气泡。",
+      updateBubbleDisableConfirmDetail:
+        "隐藏后可能错过更新失败原因、下载完成提示和重启安装提示。更新流程本身仍会继续，但 Clawd 不再显示更新气泡。",
       updateBubbleDisableConfirmAction: "隐藏更新气泡",
       updateBubbleDisableConfirmCancel: "继续显示",
       rowAllowEdgePinning: "允许贴靠屏幕边缘",
-      rowAllowEdgePinningDesc: "开启后桌宠贴屏幕边缘时，顶/底装饰（花花、建筑、气泡等）可能被裁掉。",
+      rowAllowEdgePinningDesc:
+        "开启后桌宠贴屏幕边缘时，顶/底装饰（花花、建筑、气泡等）可能被裁掉。",
       rowDisableMiniMode: "关闭极简模式",
-      rowDisableMiniModeDesc: "开启后桌宠不会进入极简模式，也不会播放边缘吸附的迷你动画。",
+      rowDisableMiniModeDesc:
+        "开启后桌宠不会进入极简模式，也不会播放边缘吸附的迷你动画。",
       rowFreeRoam: "自由漫步",
       rowFreeRoamDesc: "空闲时让桌宠在桌面上自由漫步，移动鼠标即停止。",
       rowKeepSizeAcrossDisplays: "跨显示器保持大小",
-      rowKeepSizeAcrossDisplaysDesc: "移动到另一台显示器时不自动重新缩放。滑块仍按当前显示器的比例调整桌宠。",
+      rowKeepSizeAcrossDisplaysDesc:
+        "移动到另一台显示器时不自动重新缩放。滑块仍按当前显示器的比例调整桌宠。",
+      rowFullscreenOverlay: "浮在全屏游戏上方",
+      rowFullscreenOverlayDesc:
+        "在 Windows 上让桌宠在全屏游戏上方依然好用——保持在上方、可拖动，且不会抢走游戏焦点。关闭则回到未优化的原样。无边框全屏游戏下桌宠始终浮在上方；想彻底移除请用「隐藏桌宠」。（独占全屏游戏下的表现可能不一致。）",
       rowSize: "大小",
       rowSizeDesc: "拖动调整桌宠大小。",
       placeholderTitle: "即将推出",
-      placeholderDesc: "此面板将在 Clawd 后续版本中加入，规划见 docs/plans/plan-settings-panel.md。",
+      placeholderDesc:
+        "此面板将在 Clawd 后续版本中加入，规划见 docs/plans/plan-settings-panel.md。",
       toastSaveFailed: "保存失败：",
       langEnglish: "English",
-      langChinese: "简中",
-      langTraditionalChinese: "繁中",
+      langChinese: "简体中文",
+      langTraditionalChinese: "繁體中文",
       langKorean: "한국어",
       langJapanese: "日本語",
       themeTitle: "主题",
-      themeSubtitle: "为 Clawd 选择一个主题。卡片会显示内建和能力角标，切换前就能看出 tracked / static / mini 等差异。",
+      themeSubtitle:
+        "为 Clawd 选择一个主题。卡片会显示内建和能力角标，切换前就能看出 tracked / static / mini 等差异。",
       themeEmpty: "没有可用的主题。",
       themeBadgeBuiltin: "内建",
       themeBadgeCodexPet: "Codex Pet",
@@ -1054,7 +1334,8 @@
       themeImportPetZip: "导入 Codex Pet 包（.zip）",
       themeOpenCodexPetsFolder: "打开 Codex Pet 文件夹",
       themeImportUserThemeZip: "导入 Clawd 主题包（.zip）",
-      themeImportUserThemeZipHint: "Clawd 主题 zip：根目录或一个顶层文件夹内必须包含 theme.json；素材放在 assets/，可使用 SVG、GIF、APNG、PNG、WebP、JPG、JPEG。Codex Pet 包请用上方入口。",
+      themeImportUserThemeZipHint:
+        "Clawd 主题 zip：根目录或一个顶层文件夹内必须包含 theme.json；素材放在 assets/，可使用 SVG、GIF、APNG、PNG、WebP、JPG、JPEG。Codex Pet 包请用上方入口。",
       themeOpenUserThemesFolder: "打开主题文件夹",
       themeRefreshThemes: "刷新主题",
       themeGroupBuiltIn: "内建",
@@ -1066,6 +1347,7 @@
       themeCapabilityStatic: "静态主题",
       themeCapabilityMini: "Mini",
       themeCapabilityDirectSleep: "直睡",
+      themeCapabilityFineMotion: "精细动效",
       themeCapabilityNoReactions: "无反应",
       themeActiveIndicator: "\u2713 当前",
       themeThumbMissing: "\u{1F3AD}",
@@ -1073,20 +1355,33 @@
       themeVariantStripLabel: "变体",
       toastThemeDeleted: "主题已删除。",
       toastThemeDeleteFailed: "删除主题失败：",
-      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+      toastCodexPetsRefreshOk: (
+        imported,
+        updated,
+        unchanged,
+        removed,
+        invalid,
+        switched,
+      ) =>
         `Codex Pet 已刷新：新增 ${imported}，更新 ${updated}，未变 ${unchanged}，移除 ${removed}${invalid ? `，无效 ${invalid}` : ""}${switched ? "；当前主题已回退到 Clawd" : ""}。`,
-      toastCodexPetsRefreshFailed: (message) => `刷新 Codex Pet 失败：${message}`,
+      toastCodexPetsRefreshFailed: (message) =>
+        `刷新 Codex Pet 失败：${message}`,
       toastCodexPetsFolderFailed: "打开 Codex Pet 文件夹失败：",
       toastUserThemesFolderFailed: "打开主题文件夹失败：",
       toastUserThemeZipImportOk: (name) => `已导入主题 "${name}"。`,
-      toastUserThemeZipImportFailed: (message) => `导入主题（.zip）失败：${message}`,
+      toastUserThemeZipImportFailed: (message) =>
+        `导入主题（.zip）失败：${message}`,
       toastCodexPetZipImportOk: (name) => `已导入 "${name}" 并切换使用。`,
-      toastCodexPetZipImportFailed: (message) => `导入 Codex Pet（.zip）失败：${message}`,
-      toastCodexPetRemoveOk: (name, switched) => `已卸载 "${name}"${switched ? "，并切回 Clawd" : ""}。`,
+      toastCodexPetZipImportFailed: (message) =>
+        `导入 Codex Pet（.zip）失败：${message}`,
+      toastCodexPetRemoveOk: (name, switched) =>
+        `已卸载 "${name}"${switched ? "，并切回 Clawd" : ""}。`,
       toastCodexPetRemoveFailed: (message) => `卸载导入宠物失败：${message}`,
       animMapTitle: "动画映射",
-      animMapSubtitle: "关掉不想看的打扰动画。事件照样会触发——Clawd 只是不再播放对应的动画和音效。",
-      animMapSemanticsNote: "关闭 = 不播动画 + 不响音效。权限气泡、会话记录、终端聚焦照常工作。",
+      animMapSubtitle:
+        "关掉不想看的打扰动画。事件照样会触发——Clawd 只是不再播放对应的动画和音效。",
+      animMapSemanticsNote:
+        "关闭 = 不播动画 + 不响音效。权限气泡、会话记录、终端聚焦照常工作。",
       animMapResetAll: "全部恢复",
       animMapAttentionLabel: "完成提示（happy）",
       animMapAttentionDesc: "Agent 结束一轮时的开心跳动（Stop）。",
@@ -1099,8 +1394,9 @@
       animMapCarryingLabel: "Worktree 搬运",
       animMapCarryingDesc: "创建 worktree 时的搬运动画。",
       toastAnimMapResetOk: "动画和音效覆盖已清空。",
-      animOverridesTitle: "动画 / 音效替换",
-      animOverridesSubtitle: "按卡片换动画文件、调整当前主题的淡入淡出与返回时机，以及替换主题音效。",
+      animOverridesTitle: "动画 / 音效",
+      animOverridesSubtitle:
+        "按卡片换动画文件、调整当前主题的淡入淡出与返回时机，以及替换主题音效。",
       animOverridesLoading: "正在加载动画和音效替换…",
       animOverridesCurrentTheme: "当前主题",
       animOverridesReplacementConfig: "动画覆盖设置",
@@ -1109,7 +1405,8 @@
       animOverridesResetAll: "恢复主题默认",
       animOverridesExport: "导出配置…",
       animOverridesImport: "导入配置…",
-      toastAnimOverridesExportOk: (count, path) => `已导出 ${count} 个主题的覆盖 → ${path}`,
+      toastAnimOverridesExportOk: (count, path) =>
+        `已导出 ${count} 个主题的覆盖 → ${path}`,
       toastAnimOverridesImportOk: (count) => `已导入 ${count} 个主题的覆盖。`,
       toastAnimOverridesExportEmpty: "当前没有覆盖可导出。",
       toastAnimOverridesExportFailed: (message) => `导出失败：${message}`,
@@ -1151,12 +1448,15 @@
       animReactionAnnoyed: "烦躁（连续戳）",
       animReactionDouble: "双击",
       animOverridesWideHitboxToggle: "宽点击区",
-      animOverridesWideHitboxDesc: "给这一帧启用更宽的点击区。素材视觉延伸超出默认桌宠轮廓时有用。",
+      animOverridesWideHitboxDesc:
+        "给这一帧启用更宽的点击区。素材视觉延伸超出默认桌宠轮廓时有用。",
       animOverridesWideHitboxResetToTheme: "恢复主题默认",
-      animOverridesAspectWarning: "此素材宽高比与原文件差了 {pct}%，点击区和位置可能需要手动校准。",
+      animOverridesAspectWarning:
+        "此素材宽高比与原文件差了 {pct}%，点击区和位置可能需要手动校准。",
       animOverridesExpandRow: "展开",
       animOverridesModalTitle: "选择素材文件",
-      animOverridesModalSubtitle: "把文件放进当前主题 assets 目录后，可在这里刷新列表重新选择。",
+      animOverridesModalSubtitle:
+        "把文件放进当前主题 assets 目录后，可在这里刷新列表重新选择。",
       animOverridesModalEmpty: "当前主题里还没有可用素材。",
       animOverridesModalSelected: "当前选中",
       animOverridesModalUse: "使用这个文件",
@@ -1164,8 +1464,10 @@
       animOverridesRefresh: "刷新列表",
       animOverridesSubtabAnimations: "动画",
       animOverridesSubtabSounds: "声音",
+      animOverridesSubtabMap: "开关",
       soundOverridesSectionTitle: "音效替换",
-      soundOverridesSectionSubtitle: "替换当前主题的音效文件。所选文件会复制到主题独立的覆盖目录。",
+      soundOverridesSectionSubtitle:
+        "替换当前主题的音效文件。所选文件会复制到主题独立的覆盖目录。",
       soundOverridesLabelComplete: "完成提示 (complete)",
       soundOverridesLabelConfirm: "权限提示 (confirm)",
       soundOverridesPreview: "试听",
@@ -1184,7 +1486,8 @@
       aboutCheckForUpdates: "检查更新",
       aboutUpdateAvailableHint: "有新版本: v{version}",
       autoUpdateCheck: "自动检查更新",
-      autoUpdateCheckDescription: "每 12 小时静默向 GitHub 查一次，发现新版本才通知你。",
+      autoUpdateCheckDescription:
+        "每 12 小时静默向 GitHub 查一次，发现新版本才通知你。",
       aboutRepositoryLabel: "代码仓库",
       aboutLicenseLabel: "开源协议",
       aboutAuthorLabel: "作者",
@@ -1192,44 +1495,53 @@
       aboutContributorsLabel: "贡献者",
       aboutFooter: "Clawd 是开源项目 · 与社区一起打造。",
       aboutCleanupButton: "移除 Clawd 集成…",
-      aboutCleanupConfirm: "要移除本机各 agent 里的 Clawd hooks / plugins，并在 Clawd 里禁用所有 agent 集成吗？不会删除 agent 应用或用户配置。",
+      aboutCleanupConfirm:
+        "要移除本机各 agent 里的 Clawd hooks / plugins，并在 Clawd 里禁用所有 agent 集成吗？不会删除 agent 应用或用户配置。",
       aboutCleanupRunning: "正在移除集成…",
-      aboutCleanupSuccess: "已从 {affected} 个集成移除 {removed} 项，失败 {failed} 项。",
+      aboutCleanupSuccess:
+        "已从 {affected} 个集成移除 {removed} 项，失败 {failed} 项。",
       aboutCleanupFailed: "集成清理失败",
       aboutCleanupKiroNote: "Kiro 的 clawd.json 已保留，只移除了 hook 条目。",
-      aboutEasterEggToast: "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
+      aboutEasterEggToast:
+        "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
       aboutOpenExternalFailed: "无法在浏览器中打开链接。",
     },
     "zh-TW": {
       settingsTitle: "設定",
       settingsSubtitle: "設定 Clawd 在桌面上怎麼動作。",
+      settingsTutorialReplayLink: "重新開啟新手指南",
+      settingsTutorialReplayFailed: "無法開啟新手指南",
       sidebarGeneral: "一般",
       sidebarAgents: "Agent 管理",
       sidebarTheme: "主題",
-      sidebarAnimMap: "動畫對應",
-      sidebarAnimOverrides: "動畫與音效自訂",
+      sidebarAnimOverrides: "動畫與音效",
       sidebarShortcuts: "快速鍵",
       sidebarAbout: "關於",
       sidebarRemoteSsh: "遠端 SSH",
       sidebarTelegramApproval: "遠端核准",
       remoteApprovalTitle: "遠端核准",
-      remoteApprovalSubtitle: "將本機權限請求路由到遠端通道。Token 不會寫入 prefs，本機權限泡泡仍保留為備援。目前支援 Telegram，後續會加入 Discord 等更多通道。",
+      remoteApprovalSubtitle:
+        "將本機權限請求路由到遠端通道。Token 不會寫入 prefs，本機權限泡泡仍保留為備援。目前支援 Telegram，後續會加入 Discord 等更多通道。",
       telegramApprovalChannelName: "Telegram",
       telegramApprovalCardKind_incomplete: "未完成設定",
       telegramApprovalCardKind_ready: "可啟用",
       telegramApprovalCardKind_starting: "啟動中…",
       telegramApprovalCardKind_running: "執行中",
       telegramApprovalCardKind_failed: "失敗",
-      telegramApprovalCardMissingBoth: "請在下方儲存 bot token 與接收 user id 後繼續。",
+      telegramApprovalCardMissingBoth:
+        "請在下方儲存 bot token 與接收 user id 後繼續。",
       telegramApprovalCardMissingToken: "請在下方儲存 bot token 後繼續。",
       telegramApprovalCardMissingRecipient: "請在下方儲存接收 user id 後繼續。",
-      telegramApprovalCardReadyToEnable: "Token 與接收人皆已儲存，在第 3 步打開開關即可啟動。",
+      telegramApprovalCardReadyToEnable:
+        "Token 與接收人皆已儲存，在第 3 步打開開關即可啟動。",
       telegramApprovalCardStarting: "正在連線到 Telegram 核准 sidecar…",
-      telegramApprovalCardRunning: "Telegram 核准運作中，核准請求會送到你的 bot。",
+      telegramApprovalCardRunning:
+        "Telegram 核准運作中，核准請求會送到你的 bot。",
       telegramApprovalCardFailed: "Sidecar 回報失敗，請看下方訊息或重啟。",
       telegramApprovalStep1Title: "1. Bot Token",
       telegramApprovalBotToken: "Bot token",
-      telegramApprovalBotTokenHintHtml: "到 [@BotFather](https://t.me/botfather) 用 /newbot 建立機器人，把 token 貼在這裡。Token 儲存在 userData env 檔，不會寫入 clawd-prefs.json。",
+      telegramApprovalBotTokenHintHtml:
+        "到 [@BotFather](https://t.me/botfather) 用 /newbot 建立機器人，把 token 貼在這裡。Token 儲存在 userData env 檔，不會寫入 clawd-prefs.json。",
       telegramApprovalBotTokenPlaceholder: "貼上新的 bot token",
       telegramApprovalSaveToken: "儲存 token",
       telegramApprovalSaving: "儲存中…",
@@ -1238,31 +1550,40 @@
       telegramApprovalTokenSaveFailed: "無法儲存 Telegram bot token。",
       telegramApprovalTokenConfiguredLabel: "Token 已設定",
       telegramApprovalTokenConfiguredNoMask: "（已儲存）",
-      telegramApprovalTokenConfiguredDesc: "Bot token 已經存到磁碟。若你換了機器人，可以替換。",
+      telegramApprovalTokenConfiguredDesc:
+        "Bot token 已經存到磁碟。若你換了機器人，可以替換。",
       telegramApprovalReplaceToken: "更換 token",
       telegramApprovalCancel: "取消",
       telegramApprovalTokenCurrent: "目前：{masked}",
-      telegramApprovalTokenReplaceHintHtml: "貼新 token 會覆蓋原本的。需要新 token 就再到 [@BotFather](https://t.me/botfather) 申請。",
+      telegramApprovalTokenReplaceHintHtml:
+        "貼新 token 會覆蓋原本的。需要新 token 就再到 [@BotFather](https://t.me/botfather) 申請。",
       telegramApprovalStep2Title: "2. 接收人",
       telegramApprovalRecipientLabel: "你的 Telegram 使用者 ID",
-      telegramApprovalRecipientHintHtml: "到 Telegram 找 [@userinfobot](https://t.me/userinfobot) 私訊 /start 取得你的數字 ID。Clawd 會用它同時做為唯一核准者與接收核准卡片的 chat。記得先到你自己的機器人發一次 /start 啟動私訊。",
+      telegramApprovalRecipientHintHtml:
+        "到 Telegram 找 [@userinfobot](https://t.me/userinfobot) 私訊 /start 取得你的數字 ID。Clawd 會用它同時做為唯一核准者與接收核准卡片的 chat。記得先到你自己的機器人發一次 /start 啟動私訊。",
       telegramApprovalRecipientPlaceholder: "例如：123456789",
       telegramApprovalRecipientEmpty: "請先填你的 Telegram 使用者 ID。",
-      telegramApprovalRecipientInvalid: "Telegram 使用者 ID 必須是至少 5 位的數字。",
+      telegramApprovalRecipientInvalid:
+        "Telegram 使用者 ID 必須是至少 5 位的數字。",
       telegramApprovalSaveRecipient: "儲存接收人",
       telegramApprovalConfigSaved: "Telegram 核准設定已儲存。",
       telegramApprovalStep3Title: "3. 啟用與測試",
       telegramApprovalToggle: "啟用 Telegram 核准",
-      telegramApprovalToggleDesc: "設定完成後，可操作的本機權限泡泡也會送出 Telegram 核准卡片。",
+      telegramApprovalToggleDesc:
+        "設定完成後，可操作的本機權限泡泡也會送出 Telegram 核准卡片。",
       telegramApprovalCompletionOutput: "完成提醒輸出",
-      telegramApprovalCompletionOutputDesc: "控制 Telegram 完成提醒是否附帶 assistant 文字。完整回答可能包含程式碼、檔案內容或 assistant 寫出的敏感資訊。",
+      telegramApprovalCompletionOutputDesc:
+        "控制 Telegram 完成提醒是否附帶 assistant 文字。完整回答可能包含程式碼、檔案內容或 assistant 寫出的敏感資訊。",
       telegramApprovalCompletionOutput_off: "關閉",
       telegramApprovalCompletionOutput_full: "完整回答",
-      telegramApprovalCompletionOutputFullConfirm: "完整回答會把 assistant 最後一則文字送到 Telegram。如果 assistant 寫出程式碼、檔案內容或敏感資訊，也可能一併送出。繼續嗎？",
+      telegramApprovalCompletionOutputFullConfirm:
+        "完整回答會把 assistant 最後一則文字送到 Telegram。如果 assistant 寫出程式碼、檔案內容或敏感資訊，也可能一併送出。繼續嗎？",
       telegramApprovalDirectSend: "Direct Send（僅貼上）",
-      telegramApprovalDirectSendDesc: "回覆 Clawd 完成通知時，聚焦對應的本機終端並貼上單行文字。不會按 Enter。",
+      telegramApprovalDirectSendDesc:
+        "回覆 Clawd 完成通知時，聚焦對應的本機終端並貼上單行文字。不會按 Enter。",
       telegramApprovalTest: "測試訊息",
-      telegramApprovalTestDesc: "送出一張獨立測試核准卡片，不綁定任何 agent 權限請求。",
+      telegramApprovalTestDesc:
+        "送出一張獨立測試核准卡片，不綁定任何 agent 權限請求。",
       telegramApprovalSendTest: "送出測試",
       telegramApprovalTesting: "等待中…",
       telegramApprovalTestSent: "Telegram 測試完成。",
@@ -1272,19 +1593,22 @@
       telegramApprovalPrereqMissingToken: "bot token",
       telegramApprovalPrereqMissingRecipient: "接收人 user id",
       remoteSshTitle: "遠端 SSH",
-      remoteSshSubtitle: "管理一鍵 SSH 通道，讓遠端 AI 程式設計工作階段像在本機一樣順手。Clawd 不會留下任何密碼或私鑰通行片語——靠你已經設好的 ssh-agent 或 SSH 金鑰。",
+      remoteSshSubtitle:
+        "管理一鍵 SSH 通道，讓遠端 AI 程式設計工作階段像在本機一樣順手。Clawd 不會留下任何密碼或私鑰通行片語——靠你已經設好的 ssh-agent 或 SSH 金鑰。",
       remoteSshSectionProfiles: "設定檔",
       remoteSshAddProfile: "+ 新增設定檔",
       remoteSshEmpty: "還沒有設定檔。點「新增設定檔」加入第一個遠端 SSH 通道。",
       remoteSshConnect: "連線",
       remoteSshDisconnect: "中斷連線",
       remoteSshAuthenticate: "首次驗證",
-      remoteSshAuthenticateHint: "在系統終端機開啟一次，完成主機金鑰確認或載入 SSH 金鑰。",
+      remoteSshAuthenticateHint:
+        "在系統終端機開啟一次，完成主機金鑰確認或載入 SSH 金鑰。",
       remoteSshOpenTerminal: "開啟終端機",
       remoteSshDeploy: "部署 / 修復 Hook",
       remoteSshDeploying: "部署中……",
       remoteSshDeploySuccess: "Hook 檔案已部署完成。",
-      remoteSshDeployDriftWarning: "部署期間設定被改過，已部署的是舊設定 — 請重新部署",
+      remoteSshDeployDriftWarning:
+        "部署期間設定被改過，已部署的是舊設定 — 請重新部署",
       remoteSshEdit: "編輯",
       remoteSshDelete: "刪除",
       remoteSshDeleteConfirm: "確定要刪除設定檔「{label}」？刪了就回不來了。",
@@ -1298,11 +1622,14 @@
       remoteSshFieldHost: "主機",
       remoteSshFieldPort: "SSH 連接埠（預設 22）",
       remoteSshFieldIdentityFile: "私鑰檔案（選填）",
-      remoteSshFieldIdentityFileHint: "私鑰的絕對路徑。留空就用 ssh-agent 或 ~/.ssh/config。",
+      remoteSshFieldIdentityFileHint:
+        "私鑰的絕對路徑。留空就用 ssh-agent 或 ~/.ssh/config。",
       remoteSshFieldRemoteForwardPort: "遠端轉送連接埠",
       remoteSshFieldHostPrefix: "主機前綴（選填）",
-      remoteSshFieldHostPrefixHint: "在 Sessions 選單看到的簡短名稱。別用控制字元、引號、反斜線、$、` 和 !。",
+      remoteSshFieldHostPrefixHint:
+        "在 Sessions 選單看到的簡短名稱。別用控制字元、引號、反斜線、$、` 和 !。",
       remoteSshFieldAutoStartCodex: "連線時順便啟動 Codex 備援監控",
+      remoteSshFieldConnectOnLaunch: "Clawd 啟動時自動連線",
       remoteSshStatus_idle: "未連線",
       remoteSshStatus_connecting: "連線中……",
       remoteSshStatus_connected: "已連線",
@@ -1317,9 +1644,11 @@
       "remoteSshStep_install-codex": "註冊 Codex hooks",
       "remoteSshStep_install-copilot": "註冊 Copilot hooks",
       "remoteSshStep_remote-shell": "偵測遠端 shell",
-      remoteSshErrAuthDenied: "驗證失敗。點「首次驗證」在終端機確認主機金鑰或載入金鑰。",
+      remoteSshErrAuthDenied:
+        "驗證失敗。點「首次驗證」在終端機確認主機金鑰或載入金鑰。",
       remoteSshErrHostKey: "主機金鑰還沒確認。點「首次驗證」在終端機確認指紋。",
-      remoteSshErrForwardFailed: "遠端連接埠無法使用。請換一個遠端轉送連接埠（23333-23337）。",
+      remoteSshErrForwardFailed:
+        "遠端連接埠無法使用。請換一個遠端轉送連接埠（23333-23337）。",
       remoteSshErrBadConfig: "ssh 無法接受這個設定。請檢查設定項目。",
       remoteSshErrIdentityMissing: "無法讀取私鑰檔案。請檢查路徑和權限。",
       remoteSshErrDns: "無法解析主機名稱。",
@@ -1327,17 +1656,23 @@
       remoteSshErrNetUnreachable: "網路無法連線，稍後會重試。",
       remoteSshErrBrokenPipe: "連線已中斷，稍後會重新連線。",
       remoteSshErrSpawnFailed: "啟動 ssh 行程失敗。",
-      remoteSshErrSshMissing: "未偵測到 OpenSSH 用戶端。Windows：設定 → 應用程式 → 選用功能 → 新增 OpenSSH 用戶端。",
-      remoteSshErrWindowsOpenSshLegacy: "目前 Windows OpenSSH 版本過舊，Remote SSH 健康檢查不可靠。請升級到 OpenSSH 8.x 或更新版本。",
-      remoteSshErrWindowsCmdShell: "遠端預設 shell 是 Windows cmd.exe，Remote SSH 依賴 POSIX shell（mkdir -p / ~ 展開 / sh -c）。請在遠端把 OpenSSH 的 DefaultShell 改成 Git Bash 或 WSL bash 後再點 Deploy。PowerShell：New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
+      remoteSshErrSshMissing:
+        "未偵測到 OpenSSH 用戶端。Windows：設定 → 應用程式 → 選用功能 → 新增 OpenSSH 用戶端。",
+      remoteSshErrWindowsOpenSshLegacy:
+        "目前 Windows OpenSSH 版本過舊，Remote SSH 健康檢查不可靠。請升級到 OpenSSH 8.x 或更新版本。",
+      remoteSshErrWindowsCmdShell:
+        "遠端預設 shell 是 Windows cmd.exe，Remote SSH 依賴 POSIX shell（mkdir -p / ~ 展開 / sh -c）。請在遠端把 OpenSSH 的 DefaultShell 改成 Git Bash 或 WSL bash 後再點 Deploy。PowerShell：New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
       remoteSshErrNoLocalPort: "本機 Clawd 服務尚未啟動。",
       remoteSshErrUnknownStrikes: "連續多次無法識別錯誤，請檢查設定和記錄檔。",
       remoteSshProbeLocalUnhealthy: "通道已建立，但本機 Clawd 服務狀態異常。",
-      remoteSshProbeUnresponsive: "通道已建立，但 Clawd 沒有回應，請確認 Clawd 是否正在執行。",
-      remoteSshProbePortHijack: "遠端連接埠已被另一個 HTTP 服務占用。請換一個遠端轉送連接埠。",
+      remoteSshProbeUnresponsive:
+        "通道已建立，但 Clawd 沒有回應，請確認 Clawd 是否正在執行。",
+      remoteSshProbePortHijack:
+        "遠端連接埠已被另一個 HTTP 服務占用。請換一個遠端轉送連接埠。",
       remoteSshProbeHttpTimeout: "遠端 HTTP 回應逾時，稍後會重試。",
       remoteSshProbeNodeNotExec: "遠端 node 執行檔無法執行。請檢查權限。",
-      remoteSshProbeNodeMissing: "遠端找不到 Node。請先 Deploy 或在遠端安裝 Node。",
+      remoteSshProbeNodeMissing:
+        "遠端找不到 Node。請先 Deploy 或在遠端安裝 Node。",
       remoteSshProbeSignal: "Probe 行程被中斷，稍後會重試。",
       remoteSshHooksLabel: "Hook 狀態：",
       remoteSshHooksNever: "從未部署",
@@ -1345,8 +1680,10 @@
       remoteSshHooksDeployedAgoMin: "{n} 分鐘前部署",
       remoteSshHooksDeployedAgoHr: "{n} 小時前部署",
       remoteSshHooksDeployedAgoDay: "{n} 天前部署",
-      remoteSshConnectWarnNoDeploy: "Hook 檔案還沒部署。Connect 只接 SSH 通道、不會部署 hook——要先點 Deploy / Repair Hooks，Clawd 才會回應遠端工作階段。",
-      codexHookReviewReminder: "下一步：開啟 Codex 命令列，輸入 /hooks 走一遍 review，新 hook 才會啟用（Codex 規定 review 後才會觸發）。",
+      remoteSshConnectWarnNoDeploy:
+        "Hook 檔案還沒部署。Connect 只接 SSH 通道、不會部署 hook——要先點 Deploy / Repair Hooks，Clawd 才會回應遠端工作階段。",
+      codexHookReviewReminder:
+        "下一步：開啟 Codex 命令列，輸入 /hooks 走一遍 review，新 hook 才會啟用（Codex 規定 review 後才會觸發）。",
       doctorSidebarLabel: "Doctor",
       doctorTitle: "Clawd Doctor",
       doctorStatusUnknown: "未知",
@@ -1366,7 +1703,8 @@
       doctorCheckPermissionBubbles: "權限對話框",
       doctorCheckTheme: "主題",
       doctorCheckUnknown: "檢查項目",
-      doctorPrivacy: "隱私權聲明：診斷報告只在本機產生，Clawd 不會上傳任何資料。複製前會自動把使用者路徑和金鑰遮起來。",
+      doctorPrivacy:
+        "隱私權聲明：診斷報告只在本機產生，Clawd 不會上傳任何資料。複製前會自動把使用者路徑和金鑰遮起來。",
       doctorCopyReport: "複製診斷報告",
       doctorRerun: "重新檢查",
       doctorClose: "關閉",
@@ -1377,33 +1715,39 @@
       doctorFixing: "修復中",
       doctorFixApplied: "修復完成。",
       doctorFixFailed: "無法修復這個問題。",
-      doctorFixConfirmCodex: "Clawd 會把 Codex 設定裡的 [features].hooks 改成 true。要繼續嗎？",
+      doctorFixConfirmCodex:
+        "Clawd 會把 Codex 設定裡的 [features].hooks 改成 true。要繼續嗎？",
       doctorFixConfirmCodexTitle: "啟用 Codex hooks？",
-      doctorFixConfirmCodexDetail: "這次修復會更動你的 Codex 設定，把 [features].hooks 改成 true。除非你在這裡確認，否則 Clawd 不會更動。",
+      doctorFixConfirmCodexDetail:
+        "這次修復會更動你的 Codex 設定，把 [features].hooks 改成 true。除非你在這裡確認，否則 Clawd 不會更動。",
       doctorFixConfirmCodexAction: "啟用並修復",
       doctorFixConfirmCancel: "取消",
       doctorRestartButton: "重新啟動 Clawd",
       doctorRestarting: "重新啟動中",
       doctorRestartConfirmTitle: "重新啟動 Clawd？",
-      doctorRestartConfirmDetail: "Clawd 會關掉再開起來。AI coding agent 還在跑的請求會被中斷。重新啟動時 Doctor 視窗也會一起關掉。",
+      doctorRestartConfirmDetail:
+        "Clawd 會關掉再開起來。AI coding agent 還在跑的請求會被中斷。重新啟動時 Doctor 視窗也會一起關掉。",
       doctorRestartConfirmAction: "立刻重新啟動",
       doctorNoResult: "還沒有診斷結果。",
       doctorConnectionTitle: "連線測試",
-      doctorConnectionInstruction: "在任一個 AI coding agent 裡送出一則訊息，請等待倒數結束後確認結果。",
+      doctorConnectionInstruction:
+        "在任一個 AI coding agent 裡送出一則訊息，請等待倒數結束後確認結果。",
       doctorConnectionIdle: "未測試",
       doctorConnectionTesting: "等 {seconds} 秒",
       doctorConnectionHttpVerified: "HTTP 連線已驗證",
       doctorConnectionHttpDropped: "HTTP 連線成功，但事件已被丟棄",
       doctorConnectionHttpBlocked: "HTTP 連線遭封鎖",
       doctorConnectionNoActivity: "沒有活動",
-      doctorConnectionNoActivityHint: "在任一 AI coding agent 中傳送訊息來測試連線。",
+      doctorConnectionNoActivityHint:
+        "在任一 AI coding agent 中傳送訊息來測試連線。",
       doctorConnectionError: "連線測試失敗",
       doctorTestConnection: "測試連線",
       doctorOpenLog: "開啟除錯記錄",
       doctorOpenLogOpened: "已開啟除錯記錄。",
       doctorOpenLogFailed: "無法開啟除錯記錄。",
       shortcutsTitle: "快速鍵",
-      shortcutsSubtitle: "設定桌寵顯示或隱藏，以及權限動作的全域快速鍵。留空就解除綁定。",
+      shortcutsSubtitle:
+        "設定桌寵顯示或隱藏，以及權限動作的全域快速鍵。留空就解除綁定。",
       shortcutLabelBubbleNextOption: "對話框：下一項",
       shortcutLabelBubblePrevOption: "對話框：上一項",
       shortcutLabelBubbleToggleOption: "對話框：勾選/取消",
@@ -1420,7 +1764,8 @@
       shortcutErrorReserved: "這是保留快速鍵，請改用其他組合鍵。",
       shortcutErrorInvalid: "暫時還不支援這個組合鍵。",
       shortcutErrorNeedsModifier: "快速鍵必須包含至少一個輔助鍵。",
-      shortcutErrorRegistrationFailed: "已儲存，但系統衝突所以目前未生效。重新綁定或晚點再試。",
+      shortcutErrorRegistrationFailed:
+        "已儲存，但系統衝突所以目前未生效。重新綁定或晚點再試。",
       shortcutLabelTogglePet: "顯示/隱藏桌寵",
       shortcutLabelPermissionAllow: "權限：允許",
       shortcutLabelPermissionDeny: "權限：拒絕",
@@ -1428,32 +1773,43 @@
       sidebarSoon: "即將推出",
       sectionAppearance: "外觀",
       sectionSession: "工作階段管理",
-      sectionSystem: "系統",
-      sectionStartup: "啟動",
+      sectionAlerts: "提醒與回饋",
+      sectionBehavior: "行為與位置",
+      sectionSystemStartup: "系統與啟動",
       sectionMobile: "行動端",
-      sectionBubbles: "對話框",
       sectionPermissions: "權限",
-      rowAutoApproveAll: "自動駕駛",
-      menuAutoApproveAll: "自動駕駛（全部自動通過）",
-      autoApproveAllConfirmTitle: "開啟自動駕駛？",
-      autoApproveAllConfirmDetail: "所有 agent 的每一個權限請求都會被自動通過，包括執行 shell 命令和刪除檔案。Clawd 不會再先問你。只有在你完全信任 agent 的行為時才開啟。",
-      autoApproveAllConfirmEnable: "開啟自動駕駛",
+      rowAutoApproveAll: "自動放行所有請求",
+      rowAutoApproveAllDesc:
+        "危險：自動允許所有 agent 的權限請求——執行命令、修改檔案、刪除檔案——不再詢問。各 agent 的開關和「請勿打擾」仍然生效。",
+      menuAutoApproveAll: "自動放行所有請求",
+      autoApproveAllConfirmTitle: "開啟自動放行所有請求？",
+      autoApproveAllConfirmDetail:
+        "所有 agent 的每一個權限請求都會被自動通過，包括執行 shell 命令和刪除檔案。Clawd 不會再先問你。只有在你完全信任 agent 的行為時才開啟。",
+      autoApproveAllConfirmEnable: "開啟自動放行",
       autoApproveAllConfirmCancel: "取消",
       hardwareBuddyTitle: "Hardware Buddy",
-      hardwareBuddyDesc: "透過單獨安裝的 Clawstick runtime 連接已配對 BLE 桌面裝置。權限回覆預設關閉，必須明確開啟且連線安全才會啟用。",
+      hardwareBuddyDesc:
+        "透過單獨安裝的 Clawstick runtime 連接已配對 BLE 桌面裝置。權限回覆預設關閉，必須明確開啟且連線安全才會啟用。",
       hardwareBuddyEnable: "Enable Hardware Buddy",
-      hardwareBuddyEnableDesc: "Start the BLE sidecar and send state-only session snapshots by default.",
+      hardwareBuddyEnableDesc:
+        "Start the BLE sidecar and send state-only session snapshots by default.",
       hardwareBuddyAddress: "BLE address",
-      hardwareBuddyAddressDesc: "Optional fixed device address. Leave empty to scan by name prefix.",
+      hardwareBuddyAddressDesc:
+        "Optional fixed device address. Leave empty to scan by name prefix.",
       hardwareBuddyNamePrefix: "Device name prefix",
-      hardwareBuddyNamePrefixDesc: "Scan for devices whose advertised name starts with this text.",
+      hardwareBuddyNamePrefixDesc:
+        "Scan for devices whose advertised name starts with this text.",
       hardwareBuddyPermissions: "Allow hardware permission replies",
-      hardwareBuddyPermissionsDesc: "Requires this opt-in plus a secure paired transport before Allow/Deny prompts appear on the device.",
+      hardwareBuddyPermissionsDesc:
+        "Requires this opt-in plus a secure paired transport before Allow/Deny prompts appear on the device.",
       hardwareBuddyQuickCommands: "啟用 Quick Commands",
-      hardwareBuddyQuickCommandsDesc: "顯示本機 preset 按鈕，只建立由 adapter 處理的 quick_command 事件；Clawd 不貼上文字，也不執行 shell。",
+      hardwareBuddyQuickCommandsDesc:
+        "顯示本機 preset 按鈕，只建立由 adapter 處理的 quick_command 事件；Clawd 不貼上文字，也不執行 shell。",
       hardwareBuddyQuickCommandPresets: "Quick Command presets",
-      hardwareBuddyQuickCommandPresetsDesc: "點擊 preset 會替 active-session adapter 佇列一個已驗證事件。",
-      hardwareBuddyQuickCommandsDisabled: "開啟 Quick Commands 後才能使用 preset 按鈕。",
+      hardwareBuddyQuickCommandPresetsDesc:
+        "點擊 preset 會替 active-session adapter 佇列一個已驗證事件。",
+      hardwareBuddyQuickCommandsDisabled:
+        "開啟 Quick Commands 後才能使用 preset 按鈕。",
       hardwareBuddyQuickCommandsLoading: "正在載入 presets...",
       hardwareBuddyQuickCommandsUnavailable: "Quick Commands 目前不可用。",
       hardwareBuddyQuickCommandSent: "Quick Command 已佇列。",
@@ -1464,19 +1820,28 @@
       hardwareBuddyTest: "Test approval",
       hardwareBuddyTestButton: "Send test",
       hardwareBuddyTestWaiting: "Waiting...",
-      hardwareBuddyTestDesc: "Send a harmless approval request to the paired device.",
+      hardwareBuddyTestDesc:
+        "Send a harmless approval request to the paired device.",
       hardwareBuddyTestPending: "Waiting for a button press on the device.",
       hardwareBuddyTestOk: "Device replied: {decision}",
       hardwareBuddyTestError: "Test approval failed.",
       hardwareBuddyTestErr_disabled: "Hardware Buddy is not enabled.",
-      hardwareBuddyTestErr_permissions_off: "Hardware permission replies are disabled.",
-      hardwareBuddyTestErr_not_secure: "Hardware Buddy is not connected over a secure link.",
-      hardwareBuddyTestErr_timeout: "The device did not reply before the test timed out.",
-      hardwareBuddyTestErr_no_decision: "Hardware Buddy test did not receive a decision.",
-      hardwareBuddyTestErr_internal_error: "Hardware Buddy test failed inside Clawd.",
-      hardwareBuddyTestDisabled: "Enable Hardware Buddy before testing approvals.",
-      hardwareBuddyTestRepliesOff: "Turn on hardware permission replies before testing approvals.",
-      hardwareBuddyTestNeedsSecure: "Connect over a secure paired link before testing approvals.",
+      hardwareBuddyTestErr_permissions_off:
+        "Hardware permission replies are disabled.",
+      hardwareBuddyTestErr_not_secure:
+        "Hardware Buddy is not connected over a secure link.",
+      hardwareBuddyTestErr_timeout:
+        "The device did not reply before the test timed out.",
+      hardwareBuddyTestErr_no_decision:
+        "Hardware Buddy test did not receive a decision.",
+      hardwareBuddyTestErr_internal_error:
+        "Hardware Buddy test failed inside Clawd.",
+      hardwareBuddyTestDisabled:
+        "Enable Hardware Buddy before testing approvals.",
+      hardwareBuddyTestRepliesOff:
+        "Turn on hardware permission replies before testing approvals.",
+      hardwareBuddyTestNeedsSecure:
+        "Connect over a secure paired link before testing approvals.",
       hardwareBuddyTestToastOk: "Hardware Buddy test reply received.",
       hardwareBuddyTestToastError: "Hardware Buddy test failed: ",
       hardwareBuddyStatus: "Connection status",
@@ -1488,10 +1853,13 @@
       hardwareBuddyStatus_error: "Needs attention",
       hardwareBuddyStatusOffDetail: "Hardware Buddy is disabled.",
       hardwareBuddyStatusError: "Needs attention",
-      hardwareBuddyStatusErrorDetail: "Check the Hardware Buddy sidecar status.",
-      hardwareBuddyStatusConnectedDetail: "{device} connected, secure link {secure}",
+      hardwareBuddyStatusErrorDetail:
+        "Check the Hardware Buddy sidecar status.",
+      hardwareBuddyStatusConnectedDetail:
+        "{device} connected, secure link {secure}",
       hardwareBuddyStatusAddressDetail: "Looking for {address}.",
-      hardwareBuddyStatusPrefixDetail: "Scanning for names starting with {prefix}.",
+      hardwareBuddyStatusPrefixDetail:
+        "Scanning for names starting with {prefix}.",
       hardwareBuddySecureOn: "on",
       hardwareBuddySecureOff: "off",
       hardwareBuddyErr_missing_bleak: "Install bleak",
@@ -1505,7 +1873,8 @@
       collapsibleExpand: "展開群組",
       collapsibleCollapse: "收合群組",
       agentsTitle: "Agent 管理",
-      agentsSubtitle: "依 agent 類型開關追蹤。關掉之後記錄監視器會停止、HTTP 入口也會忽略 hook 事件——桌寵不會動、不彈權限對話框、也不記工作階段。",
+      agentsSubtitle:
+        "依 agent 類型開關追蹤。關掉之後記錄監視器會停止、HTTP 入口也會忽略 hook 事件——桌寵不會動、不彈權限對話框、也不記工作階段。",
       agentsEmpty: "還沒有註冊任何 agent。",
       eventSourceHook: "Hook",
       eventSourceLogPoll: "記錄輪詢",
@@ -1513,16 +1882,31 @@
       eventSourceExtension: "擴充功能",
       badgePermissionBubble: "權限對話框",
       rowAgentPermissions: "顯示彈出視窗",
-      rowAgentPermissionsDesc: "關掉以後，這個 agent 會改由自己的終端機處理提示，不會再彈 Clawd 對話框。",
+      rowAgentPermissionsDesc:
+        "關掉以後，這個 agent 會改由自己的終端機處理提示，不會再彈 Clawd 對話框。",
       rowCodexPermissionMode: "Codex 權限模式",
-      rowCodexPermissionModeDesc: "Native 維持 Codex AutoReview 和終端機原本的提示；Intercept 改成顯示 Clawd 的允許或拒絕對話框。",
+      rowCodexPermissionModeDesc:
+        "Native 維持 Codex AutoReview 和終端機原本的提示；Intercept 改成顯示 Clawd 的允許或拒絕對話框。",
       codexPermissionModeNative: "Native",
       codexPermissionModeIntercept: "Intercept",
       rowCodexNativeNotificationSound: "Native 通知音",
-      rowCodexNativeNotificationSoundDesc: "關閉後，Codex Native 權限提示仍會顯示通知動畫，但不播放提示音；完成音效仍會播放。",
+      rowCodexNativeNotificationSoundDesc:
+        "關閉後，Codex Native 權限提示仍會顯示通知動畫，但不播放提示音；完成音效仍會播放。",
+      agentCodexHookNeedsAttention: "需要注意",
+      codexHookHealthReasonDisabled:
+        "Codex hooks 在設定裡被關閉（[features].hooks=false），Codex 不會執行審批 hook。請啟用，或用 Doctor → Fix 修復。",
+      codexHookHealthReasonNeedsReview:
+        "Clawd 的 Codex hooks 已註冊但需在 Codex 裡確認——在 Codex 執行 /hooks，或用 Doctor → Fix。",
+      codexHookHealthReasonInactive:
+        "Clawd 的 Codex hook 未生效，審批提示不會跳出。請重新安裝整合或用 Doctor → Fix 修復。",
+      rowCodexHookHealthNotify: "Codex hook 失效時提醒",
+      rowCodexHookHealthNotifyDesc:
+        "啟動時若 Codex 官方審批 hook 被停用或需檢查，跳出一次性系統匣通知。每種問題只提醒一次，不會每次啟動都跳。",
       rowAgentIdleAlerts: "等待輸入提醒",
-      rowAgentIdleAlertsDesc: "目前 agent 的 Notification hook 觸發的鈴鐺動畫和音效（例如 Claude Code 閒置約 60 秒會送出）。不影響權限對話框。",
-      agentIntegrationUninstallConfirm: "解除安裝此 agent 整合？這會移除 Clawd 管理的 hooks 並停用該 agent。",
+      rowAgentIdleAlertsDesc:
+        "目前 agent 的 Notification hook 觸發的鈴鐺動畫和音效（例如 Claude Code 閒置約 60 秒會送出）。不影響權限對話框。",
+      agentIntegrationUninstallConfirm:
+        "解除安裝此 agent 整合？這會移除 Clawd 管理的 hooks 並停用該 agent。",
       rowLanguage: "語言",
       rowLanguageDesc: "選單和對話框的介面語言。",
       rowSound: "音效",
@@ -1531,17 +1915,21 @@
       rowVolume: "音量",
       rowVolumeDesc: "調整音效音量。停用音效後無法使用。",
       rowLowPowerIdleMode: "低耗電閒置狀態",
-      rowLowPowerIdleModeDesc: "Clawd 不動幾秒後就暫停閒置狀態 SVG 動畫；有活動時立即恢復。",
+      rowLowPowerIdleModeDesc:
+        "Clawd 不動幾秒後就暫停閒置狀態 SVG 動畫；有活動時立即恢復。",
       rowKeepAwakeWhileWorking: "工作時阻止休眠",
-      rowKeepAwakeWhileWorkingDesc: "有任務進行中時阻止電腦休眠；任務完成後恢復允許休眠。",
+      rowKeepAwakeWhileWorkingDesc:
+        "有任務進行中時阻止電腦休眠；任務完成後恢復允許休眠。",
       rowFlashTaskbarOnComplete: "工作完成時閃爍系統匣圖示",
-      rowFlashTaskbarOnCompleteDesc: "AI 完成工作時系統匣圖示閃爍提醒，即使在其他視窗工作也能注意到。",
+      rowFlashTaskbarOnCompleteDesc:
+        "AI 完成工作時系統匣圖示閃爍提醒，即使在其他視窗工作也能注意到。",
       rowFlash: "系統匣閃爍",
       rowFlashDesc: "設定工作完成後系統匣圖示的閃爍行為。",
       rowFlashInterval: "閃爍間隔",
       rowFlashIntervalDesc: "圖示在正常與高亮之間切換的速度。",
       rowFlashDuration: "閃爍時長",
-      rowFlashDurationDesc: "閃爍持續多久。設為 0 表示一直閃爍，直到手動點擊停止。",
+      rowFlashDurationDesc:
+        "閃爍持續多久。設為 0 表示一直閃爍，直到手動點擊停止。",
       unitMilliseconds: "毫秒",
       valueAlways: "一直閃爍",
       rowSessionHud: "工作階段 HUD",
@@ -1553,9 +1941,11 @@
       sessionHudSummaryCleanup: "自動清理: {state}",
       sessionHudSummaryContextUsage: "上下文: {state}",
       rowSessionHudStateLabels: "顯示狀態標籤",
-      rowSessionHudStateLabelsDesc: "為作業中、思考中、等待中等進行中的工作階段顯示精簡狀態標籤。已完成的工作階段仍顯示鈴鐺。",
+      rowSessionHudStateLabelsDesc:
+        "為作業中、思考中、等待中等進行中的工作階段顯示精簡狀態標籤。已完成的工作階段仍顯示鈴鐺。",
       rowSessionHudElapsed: "顯示 HUD 時間",
-      rowSessionHudElapsedDesc: "在工作階段 HUD 顯示經過時間。關掉之後 HUD 會變窄。",
+      rowSessionHudElapsedDesc:
+        "在工作階段 HUD 顯示經過時間。關掉之後 HUD 會變窄。",
       shortcutLabelPetReveal: "點擊桌寵：顯示工作階段 HUD",
       shortcutLabelOpenDashboard: "Ctrl / ⌘ + 點擊桌寵：開啟工作階段面板",
       sessionHudPinTooltip: "釘選 HUD",
@@ -1563,53 +1953,79 @@
       sessionHudFocusUnavailableTooltip: "無法跳轉終端機",
       sessionHudRemoteFocusUnavailableTooltip: "遠端工作階段無法跳轉終端機",
       rowSessionHudCleanupDetached: "自動清除已分離的工作階段",
-      rowSessionHudCleanupDetachedDesc: "工作階段結束、終端機也關掉之後，先從 HUD 隱藏，再過一段時間從工作階段列表移除。",
+      rowSessionHudCleanupDetachedDesc:
+        "工作階段結束、終端機也關掉之後，先從 HUD 隱藏，再過一段時間從工作階段列表移除。",
       rowSessionCleanupGroup: "工作階段清理",
-      rowSessionCleanupGroupDesc: "Clawd 等多久才清掉沒動靜的工作階段。主要影響遠端 SSH 工作階段（看不到終端機）——遠端長任務可以放寬；設成 0 就完全不按時間清。",
+      rowSessionCleanupGroupDesc:
+        "Clawd 等多久才清掉沒動靜的工作階段。主要影響遠端 SSH 工作階段（看不到終端機）——遠端長任務可以放寬；設成 0 就完全不按時間清。",
       rowStaleSession: "工作階段逾時（閒置）",
-      rowStaleSessionDesc: "遠端 SSH 工作階段閒置這麼久就移除。本地工作階段只要終端機還開著就不會移除，只會變灰為 idle。預設 10 分鐘。0 = 永不按時間移除。值必須不小於「工作逾時」。",
+      rowStaleSessionDesc:
+        "遠端 SSH 工作階段閒置這麼久就移除。本地工作階段只要終端機還開著就不會移除，只會變灰為 idle。預設 10 分鐘。0 = 永不按時間移除。值必須不小於「工作逾時」。",
       rowStaleWorking: "工作逾時",
-      rowStaleWorkingDesc: "工作階段卡在 working / thinking 太久時，到這個時間就改成 idle。預設 5 分鐘。當「工作階段逾時」不為 0 時，最大會被它限制住。",
+      rowStaleWorkingDesc:
+        "工作階段卡在 working / thinking 太久時，到這個時間就改成 idle。預設 5 分鐘。當「工作階段逾時」不為 0 時，最大會被它限制住。",
       rowStaleDetached: "終端機關閉後清理延遲",
-      rowStaleDetachedDesc: "只有開啟「自動清除已分離的工作階段」時才生效。工作階段的終端機視窗關掉後，等這麼多秒再從 HUD 移除。預設 30 秒。",
+      rowStaleDetachedDesc:
+        "只有開啟「自動清除已分離的工作階段」時才生效。工作階段的終端機視窗關掉後，等這麼多秒再從 HUD 移除。預設 30 秒。",
       unitMinutes: "分鐘",
       unitSeconds: "秒",
       valueDisabled: "關閉",
       actionResetSessionCleanup: "還原預設",
       rowSessionDashboard: "工作階段面板",
-      rowSessionDashboardDesc: "開啟視窗看所有 Claude Code、Codex 等 agent 目前進行中的工作階段。",
+      rowSessionDashboardDesc:
+        "開啟視窗看所有 Claude Code、Codex 等 agent 目前進行中的工作階段。",
       actionOpenDashboard: "開啟",
       rowOpenAtLogin: "登入時啟動",
       rowOpenAtLoginDesc: "登入系統時自動啟動 Clawd。",
       rowManageClaudeHooks: "自動管理 Claude hooks",
-      rowManageClaudeHooksDesc: "啟動時同步 Claude hooks；`~/.claude/settings.json` 被其他工具改掉時也會自動補回來。",
-      rowManageClaudeHooksOffNote: "關掉只會停止後面的自動管理。目前裝好的 Claude hooks 還在，除非你主動中斷連線。",
+      rowManageClaudeHooksDesc:
+        "啟動時同步 Claude hooks；`~/.claude/settings.json` 被其他工具改掉時也會自動補回來。",
+      rowManageClaudeHooksOffNote:
+        "關掉只會停止後面的自動管理。目前裝好的 Claude hooks 還在，除非你主動中斷連線。",
       actionDisconnectClaudeHooks: "中斷連線",
       claudeHooksDisableConfirmTitle: "關掉 Claude hooks 自動管理？",
-      claudeHooksDisableConfirmDetail: "只關掉自動管理的話，`~/.claude/settings.json` 裡目前的 Claude hooks 還會留著。「隨 Claude Code 啟動」的偏好也會保留，方便之後再開啟。",
+      claudeHooksDisableConfirmDetail:
+        "只關掉自動管理的話，`~/.claude/settings.json` 裡目前的 Claude hooks 還會留著。「隨 Claude Code 啟動」的偏好也會保留，方便之後再開啟。",
       claudeHooksDisableConfirmDisconnect: "關掉並移除目前的 hooks",
       claudeHooksDisableConfirmDisableOnly: "只關掉自動管理",
       claudeHooksDisableConfirmKeep: "繼續保留自動管理",
       claudeHooksDisconnectConfirmTitle: "中斷 Claude hooks 連線？",
-      claudeHooksDisconnectConfirmDetail: "這會從 `~/.claude/settings.json` 移除 Clawd 管的 Claude hooks，並關掉自動管理。「隨 Claude Code 啟動」的偏好會保留，方便之後再開啟。",
+      claudeHooksDisconnectConfirmDetail:
+        "這會從 `~/.claude/settings.json` 移除 Clawd 管的 Claude hooks，並關掉自動管理。「隨 Claude Code 啟動」的偏好會保留，方便之後再開啟。",
       claudeHooksDisconnectConfirmAction: "中斷 hooks 連線",
       claudeHooksDisconnectConfirmKeep: "繼續保留",
       rowStartWithClaude: "隨 Claude Code 啟動",
-      rowStartWithClaudeDesc: "Claude Code 工作階段一開始就自動把 Clawd 叫起來。",
-      rowStartWithClaudeDisabledDesc: "要先開啟 Claude hooks 自動管理。關掉的時候，連接埠變動和外部更動都不會自動修。",
+      rowStartWithClaudeDesc:
+        "Claude Code 工作階段一開始就自動把 Clawd 叫起來。",
+      rowStartWithClaudeDisabledDesc:
+        "要先開啟 Claude hooks 自動管理。關掉的時候，連接埠變動和外部更動都不會自動修。",
       rowHideBubbles: "隱藏對話框",
       rowHideBubblesDesc: "隱藏 Clawd 的權限、通知和更新對話框。",
       rowBubbleFollow: "對話框跟著 Clawd",
       rowBubbleFollowDesc: "把權限和更新對話框放在桌寵旁邊，不放螢幕角落。",
+      rowAutoApproveAll: "自動放行所有請求",
+      rowAutoApproveAllDesc:
+        "危險：自動允許所有 agent 的權限請求——執行命令、修改檔案、刪除檔案——不再詢問。各 agent 的開關和「請勿打擾」仍然生效。",
+      menuAutoApproveAll: "自動放行所有請求",
+      autoApproveAllConfirmTitle: "開啟自動放行所有請求？",
+      autoApproveAllConfirmDetail:
+        "所有 agent 的每一個權限請求都會被自動允許，包括執行 shell 命令和刪除檔案。Clawd 不會再先問你。只有在你完全信任 agent 的行為時才開啟。",
+      autoApproveAllConfirmEnable: "開啟自動放行",
+      autoApproveAllConfirmCancel: "取消",
       rowBubblePolicy: "對話框顯示和自動關閉",
-      rowBubblePolicyDesc: "分別控制每種對話框要不要顯示，以及被動對話框停多久。",
+      rowBubblePolicyDesc:
+        "分別控制每種對話框要不要顯示，以及被動對話框停多久。",
       bubblePermissionLabel: "權限 / 互動對話框",
-      bubblePermissionDesc: "關掉之後審查提示會回到 agent 終端機或 TUI 處理。計畫預覽和 AskUserQuestion 還是會顯示，避免 agent 卡住。秒數是選填的，逾時自動關閉，用在 hook 連線卡住、等不到決定的時候（0 = 不自動關閉）。",
+      bubblePermissionDesc:
+        "關掉之後審查提示會回到 agent 終端機或 TUI 處理。計畫預覽和 AskUserQuestion 還是會顯示，避免 agent 卡住。秒數是選填的，逾時自動關閉，用在 hook 連線卡住、等不到決定的時候（0 = 不自動關閉）。",
       bubbleNotificationLabel: "通知對話框",
-      bubbleNotificationDesc: "開關控制 Codex 或 Kimi CLI 的被動通知。秒數是自動關閉的上限；後面有狀態變化可能提前關掉。0 表示隱藏。",
+      bubbleNotificationDesc:
+        "開關控制 Codex 或 Kimi Code 的被動通知。秒數是自動關閉的上限；後面有狀態變化可能提前關掉。0 表示隱藏。",
       bubbleUpdateLabel: "更新對話框",
-      bubbleUpdateDesc: "開關控制檢查更新、下載、成功、失敗和重新啟動的提示。秒數決定它們停多久。",
-      bubbleUpdateWarning: "不建議隱藏更新對話框，否則可能會錯過失敗原因或重新啟動提示。",
+      bubbleUpdateDesc:
+        "開關控制檢查更新、下載、成功、失敗和重新啟動的提示。秒數決定它們停多久。",
+      bubbleUpdateWarning:
+        "不建議隱藏更新對話框，否則可能會錯過失敗原因或重新啟動提示。",
       bubbleSecondsPrefix: "停留",
       bubbleSecondsUnit: "秒",
       bubbleSecondsInvalid: "秒數要是 0 到 3600 的整數",
@@ -1619,29 +2035,38 @@
       bubblePolicySummaryOn: "開",
       bubblePolicySummaryOff: "關",
       updateBubbleDisableConfirmTitle: "隱藏更新對話框？",
-      updateBubbleDisableConfirmDetail: "隱藏後可能會錯過更新失敗原因、下載完成提示和重新啟動安裝提示。更新流程本身還是會繼續，只是 Clawd 不再顯示更新對話框。",
+      updateBubbleDisableConfirmDetail:
+        "隱藏後可能會錯過更新失敗原因、下載完成提示和重新啟動安裝提示。更新流程本身還是會繼續，只是 Clawd 不再顯示更新對話框。",
       updateBubbleDisableConfirmAction: "隱藏更新對話框",
       updateBubbleDisableConfirmCancel: "繼續顯示",
       rowAllowEdgePinning: "允許貼齊螢幕邊緣",
-      rowAllowEdgePinningDesc: "開啟後桌寵貼齊螢幕邊緣時，頂部或底部裝飾（小花、建築、對話框等）可能會被切掉。",
+      rowAllowEdgePinningDesc:
+        "開啟後桌寵貼齊螢幕邊緣時，頂部或底部裝飾（小花、建築、對話框等）可能會被切掉。",
       rowDisableMiniMode: "關閉極簡模式",
-      rowDisableMiniModeDesc: "開啟後桌寵不會進入極簡模式，也不會播放邊緣吸附的迷你動畫。",
+      rowDisableMiniModeDesc:
+        "開啟後桌寵不會進入極簡模式，也不會播放邊緣吸附的迷你動畫。",
       rowFreeRoam: "自由漫步",
       rowFreeRoamDesc: "閒置時讓桌寵在桌面上自由漫步，移動滑鼠即停止。",
       rowKeepSizeAcrossDisplays: "跨螢幕保持大小",
-      rowKeepSizeAcrossDisplaysDesc: "移到另一台螢幕時不自動重新縮放。滑桿還是會依目前螢幕比例調整桌寵。",
+      rowKeepSizeAcrossDisplaysDesc:
+        "移到另一台螢幕時不自動重新縮放。滑桿還是會依目前螢幕比例調整桌寵。",
+      rowFullscreenOverlay: "浮在全螢幕遊戲上方",
+      rowFullscreenOverlayDesc:
+        "在 Windows 上讓桌寵在全螢幕遊戲上方依然好用——保持在上方、可拖曳，且不會搶走遊戲焦點。關閉則回到未最佳化的原樣。無邊框全螢幕遊戲下桌寵始終浮在上方；想徹底移除請用「隱藏桌寵」。（獨佔全螢幕遊戲下的表現可能不一致。）",
       rowSize: "大小",
       rowSizeDesc: "拖滑桿調整桌寵大小。",
       placeholderTitle: "即將推出",
-      placeholderDesc: "這個面板會在 Clawd 後續版本加入，規劃見 docs/plans/plan-settings-panel.md。",
+      placeholderDesc:
+        "這個面板會在 Clawd 後續版本加入，規劃見 docs/plans/plan-settings-panel.md。",
       toastSaveFailed: "存檔失敗：",
       langEnglish: "English",
-      langChinese: "简中",
-      langTraditionalChinese: "繁中",
+      langChinese: "简体中文",
+      langTraditionalChinese: "繁體中文",
       langKorean: "한국어",
       langJapanese: "日本語",
       themeTitle: "主題",
-      themeSubtitle: "幫 Clawd 選擇主題。主題卡會顯示是否為內建主題，以及游標跟隨、靜態、迷你模式等支援項目，方便切換前比較差異。",
+      themeSubtitle:
+        "幫 Clawd 選擇主題。主題卡會顯示是否為內建主題，以及游標跟隨、靜態、迷你模式等支援項目，方便切換前比較差異。",
       themeEmpty: "沒有主題可以用。",
       themeBadgeBuiltin: "內建",
       themeBadgeCodexPet: "Codex Pet",
@@ -1652,7 +2077,8 @@
       themeImportPetZip: "匯入 Codex Pet 套件（.zip）",
       themeOpenCodexPetsFolder: "開啟 Codex Pet 資料夾",
       themeImportUserThemeZip: "匯入 Clawd 主題套件（.zip）",
-      themeImportUserThemeZipHint: "Clawd 主題 zip：根目錄或單一頂層資料夾裡要有 theme.json；素材放在 assets/，支援 SVG、GIF、APNG、PNG、WebP、JPG、JPEG。Codex Pet 套件請改用上面的入口。",
+      themeImportUserThemeZipHint:
+        "Clawd 主題 zip：根目錄或單一頂層資料夾裡要有 theme.json；素材放在 assets/，支援 SVG、GIF、APNG、PNG、WebP、JPG、JPEG。Codex Pet 套件請改用上面的入口。",
       themeOpenUserThemesFolder: "開啟主題資料夾",
       themeRefreshThemes: "重新整理主題",
       themeGroupBuiltIn: "內建",
@@ -1664,6 +2090,7 @@
       themeCapabilityStatic: "靜態主題",
       themeCapabilityMini: "迷你模式",
       themeCapabilityDirectSleep: "直接睡",
+      themeCapabilityFineMotion: "精細動效",
       themeCapabilityNoReactions: "無反應",
       themeActiveIndicator: "✓ 目前",
       themeThumbMissing: "\u{1F3AD}",
@@ -1671,20 +2098,34 @@
       themeVariantStripLabel: "變體",
       toastThemeDeleted: "主題已刪除。",
       toastThemeDeleteFailed: "刪除主題失敗：",
-      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+      toastCodexPetsRefreshOk: (
+        imported,
+        updated,
+        unchanged,
+        removed,
+        invalid,
+        switched,
+      ) =>
         `Codex Pet 已重新整理：新增 ${imported}，更新 ${updated}，沒變 ${unchanged}，移除 ${removed}${invalid ? `，無效 ${invalid}` : ""}${switched ? "；目前主題已切回 Clawd" : ""}。`,
-      toastCodexPetsRefreshFailed: (message) => `重新整理 Codex Pet 失敗：${message}`,
+      toastCodexPetsRefreshFailed: (message) =>
+        `重新整理 Codex Pet 失敗：${message}`,
       toastCodexPetsFolderFailed: "開啟 Codex Pet 資料夾失敗：",
       toastUserThemesFolderFailed: "開啟主題資料夾失敗：",
       toastUserThemeZipImportOk: (name) => `已匯入主題「${name}」。`,
-      toastUserThemeZipImportFailed: (message) => `匯入主題（.zip）失敗：${message}`,
+      toastUserThemeZipImportFailed: (message) =>
+        `匯入主題（.zip）失敗：${message}`,
       toastCodexPetZipImportOk: (name) => `已匯入「${name}」並切換使用。`,
-      toastCodexPetZipImportFailed: (message) => `匯入 Codex Pet（.zip）失敗：${message}`,
-      toastCodexPetRemoveOk: (name, switched) => `已解除安裝「${name}」${switched ? "，並切回 Clawd" : ""}。`,
-      toastCodexPetRemoveFailed: (message) => `解除安裝匯入的寵物失敗：${message}`,
+      toastCodexPetZipImportFailed: (message) =>
+        `匯入 Codex Pet（.zip）失敗：${message}`,
+      toastCodexPetRemoveOk: (name, switched) =>
+        `已解除安裝「${name}」${switched ? "，並切回 Clawd" : ""}。`,
+      toastCodexPetRemoveFailed: (message) =>
+        `解除安裝匯入的寵物失敗：${message}`,
       animMapTitle: "動畫對應",
-      animMapSubtitle: "關掉不想看的打擾動畫。事件還是會觸發——Clawd 只是不再播對應的動畫和音效。",
-      animMapSemanticsNote: "關掉 = 不播動畫 + 不發音效。權限對話框、工作階段記錄、終端機焦點都照常運作。",
+      animMapSubtitle:
+        "關掉不想看的打擾動畫。事件還是會觸發——Clawd 只是不再播對應的動畫和音效。",
+      animMapSemanticsNote:
+        "關掉 = 不播動畫 + 不發音效。權限對話框、工作階段記錄、終端機焦點都照常運作。",
       animMapResetAll: "全部還原",
       animMapAttentionLabel: "完成提示（happy）",
       animMapAttentionDesc: "Agent 結束一輪時的開心跳動（Stop）。",
@@ -1697,8 +2138,9 @@
       animMapCarryingLabel: "Worktree 搬運",
       animMapCarryingDesc: "建 worktree 時的搬運動畫。",
       toastAnimMapResetOk: "動畫和音效自訂設定已清除。",
-      animOverridesTitle: "動畫與音效自訂",
-      animOverridesSubtitle: "依卡片變更動畫檔，調整目前主題的淡化與自動回復時間，也能自訂主題音效。",
+      animOverridesTitle: "動畫與音效",
+      animOverridesSubtitle:
+        "依卡片變更動畫檔，調整目前主題的淡化與自動回復時間，也能自訂主題音效。",
       animOverridesLoading: "正在載入動畫與音效自訂設定……",
       animOverridesCurrentTheme: "目前主題",
       animOverridesReplacementConfig: "動畫自訂設定",
@@ -1707,8 +2149,10 @@
       animOverridesResetAll: "還原主題預設值",
       animOverridesExport: "匯出設定…",
       animOverridesImport: "匯入設定…",
-      toastAnimOverridesExportOk: (count, path) => `已匯出 ${count} 個主題的自訂設定 → ${path}`,
-      toastAnimOverridesImportOk: (count) => `已匯入 ${count} 個主題的自訂設定。`,
+      toastAnimOverridesExportOk: (count, path) =>
+        `已匯出 ${count} 個主題的自訂設定 → ${path}`,
+      toastAnimOverridesImportOk: (count) =>
+        `已匯入 ${count} 個主題的自訂設定。`,
       toastAnimOverridesExportEmpty: "目前沒有可匯出的自訂設定。",
       toastAnimOverridesExportFailed: (message) => `匯出失敗：${message}`,
       toastAnimOverridesImportFailed: (message) => `匯入失敗：${message}`,
@@ -1749,12 +2193,15 @@
       animReactionAnnoyed: "煩躁（連續戳）",
       animReactionDouble: "點兩下",
       animOverridesWideHitboxToggle: "寬點按區",
-      animOverridesWideHitboxDesc: "幫這一張影格開啟更寬的點按區。素材視覺超出預設桌寵輪廓時很有用。",
+      animOverridesWideHitboxDesc:
+        "幫這一張影格開啟更寬的點按區。素材視覺超出預設桌寵輪廓時很有用。",
       animOverridesWideHitboxResetToTheme: "還原主題預設值",
-      animOverridesAspectWarning: "這個素材長寬比和原檔差了 {pct}%，點按區和位置可能要手動校準。",
+      animOverridesAspectWarning:
+        "這個素材長寬比和原檔差了 {pct}%，點按區和位置可能要手動校準。",
       animOverridesExpandRow: "展開",
       animOverridesModalTitle: "選素材檔案",
-      animOverridesModalSubtitle: "將檔案加入目前主題的 assets 目錄後，可以在這裡重新整理列表再選一次。",
+      animOverridesModalSubtitle:
+        "將檔案加入目前主題的 assets 目錄後，可以在這裡重新整理列表再選一次。",
       animOverridesModalEmpty: "目前主題裡還沒有可以用的素材。",
       animOverridesModalSelected: "目前選取的檔案",
       animOverridesModalUse: "使用此檔案",
@@ -1762,8 +2209,10 @@
       animOverridesRefresh: "重新整理列表",
       animOverridesSubtabAnimations: "動畫",
       animOverridesSubtabSounds: "音效",
+      animOverridesSubtabMap: "開關",
       soundOverridesSectionTitle: "音效自訂",
-      soundOverridesSectionSubtitle: "自訂目前主題的音效檔案。所選檔案會複製到主題專用的自訂音效資料夾。",
+      soundOverridesSectionSubtitle:
+        "自訂目前主題的音效檔案。所選檔案會複製到主題專用的自訂音效資料夾。",
       soundOverridesLabelComplete: "完成提示 (complete)",
       soundOverridesLabelConfirm: "權限提示 (confirm)",
       soundOverridesPreview: "試聽",
@@ -1782,7 +2231,8 @@
       aboutCheckForUpdates: "檢查更新",
       aboutUpdateAvailableHint: "有新版本: v{version}",
       autoUpdateCheck: "自動檢查更新",
-      autoUpdateCheckDescription: "每 12 小時靜默向 GitHub 查一次，發現新版本才會通知您。",
+      autoUpdateCheckDescription:
+        "每 12 小時靜默向 GitHub 查一次，發現新版本才會通知您。",
       aboutRepositoryLabel: "程式碼儲存庫",
       aboutLicenseLabel: "開源授權",
       aboutAuthorLabel: "作者",
@@ -1790,77 +2240,99 @@
       aboutContributorsLabel: "貢獻者",
       aboutFooter: "Clawd 是開源專案 · 和社群一起做出來的。",
       aboutCleanupButton: "移除 Clawd 整合…",
-      aboutCleanupConfirm: "要移除本機各 agent 內的 Clawd hooks / plugins，並在 Clawd 中停用所有 agent 整合嗎？不會刪除 agent 應用程式或使用者設定。",
+      aboutCleanupConfirm:
+        "要移除本機各 agent 內的 Clawd hooks / plugins，並在 Clawd 中停用所有 agent 整合嗎？不會刪除 agent 應用程式或使用者設定。",
       aboutCleanupRunning: "正在移除整合…",
-      aboutCleanupSuccess: "已從 {affected} 個整合移除 {removed} 項，失敗 {failed} 項。",
+      aboutCleanupSuccess:
+        "已從 {affected} 個整合移除 {removed} 項，失敗 {failed} 項。",
       aboutCleanupFailed: "整合清理失敗",
       aboutCleanupKiroNote: "Kiro 的 clawd.json 已保留，只移除了 hook 條目。",
-      aboutEasterEggToast: "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / 鹿鹿",
+      aboutEasterEggToast:
+        "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / 鹿鹿",
       aboutOpenExternalFailed: "無法開啟瀏覽器連結。",
     },
     ko: {
       settingsTitle: "설정",
       settingsSubtitle: "데스크톱에서 Clawd의 동작 방식을 설정합니다.",
+      settingsTutorialReplayLink: "시작 가이드 다시 보기",
+      settingsTutorialReplayFailed: "가이드를 열 수 없습니다",
       sidebarGeneral: "일반",
       sidebarAgents: "에이전트",
       sidebarTheme: "테마",
-      sidebarAnimMap: "애니메이션 맵",
-      sidebarAnimOverrides: "애니메이션 · 음향 덮어쓰기",
+      sidebarAnimOverrides: "애니메이션 · 음향",
       sidebarShortcuts: "단축키",
       sidebarAbout: "정보",
       sidebarRemoteSsh: "원격 SSH",
       sidebarTelegramApproval: "원격 승인",
       remoteApprovalTitle: "원격 승인",
-      remoteApprovalSubtitle: "로컬 권한 요청을 원격 채널로 라우팅합니다. Token은 prefs에 저장하지 않으며 데스크톱 버블은 로컬 fallback으로 유지됩니다. 현재는 Telegram만 지원하며 Discord 등 더 많은 채널이 예정되어 있습니다.",
+      remoteApprovalSubtitle:
+        "로컬 권한 요청을 원격 채널로 라우팅합니다. Token은 prefs에 저장하지 않으며 데스크톱 버블은 로컬 fallback으로 유지됩니다. 현재는 Telegram만 지원하며 Discord 등 더 많은 채널이 예정되어 있습니다.",
       telegramApprovalChannelName: "Telegram",
       telegramApprovalCardKind_incomplete: "설정 미완성",
       telegramApprovalCardKind_ready: "활성화 가능",
       telegramApprovalCardKind_starting: "시작 중…",
       telegramApprovalCardKind_running: "실행 중",
       telegramApprovalCardKind_failed: "실패",
-      telegramApprovalCardMissingBoth: "아래에서 bot token과 수신 user id를 저장한 후 계속하세요.",
-      telegramApprovalCardMissingToken: "아래에서 bot token을 저장한 후 계속하세요.",
-      telegramApprovalCardMissingRecipient: "아래에서 수신 user id를 저장한 후 계속하세요.",
-      telegramApprovalCardReadyToEnable: "Token과 수신자가 모두 저장되었습니다. 3단계에서 스위치를 켜면 시작합니다.",
+      telegramApprovalCardMissingBoth:
+        "아래에서 bot token과 수신 user id를 저장한 후 계속하세요.",
+      telegramApprovalCardMissingToken:
+        "아래에서 bot token을 저장한 후 계속하세요.",
+      telegramApprovalCardMissingRecipient:
+        "아래에서 수신 user id를 저장한 후 계속하세요.",
+      telegramApprovalCardReadyToEnable:
+        "Token과 수신자가 모두 저장되었습니다. 3단계에서 스위치를 켜면 시작합니다.",
       telegramApprovalCardStarting: "Telegram 승인 sidecar에 연결 중…",
-      telegramApprovalCardRunning: "Telegram 승인 실행 중. 승인 요청이 bot으로 전달됩니다.",
-      telegramApprovalCardFailed: "Sidecar가 실패를 보고했습니다. 아래 메시지를 확인하거나 재시작하세요.",
+      telegramApprovalCardRunning:
+        "Telegram 승인 실행 중. 승인 요청이 bot으로 전달됩니다.",
+      telegramApprovalCardFailed:
+        "Sidecar가 실패를 보고했습니다. 아래 메시지를 확인하거나 재시작하세요.",
       telegramApprovalStep1Title: "1. Bot Token",
       telegramApprovalBotToken: "Bot token",
-      telegramApprovalBotTokenHintHtml: "[@BotFather](https://t.me/botfather)에서 /newbot으로 bot을 만들고 token을 여기에 붙여넣으세요. userData env 파일에 저장되며 clawd-prefs.json에는 저장되지 않습니다.",
+      telegramApprovalBotTokenHintHtml:
+        "[@BotFather](https://t.me/botfather)에서 /newbot으로 bot을 만들고 token을 여기에 붙여넣으세요. userData env 파일에 저장되며 clawd-prefs.json에는 저장되지 않습니다.",
       telegramApprovalBotTokenPlaceholder: "새 bot token 붙여넣기",
       telegramApprovalSaveToken: "Token 저장",
       telegramApprovalSaving: "저장 중…",
       telegramApprovalTokenEmpty: "Telegram bot token을 먼저 붙여넣으세요.",
       telegramApprovalTokenSaved: "Token이 저장되었습니다.",
-      telegramApprovalTokenSaveFailed: "Telegram bot token을 저장할 수 없습니다.",
+      telegramApprovalTokenSaveFailed:
+        "Telegram bot token을 저장할 수 없습니다.",
       telegramApprovalTokenConfiguredLabel: "Token 설정됨",
       telegramApprovalTokenConfiguredNoMask: "(저장됨)",
-      telegramApprovalTokenConfiguredDesc: "Bot token이 디스크에 저장되었습니다. bot을 교체했다면 변경하세요.",
+      telegramApprovalTokenConfiguredDesc:
+        "Bot token이 디스크에 저장되었습니다. bot을 교체했다면 변경하세요.",
       telegramApprovalReplaceToken: "Token 변경",
       telegramApprovalCancel: "취소",
       telegramApprovalTokenCurrent: "현재: {masked}",
-      telegramApprovalTokenReplaceHintHtml: "새 token을 붙여넣으면 기존 token을 덮어씁니다. 새 token이 필요하면 [@BotFather](https://t.me/botfather)에서 발급받으세요.",
+      telegramApprovalTokenReplaceHintHtml:
+        "새 token을 붙여넣으면 기존 token을 덮어씁니다. 새 token이 필요하면 [@BotFather](https://t.me/botfather)에서 발급받으세요.",
       telegramApprovalStep2Title: "2. 수신자",
       telegramApprovalRecipientLabel: "당신의 Telegram 사용자 ID",
-      telegramApprovalRecipientHintHtml: "Telegram에서 [@userinfobot](https://t.me/userinfobot)에게 /start를 보내 숫자 ID를 받으세요. Clawd는 이 ID를 승인 가능한 유일한 사용자이자 승인 카드 수신 chat으로 사용합니다. 본인의 bot에게도 먼저 /start를 한 번 보내 비공개 채팅을 활성화해야 합니다.",
+      telegramApprovalRecipientHintHtml:
+        "Telegram에서 [@userinfobot](https://t.me/userinfobot)에게 /start를 보내 숫자 ID를 받으세요. Clawd는 이 ID를 승인 가능한 유일한 사용자이자 승인 카드 수신 chat으로 사용합니다. 본인의 bot에게도 먼저 /start를 한 번 보내 비공개 채팅을 활성화해야 합니다.",
       telegramApprovalRecipientPlaceholder: "예: 123456789",
       telegramApprovalRecipientEmpty: "Telegram 사용자 ID를 먼저 입력하세요.",
-      telegramApprovalRecipientInvalid: "Telegram 사용자 ID는 5자리 이상의 숫자여야 합니다.",
+      telegramApprovalRecipientInvalid:
+        "Telegram 사용자 ID는 5자리 이상의 숫자여야 합니다.",
       telegramApprovalSaveRecipient: "수신자 저장",
       telegramApprovalConfigSaved: "Telegram 승인 설정이 저장되었습니다.",
       telegramApprovalStep3Title: "3. 활성화 및 테스트",
       telegramApprovalToggle: "Telegram 승인 활성화",
-      telegramApprovalToggleDesc: "설정되면 처리 가능한 로컬 권한 버블이 Telegram 승인 카드도 보냅니다.",
+      telegramApprovalToggleDesc:
+        "설정되면 처리 가능한 로컬 권한 버블이 Telegram 승인 카드도 보냅니다.",
       telegramApprovalCompletionOutput: "완료 알림 출력",
-      telegramApprovalCompletionOutputDesc: "Telegram 완료 알림에 assistant 텍스트를 포함할지 제어합니다. 전체 답변에는 코드, 파일 내용 또는 assistant가 쓴 민감한 정보가 포함될 수 있습니다.",
+      telegramApprovalCompletionOutputDesc:
+        "Telegram 완료 알림에 assistant 텍스트를 포함할지 제어합니다. 전체 답변에는 코드, 파일 내용 또는 assistant가 쓴 민감한 정보가 포함될 수 있습니다.",
       telegramApprovalCompletionOutput_off: "끄기",
       telegramApprovalCompletionOutput_full: "전체 답변",
-      telegramApprovalCompletionOutputFullConfirm: "전체 답변은 assistant의 마지막 텍스트를 Telegram으로 보냅니다. assistant가 코드, 파일 내용 또는 민감한 정보를 썼다면 함께 전송될 수 있습니다. 계속할까요?",
+      telegramApprovalCompletionOutputFullConfirm:
+        "전체 답변은 assistant의 마지막 텍스트를 Telegram으로 보냅니다. assistant가 코드, 파일 내용 또는 민감한 정보를 썼다면 함께 전송될 수 있습니다. 계속할까요?",
       telegramApprovalDirectSend: "Direct Send (paste-only)",
-      telegramApprovalDirectSendDesc: "Clawd 완료 알림에 답장하면 해당 로컬 터미널을 포커스하고 한 줄 텍스트를 붙여넣습니다. Enter는 누르지 않습니다.",
+      telegramApprovalDirectSendDesc:
+        "Clawd 완료 알림에 답장하면 해당 로컬 터미널을 포커스하고 한 줄 텍스트를 붙여넣습니다. Enter는 누르지 않습니다.",
       telegramApprovalTest: "테스트 메시지",
-      telegramApprovalTestDesc: "agent 권한 요청에 연결되지 않은 독립 테스트 승인 카드를 보냅니다.",
+      telegramApprovalTestDesc:
+        "agent 권한 요청에 연결되지 않은 독립 테스트 승인 카드를 보냅니다.",
       telegramApprovalSendTest: "테스트 보내기",
       telegramApprovalTesting: "대기 중…",
       telegramApprovalTestSent: "Telegram 테스트가 완료되었습니다.",
@@ -1870,22 +2342,27 @@
       telegramApprovalPrereqMissingToken: "bot token",
       telegramApprovalPrereqMissingRecipient: "수신자 user id",
       remoteSshTitle: "원격 SSH",
-      remoteSshSubtitle: "원클릭 SSH 터널을 관리해 원격 AI 코딩 세션을 매끄럽게 사용하세요. Clawd는 비밀번호나 패스프레이즈를 저장하지 않으며, 기존 ssh-agent / SSH 키를 사용합니다.",
+      remoteSshSubtitle:
+        "원클릭 SSH 터널을 관리해 원격 AI 코딩 세션을 매끄럽게 사용하세요. Clawd는 비밀번호나 패스프레이즈를 저장하지 않으며, 기존 ssh-agent / SSH 키를 사용합니다.",
       remoteSshSectionProfiles: "프로필",
       remoteSshAddProfile: "+ 프로필 추가",
-      remoteSshEmpty: "아직 프로필이 없습니다. \"프로필 추가\"를 눌러 첫 원격 SSH 터널을 설정하세요.",
+      remoteSshEmpty:
+        '아직 프로필이 없습니다. "프로필 추가"를 눌러 첫 원격 SSH 터널을 설정하세요.',
       remoteSshConnect: "연결",
       remoteSshDisconnect: "연결 해제",
       remoteSshAuthenticate: "최초 인증",
-      remoteSshAuthenticateHint: "시스템 터미널을 열어 호스트 키 확인이나 SSH 키 로드를 완료하세요.",
+      remoteSshAuthenticateHint:
+        "시스템 터미널을 열어 호스트 키 확인이나 SSH 키 로드를 완료하세요.",
       remoteSshOpenTerminal: "터미널 열기",
       remoteSshDeploy: "Hook 배포 / 복구",
       remoteSshDeploying: "배포 중…",
       remoteSshDeploySuccess: "Hook 파일이 배포되었습니다.",
-      remoteSshDeployDriftWarning: "배포 중 설정이 변경되어 이전 설정으로 배포됨 — 다시 배포하세요",
+      remoteSshDeployDriftWarning:
+        "배포 중 설정이 변경되어 이전 설정으로 배포됨 — 다시 배포하세요",
       remoteSshEdit: "편집",
       remoteSshDelete: "삭제",
-      remoteSshDeleteConfirm: "프로필 \"{label}\"을(를) 삭제할까요? 되돌릴 수 없습니다.",
+      remoteSshDeleteConfirm:
+        '프로필 "{label}"을(를) 삭제할까요? 되돌릴 수 없습니다.',
       remoteSshAddTitle: "원격 SSH 프로필 추가",
       remoteSshEditTitle: "원격 SSH 프로필 편집",
       remoteSshSave: "저장",
@@ -1896,11 +2373,14 @@
       remoteSshFieldHost: "호스트",
       remoteSshFieldPort: "SSH 포트 (기본 22)",
       remoteSshFieldIdentityFile: "Identity 파일 (선택)",
-      remoteSshFieldIdentityFileHint: "개인 키의 절대 경로. 비워 두면 ssh-agent 또는 ~/.ssh/config가 사용됩니다.",
+      remoteSshFieldIdentityFileHint:
+        "개인 키의 절대 경로. 비워 두면 ssh-agent 또는 ~/.ssh/config가 사용됩니다.",
       remoteSshFieldRemoteForwardPort: "원격 포워드 포트",
       remoteSshFieldHostPrefix: "호스트 접두사 (선택)",
-      remoteSshFieldHostPrefixHint: "Sessions 메뉴에 표시되는 짧은 이름. 제어 문자, 따옴표, 백슬래시, $, `, !는 피하세요.",
+      remoteSshFieldHostPrefixHint:
+        "Sessions 메뉴에 표시되는 짧은 이름. 제어 문자, 따옴표, 백슬래시, $, `, !는 피하세요.",
       remoteSshFieldAutoStartCodex: "연결 시 Codex 폴백 모니터 자동 시작",
+      remoteSshFieldConnectOnLaunch: "Clawd 시작 시 자동 연결",
       remoteSshStatus_idle: "유휴",
       remoteSshStatus_connecting: "연결 중…",
       remoteSshStatus_connected: "연결됨",
@@ -1915,27 +2395,42 @@
       "remoteSshStep_install-codex": "Codex hooks 등록",
       "remoteSshStep_install-copilot": "Copilot hooks 등록",
       "remoteSshStep_remote-shell": "원격 셸 감지",
-      remoteSshErrAuthDenied: "인증에 실패했습니다. \"최초 인증\"을 눌러 호스트 키 확인이나 SSH 키를 로드하세요.",
-      remoteSshErrHostKey: "호스트 키가 신뢰되지 않았습니다. \"최초 인증\"으로 지문을 확인하세요.",
-      remoteSshErrForwardFailed: "원격 포트를 사용할 수 없습니다. 다른 원격 포워드 포트(23333-23337)를 시도하세요.",
-      remoteSshErrBadConfig: "ssh가 설정을 거부했습니다. 프로필 항목을 확인하세요.",
-      remoteSshErrIdentityMissing: "Identity 파일을 읽을 수 없습니다. 경로와 권한을 확인하세요.",
+      remoteSshErrAuthDenied:
+        '인증에 실패했습니다. "최초 인증"을 눌러 호스트 키 확인이나 SSH 키를 로드하세요.',
+      remoteSshErrHostKey:
+        '호스트 키가 신뢰되지 않았습니다. "최초 인증"으로 지문을 확인하세요.',
+      remoteSshErrForwardFailed:
+        "원격 포트를 사용할 수 없습니다. 다른 원격 포워드 포트(23333-23337)를 시도하세요.",
+      remoteSshErrBadConfig:
+        "ssh가 설정을 거부했습니다. 프로필 항목을 확인하세요.",
+      remoteSshErrIdentityMissing:
+        "Identity 파일을 읽을 수 없습니다. 경로와 권한을 확인하세요.",
       remoteSshErrDns: "호스트 이름을 해석할 수 없습니다.",
       remoteSshErrNetTimeout: "네트워크 시간 초과. 곧 재시도합니다.",
-      remoteSshErrNetUnreachable: "네트워크에 연결할 수 없습니다. 곧 재시도합니다.",
+      remoteSshErrNetUnreachable:
+        "네트워크에 연결할 수 없습니다. 곧 재시도합니다.",
       remoteSshErrBrokenPipe: "연결이 끊어졌습니다. 곧 재연결합니다.",
       remoteSshErrSpawnFailed: "ssh 프로세스를 시작할 수 없습니다.",
-      remoteSshErrSshMissing: "OpenSSH 클라이언트가 없습니다. Windows: 설정 → 앱 → 선택적 기능 → OpenSSH 클라이언트 추가.",
-      remoteSshErrWindowsOpenSshLegacy: "이 Windows OpenSSH 버전은 Remote SSH 상태 확인에 너무 오래되었습니다. OpenSSH 8.x 이상으로 업그레이드하세요.",
-      remoteSshErrWindowsCmdShell: "원격 기본 셸이 Windows cmd.exe입니다. Remote SSH는 POSIX 셸이 필요합니다 (mkdir -p / ~ 확장 / sh -c). 원격에서 OpenSSH DefaultShell을 Git Bash 또는 WSL bash로 설정한 뒤 다시 Deploy를 누르세요. PowerShell: New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
+      remoteSshErrSshMissing:
+        "OpenSSH 클라이언트가 없습니다. Windows: 설정 → 앱 → 선택적 기능 → OpenSSH 클라이언트 추가.",
+      remoteSshErrWindowsOpenSshLegacy:
+        "이 Windows OpenSSH 버전은 Remote SSH 상태 확인에 너무 오래되었습니다. OpenSSH 8.x 이상으로 업그레이드하세요.",
+      remoteSshErrWindowsCmdShell:
+        "원격 기본 셸이 Windows cmd.exe입니다. Remote SSH는 POSIX 셸이 필요합니다 (mkdir -p / ~ 확장 / sh -c). 원격에서 OpenSSH DefaultShell을 Git Bash 또는 WSL bash로 설정한 뒤 다시 Deploy를 누르세요. PowerShell: New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
       remoteSshErrNoLocalPort: "로컬 Clawd 서버가 아직 시작되지 않았습니다.",
-      remoteSshErrUnknownStrikes: "인식할 수 없는 오류가 연속 발생했습니다. 프로필과 로그를 확인하세요.",
-      remoteSshProbeLocalUnhealthy: "터널은 연결되었지만 로컬 Clawd 서버가 비정상입니다.",
-      remoteSshProbeUnresponsive: "터널은 연결되었지만 Clawd가 응답하지 않습니다. Clawd가 실행 중인지 확인하세요.",
-      remoteSshProbePortHijack: "원격 포트가 다른 HTTP 서비스에 의해 사용 중입니다. 다른 원격 포워드 포트로 변경하세요.",
+      remoteSshErrUnknownStrikes:
+        "인식할 수 없는 오류가 연속 발생했습니다. 프로필과 로그를 확인하세요.",
+      remoteSshProbeLocalUnhealthy:
+        "터널은 연결되었지만 로컬 Clawd 서버가 비정상입니다.",
+      remoteSshProbeUnresponsive:
+        "터널은 연결되었지만 Clawd가 응답하지 않습니다. Clawd가 실행 중인지 확인하세요.",
+      remoteSshProbePortHijack:
+        "원격 포트가 다른 HTTP 서비스에 의해 사용 중입니다. 다른 원격 포워드 포트로 변경하세요.",
       remoteSshProbeHttpTimeout: "원격 HTTP 응답 시간 초과. 곧 재시도합니다.",
-      remoteSshProbeNodeNotExec: "원격 node 바이너리가 실행 가능하지 않습니다. 권한을 확인하세요.",
-      remoteSshProbeNodeMissing: "원격에 Node가 없습니다. Deploy를 먼저 실행하거나 원격에 Node를 설치하세요.",
+      remoteSshProbeNodeNotExec:
+        "원격 node 바이너리가 실행 가능하지 않습니다. 권한을 확인하세요.",
+      remoteSshProbeNodeMissing:
+        "원격에 Node가 없습니다. Deploy를 먼저 실행하거나 원격에 Node를 설치하세요.",
       remoteSshProbeSignal: "Probe 프로세스가 중단되었습니다. 곧 재시도합니다.",
       remoteSshHooksLabel: "Hooks:",
       remoteSshHooksNever: "배포되지 않음",
@@ -1943,8 +2438,10 @@
       remoteSshHooksDeployedAgoMin: "{n}분 전 배포됨",
       remoteSshHooksDeployedAgoHr: "{n}시간 전 배포됨",
       remoteSshHooksDeployedAgoDay: "{n}일 전 배포됨",
-      remoteSshConnectWarnNoDeploy: "Hook 파일이 아직 배포되지 않았습니다. Connect는 SSH 터널만 구축하므로, Deploy / Repair Hooks를 눌러야 원격 세션에 Clawd가 반응합니다.",
-      codexHookReviewReminder: "다음 단계: Codex CLI를 열고 /hooks를 실행해 새 후크를 검토하고 활성화하세요(Codex가 검토 후에만 후크를 실행합니다).",
+      remoteSshConnectWarnNoDeploy:
+        "Hook 파일이 아직 배포되지 않았습니다. Connect는 SSH 터널만 구축하므로, Deploy / Repair Hooks를 눌러야 원격 세션에 Clawd가 반응합니다.",
+      codexHookReviewReminder:
+        "다음 단계: Codex CLI를 열고 /hooks를 실행해 새 후크를 검토하고 활성화하세요(Codex가 검토 후에만 후크를 실행합니다).",
       doctorSidebarLabel: "Doctor",
       doctorTitle: "Clawd Doctor",
       doctorStatusUnknown: "알 수 없음",
@@ -1960,11 +2457,13 @@
       doctorAgentSummaryAttention: (count) => `${count} 확인 필요`,
       doctorAgentSummaryNeedsAttention: "확인 필요",
       doctorAgentSummarySkipped: (count) => `${count} 건너뜀`,
-      doctorAgentSummaryNoneActive: "활성화된 연동이 없습니다 — 하나 이상 활성화하세요.",
+      doctorAgentSummaryNoneActive:
+        "활성화된 연동이 없습니다 — 하나 이상 활성화하세요.",
       doctorCheckPermissionBubbles: "권한 버블",
       doctorCheckTheme: "테마",
       doctorCheckUnknown: "검사",
-      doctorPrivacy: "개인정보 안내: 진단 보고서는 로컬에서 생성됩니다. Clawd는 데이터를 업로드하지 않으며 복사 전에 사용자 경로와 비밀값을 가립니다.",
+      doctorPrivacy:
+        "개인정보 안내: 진단 보고서는 로컬에서 생성됩니다. Clawd는 데이터를 업로드하지 않으며 복사 전에 사용자 경로와 비밀값을 가립니다.",
       doctorCopyReport: "진단 보고서 복사",
       doctorRerun: "다시 검사",
       doctorClose: "닫기",
@@ -1975,33 +2474,39 @@
       doctorFixing: "수정 중",
       doctorFixApplied: "수리를 완료했습니다.",
       doctorFixFailed: "이 문제를 수정할 수 없습니다.",
-      doctorFixConfirmCodex: "Clawd가 Codex 설정의 [features].hooks를 true로 변경합니다. 계속할까요?",
+      doctorFixConfirmCodex:
+        "Clawd가 Codex 설정의 [features].hooks를 true로 변경합니다. 계속할까요?",
       doctorFixConfirmCodexTitle: "Codex hooks를 켤까요?",
-      doctorFixConfirmCodexDetail: "이 복구는 Codex 설정의 [features].hooks를 true로 변경합니다. 여기에서 확인하기 전에는 Clawd가 이 변경을 하지 않습니다.",
+      doctorFixConfirmCodexDetail:
+        "이 복구는 Codex 설정의 [features].hooks를 true로 변경합니다. 여기에서 확인하기 전에는 Clawd가 이 변경을 하지 않습니다.",
       doctorFixConfirmCodexAction: "켜고 복구",
       doctorFixConfirmCancel: "취소",
       doctorRestartButton: "Clawd 재시작",
       doctorRestarting: "재시작 중",
       doctorRestartConfirmTitle: "Clawd를 재시작할까요?",
-      doctorRestartConfirmDetail: "Clawd가 종료된 뒤 다시 실행됩니다. 진행 중인 AI 코딩 에이전트 요청은 중단됩니다. 재시작 중에는 Doctor 창도 함께 닫힙니다.",
+      doctorRestartConfirmDetail:
+        "Clawd가 종료된 뒤 다시 실행됩니다. 진행 중인 AI 코딩 에이전트 요청은 중단됩니다. 재시작 중에는 Doctor 창도 함께 닫힙니다.",
       doctorRestartConfirmAction: "지금 재시작",
       doctorNoResult: "아직 진단 결과가 없습니다.",
       doctorConnectionTitle: "연결 테스트",
-      doctorConnectionInstruction: "아무 AI coding agent에서 메시지를 보낸 뒤 카운트다운이 끝나면 돌아오세요.",
+      doctorConnectionInstruction:
+        "아무 AI coding agent에서 메시지를 보낸 뒤 카운트다운이 끝나면 돌아오세요.",
       doctorConnectionIdle: "테스트 안 함",
       doctorConnectionTesting: "{seconds}초 대기",
       doctorConnectionHttpVerified: "HTTP 경로 확인됨",
       doctorConnectionHttpDropped: "HTTP는 동작하지만 이벤트가 삭제됨",
       doctorConnectionHttpBlocked: "HTTP 차단됨",
       doctorConnectionNoActivity: "활동 없음",
-      doctorConnectionNoActivityHint: "아무 AI coding agent에서 메시지를 보내 연결을 테스트하세요.",
+      doctorConnectionNoActivityHint:
+        "아무 AI coding agent에서 메시지를 보내 연결을 테스트하세요.",
       doctorConnectionError: "연결 테스트 실패",
       doctorTestConnection: "연결 테스트",
       doctorOpenLog: "디버그 로그 열기",
       doctorOpenLogOpened: "디버그 로그를 열었습니다",
       doctorOpenLogFailed: "디버그 로그를 열 수 없습니다.",
       shortcutsTitle: "단축키",
-      shortcutsSubtitle: "펫 표시 전환과 권한 동작에 사용할 전역 단축키를 설정합니다. 비워 두면 해제됩니다.",
+      shortcutsSubtitle:
+        "펫 표시 전환과 권한 동작에 사용할 전역 단축키를 설정합니다. 비워 두면 해제됩니다.",
       shortcutLabelBubbleNextOption: "버블: 다음 항목",
       shortcutLabelBubblePrevOption: "버블: 이전 항목",
       shortcutLabelBubbleToggleOption: "버블: 항목 선택/해제",
@@ -2013,12 +2518,16 @@
       shortcutResetAllButton: "모두 기본값 복원",
       shortcutRecordingHint: "키 조합 (Esc)",
       shortcutUnassigned: "— 미지정 —",
-      shortcutErrorConflict: "{other} 와(과) 충돌합니다. 다른 키를 사용해 주세요.",
+      shortcutErrorConflict:
+        "{other} 와(과) 충돌합니다. 다른 키를 사용해 주세요.",
       shortcutErrorSystemConflict: "시스템 또는 다른 앱이 이미 사용 중입니다.",
-      shortcutErrorReserved: "예약된 단축키 조합입니다. 다른 키를 사용해 주세요.",
+      shortcutErrorReserved:
+        "예약된 단축키 조합입니다. 다른 키를 사용해 주세요.",
       shortcutErrorInvalid: "지원하지 않는 키 조합입니다.",
-      shortcutErrorNeedsModifier: "단축키에는 하나 이상의 보조 키가 필요합니다.",
-      shortcutErrorRegistrationFailed: "저장되었지만 현재는 시스템 충돌로 활성화되지 않았습니다. 다시 바인딩하거나 나중에 다시 시도해 주세요.",
+      shortcutErrorNeedsModifier:
+        "단축키에는 하나 이상의 보조 키가 필요합니다.",
+      shortcutErrorRegistrationFailed:
+        "저장되었지만 현재는 시스템 충돌로 활성화되지 않았습니다. 다시 바인딩하거나 나중에 다시 시도해 주세요.",
       shortcutLabelTogglePet: "펫 표시 전환",
       shortcutLabelPermissionAllow: "권한: 허용",
       shortcutLabelPermissionDeny: "권한: 거부",
@@ -2026,34 +2535,46 @@
       sidebarSoon: "예정",
       sectionAppearance: "외관",
       sectionSession: "세션 관리",
-      sectionSystem: "시스템",
-      sectionStartup: "시작",
+      sectionAlerts: "알림 및 피드백",
+      sectionBehavior: "동작 및 위치",
+      sectionSystemStartup: "시스템 및 시작",
       sectionMobile: "모바일",
-      sectionBubbles: "말풍선",
       sectionPermissions: "권한",
-      rowAutoApproveAll: "자동 조종",
-      menuAutoApproveAll: "자동 조종 (모두 자동 승인)",
+      rowAutoApproveAll: "모든 요청 자동 승인",
+      rowAutoApproveAllDesc:
+        "위험: 모든 에이전트의 권한 요청(명령 실행, 파일 수정, 삭제)을 묻지 않고 자동 승인합니다. 에이전트별 토글과 방해 금지는 계속 적용됩니다.",
+      menuAutoApproveAll: "모든 요청 자동 승인",
       autoApproveAllConfirmTitle: "자동 조종을 켜시겠습니까?",
-      autoApproveAllConfirmDetail: "모든 agent의 모든 권한 요청이 자동으로 승인됩니다. 쉘 명령 실행과 파일 삭제도 포함됩니다. Clawd가 먼저 묻지 않습니다. agent的行为를 완전히 신뢰할 때만 활성화하세요.",
+      autoApproveAllConfirmDetail:
+        "모든 agent의 모든 권한 요청이 자동으로 승인됩니다. 쉘 명령 실행과 파일 삭제도 포함됩니다. Clawd가 먼저 묻지 않습니다. agent的行为를 완전히 신뢰할 때만 활성화하세요.",
       autoApproveAllConfirmEnable: "자동 조종 켜기",
       autoApproveAllConfirmCancel: "취소",
       hardwareBuddyTitle: "Hardware Buddy",
-      hardwareBuddyDesc: "별도로 설치한 Clawstick runtime을 통해 페어링된 BLE 데스크 장치에 연결합니다. 권한 응답은 명시적으로 활성화되고 연결이 안전할 때만 켜집니다.",
+      hardwareBuddyDesc:
+        "별도로 설치한 Clawstick runtime을 통해 페어링된 BLE 데스크 장치에 연결합니다. 권한 응답은 명시적으로 활성화되고 연결이 안전할 때만 켜집니다.",
       hardwareBuddyEnable: "Enable Hardware Buddy",
-      hardwareBuddyEnableDesc: "Start the BLE sidecar and send state-only session snapshots by default.",
+      hardwareBuddyEnableDesc:
+        "Start the BLE sidecar and send state-only session snapshots by default.",
       hardwareBuddyAddress: "BLE address",
-      hardwareBuddyAddressDesc: "Optional fixed device address. Leave empty to scan by name prefix.",
+      hardwareBuddyAddressDesc:
+        "Optional fixed device address. Leave empty to scan by name prefix.",
       hardwareBuddyNamePrefix: "Device name prefix",
-      hardwareBuddyNamePrefixDesc: "Scan for devices whose advertised name starts with this text.",
+      hardwareBuddyNamePrefixDesc:
+        "Scan for devices whose advertised name starts with this text.",
       hardwareBuddyPermissions: "Allow hardware permission replies",
-      hardwareBuddyPermissionsDesc: "Requires this opt-in plus a secure paired transport before Allow/Deny prompts appear on the device.",
+      hardwareBuddyPermissionsDesc:
+        "Requires this opt-in plus a secure paired transport before Allow/Deny prompts appear on the device.",
       hardwareBuddyQuickCommands: "Quick Commands 켜기",
-      hardwareBuddyQuickCommandsDesc: "로컬 preset 버튼을 표시해 adapter가 처리하는 quick_command 이벤트만 만듭니다. Clawd는 텍스트를 붙여넣거나 shell을 실행하지 않습니다.",
+      hardwareBuddyQuickCommandsDesc:
+        "로컬 preset 버튼을 표시해 adapter가 처리하는 quick_command 이벤트만 만듭니다. Clawd는 텍스트를 붙여넣거나 shell을 실행하지 않습니다.",
       hardwareBuddyQuickCommandPresets: "Quick Command presets",
-      hardwareBuddyQuickCommandPresetsDesc: "preset을 클릭하면 active-session adapter용 검증된 이벤트를 큐에 넣습니다.",
-      hardwareBuddyQuickCommandsDisabled: "preset 버튼을 쓰려면 Quick Commands를 켜세요.",
+      hardwareBuddyQuickCommandPresetsDesc:
+        "preset을 클릭하면 active-session adapter용 검증된 이벤트를 큐에 넣습니다.",
+      hardwareBuddyQuickCommandsDisabled:
+        "preset 버튼을 쓰려면 Quick Commands를 켜세요.",
       hardwareBuddyQuickCommandsLoading: "presets 로드 중...",
-      hardwareBuddyQuickCommandsUnavailable: "Quick Commands를 사용할 수 없습니다.",
+      hardwareBuddyQuickCommandsUnavailable:
+        "Quick Commands를 사용할 수 없습니다.",
       hardwareBuddyQuickCommandSent: "Quick Command가 큐에 추가되었습니다.",
       hardwareBuddyQuickCommandFailed: "Quick Command 실패: ",
       hardwareBuddyRepliesOn: "Replies on",
@@ -2062,19 +2583,28 @@
       hardwareBuddyTest: "Test approval",
       hardwareBuddyTestButton: "Send test",
       hardwareBuddyTestWaiting: "Waiting...",
-      hardwareBuddyTestDesc: "Send a harmless approval request to the paired device.",
+      hardwareBuddyTestDesc:
+        "Send a harmless approval request to the paired device.",
       hardwareBuddyTestPending: "Waiting for a button press on the device.",
       hardwareBuddyTestOk: "Device replied: {decision}",
       hardwareBuddyTestError: "Test approval failed.",
       hardwareBuddyTestErr_disabled: "Hardware Buddy is not enabled.",
-      hardwareBuddyTestErr_permissions_off: "Hardware permission replies are disabled.",
-      hardwareBuddyTestErr_not_secure: "Hardware Buddy is not connected over a secure link.",
-      hardwareBuddyTestErr_timeout: "The device did not reply before the test timed out.",
-      hardwareBuddyTestErr_no_decision: "Hardware Buddy test did not receive a decision.",
-      hardwareBuddyTestErr_internal_error: "Hardware Buddy test failed inside Clawd.",
-      hardwareBuddyTestDisabled: "Enable Hardware Buddy before testing approvals.",
-      hardwareBuddyTestRepliesOff: "Turn on hardware permission replies before testing approvals.",
-      hardwareBuddyTestNeedsSecure: "Connect over a secure paired link before testing approvals.",
+      hardwareBuddyTestErr_permissions_off:
+        "Hardware permission replies are disabled.",
+      hardwareBuddyTestErr_not_secure:
+        "Hardware Buddy is not connected over a secure link.",
+      hardwareBuddyTestErr_timeout:
+        "The device did not reply before the test timed out.",
+      hardwareBuddyTestErr_no_decision:
+        "Hardware Buddy test did not receive a decision.",
+      hardwareBuddyTestErr_internal_error:
+        "Hardware Buddy test failed inside Clawd.",
+      hardwareBuddyTestDisabled:
+        "Enable Hardware Buddy before testing approvals.",
+      hardwareBuddyTestRepliesOff:
+        "Turn on hardware permission replies before testing approvals.",
+      hardwareBuddyTestNeedsSecure:
+        "Connect over a secure paired link before testing approvals.",
       hardwareBuddyTestToastOk: "Hardware Buddy test reply received.",
       hardwareBuddyTestToastError: "Hardware Buddy test failed: ",
       hardwareBuddyStatus: "Connection status",
@@ -2086,10 +2616,13 @@
       hardwareBuddyStatus_error: "Needs attention",
       hardwareBuddyStatusOffDetail: "Hardware Buddy is disabled.",
       hardwareBuddyStatusError: "Needs attention",
-      hardwareBuddyStatusErrorDetail: "Check the Hardware Buddy sidecar status.",
-      hardwareBuddyStatusConnectedDetail: "{device} connected, secure link {secure}",
+      hardwareBuddyStatusErrorDetail:
+        "Check the Hardware Buddy sidecar status.",
+      hardwareBuddyStatusConnectedDetail:
+        "{device} connected, secure link {secure}",
       hardwareBuddyStatusAddressDetail: "Looking for {address}.",
-      hardwareBuddyStatusPrefixDetail: "Scanning for names starting with {prefix}.",
+      hardwareBuddyStatusPrefixDetail:
+        "Scanning for names starting with {prefix}.",
       hardwareBuddySecureOn: "on",
       hardwareBuddySecureOff: "off",
       hardwareBuddyErr_missing_bleak: "Install bleak",
@@ -2103,7 +2636,8 @@
       collapsibleExpand: "섹션 펼치기",
       collapsibleCollapse: "섹션 접기",
       agentsTitle: "에이전트",
-      agentsSubtitle: "에이전트별로 추적을 켜거나 끕니다. 비활성화된 에이전트는 로그 모니터를 멈추고 HTTP 경계에서 hook 이벤트를 버리므로, 펫을 움직이거나 권한 말풍선을 띄우거나 세션을 유지하지 않습니다.",
+      agentsSubtitle:
+        "에이전트별로 추적을 켜거나 끕니다. 비활성화된 에이전트는 로그 모니터를 멈추고 HTTP 경계에서 hook 이벤트를 버리므로, 펫을 움직이거나 권한 말풍선을 띄우거나 세션을 유지하지 않습니다.",
       agentsEmpty: "등록된 에이전트가 없습니다.",
       eventSourceHook: "훅",
       eventSourceLogPoll: "로그 폴링",
@@ -2111,35 +2645,56 @@
       eventSourceExtension: "확장",
       badgePermissionBubble: "권한 말풍선",
       rowAgentPermissions: "팝업 말풍선 표시",
-      rowAgentPermissionsDesc: "끄면 이 에이전트는 Clawd 말풍선 대신 자체 터미널에서 프롬프트를 처리합니다.",
+      rowAgentPermissionsDesc:
+        "끄면 이 에이전트는 Clawd 말풍선 대신 자체 터미널에서 프롬프트를 처리합니다.",
       rowCodexPermissionMode: "Codex 권한 모드",
-      rowCodexPermissionModeDesc: "Native는 Codex AutoReview와 터미널 프롬프트를 그대로 사용합니다. Intercept는 Clawd 허용/거부 말풍선을 표시합니다.",
+      rowCodexPermissionModeDesc:
+        "Native는 Codex AutoReview와 터미널 프롬프트를 그대로 사용합니다. Intercept는 Clawd 허용/거부 말풍선을 표시합니다.",
       codexPermissionModeNative: "Native",
       codexPermissionModeIntercept: "Intercept",
       rowCodexNativeNotificationSound: "Native 알림 소리",
-      rowCodexNativeNotificationSoundDesc: "끄면 Codex Native 권한 프롬프트는 알림 애니메이션만 표시하고 프롬프트 소리는 재생하지 않습니다. 완료 소리는 계속 재생됩니다.",
+      rowCodexNativeNotificationSoundDesc:
+        "끄면 Codex Native 권한 프롬프트는 알림 애니메이션만 표시하고 프롬프트 소리는 재생하지 않습니다. 완료 소리는 계속 재생됩니다.",
+      agentCodexHookNeedsAttention: "주의 필요",
+      codexHookHealthReasonDisabled:
+        "Codex 훅이 설정에서 꺼져 있어([features].hooks=false) Codex가 승인 훅을 실행하지 않습니다. 활성화하거나 Doctor → Fix를 실행하세요.",
+      codexHookHealthReasonNeedsReview:
+        "Clawd의 Codex 훅이 등록됐지만 Codex에서 승인이 필요합니다 — Codex에서 /hooks를 실행하거나 Doctor → Fix를 사용하세요.",
+      codexHookHealthReasonInactive:
+        "Clawd의 Codex 훅이 활성화되지 않아 승인 프롬프트가 표시되지 않습니다. 통합을 다시 설치하거나 Doctor → Fix를 실행하세요.",
+      rowCodexHookHealthNotify: "Codex 훅이 비활성일 때 알림",
+      rowCodexHookHealthNotifyDesc:
+        "실행 시 Codex 공식 승인 훅이 비활성화되었거나 검토가 필요하면 일회성 트레이 알림을 표시합니다. 문제마다 한 번만 표시되며 매번 표시되지 않습니다.",
       rowAgentIdleAlerts: "입력 대기 알림",
-      rowAgentIdleAlertsDesc: "이 에이전트의 Notification 훅이 트리거하는 종 애니메이션과 사운드입니다(예: Claude Code는 약 60초 유휴 시 전송). 권한 말풍선에는 영향을 주지 않습니다.",
-      agentIntegrationUninstallConfirm: "이 에이전트 연동을 제거하시겠습니까? Clawd가 관리하는 훅이 제거되고 에이전트가 비활성화됩니다.",
+      rowAgentIdleAlertsDesc:
+        "이 에이전트의 Notification 훅이 트리거하는 종 애니메이션과 사운드입니다(예: Claude Code는 약 60초 유휴 시 전송). 권한 말풍선에는 영향을 주지 않습니다.",
+      agentIntegrationUninstallConfirm:
+        "이 에이전트 연동을 제거하시겠습니까? Clawd가 관리하는 훅이 제거되고 에이전트가 비활성화됩니다.",
       rowLanguage: "언어",
       rowLanguageDesc: "메뉴와 말풍선의 인터페이스 언어입니다.",
       rowSound: "효과음",
       rowSoundEnabled: "효과음 사용",
-      rowSoundDesc: "Clawd가 작업을 마치거나 입력을 요청할 때 알림음을 재생합니다.",
+      rowSoundDesc:
+        "Clawd가 작업을 마치거나 입력을 요청할 때 알림음을 재생합니다.",
       rowVolume: "볼륨",
-      rowVolumeDesc: "효과음 볼륨을 조절합니다. 효과음이 꺼져 있을 때는 비활성화됩니다.",
+      rowVolumeDesc:
+        "효과음 볼륨을 조절합니다. 효과음이 꺼져 있을 때는 비활성화됩니다.",
       rowLowPowerIdleMode: "저전력 idle",
-      rowLowPowerIdleModeDesc: "Clawd가 몇 초 동안 가만히 있으면 idle SVG 애니메이션을 일시 중지하고, 활동이 있으면 즉시 다시 재생합니다.",
+      rowLowPowerIdleModeDesc:
+        "Clawd가 몇 초 동안 가만히 있으면 idle SVG 애니메이션을 일시 중지하고, 활동이 있으면 즉시 다시 재생합니다.",
       rowKeepAwakeWhileWorking: "작업 중 절전 차단",
-      rowKeepAwakeWhileWorkingDesc: "에이전트 작업이 진행 중일 때 컴퓨터가 절전 모드로 들어가지 않도록 막고, 작업이 끝나면 다시 절전을 허용합니다.",
+      rowKeepAwakeWhileWorkingDesc:
+        "에이전트 작업이 진행 중일 때 컴퓨터가 절전 모드로 들어가지 않도록 막고, 작업이 끝나면 다시 절전을 허용합니다.",
       rowFlashTaskbarOnComplete: "작업 완료 시 트레이 아이콘 깜빡임",
-      rowFlashTaskbarOnCompleteDesc: "AI 작업이 완료되면 시스템 트레이 아이콘이 깜빡여 다른 창에서 작업 중에도 알 수 있습니다.",
+      rowFlashTaskbarOnCompleteDesc:
+        "AI 작업이 완료되면 시스템 트레이 아이콘이 깜빡여 다른 창에서 작업 중에도 알 수 있습니다.",
       rowFlash: "트레이 아이콘 깜빡임",
       rowFlashDesc: "작업 완료 시 시스템 트레이 아이콘 깜빡임을 설정합니다.",
       rowFlashInterval: "깜빡임 간격",
       rowFlashIntervalDesc: "아이콘이 일반과 강조 사이를 전환하는 속도입니다.",
       rowFlashDuration: "깜빡임 지속 시간",
-      rowFlashDurationDesc: "깜빡임이 지속되는 시간입니다. 0으로 설정하면 수동으로 멈출 때까지 계속 깜빡입니다.",
+      rowFlashDurationDesc:
+        "깜빡임이 지속되는 시간입니다. 0으로 설정하면 수동으로 멈출 때까지 계속 깜빡입니다.",
       unitMilliseconds: "ms",
       valueAlways: "항상 깜빡임",
       rowSessionHud: "세션 HUD",
@@ -2151,63 +2706,93 @@
       sessionHudSummaryCleanup: "자동 정리: {state}",
       sessionHudSummaryContextUsage: "컨텍스트: {state}",
       rowSessionHudStateLabels: "상태 라벨 표시",
-      rowSessionHudStateLabelsDesc: "작업 중, 생각 중, 대기 중 등 활성 세션에 간결한 상태 라벨을 표시합니다. 완료된 세션은 계속 종 모양을 사용합니다.",
+      rowSessionHudStateLabelsDesc:
+        "작업 중, 생각 중, 대기 중 등 활성 세션에 간결한 상태 라벨을 표시합니다. 완료된 세션은 계속 종 모양을 사용합니다.",
       rowSessionHudElapsed: "HUD 시간 표시",
-      rowSessionHudElapsedDesc: "세션 HUD에 경과 시간을 표시합니다. 끄면 HUD 폭이 줄어듭니다.",
+      rowSessionHudElapsedDesc:
+        "세션 HUD에 경과 시간을 표시합니다. 끄면 HUD 폭이 줄어듭니다.",
       shortcutLabelPetReveal: "펫 클릭: 세션 HUD 표시",
       shortcutLabelOpenDashboard: "Ctrl / ⌘ + 펫 클릭: 대시보드 열기",
       sessionHudPinTooltip: "HUD 고정",
       sessionHudUnpinTooltip: "HUD 고정 해제",
       sessionHudFocusUnavailableTooltip: "터미널 포커스를 사용할 수 없습니다",
-      sessionHudRemoteFocusUnavailableTooltip: "원격 세션은 터미널 포커스를 사용할 수 없습니다",
+      sessionHudRemoteFocusUnavailableTooltip:
+        "원격 세션은 터미널 포커스를 사용할 수 없습니다",
       rowSessionHudCleanupDetached: "분리된 세션 자동 정리",
-      rowSessionHudCleanupDetachedDesc: "종료된 세션의 터미널이 닫히면 HUD에서 숨긴 뒤 잠시 후 세션 목록에서 제거합니다.",
+      rowSessionHudCleanupDetachedDesc:
+        "종료된 세션의 터미널이 닫히면 HUD에서 숨긴 뒤 잠시 후 세션 목록에서 제거합니다.",
       rowSessionCleanupGroup: "세션 정리",
-      rowSessionCleanupGroupDesc: "Clawd가 비활성 세션을 얼마나 기다린 뒤 정리할지 설정합니다. 주로 터미널이 보이지 않는 원격 SSH 세션에 적용됩니다 — 장시간 원격 작업은 한도를 늘리거나, 세션 타임아웃을 0으로 두면 시간으로는 정리하지 않습니다.",
+      rowSessionCleanupGroupDesc:
+        "Clawd가 비활성 세션을 얼마나 기다린 뒤 정리할지 설정합니다. 주로 터미널이 보이지 않는 원격 SSH 세션에 적용됩니다 — 장시간 원격 작업은 한도를 늘리거나, 세션 타임아웃을 0으로 두면 시간으로는 정리하지 않습니다.",
       rowStaleSession: "세션 타임아웃 (유휴)",
-      rowStaleSessionDesc: "원격 SSH 세션은 이 시간 동안 유휴 상태면 제거됩니다. 로컬 세션은 터미널이 열려 있는 동안 제거되지 않고 idle로 흐려질 뿐입니다. 기본 10분. 0 = 시간으로 제거 안 함. 작업 타임아웃보다 작을 수 없습니다.",
+      rowStaleSessionDesc:
+        "원격 SSH 세션은 이 시간 동안 유휴 상태면 제거됩니다. 로컬 세션은 터미널이 열려 있는 동안 제거되지 않고 idle로 흐려질 뿐입니다. 기본 10분. 0 = 시간으로 제거 안 함. 작업 타임아웃보다 작을 수 없습니다.",
       rowStaleWorking: "작업 타임아웃",
-      rowStaleWorkingDesc: "세션이 working/thinking 상태로 멈춰 있으면 이 시간이 지나면 idle로 표시합니다. 기본 5분. 세션 타임아웃이 0이 아니면 그 값으로 제한됩니다.",
+      rowStaleWorkingDesc:
+        "세션이 working/thinking 상태로 멈춰 있으면 이 시간이 지나면 idle로 표시합니다. 기본 5분. 세션 타임아웃이 0이 아니면 그 값으로 제한됩니다.",
       rowStaleDetached: "터미널 닫힌 후 정리 지연",
-      rowStaleDetachedDesc: "'분리된 세션 자동 정리'가 켜져 있을 때만 동작합니다. 세션의 터미널 창이 닫힌 뒤 이 초만큼 기다린 다음 HUD에서 제거합니다. 기본 30초.",
+      rowStaleDetachedDesc:
+        "'분리된 세션 자동 정리'가 켜져 있을 때만 동작합니다. 세션의 터미널 창이 닫힌 뒤 이 초만큼 기다린 다음 HUD에서 제거합니다. 기본 30초.",
       unitMinutes: "분",
       unitSeconds: "초",
       valueDisabled: "비활성화",
       actionResetSessionCleanup: "기본값으로 되돌리기",
       rowSessionDashboard: "세션 대시보드",
-      rowSessionDashboardDesc: "Claude Code, Codex 등 모든 에이전트의 활성 세션을 한 창에서 확인합니다.",
+      rowSessionDashboardDesc:
+        "Claude Code, Codex 등 모든 에이전트의 활성 세션을 한 창에서 확인합니다.",
       actionOpenDashboard: "열기",
       rowOpenAtLogin: "로그인 시 자동 실행",
       rowOpenAtLoginDesc: "로그인할 때 Clawd를 자동으로 시작합니다.",
       rowManageClaudeHooks: "Claude hooks 자동 관리",
-      rowManageClaudeHooksDesc: "시작 시 Claude hooks를 동기화하고 `~/.claude/settings.json`이 덮어써지면 다시 복구합니다.",
-      rowManageClaudeHooksOffNote: "이 옵션을 꺼도 이후 자동 관리만 중지됩니다. 기존 Claude hooks는 직접 연결 해제하기 전까지 남아 있습니다.",
+      rowManageClaudeHooksDesc:
+        "시작 시 Claude hooks를 동기화하고 `~/.claude/settings.json`이 덮어써지면 다시 복구합니다.",
+      rowManageClaudeHooksOffNote:
+        "이 옵션을 꺼도 이후 자동 관리만 중지됩니다. 기존 Claude hooks는 직접 연결 해제하기 전까지 남아 있습니다.",
       actionDisconnectClaudeHooks: "연결 해제",
       claudeHooksDisableConfirmTitle: "Claude hooks 자동 관리를 끌까요?",
-      claudeHooksDisableConfirmDetail: "자동 관리만 끄면 `~/.claude/settings.json`에 이미 설치된 Claude hooks는 그대로 유지됩니다. `Claude Code와 함께 시작` 설정도 나중에 다시 켤 수 있도록 유지됩니다.",
+      claudeHooksDisableConfirmDetail:
+        "자동 관리만 끄면 `~/.claude/settings.json`에 이미 설치된 Claude hooks는 그대로 유지됩니다. `Claude Code와 함께 시작` 설정도 나중에 다시 켤 수 있도록 유지됩니다.",
       claudeHooksDisableConfirmDisconnect: "끄고 설치된 hooks 제거",
       claudeHooksDisableConfirmDisableOnly: "자동 관리만 끄기",
       claudeHooksDisableConfirmKeep: "자동 관리 계속 유지",
       claudeHooksDisconnectConfirmTitle: "Claude hooks 연결을 해제할까요?",
-      claudeHooksDisconnectConfirmDetail: "`~/.claude/settings.json`에서 Clawd가 관리하는 Claude hooks를 제거하고 자동 관리를 끕니다. `Claude Code와 함께 시작` 설정은 나중에 다시 켤 수 있도록 유지됩니다.",
+      claudeHooksDisconnectConfirmDetail:
+        "`~/.claude/settings.json`에서 Clawd가 관리하는 Claude hooks를 제거하고 자동 관리를 끕니다. `Claude Code와 함께 시작` 설정은 나중에 다시 켤 수 있도록 유지됩니다.",
       claudeHooksDisconnectConfirmAction: "hooks 연결 해제",
       claudeHooksDisconnectConfirmKeep: "계속 유지",
       rowStartWithClaude: "Claude Code와 함께 시작",
-      rowStartWithClaudeDesc: "Claude Code 세션이 시작될 때마다 Clawd를 자동으로 실행합니다.",
-      rowStartWithClaudeDisabledDesc: "Claude hooks 자동 관리가 필요합니다. 관리가 꺼져 있는 동안에는 포트 변경이나 설정 덮어쓰기를 자동으로 복구하지 않습니다.",
+      rowStartWithClaudeDesc:
+        "Claude Code 세션이 시작될 때마다 Clawd를 자동으로 실행합니다.",
+      rowStartWithClaudeDisabledDesc:
+        "Claude hooks 자동 관리가 필요합니다. 관리가 꺼져 있는 동안에는 포트 변경이나 설정 덮어쓰기를 자동으로 복구하지 않습니다.",
       rowHideBubbles: "말풍선 숨기기",
       rowHideBubblesDesc: "Clawd의 권한, 알림, 업데이트 말풍선을 숨깁니다.",
       rowBubbleFollow: "말풍선이 Clawd를 따라다님",
-      rowBubbleFollowDesc: "권한 및 업데이트 말풍선을 화면 구석 대신 펫 옆에 표시합니다.",
+      rowBubbleFollowDesc:
+        "권한 및 업데이트 말풍선을 화면 구석 대신 펫 옆에 표시합니다.",
+      rowAutoApproveAll: "모든 요청 자동 승인",
+      rowAutoApproveAllDesc:
+        "위험: 모든 에이전트의 권한 요청(명령 실행, 파일 수정, 삭제)을 묻지 않고 자동 승인합니다. 에이전트별 토글과 방해 금지는 계속 적용됩니다.",
+      menuAutoApproveAll: "모든 요청 자동 승인",
+      autoApproveAllConfirmTitle: "모든 요청 자동 승인을 켤까요?",
+      autoApproveAllConfirmDetail:
+        "셸 명령 실행과 파일 삭제를 포함해 모든 에이전트의 모든 권한 요청이 자동으로 승인됩니다. Clawd가 먼저 묻지 않습니다. 에이전트의 동작을 완전히 신뢰할 때만 켜세요.",
+      autoApproveAllConfirmEnable: "자동 승인 켜기",
+      autoApproveAllConfirmCancel: "취소",
       rowBubblePolicy: "말풍선 표시 및 자동 닫기",
-      rowBubblePolicyDesc: "말풍선 종류별 표시 여부와 수동 조작이 필요 없는 말풍선의 유지 시간을 설정합니다.",
+      rowBubblePolicyDesc:
+        "말풍선 종류별 표시 여부와 수동 조작이 필요 없는 말풍선의 유지 시간을 설정합니다.",
       bubblePermissionLabel: "권한 / 상호작용 말풍선",
-      bubblePermissionDesc: "끄면 승인 프롬프트가 에이전트 터미널/TUI로 돌아갑니다. Plan review와 AskUserQuestion 프롬프트는 에이전트가 멈추지 않도록 계속 표시됩니다. 초 값은 훅 연결이 반쯤 끊긴 상태로 멈춘 말풍선을 자동으로 닫는 선택적 옵션입니다(0 = 끔).",
+      bubblePermissionDesc:
+        "끄면 승인 프롬프트가 에이전트 터미널/TUI로 돌아갑니다. Plan review와 AskUserQuestion 프롬프트는 에이전트가 멈추지 않도록 계속 표시됩니다. 초 값은 훅 연결이 반쯤 끊긴 상태로 멈춘 말풍선을 자동으로 닫는 선택적 옵션입니다(0 = 끔).",
       bubbleNotificationLabel: "알림 말풍선",
-      bubbleNotificationDesc: "스위치는 Codex / Kimi CLI 수동 알림 표시를 제어합니다. 초 값은 자동 종료 상한이며, 후속 상태가 더 일찍 닫을 수 있습니다. 0이면 숨깁니다.",
+      bubbleNotificationDesc:
+        "스위치는 Codex / Kimi Code 수동 알림 표시를 제어합니다. 초 값은 자동 종료 상한이며, 후속 상태가 더 일찍 닫을 수 있습니다. 0이면 숨깁니다.",
       bubbleUpdateLabel: "업데이트 말풍선",
-      bubbleUpdateDesc: "스위치는 업데이트 확인, 다운로드, 성공, 실패, 재시작 안내 표시를 제어합니다. 초 값은 표시 시간을 제어합니다.",
-      bubbleUpdateWarning: "업데이트 말풍선을 숨기면 오류 원인이나 재시작 안내를 놓칠 수 있어 권장하지 않습니다.",
+      bubbleUpdateDesc:
+        "스위치는 업데이트 확인, 다운로드, 성공, 실패, 재시작 안내 표시를 제어합니다. 초 값은 표시 시간을 제어합니다.",
+      bubbleUpdateWarning:
+        "업데이트 말풍선을 숨기면 오류 원인이나 재시작 안내를 놓칠 수 있어 권장하지 않습니다.",
       bubbleSecondsPrefix: "유지",
       bubbleSecondsUnit: "초",
       bubbleSecondsInvalid: "초 값은 0부터 3600 사이의 정수여야 합니다",
@@ -2217,29 +2802,39 @@
       bubblePolicySummaryOn: "켜짐",
       bubblePolicySummaryOff: "꺼짐",
       updateBubbleDisableConfirmTitle: "업데이트 말풍선을 숨길까요?",
-      updateBubbleDisableConfirmDetail: "업데이트 실패 원인, 다운로드 완료 메시지, 재시작 안내를 놓칠 수 있습니다. 업데이트 흐름은 계속 실행되지만 Clawd는 업데이트 말풍선을 표시하지 않습니다.",
+      updateBubbleDisableConfirmDetail:
+        "업데이트 실패 원인, 다운로드 완료 메시지, 재시작 안내를 놓칠 수 있습니다. 업데이트 흐름은 계속 실행되지만 Clawd는 업데이트 말풍선을 표시하지 않습니다.",
       updateBubbleDisableConfirmAction: "업데이트 말풍선 숨기기",
       updateBubbleDisableConfirmCancel: "계속 표시",
       rowAllowEdgePinning: "화면 가장자리에 붙이기 허용",
-      rowAllowEdgePinningDesc: "화면 가장자리에 붙을 때 상/하단 장식(반짝임·건물·말풍선 등)이 잘릴 수 있습니다.",
+      rowAllowEdgePinningDesc:
+        "화면 가장자리에 붙을 때 상/하단 장식(반짝임·건물·말풍선 등)이 잘릴 수 있습니다.",
       rowDisableMiniMode: "미니 모드 끄기",
-      rowDisableMiniModeDesc: "켜면 가장자리 스냅이나 메뉴로 미니 모드에 들어가지 않습니다.",
+      rowDisableMiniModeDesc:
+        "켜면 가장자리 스냅이나 메뉴로 미니 모드에 들어가지 않습니다.",
       rowFreeRoam: "자유 배회",
-      rowFreeRoamDesc: "대기 중에 Clawd가 책상 위를 자유롭게 돌아다닙니다. 마우스를 움직이면 멈춥니다.",
+      rowFreeRoamDesc:
+        "대기 중에 Clawd가 책상 위를 자유롭게 돌아다닙니다. 마우스를 움직이면 멈춥니다.",
       rowKeepSizeAcrossDisplays: "디스플레이 간 크기 유지",
-      rowKeepSizeAcrossDisplaysDesc: "다른 모니터로 옮겨도 자동으로 리사이즈하지 않습니다. 슬라이더는 현재 디스플레이 기준으로 계속 작동합니다.",
+      rowKeepSizeAcrossDisplaysDesc:
+        "다른 모니터로 옮겨도 자동으로 리사이즈하지 않습니다. 슬라이더는 현재 디스플레이 기준으로 계속 작동합니다.",
+      rowFullscreenOverlay: "전체화면 게임 위에 띄우기",
+      rowFullscreenOverlayDesc:
+        "Windows에서 전체화면 게임 위에서도 펫을 계속 쓸 수 있게 합니다 — 위에 유지되고 드래그할 수 있으며, 게임의 포커스를 빼앗지 않습니다. 끄면 최적화 전 기본 동작으로 돌아갑니다. 테두리 없는 전체화면 게임에서는 펫이 항상 위에 표시됩니다. 완전히 없애려면 펫 숨기기를 사용하세요. (독점 전체화면 게임에서는 동작이 다를 수 있습니다.)",
       rowSize: "크기",
       rowSizeDesc: "드래그하여 펫 크기를 조절하세요.",
       placeholderTitle: "곧 제공 예정",
-      placeholderDesc: "이 패널은 향후 Clawd 릴리스에 추가됩니다. 계획은 docs/plans/plan-settings-panel.md에 있습니다.",
+      placeholderDesc:
+        "이 패널은 향후 Clawd 릴리스에 추가됩니다. 계획은 docs/plans/plan-settings-panel.md에 있습니다.",
       toastSaveFailed: "저장 실패: ",
       langEnglish: "English",
-      langChinese: "简中",
-      langTraditionalChinese: "繁中",
+      langChinese: "简体中文",
+      langTraditionalChinese: "繁體中文",
       langKorean: "한국어",
       langJapanese: "日本語",
       themeTitle: "테마",
-      themeSubtitle: "Clawd의 테마를 선택합니다. 카드에는 기본 제공/능력 배지가 표시되어 tracked/static/mini 차이를 미리 볼 수 있습니다.",
+      themeSubtitle:
+        "Clawd의 테마를 선택합니다. 카드에는 기본 제공/능력 배지가 표시되어 tracked/static/mini 차이를 미리 볼 수 있습니다.",
       themeEmpty: "사용 가능한 테마가 없습니다.",
       themeBadgeBuiltin: "기본 제공",
       themeBadgeCodexPet: "Codex Pet",
@@ -2250,7 +2845,8 @@
       themeImportPetZip: "Codex Pet 패키지 가져오기 (.zip)",
       themeOpenCodexPetsFolder: "Codex Pet 폴더 열기",
       themeImportUserThemeZip: "Clawd 테마 패키지 가져오기 (.zip)",
-      themeImportUserThemeZipHint: "Clawd 테마 zip: 루트 또는 하나의 최상위 폴더에 theme.json이 있어야 합니다. SVG, GIF, APNG, PNG, WebP, JPG, JPEG 파일은 assets/에 넣으세요. Codex Pet 패키지는 위의 가져오기를 사용하세요.",
+      themeImportUserThemeZipHint:
+        "Clawd 테마 zip: 루트 또는 하나의 최상위 폴더에 theme.json이 있어야 합니다. SVG, GIF, APNG, PNG, WebP, JPG, JPEG 파일은 assets/에 넣으세요. Codex Pet 패키지는 위의 가져오기를 사용하세요.",
       themeOpenUserThemesFolder: "테마 폴더 열기",
       themeRefreshThemes: "테마 새로고침",
       themeGroupBuiltIn: "기본 제공",
@@ -2262,6 +2858,7 @@
       themeCapabilityStatic: "정적 테마",
       themeCapabilityMini: "Mini",
       themeCapabilityDirectSleep: "직접 수면",
+      themeCapabilityFineMotion: "섬세한 모션",
       themeCapabilityNoReactions: "반응 없음",
       themeActiveIndicator: "\u2713 활성",
       themeThumbMissing: "\u{1F3AD}",
@@ -2269,34 +2866,54 @@
       themeVariantStripLabel: "변형",
       toastThemeDeleted: "테마를 삭제했습니다.",
       toastThemeDeleteFailed: "테마 삭제 실패: ",
-      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+      toastCodexPetsRefreshOk: (
+        imported,
+        updated,
+        unchanged,
+        removed,
+        invalid,
+        switched,
+      ) =>
         `Codex Pet을 새로고침했습니다: 신규 ${imported}, 업데이트 ${updated}, 변경 없음 ${unchanged}, 제거 ${removed}${invalid ? `, 무효 ${invalid}` : ""}${switched ? "; 활성 테마를 Clawd로 되돌림" : ""}.`,
-      toastCodexPetsRefreshFailed: (message) => `Codex Pet 새로고침 실패: ${message}`,
+      toastCodexPetsRefreshFailed: (message) =>
+        `Codex Pet 새로고침 실패: ${message}`,
       toastCodexPetsFolderFailed: "Codex Pet 폴더를 열지 못했습니다: ",
       toastUserThemesFolderFailed: "테마 폴더를 열지 못했습니다: ",
       toastUserThemeZipImportOk: (name) => `테마 "${name}"을(를) 가져왔습니다.`,
-      toastUserThemeZipImportFailed: (message) => `테마 (.zip)을 가져오지 못했습니다: ${message}`,
-      toastCodexPetZipImportOk: (name) => `"${name}"을(를) 가져와 전환했습니다.`,
-      toastCodexPetZipImportFailed: (message) => `Codex Pet (.zip)을 가져오지 못했습니다: ${message}`,
-      toastCodexPetRemoveOk: (name, switched) => `"${name}"을(를) 제거했습니다${switched ? " (Clawd로 전환됨)" : ""}.`,
-      toastCodexPetRemoveFailed: (message) => `가져온 펫을 제거하지 못했습니다: ${message}`,
+      toastUserThemeZipImportFailed: (message) =>
+        `테마 (.zip)을 가져오지 못했습니다: ${message}`,
+      toastCodexPetZipImportOk: (name) =>
+        `"${name}"을(를) 가져와 전환했습니다.`,
+      toastCodexPetZipImportFailed: (message) =>
+        `Codex Pet (.zip)을 가져오지 못했습니다: ${message}`,
+      toastCodexPetRemoveOk: (name, switched) =>
+        `"${name}"을(를) 제거했습니다${switched ? " (Clawd로 전환됨)" : ""}.`,
+      toastCodexPetRemoveFailed: (message) =>
+        `가져온 펫을 제거하지 못했습니다: ${message}`,
       animMapTitle: "애니메이션 맵",
-      animMapSubtitle: "개별 인터럽트 애니메이션을 끕니다. 이벤트는 계속 발생하지만 Clawd는 선택한 상태의 화면과 소리만 건너뜁니다.",
-      animMapSemanticsNote: "비활성화 = 화면 없음 + 소리 없음. 권한 말풍선, 세션, 터미널 포커스는 그대로 작동합니다.",
+      animMapSubtitle:
+        "개별 인터럽트 애니메이션을 끕니다. 이벤트는 계속 발생하지만 Clawd는 선택한 상태의 화면과 소리만 건너뜁니다.",
+      animMapSemanticsNote:
+        "비활성화 = 화면 없음 + 소리 없음. 권한 말풍선, 세션, 터미널 포커스는 그대로 작동합니다.",
       animMapResetAll: "모두 초기화",
       animMapAttentionLabel: "작업 완료 (happy)",
-      animMapAttentionDesc: "에이전트가 한 턴을 마쳤을 때 재생되는 즐거운 바운스 애니메이션입니다. (Stop)",
+      animMapAttentionDesc:
+        "에이전트가 한 턴을 마쳤을 때 재생되는 즐거운 바운스 애니메이션입니다. (Stop)",
       animMapErrorLabel: "오류 플래시",
       animMapErrorDesc: "도구 호출이 실패했을 때 흔들리는 애니메이션입니다.",
       animMapSweepingLabel: "컨텍스트 정리",
-      animMapSweepingDesc: "PreCompact / 컨텍스트 정리 중 빗자루 애니메이션입니다.",
+      animMapSweepingDesc:
+        "PreCompact / 컨텍스트 정리 중 빗자루 애니메이션입니다.",
       animMapNotificationLabel: "알림",
-      animMapNotificationDesc: "권한 요청과 입력 요청 시 재생되는 종 애니메이션입니다.",
+      animMapNotificationDesc:
+        "권한 요청과 입력 요청 시 재생되는 종 애니메이션입니다.",
       animMapCarryingLabel: "워크트리 운반",
-      animMapCarryingDesc: "worktree가 생성될 때 재생되는 운반 애니메이션입니다.",
+      animMapCarryingDesc:
+        "worktree가 생성될 때 재생되는 운반 애니메이션입니다.",
       toastAnimMapResetOk: "애니메이션과 음향 덮어쓰기를 초기화했습니다.",
-      animOverridesTitle: "애니메이션 · 음향 덮어쓰기",
-      animOverridesSubtitle: "현재 테마의 카드별 애니메이션 파일을 바꾸고, 페이드/복귀 타이밍을 조정하며, 테마 음향을 교체합니다.",
+      animOverridesTitle: "애니메이션 · 음향",
+      animOverridesSubtitle:
+        "현재 테마의 카드별 애니메이션 파일을 바꾸고, 페이드/복귀 타이밍을 조정하며, 테마 음향을 교체합니다.",
       animOverridesLoading: "애니메이션 및 사운드 교체 설정을 불러오는 중…",
       animOverridesCurrentTheme: "현재 테마",
       animOverridesReplacementConfig: "애니메이션 덮어쓰기 설정",
@@ -2305,8 +2922,10 @@
       animOverridesResetAll: "테마 기본값으로 복원",
       animOverridesExport: "설정 내보내기…",
       animOverridesImport: "설정 가져오기…",
-      toastAnimOverridesExportOk: (count, path) => `${count}개 테마 덮어쓰기를 내보냈습니다 → ${path}`,
-      toastAnimOverridesImportOk: (count) => `${count}개 테마 덮어쓰기를 가져왔습니다.`,
+      toastAnimOverridesExportOk: (count, path) =>
+        `${count}개 테마 덮어쓰기를 내보냈습니다 → ${path}`,
+      toastAnimOverridesImportOk: (count) =>
+        `${count}개 테마 덮어쓰기를 가져왔습니다.`,
       toastAnimOverridesExportEmpty: "내보낼 덮어쓰기가 없습니다.",
       toastAnimOverridesExportFailed: (message) => `내보내기 실패: ${message}`,
       toastAnimOverridesImportFailed: (message) => `가져오기 실패: ${message}`,
@@ -2319,13 +2938,15 @@
       animOverridesSaveFade: "페이드 저장",
       animOverridesDuration: "자동 복귀",
       animOverridesSaveDuration: "타이밍 저장",
-      animOverridesContinuousHint: "지속 상태는 여기서 auto-return을 편집할 수 없습니다.",
+      animOverridesContinuousHint:
+        "지속 상태는 여기서 auto-return을 편집할 수 없습니다.",
       animOverridesAssetCycle: "에셋 주기",
       animOverridesSuggestedTiming: "권장 타이밍",
       animOverridesTimingEstimated: "추정값",
       animOverridesTimingFallback: "테마 기본값",
       animOverridesTimingUnavailable: "사용할 수 없음",
-      animOverridesDisplayHintWarning: "displayHintMap이 런타임에 이 슬롯을 덮어쓸 수 있습니다.",
+      animOverridesDisplayHintWarning:
+        "displayHintMap이 런타임에 이 슬롯을 덮어쓸 수 있습니다.",
       animOverridesFallbackHint: "이 슬롯은 현재 {state}(으)로 폴백됩니다.",
       animOverridesOverriddenTooltip: "기본값에서 변경됨",
       animOverridesUseOwnFile: "개별 파일 사용",
@@ -2347,12 +2968,15 @@
       animReactionAnnoyed: "짜증 (연속 찌르기)",
       animReactionDouble: "더블탭",
       animOverridesWideHitboxToggle: "넓은 클릭 영역",
-      animOverridesWideHitboxDesc: "이 프레임에 더 넓은 클릭 영역을 사용합니다. 애셋이 기본 펫 실루엣을 넘어설 때 유용합니다.",
+      animOverridesWideHitboxDesc:
+        "이 프레임에 더 넓은 클릭 영역을 사용합니다. 애셋이 기본 펫 실루엣을 넘어설 때 유용합니다.",
       animOverridesWideHitboxResetToTheme: "테마 기본값으로 복원",
-      animOverridesAspectWarning: "이 애셋의 가로세로 비율이 원본과 {pct}% 차이납니다. 클릭 영역과 위치를 수동으로 조정해야 할 수 있습니다.",
+      animOverridesAspectWarning:
+        "이 애셋의 가로세로 비율이 원본과 {pct}% 차이납니다. 클릭 영역과 위치를 수동으로 조정해야 할 수 있습니다.",
       animOverridesExpandRow: "펼치기",
       animOverridesModalTitle: "에셋 파일 선택",
-      animOverridesModalSubtitle: "파일을 현재 테마의 assets 폴더에 추가한 뒤 여기서 목록을 새로고침하세요.",
+      animOverridesModalSubtitle:
+        "파일을 현재 테마의 assets 폴더에 추가한 뒤 여기서 목록을 새로고침하세요.",
       animOverridesModalEmpty: "이 테마에는 아직 지원되는 에셋이 없습니다.",
       animOverridesModalSelected: "선택된 파일",
       animOverridesModalUse: "이 파일 사용",
@@ -2360,8 +2984,10 @@
       animOverridesRefresh: "목록 새로고침",
       animOverridesSubtabAnimations: "애니메이션",
       animOverridesSubtabSounds: "사운드",
+      animOverridesSubtabMap: "켜기 / 끄기",
       soundOverridesSectionTitle: "음향 덮어쓰기",
-      soundOverridesSectionSubtitle: "현재 테마의 음향 파일을 교체합니다. 선택한 파일은 테마별 덮어쓰기 폴더로 복사됩니다.",
+      soundOverridesSectionSubtitle:
+        "현재 테마의 음향 파일을 교체합니다. 선택한 파일은 테마별 덮어쓰기 폴더로 복사됩니다.",
       soundOverridesLabelComplete: "작업 완료 (complete)",
       soundOverridesLabelConfirm: "권한 요청 (confirm)",
       soundOverridesPreview: "재생",
@@ -2370,8 +2996,10 @@
       soundOverridesOpenDir: "덮어쓰기 폴더 열기",
       soundOverridesOverriddenTooltip: "덮어쓰기됨",
       soundOverridesEmpty: "현재 테마에는 선언된 음향이 없습니다.",
-      toastSoundOverrideSetOk: (name, file) => `'${name}'을(를) ${file}(으)로 교체했습니다`,
-      toastSoundOverrideResetOk: (name) => `'${name}'을(를) 테마 기본값으로 복원했습니다`,
+      toastSoundOverrideSetOk: (name, file) =>
+        `'${name}'을(를) ${file}(으)로 교체했습니다`,
+      toastSoundOverrideResetOk: (name) =>
+        `'${name}'을(를) 테마 기본값으로 복원했습니다`,
       toastSoundOverrideFailed: (message) => `음향 덮어쓰기 실패: ${message}`,
       aboutTitle: "Clawd 정보",
       aboutSubtitle: "당신의 AI 코딩 세션을 지켜보는 픽셀 게.",
@@ -2380,7 +3008,8 @@
       aboutCheckForUpdates: "업데이트 확인",
       aboutUpdateAvailableHint: "새 버전 있음: v{version}",
       autoUpdateCheck: "업데이트 자동 확인",
-      autoUpdateCheckDescription: "12시간마다 GitHub를 조용히 확인하고, 새 버전이 있을 때만 알려드립니다.",
+      autoUpdateCheckDescription:
+        "12시간마다 GitHub를 조용히 확인하고, 새 버전이 있을 때만 알려드립니다.",
       aboutRepositoryLabel: "저장소",
       aboutLicenseLabel: "라이선스",
       aboutAuthorLabel: "제작",
@@ -2388,77 +3017,101 @@
       aboutContributorsLabel: "기여자",
       aboutFooter: "Clawd는 오픈 소스 · 커뮤니티와 함께 만듭니다.",
       aboutCleanupButton: "Clawd 통합 제거…",
-      aboutCleanupConfirm: "로컬 에이전트의 Clawd hooks/plugins를 제거하고 Clawd의 모든 에이전트 통합을 비활성화할까요? 에이전트 앱이나 사용자 설정은 삭제하지 않습니다.",
+      aboutCleanupConfirm:
+        "로컬 에이전트의 Clawd hooks/plugins를 제거하고 Clawd의 모든 에이전트 통합을 비활성화할까요? 에이전트 앱이나 사용자 설정은 삭제하지 않습니다.",
       aboutCleanupRunning: "통합 제거 중…",
-      aboutCleanupSuccess: "{affected}개 통합에서 {removed}개 항목을 제거했습니다. 실패: {failed}.",
+      aboutCleanupSuccess:
+        "{affected}개 통합에서 {removed}개 항목을 제거했습니다. 실패: {failed}.",
       aboutCleanupFailed: "통합 정리에 실패했습니다",
-      aboutCleanupKiroNote: "Kiro clawd.json은 유지하고 hook 항목만 제거했습니다.",
-      aboutEasterEggToast: "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
+      aboutCleanupKiroNote:
+        "Kiro clawd.json은 유지하고 hook 항목만 제거했습니다.",
+      aboutEasterEggToast:
+        "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / \u9e7f\u9e7f",
       aboutOpenExternalFailed: "링크를 브라우저에서 열 수 없습니다.",
     },
     ja: {
       settingsTitle: "設定",
       settingsSubtitle: "Clawd のデスクトップでの動作を設定します。",
+      settingsTutorialReplayLink: "はじめにガイドを開く",
+      settingsTutorialReplayFailed: "ガイドを開けませんでした",
       sidebarGeneral: "一般",
       sidebarAgents: "エージェント",
       sidebarTheme: "テーマ",
-      sidebarAnimMap: "アニメーションマップ",
-      sidebarAnimOverrides: "アニメーション・サウンド差し替え",
+      sidebarAnimOverrides: "アニメーション・サウンド",
       sidebarShortcuts: "ショートカット",
       sidebarAbout: "情報",
       sidebarRemoteSsh: "リモート SSH",
       sidebarTelegramApproval: "リモート承認",
       remoteApprovalTitle: "リモート承認",
-      remoteApprovalSubtitle: "ローカルの権限リクエストをリモートチャンネルにルーティングします。Token は prefs に保存せず、デスクトップの吹き出しはローカル fallback として残ります。現在は Telegram のみ対応、Discord などの他チャンネルも予定しています。",
+      remoteApprovalSubtitle:
+        "ローカルの権限リクエストをリモートチャンネルにルーティングします。Token は prefs に保存せず、デスクトップの吹き出しはローカル fallback として残ります。現在は Telegram のみ対応、Discord などの他チャンネルも予定しています。",
       telegramApprovalChannelName: "Telegram",
       telegramApprovalCardKind_incomplete: "設定未完了",
       telegramApprovalCardKind_ready: "有効化可能",
       telegramApprovalCardKind_starting: "起動中…",
       telegramApprovalCardKind_running: "実行中",
       telegramApprovalCardKind_failed: "失敗",
-      telegramApprovalCardMissingBoth: "下の欄で bot token と受信先 user id を保存してから続けてください。",
-      telegramApprovalCardMissingToken: "下の欄で bot token を保存してから続けてください。",
-      telegramApprovalCardMissingRecipient: "下の欄で受信先 user id を保存してから続けてください。",
-      telegramApprovalCardReadyToEnable: "Token と受信先がどちらも保存済みです。ステップ 3 のスイッチを入れると開始します。",
+      telegramApprovalCardMissingBoth:
+        "下の欄で bot token と受信先 user id を保存してから続けてください。",
+      telegramApprovalCardMissingToken:
+        "下の欄で bot token を保存してから続けてください。",
+      telegramApprovalCardMissingRecipient:
+        "下の欄で受信先 user id を保存してから続けてください。",
+      telegramApprovalCardReadyToEnable:
+        "Token と受信先がどちらも保存済みです。ステップ 3 のスイッチを入れると開始します。",
       telegramApprovalCardStarting: "Telegram 承認 sidecar に接続中…",
-      telegramApprovalCardRunning: "Telegram 承認が稼働中。承認リクエストが bot に届きます。",
-      telegramApprovalCardFailed: "Sidecar がエラーを返しました。下のメッセージを確認するか再起動してください。",
+      telegramApprovalCardRunning:
+        "Telegram 承認が稼働中。承認リクエストが bot に届きます。",
+      telegramApprovalCardFailed:
+        "Sidecar がエラーを返しました。下のメッセージを確認するか再起動してください。",
       telegramApprovalStep1Title: "1. Bot Token",
       telegramApprovalBotToken: "Bot token",
-      telegramApprovalBotTokenHintHtml: "[@BotFather](https://t.me/botfather) で /newbot を使って bot を作り、token をここに貼り付けます。token は userData env ファイルに保存され、clawd-prefs.json には保存されません。",
+      telegramApprovalBotTokenHintHtml:
+        "[@BotFather](https://t.me/botfather) で /newbot を使って bot を作り、token をここに貼り付けます。token は userData env ファイルに保存され、clawd-prefs.json には保存されません。",
       telegramApprovalBotTokenPlaceholder: "新しい bot token を貼り付け",
       telegramApprovalSaveToken: "Token 保存",
       telegramApprovalSaving: "保存中…",
-      telegramApprovalTokenEmpty: "先に Telegram bot token を貼り付けてください。",
+      telegramApprovalTokenEmpty:
+        "先に Telegram bot token を貼り付けてください。",
       telegramApprovalTokenSaved: "Token を保存しました。",
       telegramApprovalTokenSaveFailed: "Telegram bot token を保存できません。",
       telegramApprovalTokenConfiguredLabel: "Token 設定済み",
       telegramApprovalTokenConfiguredNoMask: "（保存済み）",
-      telegramApprovalTokenConfiguredDesc: "Bot token はディスクに保存済みです。bot を入れ替えた場合は再保存してください。",
+      telegramApprovalTokenConfiguredDesc:
+        "Bot token はディスクに保存済みです。bot を入れ替えた場合は再保存してください。",
       telegramApprovalReplaceToken: "Token を変更",
       telegramApprovalCancel: "キャンセル",
       telegramApprovalTokenCurrent: "現在: {masked}",
-      telegramApprovalTokenReplaceHintHtml: "新しい token を貼り付けると既存のものを上書きします。新しい token が必要なら [@BotFather](https://t.me/botfather) で取得してください。",
+      telegramApprovalTokenReplaceHintHtml:
+        "新しい token を貼り付けると既存のものを上書きします。新しい token が必要なら [@BotFather](https://t.me/botfather) で取得してください。",
       telegramApprovalStep2Title: "2. 受信者",
       telegramApprovalRecipientLabel: "あなたの Telegram ユーザー ID",
-      telegramApprovalRecipientHintHtml: "Telegram で [@userinfobot](https://t.me/userinfobot) に /start を送って数値 ID を取得します。Clawd はこの ID を唯一の承認者と承認カードを送る chat の両方として使います。事前に自分の bot にも /start を一度送ってプライベートチャットを有効にしてください。",
+      telegramApprovalRecipientHintHtml:
+        "Telegram で [@userinfobot](https://t.me/userinfobot) に /start を送って数値 ID を取得します。Clawd はこの ID を唯一の承認者と承認カードを送る chat の両方として使います。事前に自分の bot にも /start を一度送ってプライベートチャットを有効にしてください。",
       telegramApprovalRecipientPlaceholder: "例：123456789",
-      telegramApprovalRecipientEmpty: "Telegram ユーザー ID を先に入力してください。",
-      telegramApprovalRecipientInvalid: "Telegram ユーザー ID は 5 桁以上の数値である必要があります。",
+      telegramApprovalRecipientEmpty:
+        "Telegram ユーザー ID を先に入力してください。",
+      telegramApprovalRecipientInvalid:
+        "Telegram ユーザー ID は 5 桁以上の数値である必要があります。",
       telegramApprovalSaveRecipient: "受信者を保存",
       telegramApprovalConfigSaved: "Telegram 承認設定を保存しました。",
       telegramApprovalStep3Title: "3. 有効化とテスト",
       telegramApprovalToggle: "Telegram 承認を有効化",
-      telegramApprovalToggleDesc: "設定済みの場合、操作可能なローカル権限吹き出しから Telegram 承認カードも送信します。",
+      telegramApprovalToggleDesc:
+        "設定済みの場合、操作可能なローカル権限吹き出しから Telegram 承認カードも送信します。",
       telegramApprovalCompletionOutput: "完了通知の出力",
-      telegramApprovalCompletionOutputDesc: "Telegram の完了通知に assistant テキストを含めるかを制御します。全文には、assistant が書いたコード、ファイル内容、機密情報が含まれる場合があります。",
+      telegramApprovalCompletionOutputDesc:
+        "Telegram の完了通知に assistant テキストを含めるかを制御します。全文には、assistant が書いたコード、ファイル内容、機密情報が含まれる場合があります。",
       telegramApprovalCompletionOutput_off: "オフ",
       telegramApprovalCompletionOutput_full: "全文",
-      telegramApprovalCompletionOutputFullConfirm: "全文は assistant の最後のテキストを Telegram に送信します。assistant がコード、ファイル内容、機密情報を書いた場合、それも送られる可能性があります。続行しますか？",
+      telegramApprovalCompletionOutputFullConfirm:
+        "全文は assistant の最後のテキストを Telegram に送信します。assistant がコード、ファイル内容、機密情報を書いた場合、それも送られる可能性があります。続行しますか？",
       telegramApprovalDirectSend: "Direct Send（貼り付けのみ）",
-      telegramApprovalDirectSendDesc: "Clawd の完了通知に返信すると、対応するローカル端末をフォーカスして 1 行のテキストを貼り付けます。Enter は送信しません。",
+      telegramApprovalDirectSendDesc:
+        "Clawd の完了通知に返信すると、対応するローカル端末をフォーカスして 1 行のテキストを貼り付けます。Enter は送信しません。",
       telegramApprovalTest: "テストメッセージ",
-      telegramApprovalTestDesc: "agent 権限リクエストに紐づかない単独のテスト承認カードを送ります。",
+      telegramApprovalTestDesc:
+        "agent 権限リクエストに紐づかない単独のテスト承認カードを送ります。",
       telegramApprovalSendTest: "テスト送信",
       telegramApprovalTesting: "待機中…",
       telegramApprovalTestSent: "Telegram テストが完了しました。",
@@ -2468,22 +3121,27 @@
       telegramApprovalPrereqMissingToken: "bot token",
       telegramApprovalPrereqMissingRecipient: "受信者 user id",
       remoteSshTitle: "リモート SSH",
-      remoteSshSubtitle: "ワンクリック SSH トンネルを管理し、リモートの AI コーディングセッションをローカルのように扱えます。Clawd はパスワードやパスフレーズを保存せず、既存の ssh-agent / SSH キーを使います。",
+      remoteSshSubtitle:
+        "ワンクリック SSH トンネルを管理し、リモートの AI コーディングセッションをローカルのように扱えます。Clawd はパスワードやパスフレーズを保存せず、既存の ssh-agent / SSH キーを使います。",
       remoteSshSectionProfiles: "プロフィール",
       remoteSshAddProfile: "+ プロフィール追加",
-      remoteSshEmpty: "プロフィールがまだありません。「プロフィール追加」を押して最初のリモート SSH トンネルを設定してください。",
+      remoteSshEmpty:
+        "プロフィールがまだありません。「プロフィール追加」を押して最初のリモート SSH トンネルを設定してください。",
       remoteSshConnect: "接続",
       remoteSshDisconnect: "切断",
       remoteSshAuthenticate: "初回認証",
-      remoteSshAuthenticateHint: "システムターミナルを開いてホストキー確認や SSH キーのロードを完了します。",
+      remoteSshAuthenticateHint:
+        "システムターミナルを開いてホストキー確認や SSH キーのロードを完了します。",
       remoteSshOpenTerminal: "ターミナルを開く",
       remoteSshDeploy: "Hook デプロイ / 修復",
       remoteSshDeploying: "デプロイ中…",
       remoteSshDeploySuccess: "Hook ファイルをデプロイしました。",
-      remoteSshDeployDriftWarning: "デプロイ中に設定が変更されたため旧設定でデプロイされました — 再度デプロイしてください",
+      remoteSshDeployDriftWarning:
+        "デプロイ中に設定が変更されたため旧設定でデプロイされました — 再度デプロイしてください",
       remoteSshEdit: "編集",
       remoteSshDelete: "削除",
-      remoteSshDeleteConfirm: "プロフィール \"{label}\" を削除しますか？元に戻せません。",
+      remoteSshDeleteConfirm:
+        'プロフィール "{label}" を削除しますか？元に戻せません。',
       remoteSshAddTitle: "リモート SSH プロフィールを追加",
       remoteSshEditTitle: "リモート SSH プロフィールを編集",
       remoteSshSave: "保存",
@@ -2494,11 +3152,15 @@
       remoteSshFieldHost: "ホスト",
       remoteSshFieldPort: "SSH ポート (デフォルト 22)",
       remoteSshFieldIdentityFile: "Identity ファイル (任意)",
-      remoteSshFieldIdentityFileHint: "秘密鍵の絶対パス。空欄にすると ssh-agent または ~/.ssh/config を使います。",
+      remoteSshFieldIdentityFileHint:
+        "秘密鍵の絶対パス。空欄にすると ssh-agent または ~/.ssh/config を使います。",
       remoteSshFieldRemoteForwardPort: "リモートフォワードポート",
       remoteSshFieldHostPrefix: "ホストプレフィックス (任意)",
-      remoteSshFieldHostPrefixHint: "Sessions メニューに表示される短い名前。制御文字、引用符、バックスラッシュ、$、`、! は避けてください。",
-      remoteSshFieldAutoStartCodex: "接続時に Codex フォールバックモニターを自動起動",
+      remoteSshFieldHostPrefixHint:
+        "Sessions メニューに表示される短い名前。制御文字、引用符、バックスラッシュ、$、`、! は避けてください。",
+      remoteSshFieldAutoStartCodex:
+        "接続時に Codex フォールバックモニターを自動起動",
+      remoteSshFieldConnectOnLaunch: "Clawd 起動時に自動接続",
       remoteSshStatus_idle: "待機",
       remoteSshStatus_connecting: "接続中…",
       remoteSshStatus_connected: "接続済み",
@@ -2513,36 +3175,57 @@
       "remoteSshStep_install-codex": "Codex hooks 登録",
       "remoteSshStep_install-copilot": "Copilot hooks 登録",
       "remoteSshStep_remote-shell": "リモートシェル検出",
-      remoteSshErrAuthDenied: "認証に失敗しました。「初回認証」を押してホストキー確認や SSH キーのロードを完了してください。",
-      remoteSshErrHostKey: "ホストキーがまだ信頼されていません。「初回認証」でフィンガープリントを確認してください。",
-      remoteSshErrForwardFailed: "リモートポートが使用できません。別のリモートフォワードポート (23333-23337) を試してください。",
-      remoteSshErrBadConfig: "ssh が設定を拒否しました。プロフィールを確認してください。",
-      remoteSshErrIdentityMissing: "Identity ファイルを読み込めません。パスと権限を確認してください。",
+      remoteSshErrAuthDenied:
+        "認証に失敗しました。「初回認証」を押してホストキー確認や SSH キーのロードを完了してください。",
+      remoteSshErrHostKey:
+        "ホストキーがまだ信頼されていません。「初回認証」でフィンガープリントを確認してください。",
+      remoteSshErrForwardFailed:
+        "リモートポートが使用できません。別のリモートフォワードポート (23333-23337) を試してください。",
+      remoteSshErrBadConfig:
+        "ssh が設定を拒否しました。プロフィールを確認してください。",
+      remoteSshErrIdentityMissing:
+        "Identity ファイルを読み込めません。パスと権限を確認してください。",
       remoteSshErrDns: "ホスト名を解決できません。",
-      remoteSshErrNetTimeout: "ネットワークタイムアウト。間もなく再試行します。",
-      remoteSshErrNetUnreachable: "ネットワークに到達できません。間もなく再試行します。",
+      remoteSshErrNetTimeout:
+        "ネットワークタイムアウト。間もなく再試行します。",
+      remoteSshErrNetUnreachable:
+        "ネットワークに到達できません。間もなく再試行します。",
       remoteSshErrBrokenPipe: "接続が切断されました。間もなく再接続します。",
       remoteSshErrSpawnFailed: "ssh プロセスを起動できません。",
-      remoteSshErrSshMissing: "OpenSSH クライアントが見つかりません。Windows: 設定 → アプリ → オプション機能 → OpenSSH クライアントを追加。",
-      remoteSshErrWindowsOpenSshLegacy: "この Windows OpenSSH は古く、Remote SSH のヘルスチェックが安定しません。OpenSSH 8.x 以降へ更新してください。",
-      remoteSshErrWindowsCmdShell: "リモートのデフォルトシェルが Windows cmd.exe です。Remote SSH には POSIX シェルが必要です (mkdir -p / ~ 展開 / sh -c)。リモート側で OpenSSH の DefaultShell を Git Bash か WSL bash に変更してから Deploy を再実行してください。PowerShell: New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
-      remoteSshErrNoLocalPort: "ローカル Clawd サーバーがまだ起動していません。",
-      remoteSshErrUnknownStrikes: "認識できないエラーが連続して発生しました。プロフィールとログを確認してください。",
-      remoteSshProbeLocalUnhealthy: "トンネルは確立しましたがローカル Clawd サーバーが異常です。",
-      remoteSshProbeUnresponsive: "トンネルは確立しましたが Clawd が応答しません。Clawd が起動しているか確認してください。",
-      remoteSshProbePortHijack: "リモートポートが別の HTTP サービスに使われています。別のリモートフォワードポートを試してください。",
-      remoteSshProbeHttpTimeout: "リモート HTTP がタイムアウト。間もなく再試行します。",
-      remoteSshProbeNodeNotExec: "リモートの node バイナリが実行できません。権限を確認してください。",
-      remoteSshProbeNodeMissing: "リモートに Node が見つかりません。先に Deploy を実行するかリモートに Node をインストールしてください。",
-      remoteSshProbeSignal: "Probe プロセスが中断されました。間もなく再試行します。",
+      remoteSshErrSshMissing:
+        "OpenSSH クライアントが見つかりません。Windows: 設定 → アプリ → オプション機能 → OpenSSH クライアントを追加。",
+      remoteSshErrWindowsOpenSshLegacy:
+        "この Windows OpenSSH は古く、Remote SSH のヘルスチェックが安定しません。OpenSSH 8.x 以降へ更新してください。",
+      remoteSshErrWindowsCmdShell:
+        "リモートのデフォルトシェルが Windows cmd.exe です。Remote SSH には POSIX シェルが必要です (mkdir -p / ~ 展開 / sh -c)。リモート側で OpenSSH の DefaultShell を Git Bash か WSL bash に変更してから Deploy を再実行してください。PowerShell: New-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -Value 'C:\\Program Files\\Git\\bin\\bash.exe' -PropertyType String -Force",
+      remoteSshErrNoLocalPort:
+        "ローカル Clawd サーバーがまだ起動していません。",
+      remoteSshErrUnknownStrikes:
+        "認識できないエラーが連続して発生しました。プロフィールとログを確認してください。",
+      remoteSshProbeLocalUnhealthy:
+        "トンネルは確立しましたがローカル Clawd サーバーが異常です。",
+      remoteSshProbeUnresponsive:
+        "トンネルは確立しましたが Clawd が応答しません。Clawd が起動しているか確認してください。",
+      remoteSshProbePortHijack:
+        "リモートポートが別の HTTP サービスに使われています。別のリモートフォワードポートを試してください。",
+      remoteSshProbeHttpTimeout:
+        "リモート HTTP がタイムアウト。間もなく再試行します。",
+      remoteSshProbeNodeNotExec:
+        "リモートの node バイナリが実行できません。権限を確認してください。",
+      remoteSshProbeNodeMissing:
+        "リモートに Node が見つかりません。先に Deploy を実行するかリモートに Node をインストールしてください。",
+      remoteSshProbeSignal:
+        "Probe プロセスが中断されました。間もなく再試行します。",
       remoteSshHooksLabel: "Hooks:",
       remoteSshHooksNever: "未デプロイ",
       remoteSshHooksDeployedJustNow: "たった今デプロイ",
       remoteSshHooksDeployedAgoMin: "{n} 分前にデプロイ",
       remoteSshHooksDeployedAgoHr: "{n} 時間前にデプロイ",
       remoteSshHooksDeployedAgoDay: "{n} 日前にデプロイ",
-      remoteSshConnectWarnNoDeploy: "Hook ファイルがまだデプロイされていません。Connect は SSH トンネルを張るだけなので、Deploy / Repair Hooks を押さないとリモートセッションに Clawd が反応しません。",
-      codexHookReviewReminder: "次のステップ：Codex CLI を開いて /hooks を実行し、新しいフックをレビューして有効化してください（Codex はレビュー後にのみ実行します）。",
+      remoteSshConnectWarnNoDeploy:
+        "Hook ファイルがまだデプロイされていません。Connect は SSH トンネルを張るだけなので、Deploy / Repair Hooks を押さないとリモートセッションに Clawd が反応しません。",
+      codexHookReviewReminder:
+        "次のステップ：Codex CLI を開いて /hooks を実行し、新しいフックをレビューして有効化してください（Codex はレビュー後にのみ実行します）。",
       doctorSidebarLabel: "Doctor",
       doctorTitle: "Clawd Doctor",
       doctorStatusUnknown: "不明",
@@ -2558,11 +3241,13 @@
       doctorAgentSummaryAttention: (count) => `${count} 要確認`,
       doctorAgentSummaryNeedsAttention: "要確認",
       doctorAgentSummarySkipped: (count) => `${count} スキップ`,
-      doctorAgentSummaryNoneActive: "有効な連携がありません — 少なくとも1つ有効にしてください。",
+      doctorAgentSummaryNoneActive:
+        "有効な連携がありません — 少なくとも1つ有効にしてください。",
       doctorCheckPermissionBubbles: "権限吹き出し",
       doctorCheckTheme: "テーマ",
       doctorCheckUnknown: "チェック",
-      doctorPrivacy: "プライバシー: この診断レポートはローカルで生成されます。Clawd はデータをアップロードしません。コピー前にユーザーパスと秘密情報はマスクされます。",
+      doctorPrivacy:
+        "プライバシー: この診断レポートはローカルで生成されます。Clawd はデータをアップロードしません。コピー前にユーザーパスと秘密情報はマスクされます。",
       doctorCopyReport: "診断レポートをコピー",
       doctorRerun: "再チェック",
       doctorClose: "閉じる",
@@ -2573,33 +3258,40 @@
       doctorFixing: "修復中",
       doctorFixApplied: "修復が完了しました。",
       doctorFixFailed: "この問題を修復できませんでした。",
-      doctorFixConfirmCodex: "Clawd が Codex 設定の [features].hooks を true にします。続行しますか？",
+      doctorFixConfirmCodex:
+        "Clawd が Codex 設定の [features].hooks を true にします。続行しますか？",
       doctorFixConfirmCodexTitle: "Codex hooks を有効にしますか？",
-      doctorFixConfirmCodexDetail: "この修復は Codex 設定を変更し、[features].hooks を true にします。ここで確認するまで、Clawd はこの変更を行いません。",
+      doctorFixConfirmCodexDetail:
+        "この修復は Codex 設定を変更し、[features].hooks を true にします。ここで確認するまで、Clawd はこの変更を行いません。",
       doctorFixConfirmCodexAction: "有効化して修復",
       doctorFixConfirmCancel: "キャンセル",
       doctorRestartButton: "Clawd を再起動",
       doctorRestarting: "再起動中",
       doctorRestartConfirmTitle: "Clawd を再起動しますか？",
-      doctorRestartConfirmDetail: "Clawd を終了して再起動します。進行中の AI coding agent リクエストは切断されます。再起動中は Doctor ウィンドウも閉じます。",
+      doctorRestartConfirmDetail:
+        "Clawd を終了して再起動します。進行中の AI coding agent リクエストは切断されます。再起動中は Doctor ウィンドウも閉じます。",
       doctorRestartConfirmAction: "今すぐ再起動",
       doctorNoResult: "診断結果はまだありません。",
       doctorConnectionTitle: "接続テスト",
-      doctorConnectionInstruction: "任意の AI coding agent でメッセージを送信し、カウントダウン後に戻って結果を確認してください。",
+      doctorConnectionInstruction:
+        "任意の AI coding agent でメッセージを送信し、カウントダウン後に戻って結果を確認してください。",
       doctorConnectionIdle: "未テスト",
       doctorConnectionTesting: "{seconds} 秒待機",
       doctorConnectionHttpVerified: "HTTP 経路を確認済み",
-      doctorConnectionHttpDropped: "HTTP は動作していますが、イベントが破棄されました",
+      doctorConnectionHttpDropped:
+        "HTTP は動作していますが、イベントが破棄されました",
       doctorConnectionHttpBlocked: "HTTP がブロックされています",
       doctorConnectionNoActivity: "活動なし",
-      doctorConnectionNoActivityHint: "任意の AI coding agent でメッセージを送信して接続をテストしてください。",
+      doctorConnectionNoActivityHint:
+        "任意の AI coding agent でメッセージを送信して接続をテストしてください。",
       doctorConnectionError: "接続テストに失敗しました",
       doctorTestConnection: "接続をテスト",
       doctorOpenLog: "デバッグログを開く",
       doctorOpenLogOpened: "デバッグログを開きました",
       doctorOpenLogFailed: "デバッグログを開けませんでした。",
       shortcutsTitle: "ショートカット",
-      shortcutsSubtitle: "ペット表示の切替と権限操作にグローバルショートカットを設定します。空欄にすると解除されます。",
+      shortcutsSubtitle:
+        "ペット表示の切替と権限操作にグローバルショートカットを設定します。空欄にすると解除されます。",
       shortcutLabelBubbleNextOption: "吹き出し: 次の項目",
       shortcutLabelBubblePrevOption: "吹き出し: 前の項目",
       shortcutLabelBubbleToggleOption: "吹き出し: 項目を切替",
@@ -2611,12 +3303,17 @@
       shortcutResetAllButton: "すべてデフォルトに戻す",
       shortcutRecordingHint: "キーを押してください (Esc)",
       shortcutUnassigned: "— 未割り当て —",
-      shortcutErrorConflict: "{other} と競合しています。別のキーを試してください。",
-      shortcutErrorSystemConflict: "システムまたは他のアプリで既に使用されています。",
-      shortcutErrorReserved: "このキーの組み合わせは予約済みです。別のキーを試してください。",
+      shortcutErrorConflict:
+        "{other} と競合しています。別のキーを試してください。",
+      shortcutErrorSystemConflict:
+        "システムまたは他のアプリで既に使用されています。",
+      shortcutErrorReserved:
+        "このキーの組み合わせは予約済みです。別のキーを試してください。",
       shortcutErrorInvalid: "このキーの組み合わせはサポートされていません。",
-      shortcutErrorNeedsModifier: "ショートカットには修飾キーを少なくとも 1 つ含める必要があります。",
-      shortcutErrorRegistrationFailed: "保存しましたが、システム競合により現在は無効です。再バインドするか後で再試行してください。",
+      shortcutErrorNeedsModifier:
+        "ショートカットには修飾キーを少なくとも 1 つ含める必要があります。",
+      shortcutErrorRegistrationFailed:
+        "保存しましたが、システム競合により現在は無効です。再バインドするか後で再試行してください。",
       shortcutLabelTogglePet: "ペット表示の切替",
       shortcutLabelPermissionAllow: "権限: 許可",
       shortcutLabelPermissionDeny: "権限: 拒否",
@@ -2624,34 +3321,47 @@
       sidebarSoon: "近日対応",
       sectionAppearance: "外観",
       sectionSession: "セッション管理",
-      sectionSystem: "システム",
-      sectionStartup: "起動",
+      sectionAlerts: "通知とフィードバック",
+      sectionBehavior: "動作と位置",
+      sectionSystemStartup: "システムと起動",
       sectionMobile: "モバイル",
       sectionPermissions: "権限",
-      rowAutoApproveAll: "オートパイロット",
+      rowAutoApproveAll: "すべてのリクエストを自動承認",
+      rowAutoApproveAllDesc:
+        "危険：すべてのエージェントの権限リクエスト（コマンド実行・ファイル編集・削除）を確認なしで自動承認します。エージェントごとの切り替えとおやすみモードは引き続き有効です。",
       menuAutoApproveAll: "オートパイロット（全自動承認）",
       autoApproveAllConfirmTitle: "オートパイロットを有効にしますか？",
-      autoApproveAllConfirmDetail: "すべてのagentからのすべての権限リクエストが自動的に承認されます。シェルコマンドの実行やファイルの削除も含まれます。Clawdは最初に確認しません。agentの行動を完全に信頼している場合のみ有効にしてください。",
+      autoApproveAllConfirmDetail:
+        "すべてのagentからのすべての権限リクエストが自動的に承認されます。シェルコマンドの実行やファイルの削除も含まれます。Clawdは最初に確認しません。agentの行動を完全に信頼している場合のみ有効にしてください。",
       autoApproveAllConfirmEnable: "オートパイロットを有効にする",
       autoApproveAllConfirmCancel: "キャンセル",
       sectionBubbles: "吹き出し",
       hardwareBuddyTitle: "Hardware Buddy",
-      hardwareBuddyDesc: "別途インストールした Clawstick runtime 経由で、ペアリング済みの BLE デスクデバイスに接続します。権限応答は明示的に有効化され、安全なリンクの場合のみオンになります。",
+      hardwareBuddyDesc:
+        "別途インストールした Clawstick runtime 経由で、ペアリング済みの BLE デスクデバイスに接続します。権限応答は明示的に有効化され、安全なリンクの場合のみオンになります。",
       hardwareBuddyEnable: "Enable Hardware Buddy",
-      hardwareBuddyEnableDesc: "Start the BLE sidecar and send state-only session snapshots by default.",
+      hardwareBuddyEnableDesc:
+        "Start the BLE sidecar and send state-only session snapshots by default.",
       hardwareBuddyAddress: "BLE address",
-      hardwareBuddyAddressDesc: "Optional fixed device address. Leave empty to scan by name prefix.",
+      hardwareBuddyAddressDesc:
+        "Optional fixed device address. Leave empty to scan by name prefix.",
       hardwareBuddyNamePrefix: "Device name prefix",
-      hardwareBuddyNamePrefixDesc: "Scan for devices whose advertised name starts with this text.",
+      hardwareBuddyNamePrefixDesc:
+        "Scan for devices whose advertised name starts with this text.",
       hardwareBuddyPermissions: "Allow hardware permission replies",
-      hardwareBuddyPermissionsDesc: "Requires this opt-in plus a secure paired transport before Allow/Deny prompts appear on the device.",
+      hardwareBuddyPermissionsDesc:
+        "Requires this opt-in plus a secure paired transport before Allow/Deny prompts appear on the device.",
       hardwareBuddyQuickCommands: "Quick Commands を有効化",
-      hardwareBuddyQuickCommandsDesc: "ローカル preset ボタンを表示し、adapter が処理する quick_command イベントだけを作成します。Clawd は貼り付けや shell 実行をしません。",
+      hardwareBuddyQuickCommandsDesc:
+        "ローカル preset ボタンを表示し、adapter が処理する quick_command イベントだけを作成します。Clawd は貼り付けや shell 実行をしません。",
       hardwareBuddyQuickCommandPresets: "Quick Command presets",
-      hardwareBuddyQuickCommandPresetsDesc: "preset をクリックすると active-session adapter 向けの検証済みイベントをキューに入れます。",
-      hardwareBuddyQuickCommandsDisabled: "preset ボタンを使うには Quick Commands をオンにしてください。",
+      hardwareBuddyQuickCommandPresetsDesc:
+        "preset をクリックすると active-session adapter 向けの検証済みイベントをキューに入れます。",
+      hardwareBuddyQuickCommandsDisabled:
+        "preset ボタンを使うには Quick Commands をオンにしてください。",
       hardwareBuddyQuickCommandsLoading: "presets を読み込み中...",
-      hardwareBuddyQuickCommandsUnavailable: "Quick Commands は利用できません。",
+      hardwareBuddyQuickCommandsUnavailable:
+        "Quick Commands は利用できません。",
       hardwareBuddyQuickCommandSent: "Quick Command をキューに入れました。",
       hardwareBuddyQuickCommandFailed: "Quick Command 失敗: ",
       hardwareBuddyRepliesOn: "Replies on",
@@ -2660,19 +3370,28 @@
       hardwareBuddyTest: "Test approval",
       hardwareBuddyTestButton: "Send test",
       hardwareBuddyTestWaiting: "Waiting...",
-      hardwareBuddyTestDesc: "Send a harmless approval request to the paired device.",
+      hardwareBuddyTestDesc:
+        "Send a harmless approval request to the paired device.",
       hardwareBuddyTestPending: "Waiting for a button press on the device.",
       hardwareBuddyTestOk: "Device replied: {decision}",
       hardwareBuddyTestError: "Test approval failed.",
       hardwareBuddyTestErr_disabled: "Hardware Buddy is not enabled.",
-      hardwareBuddyTestErr_permissions_off: "Hardware permission replies are disabled.",
-      hardwareBuddyTestErr_not_secure: "Hardware Buddy is not connected over a secure link.",
-      hardwareBuddyTestErr_timeout: "The device did not reply before the test timed out.",
-      hardwareBuddyTestErr_no_decision: "Hardware Buddy test did not receive a decision.",
-      hardwareBuddyTestErr_internal_error: "Hardware Buddy test failed inside Clawd.",
-      hardwareBuddyTestDisabled: "Enable Hardware Buddy before testing approvals.",
-      hardwareBuddyTestRepliesOff: "Turn on hardware permission replies before testing approvals.",
-      hardwareBuddyTestNeedsSecure: "Connect over a secure paired link before testing approvals.",
+      hardwareBuddyTestErr_permissions_off:
+        "Hardware permission replies are disabled.",
+      hardwareBuddyTestErr_not_secure:
+        "Hardware Buddy is not connected over a secure link.",
+      hardwareBuddyTestErr_timeout:
+        "The device did not reply before the test timed out.",
+      hardwareBuddyTestErr_no_decision:
+        "Hardware Buddy test did not receive a decision.",
+      hardwareBuddyTestErr_internal_error:
+        "Hardware Buddy test failed inside Clawd.",
+      hardwareBuddyTestDisabled:
+        "Enable Hardware Buddy before testing approvals.",
+      hardwareBuddyTestRepliesOff:
+        "Turn on hardware permission replies before testing approvals.",
+      hardwareBuddyTestNeedsSecure:
+        "Connect over a secure paired link before testing approvals.",
       hardwareBuddyTestToastOk: "Hardware Buddy test reply received.",
       hardwareBuddyTestToastError: "Hardware Buddy test failed: ",
       hardwareBuddyStatus: "Connection status",
@@ -2684,10 +3403,13 @@
       hardwareBuddyStatus_error: "Needs attention",
       hardwareBuddyStatusOffDetail: "Hardware Buddy is disabled.",
       hardwareBuddyStatusError: "Needs attention",
-      hardwareBuddyStatusErrorDetail: "Check the Hardware Buddy sidecar status.",
-      hardwareBuddyStatusConnectedDetail: "{device} connected, secure link {secure}",
+      hardwareBuddyStatusErrorDetail:
+        "Check the Hardware Buddy sidecar status.",
+      hardwareBuddyStatusConnectedDetail:
+        "{device} connected, secure link {secure}",
       hardwareBuddyStatusAddressDetail: "Looking for {address}.",
-      hardwareBuddyStatusPrefixDetail: "Scanning for names starting with {prefix}.",
+      hardwareBuddyStatusPrefixDetail:
+        "Scanning for names starting with {prefix}.",
       hardwareBuddySecureOn: "on",
       hardwareBuddySecureOff: "off",
       hardwareBuddyErr_missing_bleak: "Install bleak",
@@ -2701,7 +3423,8 @@
       collapsibleExpand: "セクションを展開",
       collapsibleCollapse: "セクションを折りたたむ",
       agentsTitle: "エージェント",
-      agentsSubtitle: "エージェントごとに追跡をオン/オフできます。無効化したエージェントはログ監視を停止し、HTTP 境界で hook イベントを破棄します — ペットの動作・権限吹き出し・セッション保持はいずれも行われません。",
+      agentsSubtitle:
+        "エージェントごとに追跡をオン/オフできます。無効化したエージェントはログ監視を停止し、HTTP 境界で hook イベントを破棄します — ペットの動作・権限吹き出し・セッション保持はいずれも行われません。",
       agentsEmpty: "登録されているエージェントはありません。",
       eventSourceHook: "Hook",
       eventSourceLogPoll: "ログポーリング",
@@ -2709,35 +3432,57 @@
       eventSourceExtension: "拡張",
       badgePermissionBubble: "権限の吹き出し",
       rowAgentPermissions: "ポップアップ吹き出しを表示",
-      rowAgentPermissionsDesc: "オフにすると、このエージェントは Clawd の吹き出しではなく自身のターミナル上でプロンプトを処理します。",
+      rowAgentPermissionsDesc:
+        "オフにすると、このエージェントは Clawd の吹き出しではなく自身のターミナル上でプロンプトを処理します。",
       rowCodexPermissionMode: "Codex 権限モード",
-      rowCodexPermissionModeDesc: "Native は Codex AutoReview とターミナルの標準プロンプトに任せます。Intercept は Clawd の許可/拒否吹き出しを表示します。",
+      rowCodexPermissionModeDesc:
+        "Native は Codex AutoReview とターミナルの標準プロンプトに任せます。Intercept は Clawd の許可/拒否吹き出しを表示します。",
       codexPermissionModeNative: "Native",
       codexPermissionModeIntercept: "Intercept",
       rowCodexNativeNotificationSound: "Native 通知音",
-      rowCodexNativeNotificationSoundDesc: "オフにすると、Codex Native の権限プロンプトは通知アニメーションのみ表示し、通知音は鳴らしません。完了音は引き続き再生されます。",
+      rowCodexNativeNotificationSoundDesc:
+        "オフにすると、Codex Native の権限プロンプトは通知アニメーションのみ表示し、通知音は鳴らしません。完了音は引き続き再生されます。",
+      agentCodexHookNeedsAttention: "要確認",
+      codexHookHealthReasonDisabled:
+        "Codex フックが設定で無効になっており（[features].hooks=false）、Codex は承認フックを実行しません。有効化するか、Doctor → Fix で修復してください。",
+      codexHookHealthReasonNeedsReview:
+        "Clawd の Codex フックは登録済みですが Codex での承認が必要です — Codex で /hooks を実行するか、Doctor → Fix を使用してください。",
+      codexHookHealthReasonInactive:
+        "Clawd の Codex フックが有効でないため、承認プロンプトが表示されません。連携を再インストールするか Doctor → Fix を実行してください。",
+      rowCodexHookHealthNotify: "Codex フックが無効なとき通知",
+      rowCodexHookHealthNotifyDesc:
+        "起動時に Codex の公式承認フックが無効または要確認の場合、一度だけトレイ通知を表示します。問題ごとに1回のみで、毎回は表示しません。",
       rowAgentIdleAlerts: "入力待ちアラート",
-      rowAgentIdleAlertsDesc: "このエージェントの Notification hook によるベルアニメーション + 効果音 (例: Claude Code は約 60 秒のアイドル後に発火)。権限の吹き出しには影響しません。",
-      agentIntegrationUninstallConfirm: "このエージェント連携をアンインストールしますか？Clawd が管理するフックが削除され、エージェントが無効化されます。",
+      rowAgentIdleAlertsDesc:
+        "このエージェントの Notification hook によるベルアニメーション + 効果音 (例: Claude Code は約 60 秒のアイドル後に発火)。権限の吹き出しには影響しません。",
+      agentIntegrationUninstallConfirm:
+        "このエージェント連携をアンインストールしますか？Clawd が管理するフックが削除され、エージェントが無効化されます。",
       rowLanguage: "言語",
       rowLanguageDesc: "メニューと吹き出しの表示言語です。",
       rowSound: "効果音",
       rowSoundEnabled: "効果音を有効化",
-      rowSoundDesc: "Clawd がタスクを完了したとき、または入力を求めたときに音を再生します。",
+      rowSoundDesc:
+        "Clawd がタスクを完了したとき、または入力を求めたときに音を再生します。",
       rowVolume: "音量",
-      rowVolumeDesc: "効果音の音量を調整します。効果音オフの時は無効になります。",
+      rowVolumeDesc:
+        "効果音の音量を調整します。効果音オフの時は無効になります。",
       rowLowPowerIdleMode: "省電力アイドル",
-      rowLowPowerIdleModeDesc: "数秒間 Clawd が静止していたら idle SVG アニメーションを停止し、活動が再開すると即座に復帰します。",
+      rowLowPowerIdleModeDesc:
+        "数秒間 Clawd が静止していたら idle SVG アニメーションを停止し、活動が再開すると即座に復帰します。",
       rowKeepAwakeWhileWorking: "作業中はスリープを抑止",
-      rowKeepAwakeWhileWorkingDesc: "エージェントのタスクが進行中の間はパソコンがスリープしないようにし、タスクが終わると再びスリープを許可します。",
+      rowKeepAwakeWhileWorkingDesc:
+        "エージェントのタスクが進行中の間はパソコンがスリープしないようにし、タスクが終わると再びスリープを許可します。",
       rowFlashTaskbarOnComplete: "タスク完了時にトレイアイコンを点滅",
-      rowFlashTaskbarOnCompleteDesc: "AIタスクが完了するとシステムトレイアイコンが点滅し、別のウィンドウで作業していても気づけます。",
+      rowFlashTaskbarOnCompleteDesc:
+        "AIタスクが完了するとシステムトレイアイコンが点滅し、別のウィンドウで作業していても気づけます。",
       rowFlash: "トレイアイコン点滅",
       rowFlashDesc: "タスク完了時のシステムトレイアイコン点滅を設定します。",
       rowFlashInterval: "点滅間隔",
-      rowFlashIntervalDesc: "通常アイコンとハイライトアイコンの切り替え速度です。",
+      rowFlashIntervalDesc:
+        "通常アイコンとハイライトアイコンの切り替え速度です。",
       rowFlashDuration: "点滅時間",
-      rowFlashDurationDesc: "点滅の継続時間です。0に設定すると手動で停止するまで点滅し続けます。",
+      rowFlashDurationDesc:
+        "点滅の継続時間です。0に設定すると手動で停止するまで点滅し続けます。",
       unitMilliseconds: "ms",
       valueAlways: "常に点滅",
       rowSessionHud: "セッション HUD",
@@ -2749,63 +3494,97 @@
       sessionHudSummaryCleanup: "自動整理: {state}",
       sessionHudSummaryContextUsage: "コンテキスト: {state}",
       rowSessionHudStateLabels: "状態ラベルを表示",
-      rowSessionHudStateLabelsDesc: "作業中、思考中、待機中などのアクティブなセッションに小さな状態ラベルを表示します。完了したセッションは引き続きベルを使います。",
+      rowSessionHudStateLabelsDesc:
+        "作業中、思考中、待機中などのアクティブなセッションに小さな状態ラベルを表示します。完了したセッションは引き続きベルを使います。",
       rowSessionHudElapsed: "HUD 時間を表示",
-      rowSessionHudElapsedDesc: "セッション HUD に経過時間を表示します。オフにすると HUD が狭くなります。",
+      rowSessionHudElapsedDesc:
+        "セッション HUD に経過時間を表示します。オフにすると HUD が狭くなります。",
       shortcutLabelPetReveal: "ペットをクリック: セッション HUD を表示",
-      shortcutLabelOpenDashboard: "Ctrl / ⌘ + ペットをクリック: ダッシュボードを開く",
+      shortcutLabelOpenDashboard:
+        "Ctrl / ⌘ + ペットをクリック: ダッシュボードを開く",
       sessionHudPinTooltip: "HUD を固定",
       sessionHudUnpinTooltip: "HUD の固定を解除",
       sessionHudFocusUnavailableTooltip: "ターミナルフォーカスは利用できません",
-      sessionHudRemoteFocusUnavailableTooltip: "リモートセッションはターミナルフォーカスできません",
+      sessionHudRemoteFocusUnavailableTooltip:
+        "リモートセッションはターミナルフォーカスできません",
       rowSessionHudCleanupDetached: "切り離されたセッションを自動整理",
-      rowSessionHudCleanupDetachedDesc: "終了したセッションのターミナルが閉じた後、HUD から隠し、少ししてからセッション一覧から削除します。",
+      rowSessionHudCleanupDetachedDesc:
+        "終了したセッションのターミナルが閉じた後、HUD から隠し、少ししてからセッション一覧から削除します。",
       rowSessionCleanupGroup: "セッション整理",
-      rowSessionCleanupGroupDesc: "Clawd が非アクティブなセッションを整理するまでの待機時間。主にターミナルが見えないリモート SSH セッションに影響します — 長時間のリモート作業では制限を緩めるか、セッションタイムアウトを 0 にすると時間では整理しません。",
+      rowSessionCleanupGroupDesc:
+        "Clawd が非アクティブなセッションを整理するまでの待機時間。主にターミナルが見えないリモート SSH セッションに影響します — 長時間のリモート作業では制限を緩めるか、セッションタイムアウトを 0 にすると時間では整理しません。",
       rowStaleSession: "セッションタイムアウト（待機）",
-      rowStaleSessionDesc: "リモート SSH セッションはこの時間待機すると削除されます。ローカルセッションはターミナルが開いていれば削除されず、idle に薄まるだけです。既定 10 分。0 = 時間では削除しない。作業タイムアウト以上である必要があります。",
+      rowStaleSessionDesc:
+        "リモート SSH セッションはこの時間待機すると削除されます。ローカルセッションはターミナルが開いていれば削除されず、idle に薄まるだけです。既定 10 分。0 = 時間では削除しない。作業タイムアウト以上である必要があります。",
       rowStaleWorking: "作業タイムアウト",
-      rowStaleWorkingDesc: "セッションが working/thinking のまま動かない場合、この時間で idle に切り替えます。既定 5 分。セッションタイムアウトが 0 以外なら、その値が上限になります。",
+      rowStaleWorkingDesc:
+        "セッションが working/thinking のまま動かない場合、この時間で idle に切り替えます。既定 5 分。セッションタイムアウトが 0 以外なら、その値が上限になります。",
       rowStaleDetached: "ターミナルを閉じてから整理するまでの遅延",
-      rowStaleDetachedDesc: "「切り離されたセッションを自動整理」を有効にしたときだけ動作します。セッションのターミナルウィンドウが閉じてからこの秒数だけ待ってから HUD から削除します。既定 30 秒。",
+      rowStaleDetachedDesc:
+        "「切り離されたセッションを自動整理」を有効にしたときだけ動作します。セッションのターミナルウィンドウが閉じてからこの秒数だけ待ってから HUD から削除します。既定 30 秒。",
       unitMinutes: "分",
       unitSeconds: "秒",
       valueDisabled: "無効",
       actionResetSessionCleanup: "既定に戻す",
       rowSessionDashboard: "セッションダッシュボード",
-      rowSessionDashboardDesc: "Claude Code・Codex などすべてのエージェントのアクティブセッションを一覧する別ウィンドウを開きます。",
+      rowSessionDashboardDesc:
+        "Claude Code・Codex などすべてのエージェントのアクティブセッションを一覧する別ウィンドウを開きます。",
       actionOpenDashboard: "開く",
       rowOpenAtLogin: "ログイン時に開く",
       rowOpenAtLoginDesc: "ログイン時に Clawd を自動起動します。",
       rowManageClaudeHooks: "Claude hooks を自動管理",
-      rowManageClaudeHooksDesc: "起動時に Claude hooks を同期し、`~/.claude/settings.json` が上書きされた場合は復元します。",
-      rowManageClaudeHooksOffNote: "オフにしても今後の自動管理が止まるだけです。既にインストール済みの Claude hooks は明示的に切断するまで残ります。",
+      rowManageClaudeHooksDesc:
+        "起動時に Claude hooks を同期し、`~/.claude/settings.json` が上書きされた場合は復元します。",
+      rowManageClaudeHooksOffNote:
+        "オフにしても今後の自動管理が止まるだけです。既にインストール済みの Claude hooks は明示的に切断するまで残ります。",
       actionDisconnectClaudeHooks: "切断",
-      claudeHooksDisableConfirmTitle: "Claude hooks の自動管理をオフにしますか？",
-      claudeHooksDisableConfirmDetail: "自動管理だけをオフにする場合、`~/.claude/settings.json` 内に既にインストール済みの Claude hooks はそのまま残ります。`Claude Code と同時に起動` 設定も後で再有効化できるよう保持されます。",
+      claudeHooksDisableConfirmTitle:
+        "Claude hooks の自動管理をオフにしますか？",
+      claudeHooksDisableConfirmDetail:
+        "自動管理だけをオフにする場合、`~/.claude/settings.json` 内に既にインストール済みの Claude hooks はそのまま残ります。`Claude Code と同時に起動` 設定も後で再有効化できるよう保持されます。",
       claudeHooksDisableConfirmDisconnect: "オフにして hooks も削除",
       claudeHooksDisableConfirmDisableOnly: "自動管理だけオフにする",
       claudeHooksDisableConfirmKeep: "自動管理を継続",
       claudeHooksDisconnectConfirmTitle: "Claude hooks を切断しますか？",
-      claudeHooksDisconnectConfirmDetail: "`~/.claude/settings.json` から Clawd 管理の Claude hooks を削除し、自動管理をオフにします。`Claude Code と同時に起動` 設定は後で再有効化できるよう保持されます。",
+      claudeHooksDisconnectConfirmDetail:
+        "`~/.claude/settings.json` から Clawd 管理の Claude hooks を削除し、自動管理をオフにします。`Claude Code と同時に起動` 設定は後で再有効化できるよう保持されます。",
       claudeHooksDisconnectConfirmAction: "hooks を切断",
       claudeHooksDisconnectConfirmKeep: "接続を維持",
       rowStartWithClaude: "Claude Code と同時に起動",
-      rowStartWithClaudeDesc: "Claude Code セッションが開始するたびに Clawd を自動起動します。",
-      rowStartWithClaudeDisabledDesc: "Claude hooks の自動管理が必要です。管理がオフの間はポート変更や設定上書きが自動修復されません。",
+      rowStartWithClaudeDesc:
+        "Claude Code セッションが開始するたびに Clawd を自動起動します。",
+      rowStartWithClaudeDisabledDesc:
+        "Claude hooks の自動管理が必要です。管理がオフの間はポート変更や設定上書きが自動修復されません。",
       rowHideBubbles: "吹き出しを非表示",
-      rowHideBubblesDesc: "Clawd の権限・通知・アップデート吹き出しをまとめて非表示にします。",
+      rowHideBubblesDesc:
+        "Clawd の権限・通知・アップデート吹き出しをまとめて非表示にします。",
       rowBubbleFollow: "吹き出しが Clawd に追従",
-      rowBubbleFollowDesc: "権限とアップデートの吹き出しを画面端ではなくペットの隣に表示します。",
+      rowBubbleFollowDesc:
+        "権限とアップデートの吹き出しを画面端ではなくペットの隣に表示します。",
+      rowAutoApproveAll: "すべてのリクエストを自動承認",
+      rowAutoApproveAllDesc:
+        "危険：すべてのエージェントの権限リクエスト（コマンド実行・ファイル編集・削除）を確認なしで自動承認します。エージェントごとの切り替えとおやすみモードは引き続き有効です。",
+      menuAutoApproveAll: "すべてのリクエストを自動承認",
+      autoApproveAllConfirmTitle:
+        "すべてのリクエストの自動承認を有効にしますか？",
+      autoApproveAllConfirmDetail:
+        "シェルコマンドの実行やファイルの削除を含め、すべてのエージェントのすべての権限リクエストが自動的に承認されます。Clawd は事前に確認しません。エージェントの動作を完全に信頼できる場合のみ有効にしてください。",
+      autoApproveAllConfirmEnable: "自動承認を有効化",
+      autoApproveAllConfirmCancel: "キャンセル",
       rowBubblePolicy: "吹き出しの表示と自動クローズ",
-      rowBubblePolicyDesc: "各種吹き出しの表示有無と、操作不要な吹き出しが何秒で自動クローズするかを設定します。",
+      rowBubblePolicyDesc:
+        "各種吹き出しの表示有無と、操作不要な吹き出しが何秒で自動クローズするかを設定します。",
       bubblePermissionLabel: "権限・操作系の吹き出し",
-      bubblePermissionDesc: "オフにすると承認プロンプトはエージェントのターミナル/TUI に戻ります。Plan review と AskUserQuestion はエージェントが固まらないよう常に表示されます。秒数は、フック接続が半開状態のままハングした吹き出しを自動で閉じる任意設定です（0 でオフ）。",
+      bubblePermissionDesc:
+        "オフにすると承認プロンプトはエージェントのターミナル/TUI に戻ります。Plan review と AskUserQuestion はエージェントが固まらないよう常に表示されます。秒数は、フック接続が半開状態のままハングした吹き出しを自動で閉じる任意設定です（0 でオフ）。",
       bubbleNotificationLabel: "通知吹き出し",
-      bubbleNotificationDesc: "スイッチで Codex / Kimi CLI の受動通知を制御します。秒数は自動クローズの上限で、後続のセッション状態によりそれより早く閉じる場合があります。0 で非表示。",
+      bubbleNotificationDesc:
+        "スイッチで Codex / Kimi Code の受動通知を制御します。秒数は自動クローズの上限で、後続のセッション状態によりそれより早く閉じる場合があります。0 で非表示。",
       bubbleUpdateLabel: "アップデート吹き出し",
-      bubbleUpdateDesc: "スイッチでアップデート確認・ダウンロード・成功・失敗・再起動プロンプトを制御します。秒数は表示時間です。",
-      bubbleUpdateWarning: "アップデート吹き出しを非表示にすると、エラーや再起動プロンプトを見逃す可能性があるためおすすめしません。",
+      bubbleUpdateDesc:
+        "スイッチでアップデート確認・ダウンロード・成功・失敗・再起動プロンプトを制御します。秒数は表示時間です。",
+      bubbleUpdateWarning:
+        "アップデート吹き出しを非表示にすると、エラーや再起動プロンプトを見逃す可能性があるためおすすめしません。",
       bubbleSecondsPrefix: "表示",
       bubbleSecondsUnit: "秒",
       bubbleSecondsInvalid: "秒数は 0〜3600 の整数で指定してください",
@@ -2814,30 +3593,41 @@
       bubblePolicySummaryUpdate: "アップデート {seconds}秒",
       bubblePolicySummaryOn: "オン",
       bubblePolicySummaryOff: "オフ",
-      updateBubbleDisableConfirmTitle: "アップデート吹き出しを非表示にしますか？",
-      updateBubbleDisableConfirmDetail: "アップデートエラーの原因・ダウンロード完了通知・再起動プロンプトを見逃す可能性があります。アップデート処理自体は継続しますが、Clawd は吹き出しを表示しません。",
+      updateBubbleDisableConfirmTitle:
+        "アップデート吹き出しを非表示にしますか？",
+      updateBubbleDisableConfirmDetail:
+        "アップデートエラーの原因・ダウンロード完了通知・再起動プロンプトを見逃す可能性があります。アップデート処理自体は継続しますが、Clawd は吹き出しを表示しません。",
       updateBubbleDisableConfirmAction: "アップデート吹き出しを非表示",
       updateBubbleDisableConfirmCancel: "表示し続ける",
       rowAllowEdgePinning: "画面端への貼り付けを許可",
-      rowAllowEdgePinningDesc: "上下の装飾 (キラキラ・建物・吹き出しなど) が画面端で見切れる可能性があります。",
+      rowAllowEdgePinningDesc:
+        "上下の装飾 (キラキラ・建物・吹き出しなど) が画面端で見切れる可能性があります。",
       rowDisableMiniMode: "ミニモードを無効化",
-      rowDisableMiniModeDesc: "オンにすると、端へのスナップやメニューからミニモードに入りません。",
+      rowDisableMiniModeDesc:
+        "オンにすると、端へのスナップやメニューからミニモードに入りません。",
       rowFreeRoam: "自由散策",
-      rowFreeRoamDesc: "待機中にClawdがデスク上を自由に歩き回ります。マウスを動かすと停止します。",
+      rowFreeRoamDesc:
+        "待機中にClawdがデスク上を自由に歩き回ります。マウスを動かすと停止します。",
       rowKeepSizeAcrossDisplays: "ディスプレイ間でサイズ維持",
-      rowKeepSizeAcrossDisplaysDesc: "別モニターに移動しても自動でリサイズしません。スライダーは現在のディスプレイ上でペットを調整します。",
+      rowKeepSizeAcrossDisplaysDesc:
+        "別モニターに移動しても自動でリサイズしません。スライダーは現在のディスプレイ上でペットを調整します。",
+      rowFullscreenOverlay: "全画面ゲームの上に表示",
+      rowFullscreenOverlayDesc:
+        "Windows で全画面ゲームの上でもペットを使えるようにします — 上に表示され、ドラッグでき、ゲームのフォーカスを奪いません。オフにすると最適化前の既定動作に戻ります。ボーダーレス全画面ゲームではペットは常に上に表示されます。完全に消すにはペットを非表示を使ってください。（排他的全画面ゲームでは動作が異なる場合があります。）",
       rowSize: "サイズ",
       rowSizeDesc: "ドラッグでペットのサイズを変更します。",
       placeholderTitle: "近日公開",
-      placeholderDesc: "このパネルは Clawd の今後のリリースで追加されます。計画は docs/plans/plan-settings-panel.md にあります。",
+      placeholderDesc:
+        "このパネルは Clawd の今後のリリースで追加されます。計画は docs/plans/plan-settings-panel.md にあります。",
       toastSaveFailed: "保存できませんでした: ",
       langEnglish: "English",
-      langChinese: "简中",
-      langTraditionalChinese: "繁中",
+      langChinese: "简体中文",
+      langTraditionalChinese: "繁體中文",
       langKorean: "한국어",
       langJapanese: "日本語",
       themeTitle: "テーマ",
-      themeSubtitle: "Clawd のテーマを選びます。カードには組み込み・能力バッジが表示されるので、tracked / static / mini の違いを切替前に確認できます。",
+      themeSubtitle:
+        "Clawd のテーマを選びます。カードには組み込み・能力バッジが表示されるので、tracked / static / mini の違いを切替前に確認できます。",
       themeEmpty: "利用可能なテーマがありません。",
       themeBadgeBuiltin: "組み込み",
       themeBadgeCodexPet: "Codex Pet",
@@ -2848,7 +3638,8 @@
       themeImportPetZip: "Codex Pet パッケージをインポート（.zip）",
       themeOpenCodexPetsFolder: "Codex Pet フォルダを開く",
       themeImportUserThemeZip: "Clawd テーマパッケージをインポート（.zip）",
-      themeImportUserThemeZipHint: "Clawd テーマ zip: ルートまたは 1 つのトップフォルダに theme.json が必要です。SVG、GIF、APNG、PNG、WebP、JPG、JPEG は assets/ に入れてください。Codex Pet パッケージは上の入口を使います。",
+      themeImportUserThemeZipHint:
+        "Clawd テーマ zip: ルートまたは 1 つのトップフォルダに theme.json が必要です。SVG、GIF、APNG、PNG、WebP、JPG、JPEG は assets/ に入れてください。Codex Pet パッケージは上の入口を使います。",
       themeOpenUserThemesFolder: "テーマフォルダを開く",
       themeRefreshThemes: "テーマを更新",
       themeGroupBuiltIn: "組み込み",
@@ -2860,6 +3651,7 @@
       themeCapabilityStatic: "静的テーマ",
       themeCapabilityMini: "Mini",
       themeCapabilityDirectSleep: "直接スリープ",
+      themeCapabilityFineMotion: "精細モーション",
       themeCapabilityNoReactions: "リアクションなし",
       themeActiveIndicator: "✓ 使用中",
       themeThumbMissing: "\u{1F3AD}",
@@ -2867,35 +3659,55 @@
       themeVariantStripLabel: "バリアント",
       toastThemeDeleted: "テーマを削除しました。",
       toastThemeDeleteFailed: "テーマの削除に失敗: ",
-      toastCodexPetsRefreshOk: (imported, updated, unchanged, removed, invalid, switched) =>
+      toastCodexPetsRefreshOk: (
+        imported,
+        updated,
+        unchanged,
+        removed,
+        invalid,
+        switched,
+      ) =>
         `Codex Pet を更新しました: 新規 ${imported}、更新 ${updated}、変更なし ${unchanged}、削除 ${removed}${invalid ? `、無効 ${invalid}` : ""}${switched ? "、使用中テーマを Clawd に戻しました" : ""}。`,
-      toastCodexPetsRefreshFailed: (message) => `Codex Pet の更新に失敗: ${message}`,
+      toastCodexPetsRefreshFailed: (message) =>
+        `Codex Pet の更新に失敗: ${message}`,
       toastCodexPetsFolderFailed: "Codex Pet フォルダを開けませんでした: ",
       toastUserThemesFolderFailed: "テーマフォルダを開けませんでした: ",
-      toastUserThemeZipImportOk: (name) => `テーマ "${name}" をインポートしました。`,
-      toastUserThemeZipImportFailed: (message) => `テーマ（.zip）をインポートできませんでした: ${message}`,
-      toastCodexPetZipImportOk: (name) => `"${name}" をインポートして切り替えました。`,
-      toastCodexPetZipImportFailed: (message) => `Codex Pet（.zip）をインポートできませんでした: ${message}`,
-      toastCodexPetRemoveOk: (name, switched) => `"${name}" をアンインストールしました${switched ? "。Clawd に戻しました" : ""}。`,
-      toastCodexPetRemoveFailed: (message) => `インポート済みペットをアンインストールできませんでした: ${message}`,
+      toastUserThemeZipImportOk: (name) =>
+        `テーマ "${name}" をインポートしました。`,
+      toastUserThemeZipImportFailed: (message) =>
+        `テーマ（.zip）をインポートできませんでした: ${message}`,
+      toastCodexPetZipImportOk: (name) =>
+        `"${name}" をインポートして切り替えました。`,
+      toastCodexPetZipImportFailed: (message) =>
+        `Codex Pet（.zip）をインポートできませんでした: ${message}`,
+      toastCodexPetRemoveOk: (name, switched) =>
+        `"${name}" をアンインストールしました${switched ? "。Clawd に戻しました" : ""}。`,
+      toastCodexPetRemoveFailed: (message) =>
+        `インポート済みペットをアンインストールできませんでした: ${message}`,
       animMapTitle: "アニメーションマップ",
-      animMapSubtitle: "個別の割り込みアニメーションをオフにできます。イベント自体は発火しますが、Clawd は選択した状態の表示と効果音をスキップします。",
-      animMapSemanticsNote: "オフ = 表示なし + 効果音なし。権限の吹き出し・セッション・ターミナルフォーカスは引き続き動きます。",
+      animMapSubtitle:
+        "個別の割り込みアニメーションをオフにできます。イベント自体は発火しますが、Clawd は選択した状態の表示と効果音をスキップします。",
+      animMapSemanticsNote:
+        "オフ = 表示なし + 効果音なし。権限の吹き出し・セッション・ターミナルフォーカスは引き続き動きます。",
       animMapResetAll: "すべてリセット",
       animMapAttentionLabel: "タスク完了 (happy)",
       animMapAttentionDesc: "エージェントのターン終了時の喜びバウンス (Stop)。",
       animMapErrorLabel: "エラー演出",
       animMapErrorDesc: "ツール呼び出しが失敗したときの揺れアニメーション。",
       animMapSweepingLabel: "コンテキスト掃除",
-      animMapSweepingDesc: "PreCompact / コンテキストクリア中のほうきアニメーション。",
+      animMapSweepingDesc:
+        "PreCompact / コンテキストクリア中のほうきアニメーション。",
       animMapNotificationLabel: "通知",
       animMapNotificationDesc: "権限要求や質問時のベルアニメーション。",
       animMapCarryingLabel: "Worktree 運搬",
       animMapCarryingDesc: "worktree 作成時の運搬アニメーション。",
-      toastAnimMapResetOk: "アニメーションと効果音の差し替えをリセットしました。",
-      animOverridesTitle: "アニメーション・サウンド差し替え",
-      animOverridesSubtitle: "現在のテーマのカード別アニメ差し替え、フェード/復帰タイミング調整、サウンド差し替えを行います。",
-      animOverridesLoading: "アニメーションとサウンドの差し替え設定を読み込み中…",
+      toastAnimMapResetOk:
+        "アニメーションと効果音の差し替えをリセットしました。",
+      animOverridesTitle: "アニメーション・サウンド",
+      animOverridesSubtitle:
+        "現在のテーマのカード別アニメ差し替え、フェード/復帰タイミング調整、サウンド差し替えを行います。",
+      animOverridesLoading:
+        "アニメーションとサウンドの差し替え設定を読み込み中…",
       animOverridesCurrentTheme: "現在のテーマ",
       animOverridesReplacementConfig: "アニメーション上書き設定",
       animOverridesOpenThemeTab: "テーマタブを開く",
@@ -2908,7 +3720,8 @@
       toastAnimOverridesImportOk: (count) =>
         `${count} 件のテーマ差し替えをインポートしました。`,
       toastAnimOverridesExportEmpty: "エクスポート対象の差し替えがありません。",
-      toastAnimOverridesExportFailed: (message) => `エクスポート失敗: ${message}`,
+      toastAnimOverridesExportFailed: (message) =>
+        `エクスポート失敗: ${message}`,
       toastAnimOverridesImportFailed: (message) => `インポート失敗: ${message}`,
       animOverridesChangeFile: "ファイルを変更",
       animOverridesPreview: "1 回プレビュー",
@@ -2919,14 +3732,17 @@
       animOverridesSaveFade: "フェードを保存",
       animOverridesDuration: "自動復帰",
       animOverridesSaveDuration: "タイミング保存",
-      animOverridesContinuousHint: "継続状態のため auto-return は編集できません。",
+      animOverridesContinuousHint:
+        "継続状態のため auto-return は編集できません。",
       animOverridesAssetCycle: "アセットサイクル",
       animOverridesSuggestedTiming: "推奨タイミング",
       animOverridesTimingEstimated: "推定値",
       animOverridesTimingFallback: "テーマのデフォルト",
       animOverridesTimingUnavailable: "利用不可",
-      animOverridesDisplayHintWarning: "displayHintMap が実行時にこのスロットを上書きする可能性があります。",
-      animOverridesFallbackHint: "このスロットは現在 {state} にフォールバックしています。",
+      animOverridesDisplayHintWarning:
+        "displayHintMap が実行時にこのスロットを上書きする可能性があります。",
+      animOverridesFallbackHint:
+        "このスロットは現在 {state} にフォールバックしています。",
       animOverridesOverriddenTooltip: "デフォルトから変更済み",
       animOverridesUseOwnFile: "独自ファイルを使う",
       animOverridesDurationIdle: "プール保持時間",
@@ -2947,21 +3763,27 @@
       animReactionAnnoyed: "イライラ (連続つつき)",
       animReactionDouble: "ダブルタップ",
       animOverridesWideHitboxToggle: "広い当たり判定",
-      animOverridesWideHitboxDesc: "このフレームでクリック領域を広げます。アセットがデフォルトのペットシルエットを超えるときに有効です。",
+      animOverridesWideHitboxDesc:
+        "このフレームでクリック領域を広げます。アセットがデフォルトのペットシルエットを超えるときに有効です。",
       animOverridesWideHitboxResetToTheme: "テーマのデフォルトに戻す",
-      animOverridesAspectWarning: "このアセットは元ファイルとアスペクト比が {pct}% 違います。当たり判定と位置を手動調整する必要があるかもしれません。",
+      animOverridesAspectWarning:
+        "このアセットは元ファイルとアスペクト比が {pct}% 違います。当たり判定と位置を手動調整する必要があるかもしれません。",
       animOverridesExpandRow: "展開",
       animOverridesModalTitle: "アセットファイルを選択",
-      animOverridesModalSubtitle: "現在のテーマの assets フォルダにファイルを追加してから、ここでリストを更新してください。",
-      animOverridesModalEmpty: "このテーマには対応するアセットがまだありません。",
+      animOverridesModalSubtitle:
+        "現在のテーマの assets フォルダにファイルを追加してから、ここでリストを更新してください。",
+      animOverridesModalEmpty:
+        "このテーマには対応するアセットがまだありません。",
       animOverridesModalSelected: "選択中のファイル",
       animOverridesModalUse: "このファイルを使う",
       animOverridesModalCancel: "キャンセル",
       animOverridesRefresh: "リストを更新",
       animOverridesSubtabAnimations: "アニメーション",
       animOverridesSubtabSounds: "サウンド",
+      animOverridesSubtabMap: "オン / オフ",
       soundOverridesSectionTitle: "効果音",
-      soundOverridesSectionSubtitle: "テーマのオーディオファイルを差し替えます。選択したファイルはテーマごとの差し替えフォルダにコピーされます。",
+      soundOverridesSectionSubtitle:
+        "テーマのオーディオファイルを差し替えます。選択したファイルはテーマごとの差し替えフォルダにコピーされます。",
       soundOverridesLabelComplete: "タスク完了 (complete)",
       soundOverridesLabelConfirm: "権限プロンプト (confirm)",
       soundOverridesPreview: "再生",
@@ -2970,9 +3792,12 @@
       soundOverridesOpenDir: "差し替えフォルダを開く",
       soundOverridesOverriddenTooltip: "差し替え済み",
       soundOverridesEmpty: "このテーマには効果音が定義されていません。",
-      toastSoundOverrideSetOk: (name, file) => `「${name}」を ${file} に差し替えました`,
-      toastSoundOverrideResetOk: (name) => `「${name}」をテーマのデフォルトに戻しました`,
-      toastSoundOverrideFailed: (message) => `効果音の差し替えに失敗: ${message}`,
+      toastSoundOverrideSetOk: (name, file) =>
+        `「${name}」を ${file} に差し替えました`,
+      toastSoundOverrideResetOk: (name) =>
+        `「${name}」をテーマのデフォルトに戻しました`,
+      toastSoundOverrideFailed: (message) =>
+        `効果音の差し替えに失敗: ${message}`,
       aboutTitle: "Clawd について",
       aboutSubtitle: "あなたの AI コーディングを見守るピクセル蟹。",
       aboutTagline: "AI コーディングのデスクトップ相棒。",
@@ -2980,7 +3805,8 @@
       aboutCheckForUpdates: "アップデートを確認",
       aboutUpdateAvailableHint: "新しいバージョンがあります: v{version}",
       autoUpdateCheck: "アップデートを自動で確認",
-      autoUpdateCheckDescription: "12 時間ごとに GitHub を静かに確認し、新しいバージョンがある時だけ通知します。",
+      autoUpdateCheckDescription:
+        "12 時間ごとに GitHub を静かに確認し、新しいバージョンがある時だけ通知します。",
       aboutRepositoryLabel: "リポジトリ",
       aboutLicenseLabel: "ライセンス",
       aboutAuthorLabel: "制作",
@@ -2988,29 +3814,94 @@
       aboutContributorsLabel: "コントリビューター",
       aboutFooter: "Clawd はオープンソース。コミュニティと一緒に作っています。",
       aboutCleanupButton: "Clawd 連携を削除…",
-      aboutCleanupConfirm: "ローカル agent から Clawd hooks/plugins を削除し、Clawd のすべての agent 連携を無効にしますか？agent アプリやユーザー設定は削除しません。",
+      aboutCleanupConfirm:
+        "ローカル agent から Clawd hooks/plugins を削除し、Clawd のすべての agent 連携を無効にしますか？agent アプリやユーザー設定は削除しません。",
       aboutCleanupRunning: "連携を削除中…",
-      aboutCleanupSuccess: "{affected} 件の連携から {removed} 件を削除しました。失敗: {failed}。",
+      aboutCleanupSuccess:
+        "{affected} 件の連携から {removed} 件を削除しました。失敗: {failed}。",
       aboutCleanupFailed: "連携クリーンアップに失敗しました",
-      aboutCleanupKiroNote: "Kiro の clawd.json は保持し、hook 項目だけを削除しました。",
-      aboutEasterEggToast: "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / 鹿鹿",
+      aboutCleanupKiroNote:
+        "Kiro の clawd.json は保持し、hook 項目だけを削除しました。",
+      aboutEasterEggToast:
+        "\u{1F980} Coding shouldn't feel lonely. — Ruller_Lulu / 鹿鹿",
       aboutOpenExternalFailed: "ブラウザでリンクを開けませんでした。",
     },
   };
 
-  const MAINTAINERS = [
-    "rullerzhou-afk", "YOIMIYA66",
-  ];
+  const MAINTAINERS = ["rullerzhou-afk", "YOIMIYA66"];
 
   const CONTRIBUTORS = [
-    "PixelCookie-zyf", "yujiachen-y", "AooooooZzzz", "purefkh", "Tobeabellwether", "Jasonhonghh", "crashchen",
-    "hongbigtou", "InTimmyDate", "NeizhiTouhu", "xu3stones-cmd", "androidZzT", "Ye-0413", "WanfengzzZ",
-    "TaoXieSZ", "ssly", "stickycandy", "Rladmsrl", "YOIMIYA66", "Kevin7Qi", "sefuzhou770801-hub",
-    "Tonic-Jin", "seoki180", "sophie-haynes", "PeterShanxin", "CHIANGANGSTER", "JaeHyeon-KAIST", "hhhzxyhhh",
-    "TVpoet", "zeus6768", "anhtrinh919", "tomaioo", "v-avuso", "livlign", "tongguang2",
-    "Ziy1-Tan", "tatsuyanakanogaroinc", "yeonhub", "joshua-wu", "nmsn", "sunnysonx", "YuChenYunn", "jhseo-b",
-    "Hwasowl", "XiangZheng2002", "keiyo118", "pan93412", "taehwanis", "linnin233", "xiyouMc",
-    "Bynlk", "zxypro1", "NeroAyase", "divergentD", "Ne9roni", "QingXB", "29206394",
+    "PixelCookie-zyf",
+    "yujiachen-y",
+    "AooooooZzzz",
+    "purefkh",
+    "Tobeabellwether",
+    "Jasonhonghh",
+    "crashchen",
+    "hongbigtou",
+    "InTimmyDate",
+    "NeizhiTouhu",
+    "xu3stones-cmd",
+    "androidZzT",
+    "Ye-0413",
+    "WanfengzzZ",
+    "TaoXieSZ",
+    "ssly",
+    "stickycandy",
+    "Rladmsrl",
+    "YOIMIYA66",
+    "Kevin7Qi",
+    "sefuzhou770801-hub",
+    "Tonic-Jin",
+    "seoki180",
+    "sophie-haynes",
+    "PeterShanxin",
+    "CHIANGANGSTER",
+    "JaeHyeon-KAIST",
+    "hhhzxyhhh",
+    "TVpoet",
+    "zeus6768",
+    "anhtrinh919",
+    "tomaioo",
+    "v-avuso",
+    "livlign",
+    "tongguang2",
+    "Ziy1-Tan",
+    "tatsuyanakanogaroinc",
+    "yeonhub",
+    "joshua-wu",
+    "nmsn",
+    "sunnysonx",
+    "YuChenYunn",
+    "jhseo-b",
+    "Hwasowl",
+    "XiangZheng2002",
+    "keiyo118",
+    "pan93412",
+    "taehwanis",
+    "linnin233",
+    "xiyouMc",
+    "Bynlk",
+    "zxypro1",
+    "NeroAyase",
+    "divergentD",
+    "Ne9roni",
+    "QingXB",
+    "29206394",
+    "Tsdsj",
+    "godlockin",
+    "sLingli",
+    "ustin-star",
+    "cod3hulk",
+    "lxgxhsy",
+    "rebootcrab-blip",
+    "zhaoxv210",
+    "serenNan",
+    "IatomicreactorI",
+    "quantai1314",
+    "Git-creat7",
+    "undownding",
+    "chrono-meta",
   ];
 
   root.ClawdSettingsI18n = {
