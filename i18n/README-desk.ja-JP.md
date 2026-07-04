@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd">
 </p>
-<h1 align="center">Clawd on Mobile</h1>
+<h1 align="center">Clawd on Desk</h1>
 <p align="center">
   <sub>🍴 <a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a>の Fork、原作者 <a href="https://github.com/rullerzhou-afk">@rullerzhou-afk</a> — <a href="LICENSE">AGPL-3.0</a> ライセンス</sub>
 </p>
@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Clawd on Desk のアニメーションデモ。AI コーディングエージェントの状態に合わせて、ピクセルのカニが睡眠、思考、ツール実行中のタイピング、サブエージェント 1 個ではヘッドホングルーヴ、複数では3ボールジャグリング、権限リクエストの通知、タスク完了後のお祝いへリアルタイムに切り替わります。Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw などに対応しています。">
+  <img src="../assets/hero.gif" alt="Clawd on Desk のアニメーションデモ。AI コーディングエージェントの状態に合わせて、ピクセルのカニが睡眠、思考、ツール実行中のタイピング、サブエージェント 1 個ではヘッドホングルーヴ、複数では3ボールジャグリング、権限リクエストの通知、タスク完了後のお祝いへリアルタイムに切り替わります。Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw などに対応しています。">
 </p>
 
 Clawd はデスクトップに住むペットで、AI コーディングエージェントが今何をしているかにリアルタイムで反応します。長いタスクを開始したら席を外し、Clawd が完了を知らせたら戻ってくるだけです。
@@ -95,28 +95,28 @@ Clawd はデスクトップに住むペットで、AI コーディングエー�
 
 <table>
   <tr>
-    <td align="center"><img src="assets/gif/clawd-idle.gif" width="100"><br><sub>Idle</sub></td>
-    <td align="center"><img src="assets/gif/clawd-thinking.gif" width="100"><br><sub>Thought Bubble</sub></td>
-    <td align="center"><img src="assets/gif/clawd-typing.gif" width="100"><br><sub>Typing</sub></td>
-    <td align="center"><img src="assets/gif/clawd-building.gif" width="100"><br><sub>Building</sub></td>
-    <td align="center"><img src="assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>1 Subagent</sub></td>
-    <td align="center"><img src="assets/gif/clawd-juggling.gif" width="100"><br><sub>2+ Subagents</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-idle.gif" width="100"><br><sub>Idle</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-thinking.gif" width="100"><br><sub>Thought Bubble</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-typing.gif" width="100"><br><sub>Typing</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-building.gif" width="100"><br><sub>Building</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>1 Subagent</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-juggling.gif" width="100"><br><sub>2+ Subagents</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>Calico Idle</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>Calico Thinking</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>Calico Typing</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>Calico Building</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>Calico Juggling</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>Calico Conducting</sub></td>
+    <td align="center"><img src="../assets/gif/calico-idle.gif" width="80"><br><sub>Calico Idle</sub></td>
+    <td align="center"><img src="../assets/gif/calico-thinking.gif" width="80"><br><sub>Calico Thinking</sub></td>
+    <td align="center"><img src="../assets/gif/calico-typing.gif" width="80"><br><sub>Calico Typing</sub></td>
+    <td align="center"><img src="../assets/gif/calico-building.gif" width="80"><br><sub>Calico Building</sub></td>
+    <td align="center"><img src="../assets/gif/calico-juggling.gif" width="80"><br><sub>Calico Juggling</sub></td>
+    <td align="center"><img src="../assets/gif/calico-conducting.gif" width="80"><br><sub>Calico Conducting</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/cloudling-idle.gif" width="120"><br><sub>Cloudling Idle</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-thinking.gif" width="120"><br><sub>Cloudling Thinking</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-typing.gif" width="120"><br><sub>Cloudling Typing</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-building.gif" width="120"><br><sub>Cloudling Building</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-juggling.gif" width="120"><br><sub>Cloudling Juggling</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-conducting.gif" width="120"><br><sub>Cloudling Conducting</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-idle.gif" width="120"><br><sub>Cloudling Idle</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-thinking.gif" width="120"><br><sub>Cloudling Thinking</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-typing.gif" width="120"><br><sub>Cloudling Typing</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-building.gif" width="120"><br><sub>Cloudling Building</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-juggling.gif" width="120"><br><sub>Cloudling Juggling</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-conducting.gif" width="120"><br><sub>Cloudling Conducting</sub></td>
   </tr>
 </table>
 
@@ -126,13 +126,13 @@ event-to-state mapping、mini mode、クリックリアクションの詳細: **
 
 Clawd はマルチモニター環境に適応します。起動したディスプレイに合わせて比例サイズを決め、縦長モニターでは読みやすさを保つために上限付きで拡大し、ディスプレイ間のドラッグにも対応します。
 
-<p align="center"><sub>実際のマルチモニター挙動は、<a href="assets/videos/clawd-multi-monitor-demo.mp4">このリポジトリ内のデモ動画</a>で確認できます。</sub></p>
+<p align="center"><sub>実際のマルチモニター挙動は、<a href="../assets/videos/clawd-multi-monitor-demo.mp4">このリポジトリ内のデモ動画</a>で確認できます。</sub></p>
 
 ## クイックスタート
 
-通常利用では、**[GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest)** から最新のビルド済みインストーラーをダウンロードしてください。
+通常利用では、**[GitHub Releases](https://github.com/Bynlk/clawd-on-mobile/releases/latest)** から最新のビルド済みインストーラーをダウンロードしてください。
 
-- **Windows**: `Clawd-on-Desk-Setup-<version>-x64.exe` または `Clawd-on-Desk-Setup-<version>-arm64.exe`
+- **Windows**: `Clawd-on-Mobile-Setup-<version>-x64.exe` または `Clawd-on-Mobile-Setup-<version>-arm64.exe`
 - **macOS**: `.dmg`
 - **Linux**: `.AppImage` または `.deb`
 
@@ -142,8 +142,8 @@ Clawd はマルチモニター環境に適応します。起動したディス�
 
 ```bash
 # リポジトリを clone
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
-cd clawd-on-desk
+git clone https://github.com/Bynlk/clawd-on-mobile.git
+cd clawd-on-mobile
 
 # 依存関係をインストール
 npm install
@@ -200,7 +200,7 @@ node scripts/validate-theme.js path/to/your-theme
 
 ## コントリビュート
 
-Clawd on Desk はコミュニティ主導のプロジェクトです。バグ報告、機能案、Pull Request を歓迎します。相談したい場合は [issue](https://github.com/rullerzhou-afk/clawd-on-desk/issues) を開くか、直接 PR を送ってください。
+Clawd on Desk はコミュニティ主導のプロジェクトです。バグ報告、機能案、Pull Request を歓迎します。相談したい場合は [issue](https://github.com/Bynlk/clawd-on-mobile/issues) を開くか、直接 PR を送ってください。
 
 ### メンテナー
 
@@ -208,6 +208,7 @@ Clawd on Desk はコミュニティ主導のプロジェクトです。バグ報
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · creator</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />maintainer</sub></a></td>
+    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />core contributor · Mobile / PWA</sub></a></td>
   </tr>
 </table>
 

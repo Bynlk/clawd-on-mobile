@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd">
 </p>
-<h1 align="center">Clawd 桌宠 (Mobile)</h1>
+<h1 align="center">Clawd 桌宠 (Desktop)</h1>
 <p align="center">
   <sub>🍴 基于 <a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a> 的 Fork，原作者 <a href="https://github.com/rullerzhou-afk">@rullerzhou-afk</a> — 许可证 <a href="LICENSE">AGPL-3.0</a></sub>
 </p>
@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Clawd 桌宠动画演示：像素螃蟹会随 AI 编程助手状态实时切换，在睡觉、思考、工具运行时打字、单个子代理时戴耳机律动、多个子代理并行时三球杂耍、权限请求弹出时提醒、任务完成后庆祝。支持 Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw 等。">
+  <img src="../assets/hero.gif" alt="Clawd 桌宠动画演示：像素螃蟹会随 AI 编程助手状态实时切换，在睡觉、思考、工具运行时打字、单个子代理时戴耳机律动、多个子代理并行时三球杂耍、权限请求弹出时提醒、任务完成后庆祝。支持 Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw 等。">
 </p>
 
 Clawd 住在你的桌面上，实时感知 AI 编程助手正在做什么。发起一个长任务，起身去做点别的，等螃蟹告诉你任务完成了再回来。
@@ -95,28 +95,28 @@ Clawd 住在你的桌面上，实时感知 AI 编程助手正在做什么。发�
 
 <table>
   <tr>
-    <td align="center"><img src="assets/gif/clawd-idle.gif" width="100"><br><sub>待机</sub></td>
-    <td align="center"><img src="assets/gif/clawd-thinking.gif" width="100"><br><sub>思考泡泡</sub></td>
-    <td align="center"><img src="assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
-    <td align="center"><img src="assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
-    <td align="center"><img src="assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>耳机律动</sub></td>
-    <td align="center"><img src="assets/gif/clawd-juggling.gif" width="100"><br><sub>三球杂耍</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-idle.gif" width="100"><br><sub>待机</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-thinking.gif" width="100"><br><sub>思考泡泡</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>耳机律动</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-juggling.gif" width="100"><br><sub>三球杂耍</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>三花待机</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>三花杂耍</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>三花指挥</sub></td>
+    <td align="center"><img src="../assets/gif/calico-idle.gif" width="80"><br><sub>三花待机</sub></td>
+    <td align="center"><img src="../assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
+    <td align="center"><img src="../assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
+    <td align="center"><img src="../assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
+    <td align="center"><img src="../assets/gif/calico-juggling.gif" width="80"><br><sub>三花杂耍</sub></td>
+    <td align="center"><img src="../assets/gif/calico-conducting.gif" width="80"><br><sub>三花指挥</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/cloudling-idle.gif" width="120"><br><sub>云宝待机</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-thinking.gif" width="120"><br><sub>云宝思考</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-typing.gif" width="120"><br><sub>云宝打字</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-building.gif" width="120"><br><sub>云宝建造</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-juggling.gif" width="120"><br><sub>云宝杂耍</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-conducting.gif" width="120"><br><sub>云宝指挥</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-idle.gif" width="120"><br><sub>云宝待机</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-thinking.gif" width="120"><br><sub>云宝思考</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-typing.gif" width="120"><br><sub>云宝打字</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-building.gif" width="120"><br><sub>云宝建造</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-juggling.gif" width="120"><br><sub>云宝杂耍</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-conducting.gif" width="120"><br><sub>云宝指挥</sub></td>
   </tr>
 </table>
 
@@ -126,13 +126,13 @@ Clawd 住在你的桌面上，实时感知 AI 编程助手正在做什么。发�
 
 Clawd 适配多显示器场景：按启动时所在显示器做等比缩放，竖屏显示器有尺寸加成防止宠物过小，也可以跨屏拖动。
 
-<p align="center"><sub>想看多显示器下的实际效果？可以<a href="assets/videos/clawd-multi-monitor-demo.mp4">打开仓库里的演示视频</a>。</sub></p>
+<p align="center"><sub>想看多显示器下的实际效果？可以<a href="../assets/videos/clawd-multi-monitor-demo.mp4">打开仓库里的演示视频</a>。</sub></p>
 
 ## 快速开始
 
-普通用户建议直接从 **[GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest)** 下载最新预构建安装包：
+普通用户建议直接从 **[GitHub Releases](https://github.com/Bynlk/clawd-on-mobile/releases/latest)** 下载最新预构建安装包：
 
-- **Windows**：`Clawd-on-Desk-Setup-<version>-x64.exe` 或 `Clawd-on-Desk-Setup-<version>-arm64.exe`
+- **Windows**：`Clawd-on-Mobile-Setup-<version>-x64.exe` 或 `Clawd-on-Mobile-Setup-<version>-arm64.exe`
 - **macOS**：`.dmg`
 - **Linux**：`.AppImage` 或 `.deb`
 
@@ -142,8 +142,8 @@ Clawd 适配多显示器场景：按启动时所在显示器做等比缩放，�
 
 ```bash
 # 克隆仓库
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
-cd clawd-on-desk
+git clone https://github.com/Bynlk/clawd-on-mobile.git
+cd clawd-on-mobile
 
 # 安装依赖
 npm install
@@ -200,7 +200,7 @@ node scripts/validate-theme.js path/to/your-theme
 
 ## 参与贡献
 
-Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/rullerzhou-afk/clawd-on-desk/issues) 里聊或直接提交 PR。
+Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/Bynlk/clawd-on-mobile/issues) 里聊或直接提交 PR。
 
 ### 维护者
 
@@ -208,6 +208,7 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · 创建者</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />维护者</sub></a></td>
+    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />核心贡献者 · 移动端 / PWA</sub></a></td>
   </tr>
 </table>
 

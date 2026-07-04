@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd">
 </p>
-<h1 align="center">Clawd on Mobile</h1>
+<h1 align="center">Clawd on Desk</h1>
 <p align="center">
   <sub>🍴 Fork of <a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a> by <a href="https://github.com/rullerzhou-afk">@rullerzhou-afk</a> — Licensed under <a href="LICENSE">AGPL-3.0</a></sub>
 </p>
@@ -29,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Clawd on Desk — a pixel desktop pet that reacts to your AI coding agent in real time. Animated demo: the crab cycles through sleeping, thinking while the model reads the codebase, typing as edit/bash tools run, grooving for one subagent, juggling when multiple subagents run, raising a permission bubble, and celebrating when 14 files / 312 tests are complete. Works with Claude Code, Codex, Cursor, Copilot, Gemini, Antigravity, Qwen, Pi, OpenClaw and more.">
+  <img src="../assets/hero.gif" alt="Clawd on Desk — a pixel desktop pet that reacts to your AI coding agent in real time. Animated demo: the crab cycles through sleeping, thinking while the model reads the codebase, typing as edit/bash tools run, grooving for one subagent, juggling when multiple subagents run, raising a permission bubble, and celebrating when 14 files / 312 tests are complete. Works with Claude Code, Codex, Cursor, Copilot, Gemini, Antigravity, Qwen, Pi, OpenClaw and more.">
 </p>
 
 Clawd lives on your desktop and reacts to what your AI coding agent is doing — in real time. Start a long task, walk away, come back when the crab tells you it's done.
@@ -112,28 +112,28 @@ Clawd Mobile 是一款原生 Android 客户端，通过局域网 SSE 连接桌�
 
 <table>
   <tr>
-    <td align="center"><img src="assets/gif/clawd-idle.gif" width="100"><br><sub>Idle</sub></td>
-    <td align="center"><img src="assets/gif/clawd-thinking.gif" width="100"><br><sub>Thought Bubble</sub></td>
-    <td align="center"><img src="assets/gif/clawd-typing.gif" width="100"><br><sub>Typing</sub></td>
-    <td align="center"><img src="assets/gif/clawd-building.gif" width="100"><br><sub>Building</sub></td>
-    <td align="center"><img src="assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>1 Subagent</sub></td>
-    <td align="center"><img src="assets/gif/clawd-juggling.gif" width="100"><br><sub>2+ Subagents</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-idle.gif" width="100"><br><sub>Idle</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-thinking.gif" width="100"><br><sub>Thought Bubble</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-typing.gif" width="100"><br><sub>Typing</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-building.gif" width="100"><br><sub>Building</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>1 Subagent</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-juggling.gif" width="100"><br><sub>2+ Subagents</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>Calico Idle</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>Calico Thinking</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>Calico Typing</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>Calico Building</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>Calico Juggling</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>Calico Conducting</sub></td>
+    <td align="center"><img src="../assets/gif/calico-idle.gif" width="80"><br><sub>Calico Idle</sub></td>
+    <td align="center"><img src="../assets/gif/calico-thinking.gif" width="80"><br><sub>Calico Thinking</sub></td>
+    <td align="center"><img src="../assets/gif/calico-typing.gif" width="80"><br><sub>Calico Typing</sub></td>
+    <td align="center"><img src="../assets/gif/calico-building.gif" width="80"><br><sub>Calico Building</sub></td>
+    <td align="center"><img src="../assets/gif/calico-juggling.gif" width="80"><br><sub>Calico Juggling</sub></td>
+    <td align="center"><img src="../assets/gif/calico-conducting.gif" width="80"><br><sub>Calico Conducting</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/cloudling-idle.gif" width="120"><br><sub>Cloudling Idle</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-thinking.gif" width="120"><br><sub>Cloudling Thinking</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-typing.gif" width="120"><br><sub>Cloudling Typing</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-building.gif" width="120"><br><sub>Cloudling Building</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-juggling.gif" width="120"><br><sub>Cloudling Juggling</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-conducting.gif" width="120"><br><sub>Cloudling Conducting</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-idle.gif" width="120"><br><sub>Cloudling Idle</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-thinking.gif" width="120"><br><sub>Cloudling Thinking</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-typing.gif" width="120"><br><sub>Cloudling Typing</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-building.gif" width="120"><br><sub>Cloudling Building</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-juggling.gif" width="120"><br><sub>Cloudling Juggling</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-conducting.gif" width="120"><br><sub>Cloudling Conducting</sub></td>
   </tr>
 </table>
 
@@ -143,7 +143,7 @@ Full event-to-state mapping, mini mode, and click reactions: **[docs/guides/stat
 
 Clawd adapts to multi-monitor setups: proportional sizing uses the display Clawd launches on, portrait monitors get a bounded boost so the pet stays readable on tall narrow screens, and you can drag Clawd across displays.
 
-<p align="center"><sub>Want to see the real multi-monitor behavior? <a href="assets/videos/clawd-multi-monitor-demo.mp4">Watch the demo video in this repository</a>.</sub></p>
+<p align="center"><sub>Want to see the real multi-monitor behavior? <a href="../assets/videos/clawd-multi-monitor-demo.mp4">Watch the demo video in this repository</a>.</sub></p>
 
 ## Quick Start
 
@@ -230,6 +230,7 @@ This is a fork of [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-des
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · creator</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />maintainer</sub></a></td>
+    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />core contributor · Mobile / PWA</sub></a></td>
   </tr>
 </table>
 

@@ -3506,3 +3506,198 @@ html, body {
 .size-control.pending .volume-slider {
   cursor: ew-resize;
 }
+
+/* ── WireGuard relay tab ── */
+.wg-relay-list,
+.wg-relay-detail,
+.wg-relay-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wg-relay-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wg-relay-runtime-warn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 176, 32, 0.12);
+  color: #a5720a;
+  font-size: 13px;
+}
+.wg-relay-empty {
+  padding: 16px;
+  text-align: center;
+  opacity: 0.6;
+  font-size: 13px;
+}
+.wg-relay-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(128, 128, 128, 0.18);
+  cursor: pointer;
+}
+.wg-relay-card.selected {
+  border-color: var(--accent, #4c8bf5);
+  background: rgba(76, 139, 245, 0.06);
+}
+.wg-relay-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wg-relay-card-label {
+  font-weight: 600;
+}
+.wg-relay-card-host {
+  font-size: 12px;
+  opacity: 0.65;
+}
+.wg-relay-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wg-relay-status-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.wg-relay-status-idle {
+  background: rgba(128, 128, 128, 0.15);
+  color: #777;
+}
+.wg-relay-status-connecting,
+.wg-relay-status-deploying {
+  background: rgba(255, 176, 32, 0.18);
+  color: #a5720a;
+}
+.wg-relay-status-connected {
+  background: rgba(46, 179, 105, 0.18);
+  color: #1f8a4c;
+}
+.wg-relay-status-failed {
+  background: rgba(224, 64, 64, 0.16);
+  color: #c0392b;
+}
+.wg-relay-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wg-relay-status-message {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.wg-relay-password-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wg-relay-password-warn {
+  font-size: 12px;
+  color: #a5720a;
+}
+.wg-relay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.wg-relay-btn-danger {
+  color: #c0392b;
+}
+.wg-relay-progress-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.08);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.wg-relay-progress-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.wg-relay-progress-error {
+  color: #c0392b;
+}
+.wg-relay-progress-ok {
+  color: #1f8a4c;
+}
+.wg-relay-readback {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(128, 128, 128, 0.18);
+}
+.wg-relay-readback-title {
+  font-weight: 600;
+}
+.wg-relay-readback-row {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+}
+.wg-relay-readback-key {
+  min-width: 130px;
+  opacity: 0.65;
+}
+.wg-relay-readback-val {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+.wg-relay-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.wg-relay-qr-title {
+  font-weight: 600;
+}
+.wg-relay-qr-img {
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  background: #fff;
+}
+.wg-relay-qr-hint {
+  font-size: 12px;
+  opacity: 0.65;
+}
+.wg-relay-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wg-relay-field-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.wg-relay-field-hint {
+  font-size: 12px;
+  opacity: 0.6;
+}
+.wg-relay-auth-toggle select {
+  width: 100%;
+}
+.wg-relay-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

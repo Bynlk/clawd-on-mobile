@@ -27,6 +27,8 @@ const shortcutFailureListeners = new Set();
 const shortcutRecordKeyListeners = new Set();
 const remoteSshStatusListeners = new Set();
 const remoteSshProgressListeners = new Set();
+const wgRelayStatusListeners = new Set();
+const wgRelayProgressListeners = new Set();
 const hardwareBuddyStatusListeners = new Set();
 const textScaleContextListeners = new Set();
 ipcRenderer.on("settings-changed", (_event, payload) => {
@@ -52,6 +54,16 @@ ipcRenderer.on("remoteSsh:status-changed", (_event, payload) => {
 ipcRenderer.on("remoteSsh:progress", (_event, payload) => {
   for (const cb of remoteSshProgressListeners) {
     try { cb(payload); } catch (err) { console.warn("remoteSsh progress listener threw:", err); }
+  }
+});
+ipcRenderer.on("wgRelay:status-changed", (_event, payload) => {
+  for (const cb of wgRelayStatusListeners) {
+    try { cb(payload); } catch (err) { console.warn("wgRelay status listener threw:", err); }
+  }
+});
+ipcRenderer.on("wgRelay:progress", (_event, payload) => {
+  for (const cb of wgRelayProgressListeners) {
+    try { cb(payload); } catch (err) { console.warn("wgRelay progress listener threw:", err); }
   }
 });
 ipcRenderer.on("hardwareBuddy:status-changed", (_event, payload) => {
@@ -190,5 +202,43 @@ contextBridge.exposeInMainWorld("remoteSsh", {
     if (typeof cb !== "function") return () => {};
     remoteSshProgressListeners.add(cb);
     return () => remoteSshProgressListeners.delete(cb);
+  },
+});
+
+// ── WireGuard relay (Phase 3) ──
+//
+// Surface: window.wgRelay
+//
+//   listStatuses()                 Promise<{ status, statuses: Array<state> }>
+//   status(profileId)              Promise<{ status, state }>
+//   deploy({ profileId, regenPhoneOnly?, password? })
+//                                  Promise<{ status:"ok", readback } | { status:"error", ... }>
+//   tunnelUp(profileId)            Promise<{ status, ifName?, address? }>
+//   tunnelDown(profileId)          Promise<{ status }>
+//   tunnelStatus(profileId)        Promise<{ status, tunnel }>
+//   onStatusChanged(cb)            cb({ profileId, status, ... })
+//   onProgress(cb)                 cb({ profileId, step, status, message? })
+//
+// Profile CRUD goes through settingsAPI.command (wgRelay.add / .update /
+// .remove / .applyReadback) so all writes flow through settings-controller as
+// the single source of truth. SEC-1: the SSH password is passed ONLY inside
+// the deploy() payload (from the renderer's in-memory store) — it is never
+// stored here or persisted.
+contextBridge.exposeInMainWorld("wgRelay", {
+  listStatuses: () => ipcRenderer.invoke("wgRelay:list-statuses"),
+  status: (profileId) => ipcRenderer.invoke("wgRelay:status", profileId),
+  deploy: (req) => ipcRenderer.invoke("wgRelay:deploy", req),
+  tunnelUp: (profileId) => ipcRenderer.invoke("wgRelay:tunnel-up", profileId),
+  tunnelDown: (profileId) => ipcRenderer.invoke("wgRelay:tunnel-down", profileId),
+  tunnelStatus: (profileId) => ipcRenderer.invoke("wgRelay:tunnel-status", profileId),
+  onStatusChanged: (cb) => {
+    if (typeof cb !== "function") return () => {};
+    wgRelayStatusListeners.add(cb);
+    return () => wgRelayStatusListeners.delete(cb);
+  },
+  onProgress: (cb) => {
+    if (typeof cb !== "function") return () => {};
+    wgRelayProgressListeners.add(cb);
+    return () => wgRelayProgressListeners.delete(cb);
   },
 });

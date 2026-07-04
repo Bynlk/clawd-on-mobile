@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd Mobile">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd Mobile">
 </p>
 
 <h1 align="center">Clawd Mobile</h1>
@@ -10,13 +10,13 @@
 <p align="center">
   <a href="README.md">English</a>
   ·
-  <a href="README-desk.md">Desktop (English)</a>
+  <a href="README.zh-TW.md">繁體中文</a>
   ·
-  <a href="README-desk.zh-CN.md">桌面端中文</a>
+  <a href="README.ja-JP.md">日本語</a>
   ·
-  <a href="README-desk.ja-JP.md">日本語</a>
+  <a href="README.ko-KR.md">한국어</a>
   ·
-  <a href="README-desk.ko-KR.md">한국어</a>
+  <a href="README-desk.md">Desktop Version</a>
 </p>
 
 <p align="center">
@@ -47,6 +47,7 @@
 - [通信协议](#-通信协议)
 - [开发指南](#-开发指南)
 - [参与贡献](#-参与贡献)
+- [未来功能](#-未来功能)
 - [路线图](#-路线图)
 - [常见问题](#-常见问题)
 - [贡献者](#-贡献者)
@@ -292,6 +293,26 @@ Clawd on Mobile 是基于 [Clawd on Desk](https://github.com/rullerzhou-afk/claw
 
 ---
 
+## 🔮 未来功能
+
+Clawd Mobile 目前已支持通过局域网或自建中继实时观察 Agent 并审批权限。接下来有两个更大的能力正在路上——目标一致:**即使人不在电脑前,也能掌控你的 Agent。**
+
+### 1. 🌐 服务器中继(出门在外也能审批)
+
+现在的中继需要你自己在 VPS 上部署。下一步是提供**开箱即用、始终在线的中继**,让手机无论身处何种网络(不同 Wi-Fi、蜂窝数据、在路上)都能与桌面 Agent 保持连接。当你外出时 Agent 触发权限请求,审批气泡会推送到手机,你可以**随时随地 Allow / Deny**,无需处于同一局域网,也无需手动搭建服务器。
+
+- 通过蜂窝网络在任意位置批准 / 拒绝权限请求
+- 零配置连接 —— 无需自建 VPS
+- 端到端加密,基于现有的 TOFU 证书固定机制
+
+### 2. 📬 内容推送(1:1 同步终端显示)
+
+除了动画状态,我们还希望手机能**1:1 镜像终端实际显示的内容**,这样你可以直接阅读 Agent 在做什么,而不只是从桌宠的情绪去推测。具体范围、传输格式和隐私模型**仍在讨论中**,设计确定后会补充本节。
+
+> 💡 对这两个功能有想法?欢迎提 [issue](https://github.com/Bynlk/clawd-on-mobile/issues) 或 [discussion](https://github.com/Bynlk/clawd-on-mobile/discussions) —— 在它们成形阶段,你的反馈非常宝贵。
+
+---
+
 ## 🗺️ 路线图
 
 | 优先级 | 项目 | 状态 |
@@ -305,6 +326,8 @@ Clawd on Mobile 是基于 [Clawd on Desk](https://github.com/rullerzhou-afk/claw
 | 🔄 | Hilt 依赖注入 | 计划中 |
 | 🔄 | Repository 模式 | 计划中 |
 | 🔄 | AbstractStreamingClient 测试 | 计划中 |
+| 🔮 | 服务器中继(随时随地审批) | 探索中 |
+| 🔮 | 内容推送(1:1 终端镜像) | 讨论中 |
 
 完整路线图见 [android/docs/ROADMAP.md](android/docs/ROADMAP.md)。
 

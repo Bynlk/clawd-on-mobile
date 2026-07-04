@@ -1,22 +1,22 @@
 <p align="center">
-  <img src="./assets/tray-icon.png" width="128" alt="Clawd Mobile">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd Mobile">
 </p>
 
 <h1 align="center">Clawd Mobile</h1>
 <p align="center">
-  <strong>Android companion for <a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a> — a cyberpunk desktop pet that reacts to your AI coding agent in real time.</strong>
+  <strong><a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a> の Android コンパニオンアプリ — AI コーディングエージェントにリアルタイムで反応するサイバーパンクなデスクトップペット。</strong>
 </p>
 
 <p align="center">
-  <a href="i18n/README.zh-CN.md">简体中文</a>
+  <a href="README.md">English</a>
   ·
-  <a href="i18n/README.zh-TW.md">繁體中文</a>
+  <a href="README.zh-CN.md">简体中文</a>
   ·
-  <a href="i18n/README.ja-JP.md">日本語</a>
+  <a href="README.zh-TW.md">繁體中文</a>
   ·
-  <a href="i18n/README.ko-KR.md">한국어</a>
+  <a href="README.ko-KR.md">한국어</a>
   ·
-  <a href="i18n/README-desk.md">Desktop Version</a>
+  <a href="README-desk.md">Desktop Version</a>
 </p>
 
 <p align="center">
@@ -28,157 +28,157 @@
 </p>
 
 <p align="center">
-  <img src="./assets/hero-mobile.gif" alt="Clawd Mobile home screen with a pixel-art pet that reacts to your AI coding agent in real time. Four session states shown left to right: Thinking with a thought bubble, Working typing at a terminal, Approval raising a claw with an alert bubble, and Done celebrating with sparkles.">
+  <img src="../assets/hero-mobile.gif" alt="Clawd Mobile のホーム画面。ピクセルアートのペットが AI コーディングエージェントにリアルタイムで反応します。左から右へ 4 つのセッション状態を表示:考え中の Thinking、作業中の Working、承認待ちの Approval、完了を祝う Done。">
 </p>
 
 <p align="center">
-  <sub>Your pet reacts in real time — <b>Thinking</b> · <b>Working</b> · <b>Approval</b> · <b>Done</b></sub>
+  <sub>ペットがリアルタイムで反応 — <b>Thinking</b> · <b>Working</b> · <b>Approval</b> · <b>Done</b></sub>
 </p>
 
 ---
 
-> **🙏 致敬原作者**
+> **🙏 原作者への敬意**
 >
-> 本项目基于 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)（Clawd on Desk）桌面端开发。原项目由 [@rullerzhou-afk](https://github.com/rullerzhou-afk)（鹿鹿 / Ruller_Lulu）创建——一只住在你桌面上的小螃蟹，实时感知 AI 编码 Agent 的每一个呼吸。
+> 本プロジェクトは [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)（Clawd on Desk）デスクトップ版をベースに開発されています。オリジナルは [@rullerzhou-afk](https://github.com/rullerzhou-afk)（鹿鹿 / Ruller_Lulu）が作成した、あなたのデスクトップに住み AI コーディングエージェントの一挙一動を感じ取る小さなカニです。
 >
-> Android 端由社区开发者 [@Bynlk](https://github.com/Bynlk) 移植并维护，感谢所有为项目做出贡献的[开发者们](#-contributors)。
+> Android 版はコミュニティ開発者 [@Bynlk](https://github.com/Bynlk) が移植・保守しています。プロジェクトに貢献してくださったすべての[開発者](#-貢献者)に感謝します。
 
 ---
 
-## 📖 Table of Contents
+## 📖 目次
 
-- [What is Clawd Mobile?](#-what-is-clawd-mobile)
-- [Features](#-features)
-- [Screenshots](#-screenshots)
-- [Quick Start](#-quick-start)
-- [Architecture](#-architecture)
-- [Communication Protocol](#-communication-protocol)
-- [Development](#-development)
-- [Contributing](#-contributing)
-- [What's Next · 未来功能](#-whats-next--未来功能)
-- [Roadmap](#-roadmap)
+- [Clawd Mobile とは？](#-clawd-mobile-とは)
+- [機能](#-機能)
+- [スクリーンショット](#-スクリーンショット)
+- [クイックスタート](#-クイックスタート)
+- [アーキテクチャ](#-アーキテクチャ)
+- [通信プロトコル](#-通信プロトコル)
+- [開発](#-開発)
+- [コントリビュート](#-コントリビュート)
+- [今後の機能](#-今後の機能)
+- [ロードマップ](#-ロードマップ)
 - [FAQ](#-faq)
-- [Contributors](#-contributors)
-- [License](#-license)
-- [Acknowledgements](#-acknowledgements)
+- [貢献者](#-貢献者)
+- [ライセンス](#-ライセンス)
+- [謝辞](#-謝辞)
 
 ---
 
-## 🐾 What is Clawd Mobile?
+## 🐾 Clawd Mobile とは？
 
-**Clawd Mobile** is a native Android client that connects to [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) desktop pet. It monitors your AI coding agent's activity in real time — via **LAN or remote relay** — and displays a live animated pet on your phone screen that reacts to what your agent is doing.
+**Clawd Mobile** は、[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) デスクトップペットに接続するネイティブ Android クライアントです。**LAN またはリモートリレー** 経由で AI コーディングエージェントの活動をリアルタイムに監視し、エージェントの動きに反応するアニメーションペットをスマホ画面に表示します。
 
-| Feature | How it works | Experience |
-|---------|-------------|------------|
-| **Millisecond state sync** | WebSocket + `StateFlow` pipeline, < 200ms latency | Your crab starts typing the moment your agent does |
-| **Pure character isolation** | Server-side `displayState` + `PetStateManager` engine | 3 characters (Crab/Cat/Cloud) with independent state mapping |
-| **Ultra-low power** | `WifiLock` + `WakeLock` + 30s watchdog + exponential backoff (1s→30s) | < 50mW background power, lasts all day |
-| **Overlay approval** | Swipe-to-approve permission requests directly on the floating bubble | No need to open the app |
-| **Remote relay** | Connect via VPS relay for non-LAN environments | Monitor your agent from anywhere |
-
----
-
-## ✨ Features
-
-### Core Experience
-- 🐾 **Animated floating pet** — SVG/APNG with CSS animations (breathe, blink, tail-sway)
-- 📱 **16 states** — Working, Thinking, Idle, Sleeping, Error, Notification, and more
-- 🎯 **Smart sleep sequence** — Yawning → Dozing → Collapsing → Sleeping with random idle variants
-- 🏆 **Happy celebration** — 1.5s animation when a task completes
-
-### v0.10.0 — Latest Release
-- 🐾 **Overlay approval bubble** — Approve/deny permission requests by swiping on the floating bubble
-- 🌐 **Remote relay** — Connect via VPS relay server for non-LAN environments
-- 🌍 **In-app language switch** — Chinese/English, switch without restarting
-- 🔒 **Security hardening** — Encrypted storage, TOFU cert pinning, log stripping
-- 🧪 **548 tests** — All passing, 103 new tests added
+| 特徴 | 仕組み | 体験 |
+|------|--------|------|
+| **ミリ秒級の状態同期** | WebSocket + `StateFlow` パイプライン、遅延 < 200ms | エージェントと同時にカニが入力を始める |
+| **純粋なキャラクター分離** | サーバー側 `displayState` + `PetStateManager` エンジン | 3 キャラクター（カニ/三毛猫/雲）が独立した状態マッピング |
+| **超低消費電力** | `WifiLock` + `WakeLock` + 30 秒ウォッチドッグ + 指数バックオフ（1s→30s） | バックグラウンド消費電力 < 50mW、一日中稼働 |
+| **オーバーレイ承認** | フローティングバブル上でスワイプして権限リクエストを承認 | アプリを開く必要なし |
+| **リモートリレー** | VPS リレー経由で非 LAN 環境でも接続 | どこからでもエージェントを監視 |
 
 ---
 
-## 📸 Screenshots
+## ✨ 機能
 
-> _Screenshots coming soon. The app shows a live animated pet on your phone screen that reacts to your AI agent's activity in real time — thinking, working, waiting for approval, and celebrating when a task completes._
+### コア体験
+- 🐾 **アニメーションするフローティングペット** — SVG/APNG + CSS アニメーション（呼吸、まばたき、尻尾振り）
+- 📱 **16 種類の状態** — Working、Thinking、Idle、Sleeping、Error、Notification など
+- 🎯 **スマートな睡眠シーケンス** — Yawning → Dozing → Collapsing → Sleeping + ランダムな idle バリエーション
+- 🏆 **お祝いアニメーション** — タスク完了時に 1.5 秒のアニメーションを再生
 
-| Floating pet | Approval bubble | Settings |
+### v0.10.0 — 最新リリース
+- 🐾 **オーバーレイ承認バブル** — フローティングバブル上のスワイプで権限リクエストを承認/拒否
+- 🌐 **リモートリレー** — VPS リレーサーバー経由で非 LAN 環境をサポート
+- 🌍 **アプリ内言語切り替え** — 中国語/英語を再起動なしで切り替え
+- 🔒 **セキュリティ強化** — 暗号化ストレージ、TOFU 証明書ピンニング、ログ除去
+- 🧪 **548 個のテスト** — すべて通過、103 個の新規テストを追加
+
+---
+
+## 📸 スクリーンショット
+
+> _スクリーンショットは近日公開。アプリはスマホ画面にアニメーションするペットを表示し、AI エージェントの活動——考え中、作業中、承認待ち、タスク完了時のお祝い——にリアルタイムで反応します。_
+
+| フローティングペット | 承認バブル | 設定 |
 |:---:|:---:|:---:|
-| _Screenshot_ | _Screenshot_ | _Screenshot_ |
+| _スクリーンショット_ | _スクリーンショット_ | _スクリーンショット_ |
 
 ---
 
-## ⚡ Quick Start
+## ⚡ クイックスタート
 
-### Prerequisites
-- Android 8.0+ (API 26) device with arm64-v8a
-- [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) running on your PC
+### 前提条件
+- Android 8.0+ (API 26)、arm64-v8a 対応デバイス
+- PC で [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) が動作していること
 
-### Installation
+### インストール
 
-1. Download the latest `app-release.apk` from [Releases](https://github.com/Bynlk/clawd-on-mobile/releases)
-2. Install the APK on your Android device
-3. Open the app and scan the QR code displayed on your PC, or manually enter the connection details
-4. Grant the requested permissions (notifications, camera, overlay)
-5. Your pet is now live! 🎉
+1. [Releases](https://github.com/Bynlk/clawd-on-mobile/releases) から最新の `app-release.apk` をダウンロード
+2. Android デバイスに APK をインストール
+3. アプリを開き、PC に表示された QR コードをスキャンするか、接続情報を手動入力
+4. 要求された権限（通知、カメラ、オーバーレイ）を許可
+5. ペットが起動しました！🎉
 
-### Connection Methods
+### 接続方法
 
-| Method | When to use |
-|--------|------------|
-| **QR Code Scan** | PC and phone on the same LAN — fastest setup |
-| **Manual Input** | Enter PC's IP, port, and token manually |
-| **Remote Relay** | Connect via VPS relay for non-LAN environments |
+| 方法 | 使う場面 |
+|------|---------|
+| **QR コードスキャン** | PC とスマホが同じ LAN — 最速 |
+| **手動入力** | PC の IP、ポート、トークンを手動入力 |
+| **リモートリレー** | VPS リレー経由で非 LAN 環境に接続 |
 
 ---
 
-## 🏛️ Architecture
+## 🏛️ アーキテクチャ
 
-Clawd Mobile follows a **single-pipe architecture** where all state changes flow through one unified `StateFlow`:
+Clawd Mobile は、すべての状態変更が 1 本の統一された `StateFlow` を流れる**シングルパイプアーキテクチャ**を採用しています:
 
 ```
 PC (WebSocket) → StreamingClient → PetStateManager → FloatingPetService
                                           ↓
-                                    StateCommand (single pipe)
+                                    StateCommand (シングルパイプ)
                                           ↓
                               SvgLoader → FloatingPetView (WebView SVG)
 ```
 
-**Key design decisions:**
-- **Single-pipe** eliminates concurrent SVG loading race conditions
-- **Template method pattern** (`StreamingClient` → `AbstractStreamingClient` → `WsClient`) for easy transport extension
-- **Strategy pattern** (`ConnectionStrategy`) for LAN/Relay connection decoupling
-- **SessionMerger** unifies LAN + Relay sessions into one view
+**主要な設計判断:**
+- **シングルパイプ** — 並行 SVG ロードの競合を排除
+- **テンプレートメソッドパターン**（`StreamingClient` → `AbstractStreamingClient` → `WsClient`）— トランスポート拡張が容易
+- **ストラテジーパターン**（`ConnectionStrategy`）— LAN/Relay 接続を疎結合化
+- **SessionMerger** — LAN + Relay セッションを 1 つのビューに統一
 
-For detailed architecture documentation, see [android/README.md](android/README.md).
+詳細なアーキテクチャドキュメントは [android/README.md](android/README.md) を参照してください。
 
 ---
 
-## 📡 Communication Protocol
+## 📡 通信プロトコル
 
 ```
 WebSocket:  ws://<host>:23334/mobile/ws
-Approval:   POST http://<host>:23334/mobile/approve
+承認:       POST http://<host>:23334/mobile/approve
 Deep Link:  clawd://<host>:<port>/<token>
 ```
 
-| Message Type | Direction | Description |
-|-------------|-----------|-------------|
-| `ping` | Server → Client | Heartbeat |
-| `connected` | Server → Client | Connection confirmed |
-| `snapshot` | Server → Client | Full session list |
-| `state` | Server → Client | Single session update |
-| `permission_request` | Server → Client | Approval request |
-| `reaction` | Server → Client | SVG reaction animation |
+| メッセージタイプ | 方向 | 説明 |
+|-------------|------|------|
+| `ping` | サーバー → クライアント | ハートビート |
+| `connected` | サーバー → クライアント | 接続確認 |
+| `snapshot` | サーバー → クライアント | 全セッションリスト |
+| `state` | サーバー → クライアント | 単一セッション更新 |
+| `permission_request` | サーバー → クライアント | 承認リクエスト |
+| `reaction` | サーバー → クライアント | SVG リアクションアニメーション |
 
 ---
 
-## 🔧 Development
+## 🔧 開発
 
-### Environment
+### 環境
 - Android Studio Hedgehog (2023.1.1)+
 - JDK 17
 - Android SDK 35
-- arm64-v8a device or emulator
+- arm64-v8a デバイスまたはエミュレーター
 
-### Build
+### ビルド
 
 ```bash
 cd android
@@ -186,31 +186,31 @@ cd android
 # Debug APK
 ./gradlew assembleDebug
 
-# Release APK (requires signing config)
+# Release APK（署名設定が必要）
 KEYSTORE_FILE=release.keystore \
 STORE_PASSWORD=xxx \
 KEY_ALIAS=clawd \
 KEY_PASSWORD=xxx \
 ./gradlew assembleRelease
 
-# Run tests (548 tests)
+# テスト実行（548 個のテスト）
 ./gradlew testDebugUnitTest
 ```
 
 ### CI/CD
 
-Push to `main` with changes in `android/` triggers GitHub Actions: lint → build → test → artifact upload.
+`android/` 配下の変更を含む `main` への push で GitHub Actions が起動:lint → build → test → artifact アップロード。
 
 ---
 
-## 🤝 Contributing
-Clawd on Mobile is a derivative project based on [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk), adding an Android companion app, overlay approval, remote relay, and more on top of the desktop version.
+## 🤝 コントリビュート
+Clawd on Mobile は [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) をベースにした二次創作プロジェクトで、デスクトップ版に Android コンパニオンアプリ、オーバーレイ承認、リモートリレーなどの機能を追加しています。
 
-To contribute, please refer to [CONTRIBUTING.md](./CONTRIBUTING.md).
+本プロジェクトへの貢献は [CONTRIBUTING.md](./CONTRIBUTING.md) を参照してください。
 
-Bug reports, feature ideas, and pull requests are all welcome — open an [issue](https://github.com/Bynlk/clawd-on-mobile/issues) to discuss or submit a PR directly.
+バグ報告、機能提案、プルリクエストを歓迎します — [issue](https://github.com/Bynlk/clawd-on-mobile/issues) を立てて議論するか、直接 PR を送ってください。
 
-### Maintainers
+### メンテナー
 
 <table>
   <tr>
@@ -220,9 +220,9 @@ Bug reports, feature ideas, and pull requests are all welcome — open an [issue
   </tr>
 </table>
 
-### Contributors
+### 貢献者
 
-Thanks to everyone who has helped make Clawd better:
+Clawd をより良くしてくれたすべての方に感謝します:
 
 <table>
   <tr>
@@ -320,147 +320,133 @@ Thanks to everyone who has helped make Clawd better:
   </tr>
 </table>
 
-We welcome contributions! Here's how to get started:
+コントリビュートの始め方:
 
-1. **Fork** the repository
-2. **Create** a feature branch: `git checkout -b feat/my-feature`
-3. **Commit** with clear messages: `git commit -m "feat: add my feature"`
-4. **Push** to your fork: `git push origin feat/my-feature`
-5. **Open** a Pull Request
+1. リポジトリを **Fork**
+2. 機能ブランチを **作成**:`git checkout -b feat/my-feature`
+3. 明確なメッセージで **コミット**:`git commit -m "feat: add my feature"`
+4. あなたの fork へ **Push**:`git push origin feat/my-feature`
+5. Pull Request を **オープン**
 
-### Guidelines
-- Follow Kotlin coding conventions
-- Add tests for new features
-- Update documentation if needed
-- Reference related issues in your PR description
+### ガイドライン
+- Kotlin のコーディング規約に従う
+- 新機能にはテストを追加
+- 必要に応じてドキュメントを更新
+- PR の説明で関連 Issue を参照
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
----
-
-## 🔮 What's Next · 未来功能
-
-Clawd Mobile already lets you watch your agent and approve permissions over the LAN or a self-hosted relay. Two bigger capabilities are on the way — both aim at the same goal: **stay in control of your agent even when you're away from your desk.**
-
-### 1. 🌐 Hosted server relay · 服务器中继（出门在外也能审批）
-
-Today's relay is something you deploy yourself on a VPS. The next step is a **turn-key, always-on relay** so your phone stays connected to your desktop agent no matter where you are — different network, cellular data, or on the road. When your agent hits a permission request while you're out, the approval bubble reaches your phone and you can **Allow / Deny on the go**, without being on the same Wi-Fi and without any manual server setup.
-
-- Approve / deny permission requests from anywhere, over cellular
-- Zero-config connection — no self-hosted VPS required
-- End-to-end secured, building on the existing TOFU cert-pinning foundation
-
-### 2. 📬 Content push · 内容推送（1:1 同步终端显示）
-
-Beyond animated state, we want the phone to **mirror what the terminal actually shows — 1:1** — so you can read what your agent is doing, not just infer it from the pet's mood. The exact scope, delivery format, and privacy model are **still under discussion**, and this section will be filled in once the design settles.
-
-> 💡 Have thoughts on either feature? Open an [issue](https://github.com/Bynlk/clawd-on-mobile/issues) or a [discussion](https://github.com/Bynlk/clawd-on-mobile/discussions) — feedback is very welcome while these are still being shaped.
+詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
 
 ---
 
-## 🗺️ Roadmap
+## 🔮 今後の機能
 
-| Priority | Item | Status |
-|----------|------|--------|
-| ✅ | WebSocket migration (from SSE) | Done |
-| ✅ | TOFU certificate pinning | Done |
-| ✅ | Overlay approval bubble | Done |
-| ✅ | Remote relay support (self-hosted) | Done |
-| ✅ | In-app language switch | Done |
-| ✅ | Security hardening | Done |
-| 🔄 | Hilt dependency injection | Planned |
-| 🔄 | Repository pattern | Planned |
-| 🔄 | AbstractStreamingClient tests | Planned |
-| 🔮 | Hosted server relay (approve anywhere) | Exploring |
-| 🔮 | Content push (1:1 terminal mirror) | Under discussion |
+Clawd Mobile はすでに、LAN または自前のリレー経由でエージェントを観察し権限を承認できます。次の 2 つの大きな機能が進行中で、目指すゴールは同じ:**デスクを離れていてもエージェントをコントロールし続ける。**
 
-See [android/docs/ROADMAP.md](android/docs/ROADMAP.md) for the full roadmap.
+### 1. 🌐 ホスト型サーバーリレー（外出先でも承認）
+
+現在のリレーは VPS に自分でデプロイする必要があります。次のステップは**設定不要で常時稼働のリレー**を提供し、異なる Wi-Fi、モバイル回線、移動中でも、スマホがデスクトップエージェントとの接続を維持できるようにすることです。外出中にエージェントが権限リクエストに達すると、承認バブルがスマホに届き、同じ Wi-Fi にいなくても、サーバーを手動構築しなくても、**外出先で Allow / Deny** できます。
+
+- モバイル回線経由でどこからでも権限リクエストを承認/拒否
+- ゼロ設定接続 —— 自前 VPS 不要
+- 既存の TOFU 証明書ピンニング基盤の上にエンドツーエンドで保護
+
+### 2. 📬 コンテンツプッシュ（ターミナル表示を 1:1 同期）
+
+アニメーション状態だけでなく、スマホが**ターミナルの実際の表示を 1:1 でミラーリング**することも目指しています。これによりペットの気分から推測するのではなく、エージェントが何をしているかを直接読めます。正確な範囲、配信形式、プライバシーモデルは**まだ議論中**で、設計が固まり次第このセクションを埋めます。
+
+> 💡 どちらの機能にもご意見があれば、[issue](https://github.com/Bynlk/clawd-on-mobile/issues) や [discussion](https://github.com/Bynlk/clawd-on-mobile/discussions) を立ててください —— 形になる過程でのフィードバックは非常に貴重です。
+
+---
+
+## 🗺️ ロードマップ
+
+| 優先度 | 項目 | 状態 |
+|--------|------|------|
+| ✅ | WebSocket 移行（SSE から） | 完了 |
+| ✅ | TOFU 証明書ピンニング | 完了 |
+| ✅ | オーバーレイ承認バブル | 完了 |
+| ✅ | リモートリレー対応 | 完了 |
+| ✅ | アプリ内言語切り替え | 完了 |
+| ✅ | セキュリティ強化 | 完了 |
+| 🔄 | Hilt 依存性注入 | 計画中 |
+| 🔄 | Repository パターン | 計画中 |
+| 🔄 | AbstractStreamingClient テスト | 計画中 |
+| 🔮 | ホスト型サーバーリレー（どこでも承認） | 検討中 |
+| 🔮 | コンテンツプッシュ（1:1 ターミナルミラー） | 議論中 |
+
+完全なロードマップは [android/docs/ROADMAP.md](android/docs/ROADMAP.md) を参照してください。
 
 ---
 
 ## ❓ FAQ
 
-**Q: Do I need the desktop app?**
-A: Yes. Clawd Mobile is a companion app — it connects to [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) running on your PC.
+**Q: デスクトップアプリは必要ですか？**
+A: はい。Clawd Mobile はコンパニオンアプリで、PC で動作する [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) に接続します。
 
-**Q: Can I use it outside my home network?**
-A: Yes! v0.10.0 added remote relay support. Deploy a relay server on your VPS and connect from anywhere.
+**Q: 自宅ネットワークの外でも使えますか？**
+A: はい！v0.10.0 でリモートリレー対応を追加しました。VPS にリレーサーバーをデプロイすればどこからでも接続できます。
 
-**Q: Which AI agents are supported?**
-A: Any agent that works with Clawd on Desk — Claude Code, Codex, Cursor, Copilot, Gemini, and more.
+**Q: どの AI エージェントに対応していますか？**
+A: Clawd on Desk が対応するすべてのエージェント — Claude Code、Codex、Cursor、Copilot、Gemini など。
 
-**Q: The pet doesn't move / stays on idle**
-A: Make sure your desktop app is connected and has an active session. Check the connection status in the app's settings.
+**Q: ペットが動かない / idle のまま**
+A: デスクトップアプリが接続され、アクティブなセッションがあることを確認してください。アプリの設定で接続状態を確認します。
 
-**Q: How do I update?**
-A: Download the latest APK from [Releases](https://github.com/Bynlk/clawd-on-mobile/releases) and install over the existing app. Your data will be preserved.
+**Q: 更新方法は？**
+A: [Releases](https://github.com/Bynlk/clawd-on-mobile/releases) から最新の APK をダウンロードし、既存アプリに上書きインストールします。データは保持されます。
 
 ---
 
-## 👥 Contributors
+## 👥 貢献者
 
-### Android Port
-- [@Bynlk](https://github.com/Bynlk) — Android port developer & maintainer
+### Android 移植
+- [@Bynlk](https://github.com/Bynlk) — Android 移植の開発者 & メンテナー
 
-### Desktop Contributors
-The following developers have contributed to the Clawd ecosystem (desktop + mobile):
+### デスクトップ貢献者
+以下の開発者が Clawd エコシステム（デスクトップ + モバイル）に貢献しました:
 
-| Contributor | Contribution |
-|-------------|-------------|
-| [@rullerzhou-afk](https://github.com/rullerzhou-afk) (鹿鹿) | Original creator of Clawd on Desk |
-| [@Ruller_Lulu](https://github.com/Ruller_Lulu) | Core development |
-| [@Yoimiya](https://github.com/Yoimiya) | Major contributions |
-| [@Lyu Bingrong](https://github.com/LyuBingrong) | Features & fixes |
-| [@hwasowl](https://github.com/hwasowl) | Features & fixes |
-| [@nmsn](https://github.com/nmsn) | Features & fixes |
-| [@zxypro](https://github.com/zxypro) | Telegram approval status |
-| [@sLingli](https://github.com/sLingli) | Reasonix CLI integration |
-| [@cod3hulk](https://github.com/cod3hulk) | tmux focus support |
-| [@lxgxhsy](https://github.com/lxgxhsy) | Windows focus cache |
-| [@rebootcrab-blip](https://github.com/rebootcrab-blip) | Agent asar packaging fix |
-| [@ustin-star](https://github.com/ustin-star) | CodeWhale adapter |
-| [@zhangzhengtian02](https://github.com/zhangzhengtian02) | Features & fixes |
-| [@Wei Lai](https://github.com/weilai) | Features & fixes |
-| [@Yi-Jyun Pan](https://github.com/yijyunpan) | Features & fixes |
-| [@Zone Tome](https://github.com/zonetome) | Features & fixes |
-| [@LI SHANXIN](https://github.com/lishanxin) | Features & fixes |
-| [@PixelCookie](https://github.com/pixelcookie) | Features & fixes |
-| [@Steven Chen](https://github.com/stevenchen) | Features & fixes |
-| [@Tao Xie](https://github.com/taoxie) | Features & fixes |
-| [@Zhengru](https://github.com/zhengru) | Features & fixes |
-| [@tatsuyanakano](https://github.com/tatsuyanakano) | Features & fixes |
-| [@yeqiyeluo](https://github.com/yeqiyeluo) | Features & fixes |
-| [@正如](https://github.com/正如) | Features & fixes |
-| [@张星宇](https://github.com/张星宇) | Features & fixes |
-| [@Wei Lai](https://github.com/weilai) | Features & fixes |
+| 貢献者 | 貢献内容 |
+|--------|---------|
+| [@rullerzhou-afk](https://github.com/rullerzhou-afk) (鹿鹿) | Clawd on Desk の原作者 |
+| [@Ruller_Lulu](https://github.com/Ruller_Lulu) | コア開発 |
+| [@Yoimiya](https://github.com/Yoimiya) | 主要な貢献 |
+| [@Lyu Bingrong](https://github.com/LyuBingrong) | 機能と修正 |
+| [@hwasowl](https://github.com/hwasowl) | 機能と修正 |
+| [@nmsn](https://github.com/nmsn) | 機能と修正 |
+| [@zxypro](https://github.com/zxypro) | Telegram 承認ステータス |
+| [@sLingli](https://github.com/sLingli) | Reasonix CLI 統合 |
+| [@cod3hulk](https://github.com/cod3hulk) | tmux フォーカス対応 |
+| [@lxgxhsy](https://github.com/lxgxhsy) | Windows フォーカスキャッシュ |
+| [@rebootcrab-blip](https://github.com/rebootcrab-blip) | Agent asar パッケージング修正 |
+| [@ustin-star](https://github.com/ustin-star) | CodeWhale アダプター |
 
-> 🙏 **感谢所有为 Clawd 项目做出贡献的开发者！** 无论是代码、文档、Bug 报告还是功能建议，每一份贡献都让这个项目变得更好。
+> 🙏 **Clawd プロジェクトに貢献してくださったすべての開発者に感謝します！** コード、ドキュメント、バグ報告、機能提案のいずれであっても、一つひとつの貢献がこのプロジェクトをより良くしています。
 >
-> If you've contributed and your name is missing, please open an issue or PR to add yourself.
+> 貢献したのに名前が載っていない場合は、Issue または PR を開いて自分を追加してください。
 
 ---
 
-## 📄 License
+## 📄 ライセンス
 
-- **Code**: [AGPL-3.0](LICENSE)
-- **Art assets**: All Rights Reserved
+- **コード**: [AGPL-3.0](LICENSE)
+- **アート素材**: All Rights Reserved
 
-**Clawd** is a character owned by [Anthropic](https://www.anthropic.com). This is an unofficial fan project, not affiliated with or endorsed by Anthropic.
+**Clawd** は [Anthropic](https://www.anthropic.com) が所有するキャラクターです。これは非公式のファンプロジェクトであり、Anthropic とは関係がなく、承認も受けていません。
 
 ---
 
-## 🙏 Acknowledgements
+## 🙏 謝辞
 
-- **[rullerzhou-afk](https://github.com/rullerzhou-afk)** (鹿鹿 / Ruller_Lulu) — Creator of [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk), the desktop pet that started it all. Thank you for creating this amazing project and making it open source.
+- **[rullerzhou-afk](https://github.com/rullerzhou-afk)**（鹿鹿 / Ruller_Lulu）— すべての始まりであるデスクトップペット [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) の作者。この素晴らしいプロジェクトを作り、オープンソースにしてくれてありがとう。
 
-- **[Anthropic](https://www.anthropic.com)** — For creating Claude, the AI that inspired this project.
+- **[Anthropic](https://www.anthropic.com)** — このプロジェクトに着想を与えた Claude を生み出したことに。
 
-- **All [contributors](#-contributors)** — Thank you for your time, code, and passion.
+- **すべての[貢献者](#-貢献者)** — 時間、コード、情熱をありがとう。
 
-- **The open source community** — For the tools and libraries that made this possible: Kotlin, Jetpack Compose, OkHttp, kotlinx.serialization, CameraX, ZXing, and many more.
+- **オープンソースコミュニティ** — これを可能にしたツールとライブラリに:Kotlin、Jetpack Compose、OkHttp、kotlinx.serialization、CameraX、ZXing など。
 
 ---
 
 <p align="center">
-  <sub>⭐ If you like this project, give it a star on <a href="https://github.com/Bynlk/clawd-on-mobile">GitHub</a>!</sub>
+  <sub>⭐ このプロジェクトが気に入ったら、<a href="https://github.com/Bynlk/clawd-on-mobile">GitHub</a> でスターを！</sub>
 </p>

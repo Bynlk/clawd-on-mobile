@@ -1,34 +1,39 @@
 <p align="center">
-  <img src="assets/tray-icon.png" width="128" alt="Clawd">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd">
 </p>
-<h1 align="center">Clawd 桌寵</h1>
+<h1 align="center">Clawd 桌寵 (Desktop)</h1>
 <p align="center">
-  <a href="README.md">English</a>
-  ·
-  <a href="README.zh-CN.md">簡體中文</a>
-  ·
-  <a href="README.ko-KR.md">한국어</a>
-  ·
-  <a href="README.ja-JP.md">日本語</a>
+  <sub>🍴 基於 <a href="https://github.com/rullerzhou-afk/clawd-on-desk">Clawd on Desk</a> 的 Fork，原作者 <a href="https://github.com/rullerzhou-afk">@rullerzhou-afk</a> — 許可證 <a href="LICENSE">AGPL-3.0</a></sub>
 </p>
 <p align="center">
-  <a href="https://github.com/rullerzhou-afk/clawd-on-desk/releases"><img src="https://img.shields.io/github/v/release/rullerzhou-afk/clawd-on-desk" alt="Version"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
+  <a href="README.md">📱 Mobile</a>
+  ·
+  <a href="README-desk.md">English</a>
+  ·
+  <a href="README-desk.zh-CN.md">簡體中文</a>
+  ·
+  <a href="README-desk.ko-KR.md">한국어</a>
+  ·
+  <a href="README-desk.ja-JP.md">日本語</a>
 </p>
 <p align="center">
-  <a href="https://github.com/rullerzhou-afk/clawd-on-desk/stargazers"><img src="https://img.shields.io/github/stars/rullerzhou-afk/clawd-on-desk?style=flat&logo=github&color=yellow" alt="Stars"></a>
+  <a href="https://github.com/Bynlk/clawd-on-mobile/releases"><img src="https://img.shields.io/github/v/release/Bynlk/clawd-on-mobile" alt="Version"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-lightgrey" alt="Platform">
+</p>
+<p align="center">
+  <a href="https://github.com/Bynlk/clawd-on-mobile/stargazers"><img src="https://img.shields.io/github/stars/Bynlk/clawd-on-mobile?style=flat&logo=github&color=yellow" alt="Stars"></a>
   <a href="https://github.com/hesreallyhim/awesome-claude-code"><img src="https://awesome.re/mentioned-badge-flat.svg" alt="Mentioned in Awesome Claude Code"></a>
 </p>
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Clawd 桌寵動畫示範：像素螃蟹會跟著 AI 程式設計助理的狀態即時切換，睡覺、思考、工具執行時打字、單一子代理時戴耳機律動、多個子代理並行時三球雜耍、權限請求出現時提醒、任務完成後慶祝。支援 Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw 等。">
+  <img src="../assets/hero.gif" alt="Clawd 桌寵動畫示範：像素螃蟹會跟著 AI 程式設計助理的狀態即時切換，睡覺、思考、工具執行時打字、單一子代理時戴耳機律動、多個子代理並行時三球雜耍、權限請求出現時提醒、任務完成後慶祝。支援 Claude Code、Codex、Cursor、Copilot、Gemini、Antigravity、Qwen、Pi、OpenClaw 等。">
 </p>
 
 Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。發起一個長任務，起身做點別的，等螃蟹告訴你任務完成了再回來。
 
 你提問時牠思考，工具執行時牠打字，子代理在跑時牠會戴耳機律動或三球雜耍，審查權限時牠彈卡片，任務完成時牠慶祝，你離開時牠睡覺。內建三套主題：**Clawd**（像素螃蟹）、**Calico**（三花貓）和 **Cloudling**（雲寶），支援自訂主題，也支援匯入 Codex Pet 動畫套件。
 
-> 支援 Windows 11、macOS 和 Ubuntu/Linux。Windows 發布版本提供獨立的 x64 和 ARM64 安裝檔。從原始碼執行需要 Node.js。支援 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Antigravity CLI (agy)**、**Cursor Agent**、**CodeBuddy**、**Kiro CLI**、**Kimi Code CLI（Kimi-CLI）**、**Qwen Code**、**opencode**、**Pi**、**OpenClaw**、**Hermes Agent** 與 **Qoder**。
+> 支援 Windows 11、macOS 和 Ubuntu/Linux。Windows 發布版本提供獨立的 x64 和 ARM64 安裝檔。從原始碼執行需要 Node.js。支援 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Antigravity CLI (agy)**、**Cursor Agent**、**CodeBuddy**、**Kiro CLI**、**Kimi Code CLI（Kimi-CLI）**、**Qwen Code**、**opencode**、**Pi**、**OpenClaw** 與 **Hermes Agent**。
 
 ## 功能特色
 
@@ -48,7 +53,6 @@ Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。�
 - **Pi** — 以全域擴充功能整合，寫入 `~/.pi/agent/extensions/clawd-on-desk`（Clawd 啟動時自動註冊，或執行 `npm run install:pi-extension`）；僅同步互動式 Pi 工作階段生命週期和工具活動狀態，並保留 Pi 預設 YOLO 行為
 - **OpenClaw** — 靠 `~/.openclaw/openclaw.json` 裡的外掛路徑做狀態感知（OpenClaw 設定已存在時 Clawd 啟動會自動註冊，或執行 `npm run install:openclaw-plugin`）；Phase 1 針對本機 `openclaw tui --local` 工作階段，只驅動動畫，沒接權限對話框和終端機焦點
 - **Hermes Agent** — [外掛整合](https://hermes-agent.org/)，寫入 Hermes 受管理的外掛目錄（偵測到 Hermes 後 Clawd 啟動時自動註冊，或執行 `npm run install:hermes-plugin`）；支援狀態、工作階段、SessionEnd 和終端機焦點
-- **Qoder** — 在 `~/.qoder/settings.json` 設定 command hooks（`~/.qoder/` 目錄已存在時 Clawd 啟動會自動註冊，或執行 `npm run install:qoder-hooks`）；**僅同步狀態**：Phase 1 只驅動動畫，權限請求僅以通知方式觀察，Clawd 不顯示權限對話框也不代答，所有 Allow / Deny 都在 Qoder 自己的權限流程完成
 - **多 Agent 並存** — 多個 Agent 可以同時跑，Clawd 會獨立追蹤每個工作階段
 
 ### 動畫與互動
@@ -80,14 +84,6 @@ Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。�
 - **行程存活偵測** — 偵測已當掉或結束的受支援 Agent 行程，並在 10 秒內清理孤兒工作階段
 - **啟動回復** — 如果 Clawd 重新啟動時還有受支援的 Agent 在跑，牠會保持清醒等後續事件，而不是直接睡覺
 
-### 手機伴侶（PWA）
-
-- **手機即時鏡像** — 在 `設定…` → `Mobile / PWA` 開啟後，用手機開啟配對連結，「Clawd Mobile」網頁應用就會即時顯示各 Agent 工作階段與狀態
-- **唯讀設計** — 區網橋接只對外廣播狀態，手機端無法操作你的電腦（遠端審批已在規劃中）
-- **僅限區域網路 + 權杖防護** — 配對需要權杖，權杖會自動輪換並附寬限期，可一鍵重新產生或重設存取
-- **可安裝** — 標準 PWA，加入主畫面即可獲得近原生體驗
-> 手機伴侶這條線——從最初原型到權杖輪換——由核心貢獻者 [@Bynlk](https://github.com/Bynlk) 一手打造並持續主導，他還維護著內建原生 Android App 的姊妹專案 [clawd-on-mobile](https://github.com/Bynlk/clawd-on-mobile)。
-
 ### 系統
 
 - **滑鼠穿透** — 透明區域的滑鼠事件會直接穿到下層視窗，只有角色本體可互動
@@ -104,28 +100,28 @@ Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。�
 
 <table>
   <tr>
-    <td align="center"><img src="assets/gif/clawd-idle.gif" width="100"><br><sub>待機</sub></td>
-    <td align="center"><img src="assets/gif/clawd-thinking.gif" width="100"><br><sub>思考泡泡</sub></td>
-    <td align="center"><img src="assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
-    <td align="center"><img src="assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
-    <td align="center"><img src="assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>耳機律動</sub></td>
-    <td align="center"><img src="assets/gif/clawd-juggling.gif" width="100"><br><sub>三球雜耍</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-idle.gif" width="100"><br><sub>待機</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-thinking.gif" width="100"><br><sub>思考泡泡</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-typing.gif" width="100"><br><sub>打字</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-building.gif" width="100"><br><sub>建造</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-headphones-groove.gif" width="100"><br><sub>耳機律動</sub></td>
+    <td align="center"><img src="../assets/gif/clawd-juggling.gif" width="100"><br><sub>三球雜耍</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>三花待機</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>三花雜耍</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>三花指揮</sub></td>
+    <td align="center"><img src="../assets/gif/calico-idle.gif" width="80"><br><sub>三花待機</sub></td>
+    <td align="center"><img src="../assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
+    <td align="center"><img src="../assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
+    <td align="center"><img src="../assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
+    <td align="center"><img src="../assets/gif/calico-juggling.gif" width="80"><br><sub>三花雜耍</sub></td>
+    <td align="center"><img src="../assets/gif/calico-conducting.gif" width="80"><br><sub>三花指揮</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="assets/gif/cloudling-idle.gif" width="120"><br><sub>雲寶待機</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-thinking.gif" width="120"><br><sub>雲寶思考</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-typing.gif" width="120"><br><sub>雲寶打字</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-building.gif" width="120"><br><sub>雲寶建造</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-juggling.gif" width="120"><br><sub>雲寶雜耍</sub></td>
-    <td align="center"><img src="assets/gif/cloudling-conducting.gif" width="120"><br><sub>雲寶指揮</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-idle.gif" width="120"><br><sub>雲寶待機</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-thinking.gif" width="120"><br><sub>雲寶思考</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-typing.gif" width="120"><br><sub>雲寶打字</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-building.gif" width="120"><br><sub>雲寶建造</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-juggling.gif" width="120"><br><sub>雲寶雜耍</sub></td>
+    <td align="center"><img src="../assets/gif/cloudling-conducting.gif" width="120"><br><sub>雲寶指揮</sub></td>
   </tr>
 </table>
 
@@ -135,13 +131,13 @@ Clawd 住在你的桌面上，即時感知 AI 程式設計助理在做什麼。�
 
 Clawd 支援多螢幕場景：按啟動時所在螢幕做等比縮放，直立螢幕有尺寸加成防止寵物過小，也可以跨螢幕拖動。
 
-<p align="center"><sub>想看多螢幕下的實際效果？可以<a href="assets/videos/clawd-multi-monitor-demo.mp4">開啟儲存庫裡的示範影片</a>。</sub></p>
+<p align="center"><sub>想看多螢幕下的實際效果？可以<a href="../assets/videos/clawd-multi-monitor-demo.mp4">開啟儲存庫裡的示範影片</a>。</sub></p>
 
 ## 快速開始
 
-一般使用者建議直接從 **[GitHub Releases](https://github.com/rullerzhou-afk/clawd-on-desk/releases/latest)** 下載最新的預先建置安裝檔：
+一般使用者建議直接從 **[GitHub Releases](https://github.com/Bynlk/clawd-on-mobile/releases/latest)** 下載最新的預先建置安裝檔：
 
-- **Windows**：`Clawd-on-Desk-Setup-<version>-x64.exe` 或 `Clawd-on-Desk-Setup-<version>-arm64.exe`
+- **Windows**：`Clawd-on-Mobile-Setup-<version>-x64.exe` 或 `Clawd-on-Mobile-Setup-<version>-arm64.exe`
 - **macOS**：`.dmg`
 - **Linux**：`.AppImage` 或 `.deb`
 
@@ -151,8 +147,8 @@ Clawd 支援多螢幕場景：按啟動時所在螢幕做等比縮放，直立�
 
 ```bash
 # clone 儲存庫
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
-cd clawd-on-desk
+git clone https://github.com/Bynlk/clawd-on-mobile.git
+cd clawd-on-mobile
 
 # 安裝相依套件
 npm install
@@ -161,7 +157,7 @@ npm install
 npm start
 ```
 
-**Claude Code**、**Codex CLI**、**Copilot CLI** 會自動註冊 hooks，開箱即用。**Gemini CLI**、**Antigravity CLI (agy)**、**Cursor Agent**、**CodeBuddy**、**Kiro CLI**、**Kimi Code CLI（Kimi-CLI）**、**Qwen Code**、**opencode**、**Pi**、**OpenClaw**、**Hermes Agent**、**Qoder** 在已安裝的前提下，會在 Clawd 啟動時自動同步（OpenClaw 還需要已有設定）。也涵蓋遠端 SSH、WSL 及平台說明（macOS 與 Linux）：**[設定指南（簡體中文）](docs/guides/setup-guide.zh-CN.md)**
+**Claude Code**、**Codex CLI**、**Copilot CLI** 會自動註冊 hooks，開箱即用。**Gemini CLI**、**Antigravity CLI (agy)**、**Cursor Agent**、**CodeBuddy**、**Kiro CLI**、**Kimi Code CLI（Kimi-CLI）**、**Qwen Code**、**opencode**、**Pi**、**OpenClaw**、**Hermes Agent** 在已安裝的前提下，會在 Clawd 啟動時自動同步（OpenClaw 還需要已有設定）。也涵蓋遠端 SSH、WSL 及平台說明（macOS 與 Linux）：**[設定指南（簡體中文）](docs/guides/setup-guide.zh-CN.md)**
 
 關於 `Codex + WSL` 的官方現況、Clawd 目前實作的邊界、以及為什麼容易被誤解，見：**[Codex / WSL 說明（簡體中文）](docs/guides/codex-wsl-clarification.zh-CN.md)**
 
@@ -206,11 +202,10 @@ node scripts/validate-theme.js path/to/your-theme
 - Codex 終端機焦點（從 `codex.exe` PID 反查行程樹）
 - 主題註冊表 + 應用內下載
 - Hook 解除安裝腳本（乾淨移除應用程式）
-- 手機伴侶：在手機上遠端審批權限（推進中，由 [@Bynlk](https://github.com/Bynlk) 主導）
 
 ## 參與貢獻
 
-Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/rullerzhou-afk/clawd-on-desk/issues) 聊聊或直接送 PR。
+Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/Bynlk/clawd-on-mobile/issues) 聊聊或直接送 PR。
 
 ### 維護者
 
@@ -218,7 +213,7 @@ Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —�
   <tr>
     <td align="center" valign="top" width="140"><a href="https://github.com/rullerzhou-afk"><img src="https://github.com/rullerzhou-afk.png" width="72" style="border-radius:50%" /><br /><sub><b>@rullerzhou-afk</b><br />鹿鹿 · 建立者</sub></a></td>
     <td align="center" valign="top" width="140"><a href="https://github.com/YOIMIYA66"><img src="https://github.com/YOIMIYA66.png" width="72" style="border-radius:50%" /><br /><sub><b>@YOIMIYA66</b><br />維護者</sub></a></td>
-    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />核心貢獻者 · Mobile / PWA</sub></a></td>
+    <td align="center" valign="top" width="140"><a href="https://github.com/Bynlk"><img src="https://github.com/Bynlk.png" width="72" style="border-radius:50%" /><br /><sub><b>@Bynlk</b><br />核心貢獻者 · 行動端 / PWA</sub></a></td>
   </tr>
 </table>
 
@@ -281,22 +276,6 @@ Clawd on Desk 是社群驅動的專案。歡迎提 Bug、提需求、提 PR —�
 <a href="https://github.com/NeroAyase"><img src="https://github.com/NeroAyase.png" width="50" style="border-radius:50%" /></a>
 <a href="https://github.com/divergentD"><img src="https://github.com/divergentD.png" width="50" style="border-radius:50%" /></a>
 <a href="https://github.com/Ne9roni"><img src="https://github.com/Ne9roni.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/QingXB"><img src="https://github.com/QingXB.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/29206394"><img src="https://github.com/29206394.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Tsdsj"><img src="https://github.com/Tsdsj.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/godlockin"><img src="https://github.com/godlockin.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/sLingli"><img src="https://github.com/sLingli.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/ustin-star"><img src="https://github.com/ustin-star.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/cod3hulk"><img src="https://github.com/cod3hulk.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/lxgxhsy"><img src="https://github.com/lxgxhsy.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/rebootcrab-blip"><img src="https://github.com/rebootcrab-blip.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/zhaoxv210"><img src="https://github.com/zhaoxv210.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/serenNan"><img src="https://github.com/serenNan.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/IatomicreactorI"><img src="https://github.com/IatomicreactorI.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/quantai1314"><img src="https://github.com/quantai1314.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/Git-creat7"><img src="https://github.com/Git-creat7.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/undownding"><img src="https://github.com/undownding.png" width="50" style="border-radius:50%" /></a>
-<a href="https://github.com/chrono-meta"><img src="https://github.com/chrono-meta.png" width="50" style="border-radius:50%" /></a>
 
 ## 致謝
 

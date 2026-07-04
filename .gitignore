@@ -4,6 +4,7 @@ dist/
 __pycache__/
 *.pyc
 .DS_Store
+.ebtemp/
 Thumbs.db
 
 # Claude Code local config
@@ -106,6 +107,7 @@ scripts/*
 !scripts/export-agent-icons.js
 !scripts/verify-sidecar-binaries.js
 !scripts/fetch-sidecar-binaries.js
+!scripts/fetch-wg-binaries.js
 
 # oh-my-cursor state
 .omc/
@@ -140,3 +142,4 @@ android/build-release.log
 Editor/script backups
 *.bak
 plaintext
+

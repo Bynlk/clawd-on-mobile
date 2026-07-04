@@ -13,6 +13,7 @@ const SIDEBAR_TABS = [
   { id: "shortcuts", labelKey: "sidebarShortcuts", available: true },
   { id: "telegram-approval", labelKey: "sidebarTelegramApproval", available: true },
   { id: "remote-ssh", labelKey: "sidebarRemoteSsh", available: true },
+  { id: "wg-relay", labelKey: "sidebarWgRelay", available: true },
   { id: "mobile", labelKey: "sidebarMobile", available: true },
   { id: "about", labelKey: "sidebarAbout", available: true },
 ];
@@ -92,6 +93,7 @@ globalThis.ClawdSettingsTabShortcuts.init(core);
 if (globalThis.ClawdSettingsTabTelegramApproval) globalThis.ClawdSettingsTabTelegramApproval.init(core);
 globalThis.ClawdSettingsTabAbout.init(core);
 if (globalThis.ClawdSettingsTabRemoteSsh) globalThis.ClawdSettingsTabRemoteSsh.init(core);
+if (globalThis.ClawdSettingsTabWgRelay) globalThis.ClawdSettingsTabWgRelay.init(core);
 if (globalThis.ClawdSettingsTabMobile) globalThis.ClawdSettingsTabMobile.init(core);
 
 if (window.settingsAPI && typeof window.settingsAPI.onChanged === "function") {

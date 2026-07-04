@@ -22,6 +22,7 @@ const { isPlainObject } = require("./theme-loader");
 const { normalizeShortcuts, getDefaultShortcuts } = require("./shortcut-actions");
 const { isValidDisplaySnapshot } = require("./work-area");
 const { normalizeRemoteSsh, getDefaults: getRemoteSshDefaults } = require("./remote-ssh-profile");
+const { normalizeWgRelay, getDefaults: getWgRelayDefaults } = require("./wg-relay-profile");
 const {
   cloneDefaultTelegramApproval,
   normalizeTelegramApproval,
@@ -321,6 +322,13 @@ const SCHEMA = {
     type: "object",
     defaultFactory: () => getRemoteSshDefaults(),
     normalize: normalizeRemoteSsh,
+  },
+  // WireGuard relay profiles (feat/wg-relay). Data-only; runtime owned by
+  // wg-relay-deploy.js + wg-pc-tunnel.js. Parallel to remoteSsh.
+  wgRelay: {
+    type: "object",
+    defaultFactory: () => getWgRelayDefaults(),
+    normalize: normalizeWgRelay,
   },
   tgApproval: {
     type: "object",

@@ -15,6 +15,7 @@ const { WebSocketServer } = require("ws");
 
 // --- 配置 ---
 const PORT = process.env.PORT || 7891;
+const BIND_ADDR = process.env.BIND_ADDR || "0.0.0.0"; // 默认全网卡,向后兼容;隧道内可设为 wg server IP (SEC-4)
 const FIXED_TOKEN = process.env.TOKEN || null;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || null;
 const TLS_CERT = process.env.TLS_CERT || null;
@@ -364,10 +365,11 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // --- 启动 ---
-server.listen(PORT, () => {
+server.listen(PORT, BIND_ADDR, () => {
   const protocol = TLS_CERT ? "wss" : "ws";
   log("server_started", {
     port: PORT,
+    bindAddr: BIND_ADDR,
     protocol,
     fixedToken: !!FIXED_TOKEN,
     adminToken: !!ADMIN_TOKEN,

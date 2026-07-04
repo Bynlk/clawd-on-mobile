@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/tray-icon.png" width="128" alt="Clawd Mobile">
+  <img src="../assets/tray-icon.png" width="128" alt="Clawd Mobile">
 </p>
 
 <h1 align="center">Clawd Mobile</h1>
@@ -8,15 +8,15 @@
 </p>
 
 <p align="center">
-  <a href="i18n/README.zh-CN.md">简体中文</a>
+  <a href="README.zh-CN.md">简体中文</a>
   ·
-  <a href="i18n/README.zh-TW.md">繁體中文</a>
+  <a href="README.zh-TW.md">繁體中文</a>
   ·
-  <a href="i18n/README.ja-JP.md">日本語</a>
+  <a href="README.ja-JP.md">日本語</a>
   ·
-  <a href="i18n/README.ko-KR.md">한국어</a>
+  <a href="README.ko-KR.md">한국어</a>
   ·
-  <a href="i18n/README-desk.md">Desktop Version</a>
+  <a href="README-desk.md">Desktop Version</a>
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <img src="./assets/hero-mobile.gif" alt="Clawd Mobile home screen with a pixel-art pet that reacts to your AI coding agent in real time. Four session states shown left to right: Thinking with a thought bubble, Working typing at a terminal, Approval raising a claw with an alert bubble, and Done celebrating with sparkles.">
+  <img src="../assets/hero-mobile.gif" alt="Clawd Mobile home screen with a pixel-art pet that reacts to your AI coding agent in real time. Four session states shown left to right: Thinking with a thought bubble, Working typing at a terminal, Approval raising a claw with an alert bubble, and Done celebrating with sparkles.">
 </p>
 
 <p align="center">

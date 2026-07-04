@@ -13,6 +13,7 @@
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder --win --mac --linux",
     "fetch:sidecars": "node scripts/fetch-sidecar-binaries.js",
+    "fetch:wg": "node scripts/fetch-wg-binaries.js",
     "verify:sidecars": "node scripts/verify-sidecar-binaries.js",
     "prebuild": "node scripts/verify-sidecar-binaries.js",
     "prebuild:win:x64": "node scripts/verify-sidecar-binaries.js",
@@ -163,6 +164,13 @@
       {
         "from": "bin/cc-connect-clawd",
         "to": "sidecars/cc-connect-clawd"
+      },
+      {
+        "from": "wg-bin",
+        "to": "wg-bin",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "publish": [
@@ -184,6 +192,7 @@
     "htmlparser2": "^12.0.0",
     "koffi": "^2.15.2",
     "qrcode": "^1.5.4",
+    "ssh2": "^1.17.0",
     "ws": "^8.17.1"
   }
 }
