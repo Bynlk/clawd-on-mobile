@@ -6,6 +6,7 @@ const { initMobileServer, deriveMobileChipFields } = require("../src/mobile-serv
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { EventEmitter } = require("events");
 
 // ── deriveMobileChipFields ──
 
@@ -88,6 +89,24 @@ describe("initMobileServer", () => {
     assert.equal(typeof result.setupPermissionHooks, "function");
     assert.equal(typeof result.setupStateChangeHooks, "function");
     assert.equal(typeof result.resolveMobileApproval, "function");
+    assert.equal(typeof result.getManagedSessionBridge, "function");
+  });
+
+  it("attaches and disposes the managed session bridge with the mobile server", () => {
+    const runtime = new EventEmitter();
+    runtime.capabilities = () => ({ agents: [], directories: [] });
+    runtime.listSessions = () => [];
+    const ctx = { getDataDir: () => "/tmp" };
+    const integration = initMobileServer(ctx, {
+      createHttpServer: () => ({ listen: () => {}, on: () => {} }),
+      managedSessionRuntime: runtime,
+    });
+
+    integration.startMobileServer({}, { skipHttpServer: true });
+    assert.ok(integration.getManagedSessionBridge());
+    assert.equal(integration.getManagedSessionBridge().attached, true);
+    integration.stopMobileServer();
+    assert.equal(integration.getManagedSessionBridge(), null);
   });
 
   it("injects deriveMobileChipFields into ctx", () => {

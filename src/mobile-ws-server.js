@@ -361,6 +361,21 @@ class MobileWSServer extends EventEmitter {
     this._messageHandlers.delete(handler);
   }
 
+  getClientId(ws) {
+    const meta = this.clientMeta.get(ws);
+    return meta && typeof meta.clientId === "string" ? meta.clientId : null;
+  }
+
+  send(ws, data) {
+    if (!this.clients.has(ws) || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    try {
+      ws.send(JSON.stringify(data));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   broadcast(data) {
     const message = JSON.stringify(data);
     this._broadcast(message);

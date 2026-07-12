@@ -1933,6 +1933,7 @@ const _serverCtx = {
   permLog,
   runtimeEvents: _runtimeEvents,
   mobileCompanionEnabled: _settingsController.get("mobileCompanionEnabled") !== false,
+  getAllAgents,
 };
 const _server = require("./server")(_serverCtx);
 const { startHttpServer, getHookServerPort, startMobileServer, mobileIntegration } = _server;

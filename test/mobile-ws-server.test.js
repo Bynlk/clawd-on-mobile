@@ -122,6 +122,25 @@ describe("MobileWSServer", () => {
     });
   });
 
+  describe("managed protocol helpers", () => {
+    it("returns stable client ids and sends JSON to one client", () => {
+      const s = makeServer();
+      const ws = makeFakeWS();
+      s.clients.add(ws);
+      s.clientMeta.set(ws, { clientId: "phone-1" });
+
+      assert.equal(s.getClientId(ws), "phone-1");
+      assert.equal(s.send(ws, { type: "managed_test", ok: true }), true);
+      assert.deepEqual(JSON.parse(ws.sent[0]), { type: "managed_test", ok: true });
+    });
+
+    it("refuses to send to closed or unknown clients", () => {
+      const s = makeServer();
+      assert.equal(s.send(makeFakeWS({ readyState: 3 }), { type: "x" }), false);
+      assert.equal(s.getClientId({}), null);
+    });
+  });
+
   describe("getClientInfoList", () => {
     it("returns empty list with no clients", () => {
       const s = makeServer();

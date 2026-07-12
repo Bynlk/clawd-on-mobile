@@ -10,6 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { MobileWSServer } = require("./mobile-ws-server");
+const { ManagedSessionMobileBridge } = require("./managed-session-mobile-bridge");
 
 /**
  * Initialize mobile companion server state.
@@ -24,6 +25,7 @@ const { MobileWSServer } = require("./mobile-ws-server");
  */
 function initMobileServer(ctx, options = {}) {
   const createHttpServer = options.createHttpServer || require("http").createServer.bind(require("http"));
+  const managedSessionRuntime = options.managedSessionRuntime || null;
 
   // Inject mobile chip derivation into ctx so server-route-state.js
   // can use it without importing mobile-specific modules.
@@ -65,6 +67,7 @@ function initMobileServer(ctx, options = {}) {
   let mobileWS = null;
   let mobileHttpServer = null;
   let mobileServerPort = null;
+  let managedSessionBridge = null;
 
   /**
    * Resolve a pending mobile approval by ID.
@@ -161,6 +164,15 @@ function initMobileServer(ctx, options = {}) {
 
       mobileWS.on("client-connected", notifyMobileState);
       mobileWS.on("client-disconnected", notifyMobileState);
+
+      if (managedSessionRuntime) {
+        if (managedSessionBridge) managedSessionBridge.dispose();
+        managedSessionBridge = new ManagedSessionMobileBridge({
+          mobileServer: mobileWS,
+          runtime: managedSessionRuntime,
+        });
+        managedSessionBridge.attach();
+      }
     }
 
     // Skip creating mobile HTTP server if requested (e.g., in tests)
@@ -227,6 +239,10 @@ function initMobileServer(ctx, options = {}) {
       try { clearTimeout(pending.timer); } catch {}
     }
     pendingMobileApprovals.clear();
+    if (managedSessionBridge) {
+      managedSessionBridge.dispose();
+      managedSessionBridge = null;
+    }
     if (mobileHttpServer) {
       mobileHttpServer.close();
       mobileHttpServer = null;
@@ -366,6 +382,7 @@ function initMobileServer(ctx, options = {}) {
     getMobileWS: () => mobileWS,
     getMobileToken: () => MOBILE_TOKEN,
     getPendingMobileApprovals: () => pendingMobileApprovals,
+    getManagedSessionBridge: () => managedSessionBridge,
   };
 }
 

@@ -46,10 +46,28 @@ const {
   findPendingPermissionForStateEvent,
 } = require("./server-permission-utils");
 const { initMobileServer } = require("./mobile-server-integration");
+const { ManagedAgentCatalog } = require("./managed-agent-catalog");
+const { ManagedSessionRuntime } = require("./managed-session-runtime");
 const crypto = require("crypto");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
+
+function createManagedSessionRuntime(ctx) {
+  if (ctx.managedSessionRuntime) return ctx.managedSessionRuntime;
+  const getAllAgents = typeof ctx.getAllAgents === "function"
+    ? ctx.getAllAgents
+    : require("../agents/registry").getAllAgents;
+  const catalog = new ManagedAgentCatalog({
+    agents: getAllAgents(),
+    isAgentEnabled: typeof ctx.isAgentEnabled === "function" ? ctx.isAgentEnabled : () => true,
+    getSessionDirectories: () => {
+      if (!ctx.sessions || typeof ctx.sessions.values !== "function") return [];
+      return [...ctx.sessions.values()].map((session) => session && session.cwd).filter(Boolean);
+    },
+  });
+  return new ManagedSessionRuntime({ catalog });
+}
 
 module.exports = function initServer(ctx) {
   // CORS origin whitelist — defaults to localhost only; set CLAWD_CORS_ORIGINS=* to allow all
@@ -83,6 +101,7 @@ module.exports = function initServer(ctx) {
   let httpServer = null;
   let activeServerPort = null;
   let lastClaudeHookGuardNotice = null;
+  const managedSessionRuntime = createManagedSessionRuntime(ctx);
 
   // Initialize mobile companion integration (skipped when feature flag is off)
   const mobileIntegration =
@@ -90,6 +109,7 @@ module.exports = function initServer(ctx) {
       ? initMobileServer(ctx, {
           createHttpServer:
             ctx.createHttpServer || http.createServer.bind(http),
+          managedSessionRuntime,
         })
       : null;
   const getMobileWS = mobileIntegration
@@ -445,6 +465,7 @@ module.exports = function initServer(ctx) {
     const ws = getMobileWS();
     if (ws) ws.close();
     if (httpServer) httpServer.close();
+    managedSessionRuntime.dispose();
   }
 
   return {
@@ -481,6 +502,7 @@ module.exports = function initServer(ctx) {
     startMobileServer: startMobileServerBase,
     getPendingMobileApprovals,
     mobileIntegration,
+    managedSessionRuntime,
   };
 };
 
@@ -503,4 +525,5 @@ module.exports.__test = {
   getRecentHookEventsFromBuffer,
   createSingleRequestHookEventRecorder,
   HOOK_EVENT_RING_SIZE_PER_AGENT,
+  createManagedSessionRuntime,
 };
