@@ -287,22 +287,16 @@ function startRemoteApproval(ctx, permEntry) {
 function addPendingPermission(ctx, permEntry) {
   if (typeof ctx.addPendingPermission === "function") {
     const result = ctx.addPendingPermission(permEntry);
-    // Call mobile hook if registered
-    if (typeof ctx.onPermissionAdded === "function" && permEntry) {
-      const id = "mobile_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-      permEntry._mobileApprovalId = id;
-      console.log(`[mobile-bridge] addPendingPermission called: agentId=${permEntry?.agentId} hasRes=${!!permEntry?.res} toolName=${permEntry?.toolName}`);
-      ctx.onPermissionAdded(permEntry, id);
+    if (ctx.runtimeEvents && typeof ctx.runtimeEvents.emitReference === "function" && permEntry) {
+      const id = "permission_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+      ctx.runtimeEvents.emitReference("permission-added", { entry: permEntry, id });
     }
     return result;
   }
   ctx.pendingPermissions.push(permEntry);
-  // Call mobile hook if registered
-  if (typeof ctx.onPermissionAdded === "function" && permEntry) {
-    const id = "mobile_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-    permEntry._mobileApprovalId = id;
-    console.log(`[mobile-bridge] addPendingPermission called: agentId=${permEntry?.agentId} hasRes=${!!permEntry?.res} toolName=${permEntry?.toolName}`);
-    ctx.onPermissionAdded(permEntry, id);
+  if (ctx.runtimeEvents && typeof ctx.runtimeEvents.emitReference === "function" && permEntry) {
+    const id = "permission_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+    ctx.runtimeEvents.emitReference("permission-added", { entry: permEntry, id });
   }
   return permEntry;
 }
@@ -310,18 +304,16 @@ function addPendingPermission(ctx, permEntry) {
 function removePendingPermission(ctx, permEntry, reason) {
   if (typeof ctx.removePendingPermission === "function") {
     const result = ctx.removePendingPermission(permEntry, reason);
-    // Call mobile hook if registered
-    if (typeof ctx.onPermissionRemoved === "function" && permEntry) {
-      ctx.onPermissionRemoved(permEntry);
+    if (ctx.runtimeEvents && typeof ctx.runtimeEvents.emitReference === "function" && permEntry) {
+      ctx.runtimeEvents.emitReference("permission-removed", { entry: permEntry });
     }
     return result;
   }
   const idx = ctx.pendingPermissions.indexOf(permEntry);
   if (idx === -1) return false;
   ctx.pendingPermissions.splice(idx, 1);
-  // Call mobile hook if registered
-  if (typeof ctx.onPermissionRemoved === "function" && permEntry) {
-    ctx.onPermissionRemoved(permEntry);
+  if (ctx.runtimeEvents && typeof ctx.runtimeEvents.emitReference === "function" && permEntry) {
+    ctx.runtimeEvents.emitReference("permission-removed", { entry: permEntry });
   }
   return true;
 }

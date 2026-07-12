@@ -327,11 +327,10 @@ function handleStatePost(req, res, options) {
         if (svg) {
           const safeSvg = pathApi.basename(svg);
           ctx.setState(state, safeSvg);
-          if (typeof ctx.onMobileStateChange === "function") {
-            ctx.onMobileStateChange("__global__", "state", {
-              state,
-              event: "setState",
-              svg: safeSvg,
+          if (ctx.runtimeEvents && typeof ctx.runtimeEvents.emit === "function") {
+            ctx.runtimeEvents.emit("session-updated", {
+              sessionId: "__global__",
+              data: { state, event: "setState", svg: safeSvg },
             });
           }
         } else {
@@ -373,7 +372,7 @@ function handleStatePost(req, res, options) {
             stdinDiag,
             ...(agentIdentity.defaulted ? { agentIdDefaulted: true } : {}),
           });
-          if (typeof ctx.onMobileStateChange === "function") {
+          if (ctx.runtimeEvents && typeof ctx.runtimeEvents.emit === "function") {
             const session = ctx.sessions ? ctx.sessions.get(sid) : null;
             const recentEvents = (session && Array.isArray(session.recentEvents))
               ? session.recentEvents
@@ -431,19 +430,22 @@ function handleStatePost(req, res, options) {
               // session null → not yet created → hide from mobile
               isVisible: session != null && sessionState !== "sleeping" && !session.headless,
             };
-            ctx.onMobileStateChange(sid, "state", {
-              ...mobilePayload,
-              state: mobilePayload.state,
-              event,
-              agentId,
-              toolName: toolName || null,
-              sessionTitle: sessionTitle || null,
-              cwd: cwd || null,
-              recentEvents,
-              lastOutput,
-              displayState,
-              isReal,
-              badge,
+            ctx.runtimeEvents.emit("session-updated", {
+              sessionId: sid,
+              data: {
+                ...mobilePayload,
+                state: mobilePayload.state,
+                event,
+                agentId,
+                toolName: toolName || null,
+                sessionTitle: sessionTitle || null,
+                cwd: cwd || null,
+                recentEvents,
+                lastOutput,
+                displayState,
+                isReal,
+                badge,
+              },
             });
 
             // Forward tool output to mobile clients
@@ -452,11 +454,14 @@ function handleStatePost(req, res, options) {
               const truncated = typeof rawOutput === "string"
                 ? rawOutput.substring(0, 500)
                 : JSON.stringify(rawOutput).substring(0, 500);
-              if (typeof ctx.onMobileToolOutput === "function") {
-                ctx.onMobileToolOutput(sid, {
-                  toolName: toolName || event || "",
-                  output: truncated,
-                  event: event || "",
+              if (ctx.runtimeEvents && typeof ctx.runtimeEvents.emit === "function") {
+                ctx.runtimeEvents.emit("tool-output", {
+                  sessionId: sid,
+                  data: {
+                    toolName: toolName || event || "",
+                    output: truncated,
+                    event: event || "",
+                  },
                 });
               }
               // Store last output on session

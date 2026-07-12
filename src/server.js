@@ -113,12 +113,6 @@ module.exports = function initServer(ctx) {
   const stopMobileServer = mobileIntegration
     ? mobileIntegration.stopMobileServer
     : () => {};
-  const setupPermissionHooks = mobileIntegration
-    ? mobileIntegration.setupPermissionHooks
-    : () => {};
-  const setupStateChangeHooks = mobileIntegration
-    ? mobileIntegration.setupStateChangeHooks
-    : () => {};
   const codexOfficialTurns = new Map();
   const recentHookEvents = new Map();
 
@@ -486,8 +480,7 @@ module.exports = function initServer(ctx) {
     broadcastHookEvent,
     startMobileServer: startMobileServerBase,
     getPendingMobileApprovals,
-    setupPermissionHooks,
-    setupStateChangeHooks,
+    mobileIntegration,
   };
 };
 

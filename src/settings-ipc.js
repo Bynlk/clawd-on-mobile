@@ -6,7 +6,7 @@ const {
   detectAgentInstallations: defaultDetectAgentInstallations,
 } = require("./agent-installation-detector");
 const settingsThemeImporter = require("./settings-theme-importer");
-const { registerMobileSettingsIpc } = require("./mobile-settings-ipc");
+const { registerBuiltInSettingsExtensions } = require("./extensions/settings");
 
 const SOUND_OVERRIDE_ASSET_EXTS = new Set([
   ".mp3",
@@ -657,8 +657,7 @@ function registerSettingsIpc(options = {}) {
     }
   });
 
-  // Mobile companion IPC handlers — extracted to mobile-settings-ipc.js
-  registerMobileSettingsIpc({
+  registerBuiltInSettingsExtensions({
     ipcMain,
     getMobileWS: options.getMobileWS || (() => null),
     getMobileToken: options.getMobileToken || (() => null),

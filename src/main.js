@@ -94,6 +94,8 @@ const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const { EventEmitter } = require("events");
+const { RuntimeEvents } = require("./extensions/runtime-events");
+const { activateMobileExtension } = require("./extensions/mobile");
 const {
   applyWindowsAppUserModelId,
   shouldOpenSettingsWindowFromArgv,
@@ -1732,9 +1734,7 @@ const _stateCtx = {
     broadcastSessionHudSnapshot(snapshot);
     repositionFloatingBubbles();
     if (hardwareBuddyAdapter) hardwareBuddyAdapter.notifyStateChanged();
-    if (typeof _serverCtx.onMobileSessionSnapshot === "function") {
-      _serverCtx.onMobileSessionSnapshot(snapshot);
-    }
+    _runtimeEvents.emit("session-snapshot", { snapshot });
     // R1a: best-effort completion notifications
     if (telegramCompanion) {
       try {
@@ -1743,9 +1743,7 @@ const _stateCtx = {
     }
   },
   onSessionRemoved: (sessionId) => {
-    if (typeof _serverCtx.onMobileSessionRemoved === "function") {
-      _serverCtx.onMobileSessionRemoved(sessionId);
-    }
+    _runtimeEvents.emit("session-removed", { sessionId });
   },
   // Phase 3b: 读 prefs.themeOverrides 判断某个 oneshot state 是否被用户禁用。
   // state.js gate 调这个做 early-return。不做白名单校验——settings-actions
@@ -2233,6 +2231,7 @@ agentRuntime = createAgentRuntimeMain({
 });
 
 // ── HTTP server — delegated to src/server.js ──
+const _runtimeEvents = new RuntimeEvents();
 const _serverCtx = {
   get manageClaudeHooksAutomatically() {
     return manageClaudeHooksAutomatically;
@@ -2304,6 +2303,7 @@ const _serverCtx = {
   maybeStartRemoteApproval,
   replyOpencodePermission,
   permLog,
+  runtimeEvents: _runtimeEvents,
   mobileCompanionEnabled:
     _settingsController.get("mobileCompanionEnabled") !== false,
 };
@@ -2317,15 +2317,16 @@ const {
   broadcastHookEvent,
   startMobileServer,
   getPendingMobileApprovals,
-  setupPermissionHooks,
-  setupStateChangeHooks,
+  mobileIntegration,
 } = _server;
 
-// Set up mobile permission hooks (replaces monkey-patch approach)
-if (_serverCtx.mobileCompanionEnabled) {
-  setupPermissionHooks(_serverCtx, resolvePermissionEntry);
-  setupStateChangeHooks(_serverCtx);
-}
+const _disposeMobileExtension = mobileIntegration
+  ? activateMobileExtension({
+      runtimeEvents: _runtimeEvents,
+      mobileIntegration,
+      resolvePermissionEntry,
+    })
+  : () => {};
 
 function updateLog(msg) {
   if (!updateDebugLog) return;
@@ -3887,8 +3888,7 @@ const SETTINGS_MIRROR_SETTERS = {
     fullscreenOverlayCached = v;
   },
   mobileMaxClients: (v) => {
-    if (typeof _serverCtx.onMobileMaxClientsChange === "function")
-      _serverCtx.onMobileMaxClientsChange(v);
+    _runtimeEvents.emit("mobile-max-clients-changed", { maxClients: v });
     saveMobileState({ mobileMaxClients: v });
   },
   freeRoam: (v) => {
@@ -5029,6 +5029,8 @@ if (!gotTheLock) {
     if (hardwareBuddyAdapter) hardwareBuddyAdapter.stop();
     _perm.cleanup();
     _server.cleanup();
+    _disposeMobileExtension();
+    _runtimeEvents.dispose();
     _updateBubble.cleanup();
     _state.cleanup();
     _tick.cleanup();

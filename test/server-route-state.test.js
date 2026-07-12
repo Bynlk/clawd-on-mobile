@@ -454,7 +454,7 @@ describe("server-route-state POST", () => {
     assert.deepStrictEqual(res.calls.updateSession, []);
   });
 
-  it("uses hook state for mobile incremental badge when existing session is stored as idle", async () => {
+  it("emits a generic session update when existing session is stored as idle", async () => {
     const sessions = new Map([
       ["sid", {
         state: "idle",
@@ -463,8 +463,7 @@ describe("server-route-state POST", () => {
         updatedAt: 1,
       }],
     ]);
-    const mobileStates = [];
-    const mobileHooks = [];
+    const events = [];
 
     const res = await callStatePost(JSON.stringify({
       state: "attention",
@@ -485,16 +484,18 @@ describe("server-route-state POST", () => {
           session.updatedAt = 2;
         },
         resolveDisplayState: () => "attention",
-        onMobileStateChange: (sid, changeType, payload) => mobileStates.push({ sid, payload }),
-        onMobileToolOutput: (sid, payload) => mobileHooks.push({ type: "tool_output", sessionId: sid, ...payload }),
+        runtimeEvents: {
+          emit: (name, payload) => events.push({ name, payload }),
+        },
       },
     });
 
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(mobileStates.length, 1);
-    assert.strictEqual(mobileStates[0].payload.state, "idle");
-    assert.strictEqual(mobileStates[0].payload.badge, "done");
-    assert.strictEqual(mobileStates[0].payload.dotColor, "#71717a");
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].name, "session-updated");
+    assert.strictEqual(events[0].payload.sessionId, "sid");
+    assert.strictEqual(events[0].payload.data.state, "idle");
+    assert.strictEqual(events[0].payload.data.hookState, "attention");
   });
 
   it("returns 400 for mini states without an svg override", async () => {

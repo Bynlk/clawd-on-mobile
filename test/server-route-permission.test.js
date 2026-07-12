@@ -176,6 +176,27 @@ describe("server-route-permission helpers", () => {
 });
 
 describe("server-route-permission POST", () => {
+  it("emits a generic permission-added runtime event", async () => {
+    const events = [];
+    const res = await callPermissionPost(JSON.stringify({
+      agent_id: "claude-code",
+      session_id: "session-1",
+      tool_name: "Bash",
+      tool_input: { command: "pwd" },
+    }), {
+      ctx: {
+        runtimeEvents: {
+          emitReference: (name, payload) => events.push({ name, payload }),
+        },
+      },
+    });
+
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].name, "permission-added");
+    assert.strictEqual(events[0].payload.entry.toolName, "Bash");
+    assert.ok(events[0].payload.id.startsWith("permission_"));
+  });
+
   it("returns 400 for invalid JSON", async () => {
     const res = await callPermissionPost("{not json");
 
