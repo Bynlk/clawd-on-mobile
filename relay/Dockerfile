@@ -10,6 +10,7 @@ RUN npm install --production
 
 # 复制服务器代码
 COPY relay-server.js ./
+COPY pair-registry.js ./
 
 # 暴露端口
 EXPOSE 7891

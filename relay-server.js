@@ -3,12 +3,13 @@
 // 环境变量: PORT (默认 7891), TOKEN (可选，不设则用 URL 参数)
 
 const { WebSocketServer } = require("ws");
+const { RelayPairRegistry } = require("./relay/pair-registry");
 
 const PORT = process.env.PORT || 7891;
 const FIXED_TOKEN = process.env.TOKEN || null;
 
 const wss = new WebSocketServer({ port: PORT });
-const pairs = new Map(); // token → { pc: WebSocket, phone: WebSocket }
+const pairs = new RelayPairRegistry(); // token → one PC + multiple phones; no payload history
 
 console.log(`[relay] 中继服务器启动在端口 ${PORT}`);
 if (FIXED_TOKEN) console.log(`[relay] 固定 token: ${FIXED_TOKEN.slice(0, 4)}…`);
@@ -44,45 +45,31 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
-  if (!pairs.has(token)) pairs.set(token, {});
+  pairs.add(token, role, ws);
   const pair = pairs.get(token);
-
-  // 同一角色重复连接，关闭旧的
-  if (pair[role] && pair[role].readyState === pair[role].OPEN) {
-    pair[role].close(4001, "被新连接替换");
-  }
-  pair[role] = ws;
-
-  const peer = role === "pc" ? "phone" : "pc";
   console.log(`[relay] ${role} 已连接 (token: ${token.slice(0, 8)}...)`);
-  console.log(`[relay] 当前状态: PC=${pair.pc ? "✅" : "❌"} Phone=${pair.phone ? "✅" : "❌"}`);
+  console.log(`[relay] 当前状态: PC=${pair.pc ? "✅" : "❌"} Phones=${pair.phones.size}`);
 
   // 通知对端已连接
-  const peerWsOnConnect = pair[peer];
-  if (peerWsOnConnect && peerWsOnConnect.readyState === peerWsOnConnect.OPEN) {
+  for (const peerWsOnConnect of pairs.peers(token, role)) {
     peerWsOnConnect.send(JSON.stringify({ type: "peer_connected", role }));
   }
 
   // 转发消息
   ws.on("message", (data) => {
     ws.isAlive = true; // 任何消息 = 客户端存活
-    const peerWs = pair[peer];
-    if (peerWs && peerWs.readyState === peerWs.OPEN) {
-      peerWs.send(data);
-    }
+    pairs.forward(token, role, data);
   });
 
   // 断开清理
   ws.on("close", () => {
-    delete pair[role];
+    pairs.remove(token, role, ws);
     console.log(`[relay] ${role} 已断开 (token: ${token.slice(0, 8)}...)`);
-    console.log(`[relay] 当前状态: PC=${pair.pc ? "✅" : "❌"} Phone=${pair.phone ? "✅" : "❌"}`);
+    console.log(`[relay] 当前状态: PC=${pair.pc ? "✅" : "❌"} Phones=${pair.phones.size}`);
 
-    const peerWsOnClose = pair[peer];
-    if (peerWsOnClose && peerWsOnClose.readyState === peerWsOnClose.OPEN) {
+    for (const peerWsOnClose of pairs.peers(token, role)) {
       peerWsOnClose.send(JSON.stringify({ type: "peer_disconnected", role }));
     }
-    if (!pair.pc && !pair.phone) pairs.delete(token);
   });
 
   ws.on("error", (err) => {

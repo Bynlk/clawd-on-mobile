@@ -12,6 +12,7 @@ const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
+const { RelayPairRegistry } = require("./pair-registry");
 
 // --- 配置 ---
 const PORT = process.env.PORT || 7891;
@@ -31,7 +32,7 @@ const REST_LOCKOUT_MS = 5 * 60 * 1000;     // 锁定时长 5 分钟
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;   // 心跳间隔
 
 // --- 状态 ---
-const pairs = new Map();           // token → { pc: WebSocket, phone: WebSocket }
+const pairs = new RelayPairRegistry(); // token → one PC + multiple phones; payloads are never retained
 const rateLimits = new Map();      // token → { count, resetTime }
 const restAttempts = new Map();    // ip → { fails, lockoutUntil }
 let running = true;
@@ -143,10 +144,7 @@ function handleRestRequest(req, res) {
   // 状态查询
   if (req.method === "GET" && url.pathname === "/api/status") {
     let pcCount = 0, phoneCount = 0;
-    for (const [, pair] of pairs) {
-      if (pair.pc && pair.pc.readyState === 1) pcCount++;
-      if (pair.phone && pair.phone.readyState === 1) phoneCount++;
-    }
+    ({ pc: pcCount, phone: phoneCount } = pairs.countConnections());
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       status: running ? "running" : "stopped",
@@ -174,11 +172,7 @@ function handleRestRequest(req, res) {
         if (url.pathname === "/api/stop") {
           running = false;
           // 断开所有客户端
-          for (const [token, pair] of pairs) {
-            if (pair.pc) pair.pc.close(1001, "服务器暂停");
-            if (pair.phone) pair.phone.close(1001, "服务器暂停");
-          }
-          pairs.clear();
+          pairs.closeAll(1001, "服务器暂停");
           log("server_stopped", { by: "api" });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ status: "stopped" }));
@@ -259,24 +253,17 @@ wss.on("connection", (ws, req) => {
   // 消息大小限制
   ws._maxPayload = MAX_MSG_SIZE;
 
-  if (!pairs.has(token)) pairs.set(token, {});
-  const pair = pairs.get(token);
-
-  // 同一角色重复连接，关闭旧的
-  if (pair[role] && pair[role].readyState === pair[role].OPEN) {
-    pair[role].close(4001, "被新连接替换");
+  const { pair, replaced } = pairs.add(token, role, ws);
+  if (replaced) {
     log("connection_replaced", { role, token: token.slice(0, 8) });
   }
-  pair[role] = ws;
   ws._token = token;
   ws._role = role;
 
-  const peer = role === "pc" ? "phone" : "pc";
-  log("connection_established", { role, token: token.slice(0, 8), pc: !!pair.pc, phone: !!pair.phone });
+  log("connection_established", { role, token: token.slice(0, 8), pc: !!pair.pc, phones: pair.phones.size });
 
   // 通知对端已连接
-  const peerWsOnConnect = pair[peer];
-  if (peerWsOnConnect && peerWsOnConnect.readyState === peerWsOnConnect.OPEN) {
+  for (const peerWsOnConnect of pairs.peers(token, role)) {
     peerWsOnConnect.send(JSON.stringify({ type: "peer_connected", role }));
   }
 
@@ -297,23 +284,18 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    const peerWs = pair[peer];
-    if (peerWs && peerWs.readyState === peerWs.OPEN) {
-      peerWs.send(data);
-    }
+    pairs.forward(token, role, data);
   });
 
   // 断开清理
   ws.on("close", () => {
-    delete pair[role];
-    log("connection_closed", { role, token: token.slice(0, 8), pc: !!pair.pc, phone: !!pair.phone });
+    pairs.remove(token, role, ws);
+    log("connection_closed", { role, token: token.slice(0, 8), pc: !!pair.pc, phones: pair.phones.size });
 
-    const peerWsOnClose = pair[peer];
-    if (peerWsOnClose && peerWsOnClose.readyState === peerWsOnClose.OPEN) {
+    for (const peerWsOnClose of pairs.peers(token, role)) {
       peerWsOnClose.send(JSON.stringify({ type: "peer_disconnected", role }));
     }
-    if (!pair.pc && !pair.phone) {
-      pairs.delete(token);
+    if (!pairs.get(token)) {
       rateLimits.delete(token);
     }
   });
@@ -341,11 +323,7 @@ function gracefulShutdown(signal) {
   clearInterval(heartbeatTimer);
 
   // 通知所有客户端断开
-  for (const [token, pair] of pairs) {
-    if (pair.pc) pair.pc.close(1001, "服务器关闭");
-    if (pair.phone) pair.phone.close(1001, "服务器关闭");
-  }
-  pairs.clear();
+  pairs.closeAll(1001, "服务器关闭");
 
   wss.close(() => {
     server.close(() => {
