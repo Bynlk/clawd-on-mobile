@@ -86,9 +86,11 @@ const {
 const {
   clearAgentCleanupHints,
   clearAgentInstallHints,
+  deployToWsl,
   dismissAgentCleanupHints,
   installAgentIntegration,
   dismissAgentInstallHints,
+  removeFromWsl,
   setAgentFlag,
   setAgentPermissionMode,
   uninstallAgentIntegration,
@@ -132,15 +134,18 @@ const {
   validateTelegramApproval,
   validateTelegramBotToken,
 } = require("./telegram-approval-settings");
-const { EVENTS: TELEGRAM_MIGRATION_EVENTS } = require("./telegram-migration-state");
+const { validateDiscordPresence } = require("./discord-presence-settings");
 const {
-  validateHardwareBuddySettings,
-} = require("./hardware-buddy-settings");
+  validateFeishuApproval,
+} = require("./feishu-approval-settings");
+const { EVENTS: TELEGRAM_MIGRATION_EVENTS } = require("./telegram-migration-state");
 
+// Only the Step-3 enable switch dispatches from the renderer since the
+// migration card retired: turn-on tests native, turn-off disables. The
+// legacy-enable / rollback transitions stay in the reducer for main-side
+// integrity but are no longer renderer-callable.
 const TELEGRAM_MIGRATION_RENDERER_EVENTS = new Set([
   TELEGRAM_MIGRATION_EVENTS.USER_TEST_NATIVE,
-  TELEGRAM_MIGRATION_EVENTS.USER_ENABLE_LEGACY,
-  TELEGRAM_MIGRATION_EVENTS.USER_ROLLBACK_TO_LEGACY,
   TELEGRAM_MIGRATION_EVENTS.USER_DISABLE,
 ]);
 
@@ -162,6 +167,7 @@ const MANAGED_CLEANUP_AGENT_IDS = Object.freeze([
   "hermes",
   "qoder",
   "reasonix",
+  "qoderwork",
 ]);
 
 // ── updateRegistry ──
@@ -463,6 +469,12 @@ const updateRegistry = {
   tgApproval(value) {
     return validateTelegramApproval(value);
   },
+  discordPresence(value) {
+    return validateDiscordPresence(value);
+  },
+  feishuApproval(value) {
+    return validateFeishuApproval(value);
+  },
 
   // v0.9.0 spike: persisted migration state across restarts. Shape:
   //   { transport?: "legacy"|"native"|"off", nativeVerifiedAt?: number|null,
@@ -489,10 +501,6 @@ const updateRegistry = {
       return { status: "error", message: "tgMigration.migration must be an object" };
     }
     return { status: "ok" };
-  },
-
-  hardwareBuddy(value) {
-    return validateHardwareBuddySettings(value);
   },
 
   shortcuts: {
@@ -1082,14 +1090,6 @@ async function telegramApprovalSetToken(payload, deps = {}) {
   return { status: "ok", tokenStored: true };
 }
 
-async function telegramApprovalDeleteTokenFile(_payload, deps = {}) {
-  if (!deps || typeof deps.deleteTelegramApprovalTokenFile !== "function") {
-    return { status: "error", message: "telegramApproval.deleteTokenFile requires deleteTelegramApprovalTokenFile dep" };
-  }
-  const result = await deps.deleteTelegramApprovalTokenFile();
-  return result || { status: "error", message: "Telegram token file delete returned no result" };
-}
-
 function telegramApprovalStatus(_payload, deps = {}) {
   if (!deps || typeof deps.getTelegramApprovalStatus !== "function") {
     return { status: "error", message: "telegramApproval.status requires getTelegramApprovalStatus dep" };
@@ -1147,7 +1147,6 @@ async function telegramMigrationDispatch(payload, deps = {}) {
 }
 
 telegramMigrationDispatch.lockKey = "tgApproval";
-telegramApprovalDeleteTokenFile.lockKey = "tgApproval";
 
 async function telegramApprovalSendTest(_payload, deps = {}) {
   if (!deps || typeof deps.sendTelegramApprovalTest !== "function") {
@@ -1155,6 +1154,42 @@ async function telegramApprovalSendTest(_payload, deps = {}) {
   }
   const result = await deps.sendTelegramApprovalTest();
   return result || { status: "error", message: "Telegram approval test returned no result" };
+}
+
+async function feishuApprovalSetSecrets(payload, deps = {}) {
+  const secrets = payload && typeof payload === "object" ? payload : {};
+  if (!deps || typeof deps.writeFeishuApprovalSecrets !== "function") {
+    return { status: "error", message: "feishuApproval.setSecrets requires writeFeishuApprovalSecrets dep" };
+  }
+  const result = await deps.writeFeishuApprovalSecrets(secrets);
+  if (!result || result.status !== "ok") {
+    return result || { status: "error", message: "Feishu approval secrets write failed" };
+  }
+  return { status: "ok", secretsStored: true };
+}
+
+function feishuApprovalStatus(_payload, deps = {}) {
+  if (!deps || typeof deps.getFeishuApprovalStatus !== "function") {
+    return { status: "error", message: "feishuApproval.status requires getFeishuApprovalStatus dep" };
+  }
+  const status = deps.getFeishuApprovalStatus();
+  return { status: "ok", state: status || { status: "stopped" } };
+}
+
+function feishuApprovalSecretInfo(_payload, deps = {}) {
+  if (!deps || typeof deps.getFeishuApprovalSecretInfo !== "function") {
+    return { status: "error", message: "feishuApproval.secretInfo requires getFeishuApprovalSecretInfo dep" };
+  }
+  const info = deps.getFeishuApprovalSecretInfo() || { configured: false };
+  return { status: "ok", ...info };
+}
+
+async function feishuApprovalSendTest(_payload, deps = {}) {
+  if (!deps || typeof deps.sendFeishuApprovalTest !== "function") {
+    return { status: "error", message: "feishuApproval.test requires sendFeishuApprovalTest dep" };
+  }
+  const result = await deps.sendFeishuApprovalTest();
+  return result || { status: "error", message: "Feishu approval test returned no result" };
 }
 
 function cleanupMessage(result) {
@@ -1270,6 +1305,8 @@ remoteSshMarkDeployed.lockKey = "remoteSsh";
 remoteSshMarkRemoteNode.lockKey = "remoteSsh";
 telegramApprovalSetToken.lockKey = "tgApproval";
 telegramApprovalSendTest.lockKey = "tgApproval";
+feishuApprovalSetSecrets.lockKey = "feishuApproval";
+feishuApprovalSendTest.lockKey = "feishuApproval";
 cleanupIntegrationsCommand.lockKey = "agentIntegration";
 
 const repairDoctorIssue = createRepairDoctorIssue({
@@ -1313,9 +1350,11 @@ const commandRegistry = {
   cleanupIntegrations: cleanupIntegrationsCommand,
   clearAgentCleanupHints,
   clearAgentInstallHints,
+  deployToWsl,
   dismissAgentCleanupHints,
   dismissAgentInstallHints,
   installAgentIntegration,
+  removeFromWsl,
   repairAgentIntegration,
   uninstallAgentIntegration,
   repairLocalServer,
@@ -1349,10 +1388,13 @@ const commandRegistry = {
   "wgRelay.remove": wgRelayRemoveProfile,
   "wgRelay.applyReadback": wgRelayApplyReadback,
   "telegramApproval.setToken": telegramApprovalSetToken,
-  "telegramApproval.deleteTokenFile": telegramApprovalDeleteTokenFile,
   "telegramApproval.status": telegramApprovalStatus,
   "telegramApproval.tokenInfo": telegramApprovalTokenInfo,
   "telegramApproval.test": telegramApprovalSendTest,
+  "feishuApproval.setSecrets": feishuApprovalSetSecrets,
+  "feishuApproval.status": feishuApprovalStatus,
+  "feishuApproval.secretInfo": feishuApprovalSecretInfo,
+  "feishuApproval.test": feishuApprovalSendTest,
   "telegramMigration.snapshot": telegramMigrationSnapshot,
   "telegramMigration.dispatch": telegramMigrationDispatch,
 };

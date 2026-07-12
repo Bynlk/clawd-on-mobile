@@ -176,13 +176,6 @@ function registerSettingsIpc(options = {}) {
   const detectAgentInstallations =
     options.detectAgentInstallations || defaultDetectAgentInstallations;
   const checkForUpdates = options.checkForUpdates || (() => {});
-  const getHardwareBuddyStatus = options.getHardwareBuddyStatus || (() => null);
-  const testHardwareBuddyApproval =
-    options.testHardwareBuddyApproval ||
-    (async () => ({
-      status: "error",
-      message: "Hardware Buddy test approval is unavailable",
-    }));
   const getQuickCommandPresets =
     options.getQuickCommandPresets ||
     (() => ({
@@ -572,8 +565,14 @@ function registerSettingsIpc(options = {}) {
     }
   });
 
-  handle("settings:detect-agent-installations", () => {
+  handle("settings:detect-agent-installations", async (_ev, opts) => {
     try {
+      const options = opts && typeof opts === "object" ? opts : {};
+      if (options.refreshWsl) {
+        const { refreshWslDetection } = require("./agent-installation-detector");
+        await refreshWslDetection({ fs, path, now, skipDefaultIntegrations: false });
+        return detectAgentInstallations({ fs, path, now });
+      }
       return detectAgentInstallations({ fs, path, now });
     } catch (err) {
       console.warn(
@@ -584,6 +583,10 @@ function registerSettingsIpc(options = {}) {
         checkedAt: now(),
         agents: [],
         skippedAgentIds: [],
+        wslAgents: [],
+        wslDistros: [],
+        // Keep the manual Scan entry point alive even on a hard failure.
+        wslSupported: process.platform === "win32",
         error: err && err.message ? err.message : String(err),
       };
     }
@@ -636,10 +639,6 @@ function registerSettingsIpc(options = {}) {
     }
   });
 
-  handle("settings:get-hardware-buddy-status", () => getHardwareBuddyStatus());
-  handle("settings:test-hardware-buddy-approval", () =>
-    testHardwareBuddyApproval(),
-  );
   handle("settings:get-quick-command-presets", () => getQuickCommandPresets());
   handle("settings:send-quick-command", (_event, payload) =>
     sendQuickCommand(sanitizeQuickCommandPayload(payload)),

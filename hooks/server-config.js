@@ -27,6 +27,42 @@ function readHostPrefix() {
   return prefix || os.hostname().split(".")[0];
 }
 
+// WSL detection shared by all agent hooks. WSL_DISTRO_NAME is set by WSL
+// init and matches `wsl -l -q` output exactly; /proc/version is the
+// fallback for unusual init setups. Cached — the answer cannot change
+// within one hook process.
+let cachedWslDistro;
+function resolveWslDistro() {
+  if (cachedWslDistro !== undefined) return cachedWslDistro;
+  cachedWslDistro = null;
+  if (process.platform === "linux") {
+    if (process.env.WSL_DISTRO_NAME) {
+      cachedWslDistro = process.env.WSL_DISTRO_NAME;
+    } else {
+      try {
+        if (/microsoft|wsl/i.test(fs.readFileSync("/proc/version", "utf8"))) {
+          // Inside WSL but WSL_DISTRO_NAME not set (older builds / custom
+          // init). Stable sentinel keeps the host prefix self-consistent.
+          cachedWslDistro = "wsl";
+        }
+      } catch {}
+    }
+  }
+  return cachedWslDistro;
+}
+
+// Stamp WSL source fields onto a /state body. Local sessions get the
+// `wsl:<distro>` host so HUD/dashboard group them; remote (SSH) sessions
+// keep their configured host prefix and carry the distro as metadata only.
+// No-op outside WSL, so every hook can call this unconditionally.
+function applyWslSourceFields(body, options = {}) {
+  const distro = resolveWslDistro();
+  if (!distro) return body;
+  body.wsl_distro = distro;
+  if (!options.remote) body.host = `wsl:${distro}`;
+  return body;
+}
+
 function readRuntimeConfig() {
   try {
     const raw = JSON.parse(fs.readFileSync(RUNTIME_CONFIG_PATH, "utf8"));
@@ -124,6 +160,27 @@ function splitPortCandidates(preferredPort, options = {}) {
 function buildPermissionUrl(port) {
   const safePort = normalizePort(port) || DEFAULT_SERVER_PORT;
   return `http://127.0.0.1:${safePort}${PERMISSION_PATH}`;
+}
+
+// Ownership test for PermissionRequest HTTP hooks: true only for URLs that
+// buildPermissionUrl could have written (any bindable server port). Installers
+// must gate every update/remove of an HTTP hook on this — a user's own
+// approval endpoint (e.g. https://approval.corp.example/permission) merely
+// contains "/permission" and must never be rewritten or deleted.
+function isManagedPermissionUrl(value) {
+  if (typeof value !== "string") return false;
+  try {
+    const parsed = new URL(value);
+    const port = Number(parsed.port);
+    return parsed.protocol === "http:"
+      && parsed.hostname === "127.0.0.1"
+      && parsed.pathname === PERMISSION_PATH
+      && parsed.search === ""
+      && parsed.hash === ""
+      && SERVER_PORTS.includes(port);
+  } catch {
+    return false;
+  }
 }
 
 function readHeader(res, headerName) {
@@ -839,6 +896,7 @@ module.exports = {
   STATE_PATH,
   buildPermissionUrl,
   clearRuntimeConfig,
+  isManagedPermissionUrl,
   discoverClawdPort,
   getPortCandidates,
   getPermissionProbeTimeoutMs,
@@ -848,6 +906,8 @@ module.exports = {
   postStateToRunningServer,
   probePort,
   readHostPrefix,
+  resolveWslDistro,
+  applyWslSourceFields,
   readRuntimePort,
   resolveNodeBin,
   resolveNodeBinAsync,

@@ -21,6 +21,7 @@ const { unregisterOpenClawPlugin } = require("./openclaw-install");
 const { resolveHermesHome, unregisterHermesPlugin } = require("./hermes-install");
 const { unregisterQoderHooks } = require("./qoder-install");
 const { unregisterReasonixHooks } = require("./reasonix-install");
+const { unregisterQoderWorkHooks } = require("./qoderwork-install");
 
 const CODEX_MARKERS = ["codex-hook.js", "codex-debug-hook.js"];
 
@@ -42,6 +43,7 @@ const MANAGED_AGENT_IDS = Object.freeze([
   "hermes",
   "qoder",
   "reasonix",
+  "qoderwork",
 ]);
 
 const AGENT_DISPLAY_NAMES = Object.freeze({
@@ -62,6 +64,7 @@ const AGENT_DISPLAY_NAMES = Object.freeze({
   hermes: "Hermes Agent",
   qoder: "Qoder",
   reasonix: "Reasonix",
+  qoderwork: "QoderWork",
 });
 
 function normalizeHomeDir(value) {
@@ -203,6 +206,10 @@ function buildCleanupOptionsForHome(homeDirInput, options = {}) {
         ...common,
         settingsPath: path.join(homeDir, ".reasonix", "settings.json"),
       },
+      qoderwork: {
+        ...common,
+        settingsPath: path.join(homeDir, ".qoderwork", "settings.json"),
+      },
     },
   };
 }
@@ -249,6 +256,7 @@ const AGENT_CLEANERS = Object.freeze({
   hermes: unregisterHermesPlugin,
   qoder: unregisterQoderHooks,
   reasonix: unregisterReasonixHooks,
+  qoderwork: unregisterQoderWorkHooks,
 });
 
 function removedCountFromResult(result) {

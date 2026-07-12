@@ -38,7 +38,14 @@ const ANTIGRAVITY_HOOK_EVENTS = [
   "Stop",
 ];
 const DEFAULT_HOOK_TIMEOUT_SECONDS = 10;
-const FAIL_OPEN_CHILD_TIMEOUT_SECONDS = 8;
+// #568 budget: stdin timeout + child timeout must stay below
+// DEFAULT_HOOK_TIMEOUT_SECONDS with real headroom, or the outer hooks.json
+// timeout kills the wrapper before the fallback line is printed. Measured
+// worst case (never-closed stdin + hung child) at 2+7 was 9.5-9.7s on a warm
+// machine — a PowerShell cold start under AV scanning would blow past 10s —
+// so the child watchdog stays at 6s to keep ~2s of startup headroom.
+const FAIL_OPEN_CHILD_TIMEOUT_SECONDS = 6;
+const FAIL_OPEN_STDIN_TIMEOUT_SECONDS = 2;
 
 function fallbackStdoutForEvent(event) {
   return stdoutForAntigravityEvent(event);
@@ -56,6 +63,12 @@ function normalizeFailOpenTimeoutSeconds(options = {}) {
   const raw = Number(options.failOpenTimeoutSeconds);
   if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.floor(raw));
   return FAIL_OPEN_CHILD_TIMEOUT_SECONDS;
+}
+
+function normalizeStdinTimeoutSeconds(options = {}) {
+  const raw = Number(options.stdinTimeoutSeconds);
+  if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.floor(raw));
+  return FAIL_OPEN_STDIN_TIMEOUT_SECONDS;
 }
 
 function quoteWindowsProcessArg(value) {
@@ -86,6 +99,7 @@ function quoteWindowsProcessArg(value) {
 function withFailOpenShellFallback(command, event, nodeBin, options = {}) {
   const fallback = quoteShellSingleArg(fallbackStdoutForEvent(event));
   const timeoutSeconds = normalizeFailOpenTimeoutSeconds(options);
+  const stdinTimeoutSeconds = normalizeStdinTimeoutSeconds(options);
   const validatorScript = [
     "let s='';",
     "process.stdin.setEncoding('utf8');",
@@ -109,9 +123,22 @@ function withFailOpenShellFallback(command, event, nodeBin, options = {}) {
     // Do not trap TERM: macOS bash 3.2 may print run_pending_traps warnings when the watchdog is killed.
     "cleanup(){ trap - EXIT HUP INT TERM; [ -n \"$watchdog\" ] && kill \"$watchdog\" 2>/dev/null; [ -n \"$pid\" ] && kill \"$pid\" 2>/dev/null; rm -f \"$in_file\" \"$out_file\"; }",
     "trap cleanup EXIT HUP INT",
-    "cat > \"$in_file\" 2>/dev/null || :",
+    // #568: IDE/App hook runners may never close our stdin, so the stdin read
+    // needs its own watchdog. Background lists get /dev/null as stdin in
+    // non-interactive shells; the 3<&0 group redirection hands the real stdin
+    // to the background cat (and fails soft if fd 0 is somehow absent).
+    "{ cat <&3 > \"$in_file\" 2>/dev/null & pid=$!; } 3<&0",
+    // Watchdog subshells redirect stdout/stderr: a killed watchdog orphans its
+    // sleep, and an orphan holding our stdout would stall a hook runner that
+    // waits for pipe EOF instead of process exit.
+    `( sleep ${stdinTimeoutSeconds}; kill "$pid" 2>/dev/null ) > /dev/null 2>&1 & watchdog=$!`,
+    "wait \"$pid\" 2>/dev/null",
+    "[ -n \"$watchdog\" ] && kill \"$watchdog\" 2>/dev/null",
+    "[ -n \"$watchdog\" ] && wait \"$watchdog\" 2>/dev/null",
+    "pid=",
+    "watchdog=",
     `${command} < "$in_file" > "$out_file" 2>/dev/null & pid=$!`,
-    `( sleep ${timeoutSeconds}; kill "$pid" 2>/dev/null ) & watchdog=$!`,
+    `( sleep ${timeoutSeconds}; kill "$pid" 2>/dev/null ) > /dev/null 2>&1 & watchdog=$!`,
     "wait \"$pid\" 2>/dev/null",
     "status=$?",
     "[ -n \"$watchdog\" ] && kill \"$watchdog\" 2>/dev/null",
@@ -127,6 +154,7 @@ function withFailOpenShellFallback(command, event, nodeBin, options = {}) {
 function buildWindowsEncodedFailOpenNodeHookCommand(nodeBin, hookScript, event, options = {}) {
   const fallback = fallbackStdoutForEvent(event);
   const timeoutMs = normalizeFailOpenTimeoutSeconds(options) * 1000;
+  const stdinTimeoutMs = normalizeStdinTimeoutSeconds(options) * 1000;
   const childArgs = [
     quoteWindowsProcessArg(hookScript),
     quoteWindowsProcessArg(event),
@@ -137,6 +165,19 @@ function buildWindowsEncodedFailOpenNodeHookCommand(nodeBin, hookScript, event, 
     "$ProgressPreference='SilentlyContinue'",
     ";",
     "$text=''",
+    ";",
+    // #638: .NET Framework's Process.Start() eagerly creates the StandardInput
+    // StreamWriter on Console.InputEncoding with AutoFlush=true, which flushes
+    // the encoding's preamble into the pipe at Start() itself — under a
+    // CP-65001 console the hook's stdin would start with a 3-byte UTF-8 BOM
+    // that JSON.parse rejects. Swap in a BOM-less UTF-8 before Start(), gated
+    // on the current encoding actually carrying a preamble: the swap then
+    // never changes the console codepage (65001 stays 65001), so there is no
+    // cross-process console state to restore — concurrent wrappers cannot
+    // race on it and a hard-killed wrapper leaves no residue. The swapped
+    // encoding object is process-local and dies with the wrapper. Fail open
+    // where no console exists (ANSI encodings carry no preamble anyway).
+    "try { if ([Console]::InputEncoding.GetPreamble().Length -gt 0) { [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false) } } catch {}",
     ";",
     "try {",
     "$psi = New-Object System.Diagnostics.ProcessStartInfo",
@@ -153,6 +194,14 @@ function buildWindowsEncodedFailOpenNodeHookCommand(nodeBin, hookScript, event, 
     ";",
     "$psi.RedirectStandardOutput = $true",
     ";",
+    // #638 read side: without this, the StandardOutput reader decodes the
+    // hook's UTF-8 stdout with Console.OutputEncoding — mojibake for any
+    // non-ASCII in the hook's response under an ANSI console. Available on
+    // .NET Framework 4.5+ (unlike StandardInputEncoding, which Framework
+    // never got, hence the InputEncoding swap above) and process-local by
+    // construction.
+    "$psi.StandardOutputEncoding = New-Object System.Text.UTF8Encoding($false)",
+    ";",
     "$psi.RedirectStandardError = $true",
     ";",
     "$psi.CreateNoWindow = $true",
@@ -167,11 +216,25 @@ function buildWindowsEncodedFailOpenNodeHookCommand(nodeBin, hookScript, event, 
     ";",
     "$stderrTask = $proc.StandardError.ReadToEndAsync()",
     ";",
-    "$stdinText = [Console]::In.ReadToEnd()",
+    // #568: the IDE/App hook runner may never close our stdin; a bare
+    // ReadToEnd() would block until the outer hooks.json timeout kills us.
+    // [Console]::In is a SyncTextReader whose ReadToEndAsync() runs
+    // synchronously, so read the raw stdin stream instead — its async read
+    // lets Wait() time out (dropping the payload; the hook fails open on {}).
+    "$stdinText = ''",
     ";",
-    "$proc.StandardInput.Write($stdinText)",
+    `try { $stdinReader = New-Object System.IO.StreamReader([Console]::OpenStandardInput()) ; $stdinTask = $stdinReader.ReadToEndAsync() ; if ($stdinTask.Wait(${stdinTimeoutMs})) { $stdinText = $stdinTask.Result } } catch {}`,
     ";",
-    "$proc.StandardInput.Close()",
+    // Write raw UTF-8 bytes through the base stream rather than the
+    // Console.InputEncoding StreamWriter, so this write stays correctly
+    // encoded even where the InputEncoding pre-set above failed (#638).
+    "$stdinBytes = [System.Text.Encoding]::UTF8.GetBytes($stdinText)",
+    ";",
+    "$stdinStream = $proc.StandardInput.BaseStream",
+    ";",
+    "$stdinStream.Write($stdinBytes, 0, $stdinBytes.Length)",
+    ";",
+    "$stdinStream.Close()",
     ";",
     `if ($proc.WaitForExit(${timeoutMs})) {`,
     "$proc.WaitForExit()",
@@ -491,6 +554,7 @@ module.exports = {
     extractNodeBinFromCommand,
     fallbackStdoutForEvent,
     normalizeFailOpenTimeoutSeconds,
+    normalizeStdinTimeoutSeconds,
     quoteWindowsProcessArg,
     groupHasClawdMarker,
     hasAntigravityConfig,

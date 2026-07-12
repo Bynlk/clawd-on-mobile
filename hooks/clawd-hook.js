@@ -5,10 +5,13 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
-const { postStateToRunningServer, readHostPrefix } = require("./server-config");
+const { postStateToRunningServer, readHostPrefix, resolveWslDistro } = require("./server-config");
 const { fitStateBodyToByteBudget } = require("./state-payload-size");
 const { extractClaudeContextUsageFromEntries } = require("./context-usage");
-const { createPidResolver, readStdinJsonDetailed, getPlatformConfig } = require("./shared-process");
+const { createPidResolver, readStdinJsonDetailed, getPlatformConfig, tmuxSocketFromEnv, processAlive } = require("./shared-process");
+const pidCache = require("./pid-cache");
+
+const isWin = process.platform === "win32";
 
 const TRANSCRIPT_TAIL_BYTES = 262144; // 256 KB
 // #583: claude-code registers this hook with async:true and a 5s timeout
@@ -338,6 +341,45 @@ function isTaskToolStart(event, payload) {
     && payload.tool_name === "Task";
 }
 
+// #442-compat + #627: agent pid fields. Shared by the fresh-resolve and
+// cache-hit paths so the `headless` derivation and the `claude_pid` backward-
+// compat alias can never drift between them.
+function applyAgentPidFields(body, agentPid, agentCommandLine) {
+  if (!agentPid) return;
+  body.agent_pid = agentPid;
+  body.claude_pid = agentPid; // backward compat with older Clawd versions
+  if (agentCommandLine && /\s(-p|--print)(\s|$)/.test(agentCommandLine)) {
+    body.headless = true;
+  }
+}
+
+// Fresh-resolve path: preserves the exact pre-cache field output (#627).
+function applyResolvedFields(body, resolved, event) {
+  const { stablePid, agentPid, agentCommandLine, detectedEditor, pidChain, foregroundWtHwnd, tmuxSocket, tmuxClient } = resolved;
+  body.source_pid = stablePid;
+  if (detectedEditor) body.editor = detectedEditor;
+  applyAgentPidFields(body, agentPid, agentCommandLine);
+  if (pidChain && pidChain.length) body.pid_chain = pidChain;
+  if (tmuxSocket) body.tmux_socket = tmuxSocket;
+  if (tmuxClient) body.tmux_client = tmuxClient;
+  if (shouldReportForegroundWtHwnd(event) && foregroundWtHwnd) {
+    body.wt_hwnd = String(foregroundWtHwnd);
+  }
+}
+
+// Cache-hit path (#627): stable subset only. Deliberately omits pid_chain — the
+// server MERGEs a missing pid_chain and keeps the SessionStart one, whereas the
+// cached chain's head would be a dead per-event PowerShell — and wt_hwnd, which
+// is only reported on the always-fresh SessionStart/UserPromptSubmit events.
+// tmux_socket is a pure-env value, recomputed so a tmux user still gets it.
+function applyCachedFields(body, cached) {
+  body.source_pid = cached.stablePid;
+  if (cached.detectedEditor) body.editor = cached.detectedEditor;
+  applyAgentPidFields(body, cached.agentPid, cached.agentCommandLine);
+  const tmuxSocket = tmuxSocketFromEnv();
+  if (tmuxSocket) body.tmux_socket = tmuxSocket;
+}
+
 function buildStateBody(event, payload, resolve) {
   const state = EVENT_TO_STATE[event];
   if (!state) return null;
@@ -427,24 +469,68 @@ function buildStateBody(event, payload, resolve) {
     if (cronCount > 0) body.session_crons_count = cronCount;
     if (payload.stop_hook_active === true) body.stop_hook_active = true;
   }
+  const wslDistro = resolveWslDistro();
   if (process.env.CLAWD_REMOTE) {
+    // Remote session: preserve existing host prefix, add WSL distro as
+    // separate metadata. Do NOT override the SSH host.
     body.host = readHostPrefix();
+    if (wslDistro) body.wsl_distro = wslDistro;
   } else {
-    const { stablePid, agentPid, agentCommandLine, detectedEditor, pidChain, foregroundWtHwnd, tmuxSocket, tmuxClient } = resolve();
-    body.source_pid = stablePid;
-    if (detectedEditor) body.editor = detectedEditor;
-    if (agentPid) {
-      body.agent_pid = agentPid;
-      body.claude_pid = agentPid; // backward compat with older Clawd versions
-      if (agentCommandLine && /\s(-p|--print)(\s|$)/.test(agentCommandLine)) {
-        body.headless = true;
+    // #627: on Windows every hook event otherwise cold-starts a PowerShell to
+    // snapshot the process tree, flashing a console window under Windows
+    // Terminal. The tree is stable within a session, so snapshot once on the
+    // always-fresh events and let high-frequency events read a per-session cache.
+    const canCacheSession = isWin && pidCache.canCache(sessionId, cwd);
+    // SessionStart populates the cache; UserPromptSubmit needs a live foreground
+    // window (wt_hwnd) so it also re-resolves (and refreshes the cache).
+    const wantsFresh = event === "SessionStart" || event === "UserPromptSubmit";
+
+    let cached = null;
+    if (event === "SessionEnd") {
+      // M5: read the last-known subset for the final body, then drop it. Never
+      // write back on SessionEnd.
+      if (canCacheSession) {
+        cached = pidCache.readPidCache(sessionId, cwd);
+        pidCache.dropPidCache(sessionId, cwd);
+      }
+    } else if (canCacheSession && !wantsFresh) {
+      const c = pidCache.readPidCache(sessionId, cwd);
+      // M1 + bounded sliding TTL (#627 plan §8): the PID that becomes source_pid
+      // (stablePid) must be alive — session-focus.js only checks source_pid's
+      // existence, so a dead stablePid must trigger a fresh resolve. agentPid
+      // (claude.exe) must ALSO be alive: it tracks session liveness, so a dead
+      // agentPid means the session ended and the cache must NOT be renewed. Both
+      // alive → hit and refresh the idle TTL (touch bumps mtime, not ts) so an
+      // active long turn never re-snapshots mid-session.
+      if (c && c.cwd === cwd && processAlive(c.stablePid) && processAlive(c.agentPid)) {
+        pidCache.touchPidCache(sessionId, cwd);
+        cached = c;
       }
     }
-    if (pidChain.length) body.pid_chain = pidChain;
-    if (tmuxSocket) body.tmux_socket = tmuxSocket;
-    if (tmuxClient) body.tmux_client = tmuxClient;
-    if (shouldReportForegroundWtHwnd(event) && foregroundWtHwnd) {
-      body.wt_hwnd = String(foregroundWtHwnd);
+
+    if (cached) {
+      applyCachedFields(body, cached);
+    } else {
+      if (event === "SessionStart" && canCacheSession) pidCache.sweepStalePidCaches();
+      const resolved = resolve();
+      applyResolvedFields(body, resolved, event);
+      // M2: only cache a non-degraded result. An empty Windows snapshot decays
+      // stablePid to process.ppid (a per-event ephemeral PID); snapshotOk rules
+      // that out, and a found agentPid proves the walk reached a real ancestor.
+      // Never write on SessionEnd.
+      if (canCacheSession && event !== "SessionEnd" && resolved.snapshotOk && resolved.agentPid) {
+        pidCache.writePidCache(sessionId, cwd, {
+          stablePid: resolved.stablePid,
+          agentPid: resolved.agentPid,
+          agentCommandLine: resolved.agentCommandLine,
+          detectedEditor: resolved.detectedEditor,
+        });
+      }
+    }
+
+    if (wslDistro) {
+      body.wsl_distro = wslDistro;
+      body.host = `wsl:${wslDistro}`;
     }
   }
 

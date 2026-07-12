@@ -439,6 +439,21 @@ function createIntegrationSyncRuntime(options = {}) {
     }
   }
 
+  function syncQoderWorkHooks() {
+    try {
+      if (typeof ctx.syncQoderWorkHooksImpl === "function") return ctx.syncQoderWorkHooksImpl();
+      const { registerQoderWorkHooks } = require("../hooks/qoderwork-install.js");
+      const result = registerQoderWorkHooks({ silent: true });
+      if (hasPositiveCount(result.added) || hasPositiveCount(result.updated)) {
+        console.log(`Clawd: synced QoderWork hooks (added ${result.added}, updated ${result.updated})`);
+      }
+      return normalizeCountSyncResult(result, "QoderWork", "qoderwork-not-installed");
+    } catch (err) {
+      console.warn("Clawd: failed to sync QoderWork hooks:", err.message);
+      return { status: "error", message: err && err.message ? err.message : "Failed to sync QoderWork hooks" };
+    }
+  }
+
   const AGENT_INTEGRATION_SYNCERS = Object.freeze({
     "gemini-cli": syncGeminiHooks,
     "antigravity-cli": syncAntigravityHooks,
@@ -456,6 +471,7 @@ function createIntegrationSyncRuntime(options = {}) {
     hermes: syncHermesPlugin,
     qoder: syncQoderHooks,
     reasonix: syncReasonixHooks,
+    qoderwork: syncQoderWorkHooks,
   });
 
   const AGENT_INTEGRATION_REPAIRERS = Object.freeze({
@@ -555,6 +571,7 @@ function createIntegrationSyncRuntime(options = {}) {
     syncHermesPlugin,
     syncQoderHooks,
     syncReasonixHooks,
+    syncQoderWorkHooks,
     repairCodexHooks,
     repairOpenClawPlugin,
     syncIntegrationForAgent,

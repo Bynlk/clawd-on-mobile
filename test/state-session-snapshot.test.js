@@ -5,11 +5,49 @@ const assert = require("node:assert");
 
 const {
   deriveSessionBadge,
+  deriveSourceInfo,
   isSessionInProgress,
   buildSessionSnapshot,
   getActiveSessionAliasKeys,
   sessionSnapshotSignature,
+  sessionDisplayTitle,
 } = require("../src/state-session-snapshot");
+
+describe("deriveSourceInfo", () => {
+  it("derives WSL source from the wsl: host prefix", () => {
+    assert.deepStrictEqual(deriveSourceInfo("wsl:Ubuntu"), {
+      sourceType: "wsl",
+      sourceLabel: "Ubuntu",
+      displayLabel: "WSL: Ubuntu",
+    });
+  });
+
+  it("falls back to a stable label for a bare wsl: prefix", () => {
+    assert.deepStrictEqual(deriveSourceInfo("wsl:"), {
+      sourceType: "wsl",
+      sourceLabel: "unknown",
+      displayLabel: "WSL: unknown",
+    });
+  });
+
+  it("treats any other non-local host as ssh", () => {
+    assert.deepStrictEqual(deriveSourceInfo("devbox"), {
+      sourceType: "ssh",
+      sourceLabel: "devbox",
+      displayLabel: "devbox",
+    });
+  });
+
+  it("treats empty, null, and 'local' hosts as local", () => {
+    for (const host of ["", null, undefined, "local"]) {
+      assert.deepStrictEqual(deriveSourceInfo(host), {
+        sourceType: "local",
+        sourceLabel: "",
+        displayLabel: "",
+      });
+    }
+  });
+});
 
 const STATE_PRIORITY = {
   error: 8,
@@ -52,6 +90,33 @@ describe("isSessionInProgress state mapping", () => {
   it("returns false for nullish sessions", () => {
     assert.strictEqual(isSessionInProgress(null), false);
     assert.strictEqual(isSessionInProgress(undefined), false);
+  });
+});
+
+describe("sessionDisplayTitle cwd fallback", () => {
+  it("falls back to path.basename(cwd) for normal project paths", () => {
+    assert.strictEqual(
+      sessionDisplayTitle("qoderwork:abc123", session("working", { cwd: "/home/me/projects/myapp" })),
+      "myapp"
+    );
+  });
+
+  it("skips QoderWork internal workspace cwds so the HUD never shows a raw workspace id", () => {
+    assert.strictEqual(
+      sessionDisplayTitle("qoderwork:abc123", session("working", { agentId: "qoderwork", cwd: "/Users/me/.qoderwork/workspace/mqgw60jiigjsjcid" })),
+      "qoderw.."
+    );
+    assert.strictEqual(
+      sessionDisplayTitle("qoderwork:abc123", session("working", { agentId: "qoderwork", cwd: "C:\\Users\\me\\.qoderwork\\workspace\\abc123" })),
+      "qoderw.."
+    );
+  });
+
+  it("keeps the cwd basename for non-QoderWork agents even inside a QoderWork workspace dir", () => {
+    assert.strictEqual(
+      sessionDisplayTitle("claude:xyz789", session("working", { agentId: "claude-code", cwd: "/Users/me/.qoderwork/workspace/mqgw60jiigjsjcid" })),
+      "mqgw60jiigjsjcid"
+    );
   });
 });
 
@@ -118,8 +183,8 @@ describe("state-session-snapshot builder", () => {
     assert.deepStrictEqual(snapshot.orderedIds, ["latest-remote", "error-local", "old-working"]);
     assert.deepStrictEqual(snapshot.menuOrderedIds, ["error-local", "old-working", "latest-remote"]);
     assert.deepStrictEqual(snapshot.groups, [
-      { host: "", ids: ["error-local", "old-working"] },
-      { host: "remote-box", ids: ["latest-remote"] },
+      { host: "", ids: ["error-local", "old-working"], displayHost: "" },
+      { host: "remote-box", ids: ["latest-remote"], displayHost: "remote-box" },
     ]);
     assert.strictEqual(snapshot.hudTotalNonIdle, 2);
     assert.strictEqual(snapshot.hudLastSessionId, "error-local");
@@ -469,7 +534,7 @@ describe("state-session-snapshot builder", () => {
     assert.strictEqual(snapshot.hudTotalNonIdle, 1);
     assert.strictEqual(snapshot.hudLastSessionId, "codex:new");
     assert.deepStrictEqual(snapshot.orderedIds, ["codex:new", "codex:old"]);
-    assert.deepStrictEqual(snapshot.groups, [{ host: "", ids: ["codex:new", "codex:old"] }]);
+    assert.deepStrictEqual(snapshot.groups, [{ host: "", ids: ["codex:new", "codex:old"], displayHost: "" }]);
   });
 
   it("snapshot signatures include visible fields but ignore icon URL churn", () => {

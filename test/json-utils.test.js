@@ -5,6 +5,11 @@ const os = require("os");
 const path = require("path");
 const { buildPortableStatuslineCommand, extractExistingNodeBin, extractExistingNodeBinFromCommands, formatNodeHookCommand, writeJsonAtomicAsync, createBackup, writeJsonAtomicWithBackup, writeJsonAtomicWithBackupAsync, pruneOldBackups, pruneOldBackupsAsync, DEFAULT_BACKUP_KEEP } = require("../hooks/json-utils");
 
+// Hook command format depends on real-environment WSL signals; clear them so
+// assertions stay deterministic when the suite itself runs inside WSL.
+delete process.env.CLAWD_WSL_DISTRO;
+delete process.env.WSL_DISTRO_NAME;
+
 describe("extractExistingNodeBin", () => {
   it("extracts node path from flat command format", () => {
     const settings = {
@@ -138,6 +143,19 @@ describe("extractExistingNodeBinFromCommands", () => {
     assert.strictEqual(extractExistingNodeBinFromCommands(commands, "kimi-hook.js"), null);
   });
 
+  it("extracts an unquoted absolute first token (portable Windows hook form)", () => {
+    const commands = ['C:/nvm/v20.11.0/node.exe "D:/app/hooks/qoder-hook.js" "Stop"'];
+    assert.strictEqual(
+      extractExistingNodeBinFromCommands(commands, "qoder-hook.js"),
+      "C:/nvm/v20.11.0/node.exe"
+    );
+  });
+
+  it("does not treat a bare-node portable command as an absolute path", () => {
+    const commands = ['node "D:/app/hooks/qoder-hook.js" "Stop"'];
+    assert.strictEqual(extractExistingNodeBinFromCommands(commands, "qoder-hook.js"), null);
+  });
+
   it("walks past commands that begin with the marker itself", () => {
     const commands = [
       '"/path/to/kimi-hook.js"',
@@ -163,8 +181,33 @@ describe("formatNodeHookCommand", () => {
     assert.strictEqual(
       formatNodeHookCommand("/usr/local/bin/node", "/app/hooks/codex-debug-hook.js", {
         platform: "linux",
+        wslDistro: null,
       }),
       '"/usr/local/bin/node" "/app/hooks/codex-debug-hook.js"'
+    );
+  });
+
+  it("formats WSL commands as plain (unquoted) node + script", () => {
+    // Quoted-without-shell breaks naive-split hook runners on WSL — the
+    // quotes become part of the executable name (silent hook failure).
+    assert.strictEqual(
+      formatNodeHookCommand("/usr/bin/node", "/home/u/.claude/hooks/gemini-hook.js", {
+        platform: "linux",
+        wslDistro: "Ubuntu",
+        args: ["Stop"],
+      }),
+      "/usr/bin/node /home/u/.claude/hooks/gemini-hook.js Stop"
+    );
+  });
+
+  it("ignores wslDistro on win32 — Windows wrappers keep their quoting", () => {
+    assert.strictEqual(
+      formatNodeHookCommand("C:\\nodejs\\node.exe", "D:/app/hooks/kiro-hook.js", {
+        platform: "win32",
+        windowsWrapper: "powershell",
+        wslDistro: "Ubuntu",
+      }),
+      '& "C:\\nodejs\\node.exe" "D:/app/hooks/kiro-hook.js"'
     );
   });
 
@@ -185,6 +228,42 @@ describe("formatNodeHookCommand", () => {
         windowsWrapper: "cmd",
       }),
       'cmd /d /s /c ""C:\\Program Files\\nodejs\\node.exe" "D:/app/hooks/codex-debug-hook.js""'
+    );
+  });
+
+  // windowsWrapper:"portable" targets launchers that run command hooks
+  // through a POSIX shell on Windows (Qoder CLI → Git Bash, #597): unquoted
+  // forward-slash interpreter token, double-quoted args, zero backslashes.
+  it("formats the portable Windows form with bare node when the path has spaces", () => {
+    assert.strictEqual(
+      formatNodeHookCommand("C:\\Program Files\\nodejs\\node.exe", "D:\\app\\hooks\\qoder-hook.js", {
+        platform: "win32",
+        windowsWrapper: "portable",
+        args: ["PermissionRequest"],
+      }),
+      'node "D:/app/hooks/qoder-hook.js" "PermissionRequest"'
+    );
+  });
+
+  it("formats the portable Windows form with an unquoted forward-slash node path", () => {
+    assert.strictEqual(
+      formatNodeHookCommand("C:\\nvm\\v20.11.0\\node.exe", "D:/app/hooks/qoder-hook.js", {
+        platform: "win32",
+        windowsWrapper: "portable",
+        args: ["Stop"],
+      }),
+      'C:/nvm/v20.11.0/node.exe "D:/app/hooks/qoder-hook.js" "Stop"'
+    );
+  });
+
+  it("ignores the portable wrapper on POSIX", () => {
+    assert.strictEqual(
+      formatNodeHookCommand("/usr/local/bin/node", "/app/hooks/qoder-hook.js", {
+        platform: "linux",
+        windowsWrapper: "portable",
+        args: ["Stop"],
+      }),
+      '"/usr/local/bin/node" "/app/hooks/qoder-hook.js" "Stop"'
     );
   });
 });

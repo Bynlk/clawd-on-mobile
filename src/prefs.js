@@ -28,9 +28,13 @@ const {
   normalizeTelegramApproval,
 } = require("./telegram-approval-settings");
 const {
-  DEFAULT_HARDWARE_BUDDY_SETTINGS,
-  normalizeHardwareBuddySettings,
-} = require("./hardware-buddy-settings");
+  cloneDefaultDiscordPresence,
+  normalizeDiscordPresence,
+} = require("./discord-presence-settings");
+const {
+  cloneDefaultFeishuApproval,
+  normalizeFeishuApproval,
+} = require("./feishu-approval-settings");
 const {
   NOTIFICATION_DEFAULT_SECONDS,
   UPDATE_DEFAULT_SECONDS,
@@ -284,6 +288,8 @@ const SCHEMA = {
       // Qoder is state-only (Phase 1) — permission bubbles default off.
       "qoder": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
       "reasonix": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
+      // QoderWork is state-only (Phase 1) — permission bubbles default off.
+      "qoderwork": { integrationInstalled: false, enabled: false, permissionsEnabled: false, notificationHookEnabled: true },
     }),
     normalize: normalizeAgents,
   },
@@ -335,6 +341,16 @@ const SCHEMA = {
     defaultFactory: () => cloneDefaultTelegramApproval(),
     normalize: normalizeTelegramApproval,
   },
+  discordPresence: {
+    type: "object",
+    defaultFactory: () => cloneDefaultDiscordPresence(),
+    normalize: normalizeDiscordPresence,
+  },
+  feishuApproval: {
+    type: "object",
+    defaultFactory: () => cloneDefaultFeishuApproval(),
+    normalize: normalizeFeishuApproval,
+  },
   // v0.9.0 migration state. transport defaults to null (undecided) so v0.8.x
   // users upgrading without this key fall onto the "detect legacy artefacts"
   // path inside the migration reducer.
@@ -362,11 +378,6 @@ const SCHEMA = {
           : { importedAt: null, importError: null },
       };
     },
-  },
-  hardwareBuddy: {
-    type: "object",
-    defaultFactory: () => ({ ...DEFAULT_HARDWARE_BUDDY_SETTINGS }),
-    normalize: normalizeHardwareBuddySettings,
   },
   // Mobile companion feature flag. When false, the mobile WebSocket server
   // and all mobile-related code paths are completely disabled.

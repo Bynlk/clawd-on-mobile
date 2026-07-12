@@ -12,16 +12,10 @@ const SETTINGS_CSS = path.join(SRC_DIR, "settings.css");
 const SETTINGS_TAB_GENERAL = path.join(SRC_DIR, "settings-tab-general.js");
 const SETTINGS_RENDERER = path.join(SRC_DIR, "settings-renderer.js");
 const SETTINGS_UI_CORE = path.join(SRC_DIR, "settings-ui-core.js");
-const SETTINGS_ANIM_OVERRIDES_MERGE = path.join(
-  SRC_DIR,
-  "settings-anim-overrides-merge.js",
-);
+const SETTINGS_ANIM_OVERRIDES_MERGE = path.join(SRC_DIR, "settings-anim-overrides-merge.js");
 const SETTINGS_I18N = path.join(SRC_DIR, "settings-i18n.js");
 const SETTINGS_DOCTOR_MODAL = path.join(SRC_DIR, "settings-doctor-modal.js");
-const SETTINGS_ANIMATION_PREVIEW = path.join(
-  SRC_DIR,
-  "settings-animation-preview.html",
-);
+const SETTINGS_ANIMATION_PREVIEW = path.join(SRC_DIR, "settings-animation-preview.html");
 const PRELOAD_SETTINGS = path.join(SRC_DIR, "preload-settings.js");
 const MAIN_PROCESS = path.join(SRC_DIR, "main.js");
 const SETTINGS_IPC = path.join(SRC_DIR, "settings-ipc.js");
@@ -36,7 +30,6 @@ const TAB_MODULES = [
   path.join(SRC_DIR, "settings-tab-shortcuts.js"),
   path.join(SRC_DIR, "settings-tab-telegram-approval.js"),
   path.join(SRC_DIR, "settings-tab-about.js"),
-  path.join(SRC_DIR, "settings-hardware-buddy-panel.js"),
 ];
 const VERIFIED_GITHUB_CONTRIBUTORS = [
   "Bynlk",
@@ -106,10 +99,7 @@ function loadSettingsCoreForTest(settingsAPI) {
   context.window = context;
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(
-    fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"), context);
   vm.runInContext(fs.readFileSync(SETTINGS_UI_CORE, "utf8"), context);
   return context.ClawdSettingsCore;
 }
@@ -140,11 +130,7 @@ class FakeClassList {
   }
 
   _values() {
-    return new Set(
-      String(this.el.className || "")
-        .split(/\s+/)
-        .filter(Boolean),
-    );
+    return new Set(String(this.el.className || "").split(/\s+/).filter(Boolean));
   }
 
   add(...names) {
@@ -228,9 +214,7 @@ class FakeElement {
     if (name === "type") this.type = String(value);
     if (name === "tabindex") this.tabIndex = Number(value);
     if (name.startsWith("data-")) {
-      const key = name
-        .slice(5)
-        .replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase());
+      const key = name.slice(5).replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase());
       this.dataset[key] = String(value);
     }
   }
@@ -252,8 +236,7 @@ class FakeElement {
 
   dispatchEvent(event) {
     const ev = event || {};
-    if (!ev.type)
-      throw new Error("FakeElement.dispatchEvent requires an event type");
+    if (!ev.type) throw new Error("FakeElement.dispatchEvent requires an event type");
     if (!ev.target) ev.target = this;
     ev.currentTarget = this;
     if (typeof ev.preventDefault !== "function") {
@@ -299,10 +282,7 @@ class FakeElement {
         child.setAttribute(attrName, attrValue);
       }
       stack[stack.length - 1].appendChild(child);
-      const voidTag =
-        /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i.test(
-          tagName,
-        );
+      const voidTag = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i.test(tagName);
       if (!full.endsWith("/>") && !voidTag) stack.push(child);
     }
   }
@@ -312,16 +292,12 @@ class FakeElement {
   }
 
   _matches(selector) {
-    if (selector.startsWith("."))
-      return this.classList.contains(selector.slice(1));
+    if (selector.startsWith(".")) return this.classList.contains(selector.slice(1));
     return this.tagName.toLowerCase() === selector.toLowerCase();
   }
 
   querySelectorAll(selector) {
-    const parts = String(selector || "")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
+    const parts = String(selector || "").trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) return [];
     const matches = [];
     const visit = (node) => {
@@ -351,8 +327,7 @@ class FakeElement {
     if (!this._matches(parts[parts.length - 1])) return false;
     let current = this.parentNode;
     for (let i = parts.length - 2; i >= 0; i--) {
-      while (current && !current._matches(parts[i]))
-        current = current.parentNode;
+      while (current && !current._matches(parts[i])) current = current.parentNode;
       if (!current) return false;
       current = current.parentNode;
     }
@@ -467,16 +442,12 @@ function loadGeneralLanguageRowForTest({
   context.window = context;
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(
-    fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"), context);
   vm.runInContext(fs.readFileSync(SETTINGS_UI_CORE, "utf8"), context);
-  const generalSource = fs
-    .readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8")
+  const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8")
     .replace(
       "root.ClawdSettingsTabGeneral = { init };",
-      "root.ClawdSettingsTabGeneral = { init, __test: { buildLanguageRow } };",
+      "root.ClawdSettingsTabGeneral = { init, __test: { buildLanguageRow } };"
     );
   vm.runInContext(generalSource, context);
 
@@ -490,9 +461,7 @@ function loadGeneralLanguageRowForTest({
     contentRenderCount++;
     core.ops.clearMountedControls();
     content.innerHTML = "";
-    content.appendChild(
-      context.ClawdSettingsTabGeneral.__test.buildLanguageRow(),
-    );
+    content.appendChild(context.ClawdSettingsTabGeneral.__test.buildLanguageRow());
   }
   core.ops.installRenderHooks({ content: renderLanguageOnly });
 
@@ -519,7 +488,10 @@ function loadGeneralLanguageRowForTest({
   };
 }
 
-function loadGeneralTabForTest({ snapshot, settingsAPI = {} } = {}) {
+function loadGeneralTabForTest({
+  snapshot,
+  settingsAPI = {},
+} = {}) {
   const body = new FakeElement("body");
   const content = new FakeElement("main");
   content.id = "content";
@@ -589,15 +561,9 @@ function loadGeneralTabForTest({ snapshot, settingsAPI = {} } = {}) {
   context.window = context;
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(
-    fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"), context);
   vm.runInContext(fs.readFileSync(SETTINGS_UI_CORE, "utf8"), context);
-  vm.runInContext(
-    fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8"), context);
 
   const core = context.ClawdSettingsCore;
   core.state.snapshot = snapshot || {};
@@ -618,8 +584,7 @@ function loadGeneralTabForTest({ snapshot, settingsAPI = {} } = {}) {
     content,
     renderContent,
     getContentRenderCount: () => contentRenderCount,
-    getSwitchMeta: (key) =>
-      core.state.mountedControls.generalSwitches.get(key) || null,
+    getSwitchMeta: (key) => core.state.mountedControls.generalSwitches.get(key) || null,
     getSwitch: (key) => {
       const meta = core.state.mountedControls.generalSwitches.get(key);
       return meta ? meta.element : null;
@@ -672,14 +637,16 @@ function createKeyboardEventForTest(key) {
 function findAncestorByClass(el, className) {
   let current = el;
   while (current) {
-    if (current.classList && current.classList.contains(className))
-      return current;
+    if (current.classList && current.classList.contains(className)) return current;
     current = current.parentNode;
   }
   return null;
 }
 
-function loadThemeTabForTest({ themes, settingsAPI = {} } = {}) {
+function loadThemeTabForTest({
+  themes,
+  settingsAPI = {},
+} = {}) {
   const body = new FakeElement("body");
   const content = new FakeElement("main");
   content.id = "content";
@@ -739,15 +706,9 @@ function loadThemeTabForTest({ themes, settingsAPI = {} } = {}) {
   context.window = context;
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(
-    fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"), context);
   vm.runInContext(fs.readFileSync(SETTINGS_UI_CORE, "utf8"), context);
-  vm.runInContext(
-    fs.readFileSync(path.join(SRC_DIR, "settings-tab-theme.js"), "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-theme.js"), "utf8"), context);
 
   const core = context.ClawdSettingsCore;
   core.state.snapshot = { lang: "en" };
@@ -789,10 +750,7 @@ function loadAgentsTabForTest({
     console,
     navigator: { platform: "Win32" },
     localStorage: {
-      getItem: (key) =>
-        Object.prototype.hasOwnProperty.call(localStorageData, key)
-          ? localStorageData[key]
-          : null,
+      getItem: (key) => (Object.prototype.hasOwnProperty.call(localStorageData, key) ? localStorageData[key] : null),
       setItem: (key, value) => {
         localStorageData[key] = String(value);
       },
@@ -851,8 +809,7 @@ function loadAgentsTabForTest({
           agentIntegrationUninstall: "Uninstall",
           agentIntegrationWorking: "Working",
           agentIntegrationUninstallConfirm: "Confirm uninstall",
-          agentIntegrationInstallSkipped:
-            "No local installation was found for {agents}.",
+          agentIntegrationInstallSkipped: "No local installation was found for {agents}.",
           agentListSeparator: ", ",
           agentInstallHintTitle: "Connect detected agents",
           agentInstallHintDesc: "Detected local signals for {agents}.",
@@ -867,15 +824,11 @@ function loadAgentsTabForTest({
           toastAgentIntegrationInstalled: "Integration installed.",
           toastAgentIntegrationUninstalled: "Integration uninstalled.",
           toastAgentInstallHintInstalled: "Recommended integrations installed.",
-          toastAgentInstallHintSkipped:
-            "No local installation was found for {agents}.",
-          toastAgentInstallHintPartialSkipped:
-            "{success} installed. Skipped {agents}.",
-          toastAgentInstallHintPartial:
-            "{success} installed, {failed} failed: {message}",
+          toastAgentInstallHintSkipped: "No local installation was found for {agents}.",
+          toastAgentInstallHintPartialSkipped: "{success} installed. Skipped {agents}.",
+          toastAgentInstallHintPartial: "{success} installed, {failed} failed: {message}",
           toastAgentCleanupHintRemoved: "Missing integrations removed.",
-          toastAgentCleanupHintPartial:
-            "{success} removed, {failed} failed: {message}",
+          toastAgentCleanupHintPartial: "{success} removed, {failed} failed: {message}",
           toastSaveFailed: "Failed: ",
         },
       },
@@ -886,26 +839,15 @@ function loadAgentsTabForTest({
   context.window = context;
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(
-    fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"), context);
   vm.runInContext(fs.readFileSync(SETTINGS_UI_CORE, "utf8"), context);
-  vm.runInContext(
-    fs.readFileSync(path.join(SRC_DIR, "settings-agent-order.js"), "utf8"),
-    context,
-  );
-  vm.runInContext(
-    fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-agent-order.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8"), context);
 
   const core = context.ClawdSettingsCore;
   core.state.snapshot = snapshot || { agents: {} };
   core.state.activeTab = "agents";
-  core.runtime.agentMetadata = Array.isArray(agentMetadata)
-    ? agentMetadata
-    : [];
+  core.runtime.agentMetadata = Array.isArray(agentMetadata) ? agentMetadata : [];
   context.ClawdSettingsTabAgents.init(core);
 
   let contentRenderCount = 0;
@@ -925,7 +867,9 @@ function loadAgentsTabForTest({
   };
 }
 
-function loadAnimMapTabForTest({ snapshot } = {}) {
+function loadAnimMapTabForTest({
+  snapshot,
+} = {}) {
   const body = new FakeElement("body");
   const content = new FakeElement("main");
   body.appendChild(content);
@@ -976,22 +920,10 @@ function loadAnimMapTabForTest({ snapshot } = {}) {
   context.window = context;
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(
-    fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(SETTINGS_ANIM_OVERRIDES_MERGE, "utf8"), context);
   vm.runInContext(fs.readFileSync(SETTINGS_UI_CORE, "utf8"), context);
-  vm.runInContext(
-    fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-map.js"), "utf8"),
-    context,
-  );
-  vm.runInContext(
-    fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-anim-overrides.js"),
-      "utf8",
-    ),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-map.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8"), context);
 
   const core = context.ClawdSettingsCore;
   core.state.snapshot = snapshot || { theme: "clawd", themeOverrides: {} };
@@ -1027,6 +959,7 @@ function loadTelegramApprovalTabForTest({
   const updates = [];
   const commands = [];
   const renderRequests = [];
+  const timers = [];
 
   const document = {
     body,
@@ -1044,13 +977,16 @@ function loadTelegramApprovalTabForTest({
     command: (name, payload) => {
       commands.push({ name, payload });
       if (name === "telegramApproval.status") {
-        return Promise.resolve({
-          status: "ok",
-          state: { status: "stopped", tokenStored: false },
-        });
+        return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
       }
       if (name === "telegramApproval.tokenInfo") {
         return Promise.resolve({ status: "ok", configured: false, masked: "" });
+      }
+      if (name === "feishuApproval.status") {
+        return Promise.resolve({ status: "ok", state: { status: "stopped", secretsStored: false } });
+      }
+      if (name === "feishuApproval.secretInfo") {
+        return Promise.resolve({ status: "ok", configured: false });
       }
       return Promise.resolve({ status: "ok" });
     },
@@ -1063,6 +999,13 @@ function loadTelegramApprovalTabForTest({
       cb();
       return 1;
     },
+    setTimeout: (cb, ms) => {
+      timers.push({ cb, ms, cleared: false });
+      return timers.length;
+    },
+    clearTimeout: (id) => {
+      if (timers[id - 1]) timers[id - 1].cleared = true;
+    },
     window: null,
     globalThis: null,
     settingsAPI: api,
@@ -1071,20 +1014,7 @@ function loadTelegramApprovalTabForTest({
   context.window = context;
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(
-    fs.readFileSync(
-      path.join(SRC_DIR, "settings-hardware-buddy-panel.js"),
-      "utf8",
-    ),
-    context,
-  );
-  vm.runInContext(
-    fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-telegram-approval.js"),
-      "utf8",
-    ),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-telegram-approval.js"), "utf8"), context);
 
   const core = {
     state: {
@@ -1093,6 +1023,12 @@ function loadTelegramApprovalTabForTest({
           enabled: false,
           allowedTgUserId: "123456789",
           targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: false,
+          idType: "open_id",
+          approverId: "",
+          connectionTimeoutSeconds: 15,
         },
       },
       activeTab: "telegram-approval",
@@ -1113,15 +1049,7 @@ function loadTelegramApprovalTabForTest({
       // Mirror the real buildCollapsibleGroup just enough that header content,
       // title/summary, and children all end up in the DOM tree; collapsed
       // behaviour is exercised by the real component's own tests.
-      buildCollapsibleGroup: ({
-        id,
-        title = "",
-        desc = "",
-        summary = null,
-        headerContent,
-        children = [],
-        className = "",
-      } = {}) => {
+      buildCollapsibleGroup: ({ id, title = "", desc = "", summary = null, headerContent, children = [], className = "" } = {}) => {
         const group = document.createElement("div");
         group.className = `collapsible-group${className ? ` ${className}` : ""}`;
         if (id) group.dataset.groupId = id;
@@ -1146,8 +1074,7 @@ function loadTelegramApprovalTabForTest({
         }
         if (summary) {
           const summaryWrap = document.createElement("div");
-          summaryWrap.className =
-            "collapsibleSummary collapsible-group-summary";
+          summaryWrap.className = "collapsibleSummary collapsible-group-summary";
           if (typeof summary === "string") summaryWrap.textContent = summary;
           else summaryWrap.appendChild(summary);
           header.appendChild(summaryWrap);
@@ -1175,7 +1102,7 @@ function loadTelegramApprovalTabForTest({
   }
   render();
 
-  return { core, content, updates, commands, render, renderRequests };
+  return { core, content, updates, commands, render, renderRequests, timers };
 }
 
 function loadAnimOverridesTabForTest({
@@ -1218,13 +1145,7 @@ function loadAnimOverridesTabForTest({
   };
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(
-    fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-anim-overrides.js"),
-      "utf8",
-    ),
-    context,
-  );
+  vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8"), context);
   const core = {
     state: { activeTab: "animOverrides" },
     runtime,
@@ -1237,8 +1158,7 @@ function loadAnimOverridesTabForTest({
         return chevron;
       },
       attachActivation: (el, invoke) => {
-        if (typeof invoke === "function")
-          el.addEventListener("click", () => invoke());
+        if (typeof invoke === "function") el.addEventListener("click", () => invoke());
         return el;
       },
       ...helpersOverrides,
@@ -1246,11 +1166,9 @@ function loadAnimOverridesTabForTest({
     ops: {
       selectTab: () => {},
       requestRender: ({ modal = false } = {}) => {
-        if (modal && typeof core.renderHooks.modal === "function")
-          core.renderHooks.modal();
+        if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
       },
-      fetchAnimationOverridesData: () =>
-        Promise.resolve(runtime.animationOverridesData),
+      fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
       stopAssetPickerPolling: () => {},
       closeAssetPicker: () => {},
       normalizeAssetPickerSelection: () => {},
@@ -1281,8 +1199,7 @@ function createAnimOverrideCard(overrides = {}) {
     triggerKind: "thinking",
     currentFile: "cloudling-thinking.svg",
     currentFileUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
-    currentFilePreviewUrl:
-      "file:///themes/cloudling/assets/cloudling-thinking.svg",
+    currentFilePreviewUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
     bindingLabel: "states.thinking[0]",
     transition: { in: 120, out: 180 },
     supportsAutoReturn: false,
@@ -1332,7 +1249,6 @@ describe("settings renderer browser environment", () => {
       "settings-anim-overrides-merge.js",
       "settings-ui-core.js",
       "settings-agent-order.js",
-      "settings-hardware-buddy-panel.js",
       "settings-tab-general.js",
       "settings-tab-agents.js",
       "settings-tab-theme.js",
@@ -1351,23 +1267,14 @@ describe("settings renderer browser environment", () => {
     for (const scriptName of scriptOrder) {
       const marker = `<script src="${scriptName}"></script>`;
       const nextIndex = html.indexOf(marker);
-      assert.notStrictEqual(
-        nextIndex,
-        -1,
-        `settings.html should load ${scriptName}`,
-      );
-      assert.ok(
-        nextIndex > previousIndex,
-        `${scriptName} should load after the previous dependency`,
-      );
+      assert.notStrictEqual(nextIndex, -1, `settings.html should load ${scriptName}`);
+      assert.ok(nextIndex > previousIndex, `${scriptName} should load after the previous dependency`);
       previousIndex = nextIndex;
     }
 
     assert.ok(
-      !html.includes(
-        '<script src="settings-size-preview-session.js"></script>',
-      ),
-      "settings.html must not load the main-process size preview helper",
+      !html.includes('<script src="settings-size-preview-session.js"></script>'),
+      "settings.html must not load the main-process size preview helper"
     );
     assert.ok(html.includes('<link rel="stylesheet" href="settings.css">'));
     assert.ok(html.includes("style-src 'self' 'unsafe-inline'"));
@@ -1379,12 +1286,11 @@ describe("settings renderer browser environment", () => {
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     const doctorModalSource = fs.readFileSync(SETTINGS_DOCTOR_MODAL, "utf8");
-    const agentOrderSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-agent-order.js"),
-      "utf8",
-    );
+    const agentOrderSource = fs.readFileSync(path.join(SRC_DIR, "settings-agent-order.js"), "utf8");
 
     assert.ok(rendererSource.includes("globalThis.ClawdSettingsCore"));
+    assert.ok(rendererSource.includes("settingsAPI.onRemoteApprovalStatusChanged"));
+    assert.ok(rendererSource.includes("tab.refreshRuntimeStatus(payload)"));
     assert.ok(coreSource.includes("ClawdSettingsSizeSlider"));
     assert.ok(i18nSource.includes("globalThis"));
     assert.ok(doctorModalSource.includes("globalThis"));
@@ -1392,12 +1298,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(agentOrderSource.includes("globalThis"));
     assert.ok(agentOrderSource.includes("module.exports"));
 
-    for (const source of [
-      rendererSource,
-      coreSource,
-      i18nSource,
-      doctorModalSource,
-    ]) {
+    for (const source of [rendererSource, coreSource, i18nSource, doctorModalSource]) {
       assert.ok(!source.includes("require("));
       assert.ok(!source.includes("module.exports"));
     }
@@ -1405,34 +1306,17 @@ describe("settings renderer browser environment", () => {
 
     for (const file of TAB_MODULES) {
       const source = fs.readFileSync(file, "utf8");
-      assert.ok(
-        !source.includes("require("),
-        `${path.basename(file)} must stay browser-script friendly`,
-      );
-      assert.ok(
-        !source.includes("module.exports"),
-        `${path.basename(file)} must not use CommonJS exports`,
-      );
-      assert.ok(
-        !source.includes("settingsAPI.onChanged"),
-        `${path.basename(file)} must not subscribe to settingsAPI.onChanged`,
-      );
-      assert.ok(
-        !source.includes("settingsAPI.onShortcutRecordKey"),
-        `${path.basename(file)} must not subscribe to settingsAPI.onShortcutRecordKey`,
-      );
-      assert.ok(
-        !source.includes("settingsAPI.onShortcutFailuresChanged"),
-        `${path.basename(file)} must not subscribe to settingsAPI.onShortcutFailuresChanged`,
-      );
+      assert.ok(!source.includes("require("), `${path.basename(file)} must stay browser-script friendly`);
+      assert.ok(!source.includes("module.exports"), `${path.basename(file)} must not use CommonJS exports`);
+      assert.ok(!source.includes("settingsAPI.onChanged"), `${path.basename(file)} must not subscribe to settingsAPI.onChanged`);
+      assert.ok(!source.includes("settingsAPI.onShortcutRecordKey"), `${path.basename(file)} must not subscribe to settingsAPI.onShortcutRecordKey`);
+      assert.ok(!source.includes("settingsAPI.onShortcutFailuresChanged"), `${path.basename(file)} must not subscribe to settingsAPI.onShortcutFailuresChanged`);
+      assert.ok(!source.includes("settingsAPI.onRemoteApprovalStatusChanged"), `${path.basename(file)} must not subscribe to remote approval status directly`);
     }
   });
 
   it("keeps About contributors visible and includes verified GitHub contributors", () => {
-    const aboutSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-about.js"),
-      "utf8",
-    );
+    const aboutSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-about.js"), "utf8");
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     const i18nBundle = loadSettingsI18nBundleForTest();
@@ -1443,10 +1327,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(!css.includes(".about-contributors-list.collapsed"));
 
     for (const login of VERIFIED_GITHUB_CONTRIBUTORS) {
-      assert.ok(
-        i18nBundle.CONTRIBUTORS.includes(login),
-        `About contributors should include ${login}`,
-      );
+      assert.ok(i18nBundle.CONTRIBUTORS.includes(login), `About contributors should include ${login}`);
     }
   });
 
@@ -1476,11 +1357,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -1502,12 +1379,8 @@ describe("settings renderer browser environment", () => {
 
     assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), []);
     assert.ok(
-      commandCalls.some(
-        (c) =>
-          c.name === "telegramMigration.dispatch" &&
-          c.payload &&
-          c.payload.type === "USER_TEST_NATIVE",
-      ),
+      commandCalls.some((c) => c.name === "telegramMigration.dispatch"
+        && c.payload && c.payload.type === "USER_TEST_NATIVE"),
       "turning on should use the native migration test flow",
     );
 
@@ -1524,10 +1397,7 @@ describe("settings renderer browser environment", () => {
     };
     harness.render();
 
-    assert.equal(
-      harness.content.querySelectorAll("input")[0].value,
-      "987654321",
-    );
+    assert.equal(harness.content.querySelectorAll("input")[0].value, "987654321");
   });
 
   it("preserves notifyOnComplete=false through a Telegram approval disable save", async () => {
@@ -1547,11 +1417,7 @@ describe("settings renderer browser environment", () => {
           if (name === "telegramMigration.snapshot") {
             return Promise.resolve({
               status: "ok",
-              snapshot: {
-                state: "LEGACY_ACTIVE",
-                transport: "legacy",
-                ownerSnapshot: { sidecarRunning: true },
-              },
+              snapshot: { state: "LEGACY_ACTIVE", transport: "legacy", ownerSnapshot: { sidecarRunning: true } },
             });
           }
           if (name === "telegramApproval.status") {
@@ -1561,11 +1427,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -1577,26 +1439,20 @@ describe("settings renderer browser environment", () => {
 
     harness.content.querySelector(".switch").dispatchEvent({ type: "click" });
 
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), [
-      {
-        key: "tgApproval",
-        value: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-          notifyOnComplete: false,
-          completionOutputMode: "off",
-          r3DirectSendEnabled: false,
-        },
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), [{
+      key: "tgApproval",
+      value: {
+        enabled: false,
+        allowedTgUserId: "123456789",
+        targetSessionKey: "telegram:123456789",
+        notifyOnComplete: false,
+        completionOutputMode: "off",
+        r3DirectSendEnabled: false,
       },
-    ]);
+    }]);
     assert.ok(
-      commandCalls.some(
-        (c) =>
-          c.name === "telegramMigration.dispatch" &&
-          c.payload &&
-          c.payload.type === "USER_DISABLE",
-      ),
+      commandCalls.some((c) => c.name === "telegramMigration.dispatch"
+        && c.payload && c.payload.type === "USER_DISABLE"),
       "turning off should dispatch USER_DISABLE",
     );
   });
@@ -1618,11 +1474,7 @@ describe("settings renderer browser environment", () => {
           if (name === "telegramMigration.snapshot") {
             return Promise.resolve({
               status: "ok",
-              snapshot: {
-                state: "LEGACY_ACTIVE",
-                transport: "legacy",
-                ownerSnapshot: { sidecarRunning: true },
-              },
+              snapshot: { state: "LEGACY_ACTIVE", transport: "legacy", ownerSnapshot: { sidecarRunning: true } },
             });
           }
           if (name === "telegramApproval.status") {
@@ -1632,11 +1484,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -1649,24 +1497,21 @@ describe("settings renderer browser environment", () => {
     const input = harness.content.querySelectorAll("input")[0];
     input.value = "987654321";
     input.dispatchEvent({ type: "input" });
-    const saveButton = harness.content
-      .querySelectorAll("button")
+    const saveButton = harness.content.querySelectorAll("button")
       .find((button) => button.textContent === "telegramApprovalSaveRecipient");
     saveButton.dispatchEvent({ type: "click" });
 
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), [
-      {
-        key: "tgApproval",
-        value: {
-          enabled: true,
-          allowedTgUserId: "987654321",
-          targetSessionKey: "987654321",
-          notifyOnComplete: true,
-          completionOutputMode: "off",
-          r3DirectSendEnabled: true,
-        },
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), [{
+      key: "tgApproval",
+      value: {
+        enabled: true,
+        allowedTgUserId: "987654321",
+        targetSessionKey: "987654321",
+        notifyOnComplete: true,
+        completionOutputMode: "off",
+        r3DirectSendEnabled: true,
       },
-    ]);
+    }]);
   });
 
   it("dispatches USER_DISABLE when the enabled switch is turned off (zombie-switch fix)", async () => {
@@ -1685,11 +1530,7 @@ describe("settings renderer browser environment", () => {
           if (name === "telegramMigration.snapshot") {
             return Promise.resolve({
               status: "ok",
-              snapshot: {
-                state: "LEGACY_ACTIVE",
-                transport: "legacy",
-                ownerSnapshot: { sidecarRunning: true },
-              },
+              snapshot: { state: "LEGACY_ACTIVE", transport: "legacy", ownerSnapshot: { sidecarRunning: true } },
             });
           }
           if (name === "telegramApproval.status") {
@@ -1699,11 +1540,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -1716,28 +1553,22 @@ describe("settings renderer browser environment", () => {
     harness.content.querySelector(".switch").dispatchEvent({ type: "click" });
 
     // The legacy switch still writes tgApproval.enabled = false…
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), [
-      {
-        key: "tgApproval",
-        value: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-          notifyOnComplete: false,
-          completionOutputMode: "off",
-          r3DirectSendEnabled: false,
-        },
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), [{
+      key: "tgApproval",
+      value: {
+        enabled: false,
+        allowedTgUserId: "123456789",
+        targetSessionKey: "telegram:123456789",
+        notifyOnComplete: false,
+        completionOutputMode: "off",
+        r3DirectSendEnabled: false,
       },
-    ]);
+    }]);
     // …and turning OFF must ALSO stop the native transport, otherwise the poller
     // + completion notifications keep running (the zombie-switch bug).
     assert.ok(
-      commandCalls.some(
-        (c) =>
-          c.name === "telegramMigration.dispatch" &&
-          c.payload &&
-          c.payload.type === "USER_DISABLE",
-      ),
+      commandCalls.some((c) => c.name === "telegramMigration.dispatch"
+        && c.payload && c.payload.type === "USER_DISABLE"),
       "turning the switch off should dispatch USER_DISABLE",
     );
   });
@@ -1764,16 +1595,11 @@ describe("settings renderer browser environment", () => {
     harness.render();
 
     const select = harness.content.querySelector(".tg-approval-output-select");
-    assert.deepStrictEqual(
-      select.children.map((option) => option.value),
-      ["off", "full"],
-    );
+    assert.deepStrictEqual(select.children.map((option) => option.value), ["off", "full"]);
     select.value = "full";
     select.dispatchEvent({ type: "change" });
 
-    assert.deepStrictEqual(confirmCalls, [
-      "telegramApprovalCompletionOutputFullConfirm",
-    ]);
+    assert.deepStrictEqual(confirmCalls, ["telegramApprovalCompletionOutputFullConfirm"]);
     assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), []);
     assert.equal(select.value, "off");
 
@@ -1793,25 +1619,21 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
     confirmed.render();
 
-    const confirmedSelect = confirmed.content.querySelector(
-      ".tg-approval-output-select",
-    );
+    const confirmedSelect = confirmed.content.querySelector(".tg-approval-output-select");
     confirmedSelect.value = "full";
     confirmedSelect.dispatchEvent({ type: "change" });
 
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(confirmed.updates)), [
-      {
-        key: "tgApproval",
-        value: {
-          enabled: true,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-          notifyOnComplete: true,
-          completionOutputMode: "full",
-          r3DirectSendEnabled: false,
-        },
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(confirmed.updates)), [{
+      key: "tgApproval",
+      value: {
+        enabled: true,
+        allowedTgUserId: "123456789",
+        targetSessionKey: "telegram:123456789",
+        notifyOnComplete: true,
+        completionOutputMode: "full",
+        r3DirectSendEnabled: false,
       },
-    ]);
+    }]);
   });
 
   it("toggles Telegram Direct Send paste-only mode without changing the approval transport", async () => {
@@ -1852,11 +1674,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -1866,25 +1684,21 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
     harness.render();
 
-    const sw = harness.content.querySelector(
-      ".tg-approval-direct-send-row .switch",
-    );
+    const sw = harness.content.querySelector(".tg-approval-direct-send-row .switch");
     assert.equal(sw.getAttribute("aria-checked"), "false");
     sw.dispatchEvent({ type: "click" });
 
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), [
-      {
-        key: "tgApproval",
-        value: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-          notifyOnComplete: false,
-          completionOutputMode: "full",
-          r3DirectSendEnabled: true,
-        },
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), [{
+      key: "tgApproval",
+      value: {
+        enabled: false,
+        allowedTgUserId: "123456789",
+        targetSessionKey: "telegram:123456789",
+        notifyOnComplete: false,
+        completionOutputMode: "full",
+        r3DirectSendEnabled: true,
       },
-    ]);
+    }]);
     assert.equal(
       commandCalls.some((c) => c.name === "telegramMigration.dispatch"),
       false,
@@ -1927,16 +1741,9 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
-          return Promise.resolve({
-            status: "ok",
-            snapshot: { state: "IDLE", transport: "off" },
-          });
+          return Promise.resolve({ status: "ok", snapshot: { state: "IDLE", transport: "off" } });
         },
       },
     });
@@ -1951,12 +1758,8 @@ describe("settings renderer browser environment", () => {
 
     assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), []);
     assert.ok(
-      commandCalls.some(
-        (c) =>
-          c.name === "telegramMigration.dispatch" &&
-          c.payload &&
-          c.payload.type === "USER_DISABLE",
-      ),
+      commandCalls.some((c) => c.name === "telegramMigration.dispatch"
+        && c.payload && c.payload.type === "USER_DISABLE"),
       "turning off native-active approval should dispatch USER_DISABLE",
     );
   });
@@ -1991,11 +1794,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -2012,12 +1811,8 @@ describe("settings renderer browser environment", () => {
     sw.dispatchEvent({ type: "click" });
 
     assert.ok(
-      commandCalls.some(
-        (c) =>
-          c.name === "telegramMigration.dispatch" &&
-          c.payload &&
-          c.payload.type === "USER_DISABLE",
-      ),
+      commandCalls.some((c) => c.name === "telegramMigration.dispatch"
+        && c.payload && c.payload.type === "USER_DISABLE"),
       "turning off native-running approval should not wait for the migration snapshot",
     );
   });
@@ -2048,11 +1843,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -2066,22 +1857,14 @@ describe("settings renderer browser environment", () => {
 
     assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates)), []);
     assert.equal(
-      commandCalls.some(
-        (c) =>
-          c.name === "telegramMigration.dispatch" &&
-          c.payload &&
-          c.payload.type === "USER_TEST_NATIVE",
-      ),
+      commandCalls.some((c) => c.name === "telegramMigration.dispatch"
+        && c.payload && c.payload.type === "USER_TEST_NATIVE"),
       true,
       "turning the switch on should dispatch the native test flow",
     );
     assert.equal(
-      commandCalls.some(
-        (c) =>
-          c.name === "telegramMigration.dispatch" &&
-          c.payload &&
-          c.payload.type === "USER_DISABLE",
-      ),
+      commandCalls.some((c) => c.name === "telegramMigration.dispatch"
+        && c.payload && c.payload.type === "USER_DISABLE"),
       false,
       "turning the switch on should not dispatch USER_DISABLE",
     );
@@ -2103,11 +1886,7 @@ describe("settings renderer browser environment", () => {
           if (name === "telegramMigration.snapshot") {
             return Promise.resolve({
               status: "ok",
-              snapshot: {
-                state: "NEEDS_SETUP",
-                transport: "native",
-                ownerSnapshot: {},
-              },
+              snapshot: { state: "NEEDS_SETUP", transport: "native", ownerSnapshot: {} },
             });
           }
           if (name === "telegramApproval.status") {
@@ -2124,11 +1903,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -2143,12 +1918,8 @@ describe("settings renderer browser environment", () => {
 
     sw.dispatchEvent({ type: "click" });
     assert.ok(
-      commandCalls.some(
-        (c) =>
-          c.name === "telegramMigration.dispatch" &&
-          c.payload &&
-          c.payload.type === "USER_TEST_NATIVE",
-      ),
+      commandCalls.some((c) => c.name === "telegramMigration.dispatch"
+        && c.payload && c.payload.type === "USER_TEST_NATIVE"),
       "turning on from broken native setup should retry the native test flow",
     );
   });
@@ -2169,10 +1940,7 @@ describe("settings renderer browser environment", () => {
           if (name === "telegramMigration.snapshot") {
             return Promise.resolve({
               status: "ok",
-              snapshot: {
-                state: "TESTING_NATIVE",
-                ownerSnapshot: { nativePolling: true },
-              },
+              snapshot: { state: "TESTING_NATIVE", ownerSnapshot: { nativePolling: true } },
             });
           }
           if (name === "telegramApproval.status") {
@@ -2189,11 +1957,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -2203,17 +1967,13 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
     harness.render();
 
-    const testButton = harness.content
-      .querySelectorAll("button")
+    const testButton = harness.content.querySelectorAll("button")
       .find((button) => button.textContent === "telegramApprovalSendTest");
     assert.equal(testButton.disabled, true);
     assert.match(testButton.title, /Native Telegram approval test/);
 
     testButton.dispatchEvent({ type: "click" });
-    assert.equal(
-      commandCalls.some((call) => call.name === "telegramApproval.test"),
-      false,
-    );
+    assert.equal(commandCalls.some((call) => call.name === "telegramApproval.test"), false);
   });
 
   it("disables Telegram approval test until runtime status is ready", async () => {
@@ -2242,11 +2002,7 @@ describe("settings renderer browser environment", () => {
             });
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -2257,17 +2013,266 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
     harness.render();
     const buttons = harness.content.querySelectorAll("button");
-    const testButton = buttons.find(
-      (button) => button.textContent === "telegramApprovalSendTest",
-    );
+    const testButton = buttons.find((button) => button.textContent === "telegramApprovalSendTest");
     assert.equal(testButton.disabled, true);
     assert.match(testButton.title, /target session key/);
 
     testButton.dispatchEvent({ type: "click" });
-    assert.equal(
-      commandCalls.some((call) => call.name === "telegramApproval.test"),
-      false,
-    );
+    assert.equal(commandCalls.some((call) => call.name === "telegramApproval.test"), false);
+  });
+
+  it("renders Feishu approval setup and saves secrets outside prefs", async () => {
+    const commandCalls = [];
+    const harness = loadTelegramApprovalTabForTest({
+      snapshot: {
+        tgApproval: {
+          enabled: false,
+          allowedTgUserId: "123456789",
+          targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: false,
+          idType: "open_id",
+          approverId: "ou_1",
+          connectionTimeoutSeconds: 15,
+        },
+      },
+      settingsAPI: {
+        command: (name, payload) => {
+          commandCalls.push({ name, payload });
+          if (name === "telegramApproval.status") {
+            return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
+          }
+          if (name === "telegramApproval.tokenInfo") {
+            return Promise.resolve({ status: "ok", configured: false, masked: "" });
+          }
+          if (name === "feishuApproval.status") {
+            return Promise.resolve({
+              status: "ok",
+              state: { status: "stopped", configured: false, secretsStored: false },
+            });
+          }
+          if (name === "feishuApproval.secretInfo") {
+            return Promise.resolve({ status: "ok", configured: false });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+
+    const feishuCard = harness.content.querySelector(".feishu-approval-channel-card");
+    assert.ok(feishuCard, "Feishu approval card should render");
+    const inputs = feishuCard.querySelectorAll("input");
+    inputs[0].value = "cli_123";
+    inputs[1].value = "app_secret";
+    inputs[2].value = "verify";
+    inputs[3].value = "encrypt";
+    feishuCard.querySelectorAll("button")
+      .find((button) => button.textContent === "feishuApprovalSaveSecrets")
+      .dispatchEvent({ type: "click" });
+
+    await Promise.resolve();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(commandCalls.find((call) => call.name === "feishuApproval.setSecrets"))), {
+      name: "feishuApproval.setSecrets",
+      payload: {
+        appId: "cli_123",
+        appSecret: "app_secret",
+        verificationToken: "verify",
+        encryptKey: "encrypt",
+      },
+    });
+    assert.equal(harness.updates.some((call) => call.key === "feishuApproval"), false);
+  });
+
+  it("saves Feishu approver config and enables testing only when runtime is configured", async () => {
+    const commandCalls = [];
+    const harness = loadTelegramApprovalTabForTest({
+      snapshot: {
+        tgApproval: {
+          enabled: false,
+          allowedTgUserId: "123456789",
+          targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: false,
+          idType: "open_id",
+          approverId: "",
+          connectionTimeoutSeconds: 15,
+        },
+      },
+      settingsAPI: {
+        command: (name, payload) => {
+          commandCalls.push({ name, payload });
+          if (name === "telegramApproval.status") {
+            return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
+          }
+          if (name === "telegramApproval.tokenInfo") {
+            return Promise.resolve({ status: "ok", configured: false, masked: "" });
+          }
+          if (name === "feishuApproval.status") {
+            return Promise.resolve({
+              status: "ok",
+              state: { status: "running", configured: true, secretsStored: true },
+            });
+          }
+          if (name === "feishuApproval.secretInfo") {
+            return Promise.resolve({ status: "ok", configured: true, appId: "cli_......abcd" });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    harness.render();
+
+    const feishuCard = harness.content.querySelector(".feishu-approval-channel-card");
+    const inputs = feishuCard.querySelectorAll("input");
+    const approverInput = inputs[inputs.length - 1];
+    approverInput.value = "ou_f1a6f7f520883298be9b9fb9488c1aef";
+    approverInput.dispatchEvent({ type: "input" });
+    feishuCard.querySelectorAll("button")
+      .find((button) => button.textContent === "feishuApprovalSaveApprover")
+      .dispatchEvent({ type: "click" });
+
+    await Promise.resolve();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates.find((call) => call.key === "feishuApproval"))), {
+      key: "feishuApproval",
+      value: {
+        enabled: false,
+        idType: "open_id",
+        approverId: "ou_f1a6f7f520883298be9b9fb9488c1aef",
+        connectionTimeoutSeconds: 15,
+      },
+    });
+
+    harness.core.state.snapshot.feishuApproval = {
+      enabled: true,
+      idType: "open_id",
+      approverId: "ou_f1a6f7f520883298be9b9fb9488c1aef",
+      connectionTimeoutSeconds: 15,
+    };
+    await Promise.resolve();
+    await Promise.resolve();
+    harness.render();
+    const testButton = harness.content.querySelector(".feishu-approval-channel-card")
+      .querySelectorAll("button")
+      .find((button) => button.textContent === "feishuApprovalSendTest");
+    assert.equal(testButton.disabled, false);
+    testButton.dispatchEvent({ type: "click" });
+    assert.equal(commandCalls.some((call) => call.name === "feishuApproval.test"), true);
+  });
+
+  it("saves Feishu long connection timeout from settings", async () => {
+    const harness = loadTelegramApprovalTabForTest({
+      snapshot: {
+        tgApproval: {
+          enabled: false,
+          allowedTgUserId: "123456789",
+          targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: true,
+          idType: "open_id",
+          approverId: "ou_1",
+          connectionTimeoutSeconds: 15,
+        },
+      },
+      settingsAPI: {
+        command: (name) => {
+          if (name === "telegramApproval.status") {
+            return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
+          }
+          if (name === "telegramApproval.tokenInfo") {
+            return Promise.resolve({ status: "ok", configured: false, masked: "" });
+          }
+          if (name === "feishuApproval.status") {
+            return Promise.resolve({
+              status: "ok",
+              state: { status: "running", configured: true, secretsStored: true },
+            });
+          }
+          if (name === "feishuApproval.secretInfo") {
+            return Promise.resolve({ status: "ok", configured: true, appId: "cli_......abcd" });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    harness.render();
+
+    const select = harness.content.querySelector(".feishu-approval-timeout-select");
+    assert.ok(select, "Feishu timeout select should render");
+    assert.equal(select.value, "15");
+    select.value = "30";
+    select.dispatchEvent({ type: "change" });
+
+    await Promise.resolve();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(harness.updates.find((call) => call.key === "feishuApproval"))), {
+      key: "feishuApproval",
+      value: {
+        enabled: true,
+        idType: "open_id",
+        approverId: "ou_1",
+        connectionTimeoutSeconds: 30,
+      },
+    });
+  });
+
+  it("refreshes Feishu status while long connection is starting", async () => {
+    let feishuStatusCalls = 0;
+    const harness = loadTelegramApprovalTabForTest({
+      snapshot: {
+        tgApproval: {
+          enabled: false,
+          allowedTgUserId: "123456789",
+          targetSessionKey: "telegram:123456789",
+        },
+        feishuApproval: {
+          enabled: true,
+          idType: "open_id",
+          approverId: "ou_1",
+          connectionTimeoutSeconds: 15,
+        },
+      },
+      settingsAPI: {
+        command: (name) => {
+          if (name === "telegramApproval.status") {
+            return Promise.resolve({ status: "ok", state: { status: "stopped", tokenStored: false } });
+          }
+          if (name === "telegramApproval.tokenInfo") {
+            return Promise.resolve({ status: "ok", configured: false, masked: "" });
+          }
+          if (name === "feishuApproval.status") {
+            feishuStatusCalls += 1;
+            return Promise.resolve({
+              status: "ok",
+              state: feishuStatusCalls === 1
+                ? { status: "starting", configured: true, secretsStored: true }
+                : { status: "failed", configured: true, secretsStored: true, message: "connection timeout" },
+            });
+          }
+          if (name === "feishuApproval.secretInfo") {
+            return Promise.resolve({ status: "ok", configured: true, appId: "cli_......abcd" });
+          }
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(feishuStatusCalls, 1);
+    assert.equal(harness.timers.length, 1);
+    assert.equal(harness.timers[0].ms, 1000);
+
+    harness.timers[0].cb();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(feishuStatusCalls, 2);
+    assert.equal(harness.renderRequests.some((payload) => payload && payload.content === true), true);
   });
 
   it("repaints Telegram approval after forced status refresh overlaps pending status", async () => {
@@ -2290,11 +2295,7 @@ describe("settings renderer browser environment", () => {
             return next.promise;
           }
           if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
+            return Promise.resolve({ status: "ok", configured: true, masked: "1234……wXyZ" });
           }
           return Promise.resolve({ status: "ok" });
         },
@@ -2339,84 +2340,6 @@ describe("settings renderer browser environment", () => {
     assert.equal(harness.renderRequests.length, beforeStatusResolve + 2);
   });
 
-  it("wires the native migration delete-token button to a real command", async () => {
-    const commandCalls = [];
-    const toastMessages = [];
-    const harness = loadTelegramApprovalTabForTest({
-      snapshot: {
-        tgApproval: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-        },
-      },
-      settingsAPI: {
-        command: (name, payload) => {
-          commandCalls.push({ name, payload });
-          if (name === "telegramMigration.snapshot") {
-            return Promise.resolve({
-              status: "ok",
-              snapshot: {
-                state: "NATIVE_ACTIVE",
-                runtimeStatus: { status: "running" },
-                ownerSnapshot: { sidecarRunning: false, nativePolling: true },
-                migrationInfo: {},
-                nativeVerifiedAt: 123,
-              },
-            });
-          }
-          if (name === "telegramApproval.status") {
-            return Promise.resolve({
-              status: "ok",
-              state: { status: "stopped", tokenStored: true },
-            });
-          }
-          if (name === "telegramApproval.tokenInfo") {
-            return Promise.resolve({
-              status: "ok",
-              configured: true,
-              masked: "1234……wXyZ",
-            });
-          }
-          if (name === "telegramApproval.deleteTokenFile") {
-            return Promise.resolve({ status: "ok", deleted: true });
-          }
-          return Promise.resolve({ status: "ok" });
-        },
-      },
-    });
-    harness.core.ops.showToast = (message, options = {}) => {
-      toastMessages.push({ message, options });
-    };
-
-    await Promise.resolve();
-    await Promise.resolve();
-    harness.render();
-
-    const deleteButton = harness.content
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "Delete legacy token file");
-    assert.ok(
-      deleteButton,
-      "delete legacy token button should render for NATIVE_ACTIVE",
-    );
-
-    deleteButton.dispatchEvent({ type: "click" });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    assert.equal(
-      commandCalls.some(
-        (call) => call.name === "telegramApproval.deleteTokenFile",
-      ),
-      true,
-    );
-    assert.equal(
-      toastMessages.some((toast) => /deleted/i.test(toast.message)),
-      true,
-    );
-  });
-
   it("wires Clawd Doctor through Settings with Step 2 connection actions", () => {
     const html = fs.readFileSync(SETTINGS_HTML, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
@@ -2427,35 +2350,23 @@ describe("settings renderer browser environment", () => {
     const doctorIpcSource = fs.readFileSync(DOCTOR_IPC, "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
 
-    assert.ok(
-      html.includes('<script src="settings-doctor-modal.js"></script>'),
-    );
+    assert.ok(html.includes('<script src="settings-doctor-modal.js"></script>'));
     assert.ok(css.includes(".doctor-indicator"));
     assert.ok(css.includes(".doctor-modal"));
-    assert.ok(
-      rendererSource.includes(
-        "ClawdSettingsDoctorModal.renderSidebarIndicator",
-      ),
-    );
+    assert.ok(rendererSource.includes("ClawdSettingsDoctorModal.renderSidebarIndicator"));
     assert.ok(doctorModalSource.includes("initialRunStarted"));
     assert.ok(doctorModalSource.includes("runningPromise"));
     assert.ok(doctorModalSource.includes("root.doctor.runChecks"));
     assert.ok(doctorModalSource.includes("root.doctor.getReport"));
     assert.ok(doctorModalSource.includes("root.doctor.testConnection"));
     assert.ok(doctorModalSource.includes("root.doctor.openClawdLog"));
-    assert.ok(
-      doctorModalSource.includes(
-        'root.settingsAPI.command("repairDoctorIssue"',
-      ),
-    );
+    assert.ok(doctorModalSource.includes('root.settingsAPI.command("repairDoctorIssue"'));
     assert.ok(doctorModalSource.includes("requiresFixConfirmation"));
     assert.ok(doctorModalSource.includes("renderFixConfirm"));
     assert.ok(doctorModalSource.includes("doctorFixConfirmCodexDetail"));
     assert.ok(doctorModalSource.includes("doctorRestartConfirmDetail"));
     assert.ok(doctorModalSource.includes("doctorRestartButton"));
-    assert.ok(
-      doctorModalSource.includes('commandAction.type !== "restart-clawd"'),
-    );
+    assert.ok(doctorModalSource.includes('commandAction.type !== "restart-clawd"'));
     assert.ok(doctorModalSource.includes("repairFeedback"));
     assert.ok(doctorModalSource.includes("lastRepairFeedback"));
     assert.ok(doctorModalSource.includes("actionNotice"));
@@ -2477,31 +2388,21 @@ describe("settings renderer browser environment", () => {
     assert.ok(doctorModalSource.includes('class="doctor-title-row"'));
     assert.ok(doctorModalSource.includes("renderLocalServerCheck"));
     assert.ok(doctorModalSource.includes("doctor-local-server-main"));
-    assert.ok(
-      doctorModalSource.includes('class="doctor-check-summary" title='),
-    );
-    assert.ok(
-      doctorModalSource.includes('const fullDetail = detail && cls !== "pass"'),
-    );
+    assert.ok(doctorModalSource.includes('class="doctor-check-summary" title='));
+    assert.ok(doctorModalSource.includes('const fullDetail = detail && cls !== "pass"'));
     assert.ok(doctorModalSource.includes("renderAgentIntegrationCheck"));
     assert.ok(doctorModalSource.includes("doctor-agent-collapsible"));
     assert.ok(doctorModalSource.includes("doctor-agent-chevron"));
-    assert.ok(
-      /doctor-agent-chevron[\s\S]*doctor-check-label[\s\S]*doctor-check-summary[\s\S]*doctor-check-status/.test(
-        doctorModalSource,
-      ),
-    );
+    assert.ok(/doctor-agent-chevron[\s\S]*doctor-check-label[\s\S]*doctor-check-summary[\s\S]*doctor-check-status/.test(doctorModalSource));
     assert.ok(doctorModalSource.includes("doctor-agent-body"));
     assert.ok(doctorModalSource.includes("doctor-agent-body-inner"));
     assert.ok(doctorModalSource.includes('data-action="toggle-check"'));
-    assert.ok(
-      doctorModalSource.includes('button.setAttribute("aria-expanded"'),
-    );
+    assert.ok(doctorModalSource.includes('button.setAttribute("aria-expanded"'));
     assert.ok(doctorModalSource.includes('row.classList.toggle("expanded"'));
     assert.ok(doctorModalSource.includes('body.setAttribute("aria-hidden"'));
     assert.ok(doctorModalSource.includes('" inert"'));
     assert.ok(doctorModalSource.includes('body.setAttribute("inert", "")'));
-    assert.ok(doctorModalSource.includes('body.removeAttribute("inert")'));
+    assert.ok(doctorModalSource.includes("body.removeAttribute(\"inert\")"));
     assert.ok(doctorModalSource.includes("checkNeedsAttention"));
     assert.ok(doctorModalSource.includes("formatAgentIntegrationSummary"));
     assert.ok(doctorModalSource.includes("formatAgentAttentionNames"));
@@ -2517,18 +2418,12 @@ describe("settings renderer browser environment", () => {
     assert.ok(doctorModalSource.includes("doctor-check-skeleton"));
     assert.ok(doctorModalSource.includes("doctor-skeleton-line"));
     assert.ok(doctorModalSource.includes("doctor-connection-progress"));
-    assert.ok(
-      doctorModalSource.includes("const runId = ++state.connectionRunId"),
-    );
-    assert.ok(
-      doctorModalSource.includes(
-        "if (runId !== state.connectionRunId) return;",
-      ),
-    );
+    assert.ok(doctorModalSource.includes("const runId = ++state.connectionRunId"));
+    assert.ok(doctorModalSource.includes("if (runId !== state.connectionRunId) return;"));
     assert.ok(doctorModalSource.includes("state.connectionTesting = false"));
     assert.ok(doctorModalSource.includes("state.connectionTest = null"));
-    assert.ok(doctorModalSource.includes("state.checksLoading = true"));
-    assert.ok(doctorModalSource.includes("state.checksLoading = false"));
+    assert.ok(doctorModalSource.includes('state.checksLoading = true'));
+    assert.ok(doctorModalSource.includes('state.checksLoading = false'));
     assert.ok(doctorModalSource.includes("formatCheckedDateTime"));
     assert.ok(doctorModalSource.includes('year: "numeric"'));
     assert.ok(doctorModalSource.includes('month: "2-digit"'));
@@ -2538,13 +2433,9 @@ describe("settings renderer browser environment", () => {
     assert.ok(doctorModalSource.includes("result.generatedAt"));
     assert.ok(doctorModalSource.includes("doctor-last-checked"));
     assert.ok(doctorModalSource.includes("const opening = !state.modalOpen"));
-    assert.ok(
-      doctorModalSource.includes("const entering = state.modalEntering"),
-    );
+    assert.ok(doctorModalSource.includes("const entering = state.modalEntering"));
     assert.ok(doctorModalSource.includes("doctor-modal-entering"));
-    assert.ok(
-      doctorModalSource.includes("renderModalBody(core, result, { entering })"),
-    );
+    assert.ok(doctorModalSource.includes("renderModalBody(core, result, { entering })"));
     assert.ok(doctorModalSource.includes("renderActionNotice"));
     assert.ok(doctorModalSource.includes("doctor-action-notice-icon"));
     assert.ok(doctorModalSource.includes("doctor-action-notice-text"));
@@ -2553,9 +2444,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(doctorModalSource.includes("state.repairFeedback = {};"));
     assert.ok(doctorModalSource.includes("state.repairingKey = null;"));
     assert.ok(doctorModalSource.includes("const runId = ++state.repairRunId"));
-    assert.ok(
-      doctorModalSource.includes("if (runId !== state.repairRunId) return;"),
-    );
+    assert.ok(doctorModalSource.includes("if (runId !== state.repairRunId) return;"));
     assert.ok(doctorModalSource.includes("doctor-privacy"));
     assert.ok(!doctorModalSource.includes("doctorPrivacyShort"));
     assert.ok(!i18nSource.includes("doctorPrivacyShort"));
@@ -2579,29 +2468,17 @@ describe("settings renderer browser environment", () => {
     assert.ok(css.includes(".doctor-action-notice"));
     assert.ok(!css.includes(".doctor-action-notice::after"));
     assert.ok(css.includes(".doctor-action-notice-icon"));
-    assert.ok(
-      /@media \(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*\.doctor-action-notice\.ok[\s\S]*color:\s*#8ce99a;[\s\S]*\.doctor-action-notice\.error[\s\S]*color:\s*#fca5a5;/.test(
-        css,
-      ),
-    );
+    assert.ok(/@media \(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*\.doctor-action-notice\.ok[\s\S]*color:\s*#8ce99a;[\s\S]*\.doctor-action-notice\.error[\s\S]*color:\s*#fca5a5;/.test(css));
     assert.ok(css.includes("@keyframes doctor-notice-in"));
-    assert.ok(
-      /\.doctor-modal\s*\{[\s\S]*width:\s*min\(728px,\s*100%\);[\s\S]*max-height:\s*calc\(100vh \/ var\(--clawd-text-zoom, 1\) - 32px\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-modal\s*\{[\s\S]*gap:\s*8px;[\s\S]*padding:\s*14px;/.test(css),
-    );
+    assert.ok(/\.doctor-modal\s*\{[\s\S]*width:\s*min\(728px,\s*100%\);[\s\S]*max-height:\s*calc\(100vh \/ var\(--clawd-text-zoom, 1\) - 32px\);/.test(css));
+    assert.ok(/\.doctor-modal\s*\{[\s\S]*gap:\s*8px;[\s\S]*padding:\s*14px;/.test(css));
     assert.ok(css.includes(".doctor-modal-entering"));
     assert.ok(css.includes("@keyframes doctor-modal-in"));
     assert.ok(css.includes(".doctor-last-checked"));
     assert.ok(/\.doctor-overall\s*\{[\s\S]*flex-wrap:\s*wrap;/.test(css));
     assert.ok(/\.doctor-check-list\s*\{[\s\S]*gap:\s*6px;/.test(css));
     assert.ok(/\.doctor-check-row\s*\{[\s\S]*padding:\s*8px 10px;/.test(css));
-    assert.ok(
-      /\.doctor-check-detail\s*\{[\s\S]*margin:\s*5px 0 0 17px;/.test(css),
-    );
+    assert.ok(/\.doctor-check-detail\s*\{[\s\S]*margin:\s*5px 0 0 17px;/.test(css));
     assert.ok(css.includes("--doctor-pass"));
     assert.ok(css.includes("--doctor-warning"));
     assert.ok(css.includes("--doctor-critical"));
@@ -2610,108 +2487,38 @@ describe("settings renderer browser environment", () => {
     assert.ok(css.includes("@keyframes doctor-skeleton-sheen"));
     assert.ok(css.includes(".doctor-connection-panel.testing"));
     assert.ok(css.includes(".doctor-connection-progress"));
-    assert.ok(
-      /\.doctor-action-bar\s*\{[\s\S]*align-items:\s*center;/.test(css),
-    );
-    assert.ok(
-      /\.doctor-action-notice-slot\s*\{[\s\S]*min-height:\s*24px;/.test(css),
-    );
-    assert.ok(
-      /\.doctor-check-row\.pass\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-pass-rgb\),\s*0\.72\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-check-row\.warning\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-warning-rgb\),\s*0\.78\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-check-row\.critical\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-critical-rgb\),\s*0\.78\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-agent-toggle\s*\{[\s\S]*grid-template-columns:\s*auto auto auto minmax\(0,\s*1fr\) auto;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-agent-body\s*\{[\s\S]*grid-template-rows:\s*0fr;[\s\S]*transition:[\s\S]*grid-template-rows 0\.24s cubic-bezier/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-agent-collapsible\.expanded \.doctor-agent-body\s*\{[\s\S]*grid-template-rows:\s*1fr;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-check-row\s*\{[\s\S]*border-left-width:\s*3px;/.test(css),
-    );
-    assert.ok(
-      /\.doctor-check-status\s*\{[\s\S]*border-radius:\s*999px;/.test(css),
-    );
-    assert.ok(
-      /\.doctor-close:hover\s*\{[\s\S]*background:\s*rgba\(217,\s*119,\s*87,\s*0\.1\);[\s\S]*transform:\s*scale\(1\.04\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-close:focus-visible\s*\{[\s\S]*outline:\s*2px solid var\(--accent\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.doctor-agent-toggle:focus-visible\s*\{[\s\S]*outline:\s*2px solid var\(--accent\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.doctor-modal-entering[\s\S]*animation:\s*none;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(max-width:\s*720px\)\s*\{[\s\S]*\.doctor-action-bar\s*\{[\s\S]*flex-direction:\s*column;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.doctor-action-bar\s*\{[\s\S]*align-items:\s*center;/.test(css));
+    assert.ok(/\.doctor-action-notice-slot\s*\{[\s\S]*min-height:\s*24px;/.test(css));
+    assert.ok(/\.doctor-check-row\.pass\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-pass-rgb\),\s*0\.72\);/.test(css));
+    assert.ok(/\.doctor-check-row\.warning\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-warning-rgb\),\s*0\.78\);/.test(css));
+    assert.ok(/\.doctor-check-row\.critical\s*\{[\s\S]*border-left-color:\s*rgba\(var\(--doctor-critical-rgb\),\s*0\.78\);/.test(css));
+    assert.ok(/\.doctor-agent-toggle\s*\{[\s\S]*grid-template-columns:\s*auto auto auto minmax\(0,\s*1fr\) auto;/.test(css));
+    assert.ok(/\.doctor-agent-body\s*\{[\s\S]*grid-template-rows:\s*0fr;[\s\S]*transition:[\s\S]*grid-template-rows 0\.24s cubic-bezier/.test(css));
+    assert.ok(/\.doctor-agent-collapsible\.expanded \.doctor-agent-body\s*\{[\s\S]*grid-template-rows:\s*1fr;/.test(css));
+    assert.ok(/\.doctor-check-row\s*\{[\s\S]*border-left-width:\s*3px;/.test(css));
+    assert.ok(/\.doctor-check-status\s*\{[\s\S]*border-radius:\s*999px;/.test(css));
+    assert.ok(/\.doctor-close:hover\s*\{[\s\S]*background:\s*rgba\(217,\s*119,\s*87,\s*0\.1\);[\s\S]*transform:\s*scale\(1\.04\);/.test(css));
+    assert.ok(/\.doctor-close:focus-visible\s*\{[\s\S]*outline:\s*2px solid var\(--accent\);/.test(css));
+    assert.ok(/\.doctor-agent-toggle:focus-visible\s*\{[\s\S]*outline:\s*2px solid var\(--accent\);/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.doctor-modal-entering[\s\S]*animation:\s*none;/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.doctor-action-bar\s*\{[\s\S]*flex-direction:\s*column;/.test(css));
     // Regression guard: agent list must not introduce its own scroll viewport.
     // The outer .doctor-check-list owns scrolling so users get a single scrollbar.
     // [^}]*? keeps the match scoped to this rule body so unrelated max-height
     // declarations elsewhere in settings.css don't trip the assertion.
     assert.ok(!/\.doctor-agent-list\s*\{[^}]*?max-height:/.test(css));
     assert.ok(!/\.doctor-agent-list\s*\{[^}]*?overflow-y:\s*auto/.test(css));
-    assert.ok(
-      /\.doctor-agent-item \+ \.doctor-agent-item\s*\{[\s\S]*border-top:\s*1px solid var\(--row-border\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      preloadSource.includes('contextBridge.exposeInMainWorld("doctor"'),
-    );
-    assert.ok(
-      preloadSource.includes('ipcRenderer.invoke("doctor:run-checks")'),
-    );
-    assert.ok(
-      preloadSource.includes('ipcRenderer.invoke("doctor:get-report")'),
-    );
-    assert.ok(
-      preloadSource.includes('ipcRenderer.invoke("doctor:test-connection"'),
-    );
-    assert.ok(
-      preloadSource.includes('ipcRenderer.invoke("doctor:open-clawd-log"'),
-    );
+    assert.ok(/\.doctor-agent-item \+ \.doctor-agent-item\s*\{[\s\S]*border-top:\s*1px solid var\(--row-border\);/.test(css));
+    assert.ok(preloadSource.includes('contextBridge.exposeInMainWorld("doctor"'));
+    assert.ok(preloadSource.includes('ipcRenderer.invoke("doctor:run-checks")'));
+    assert.ok(preloadSource.includes('ipcRenderer.invoke("doctor:get-report")'));
+    assert.ok(preloadSource.includes('ipcRenderer.invoke("doctor:test-connection"'));
+    assert.ok(preloadSource.includes('ipcRenderer.invoke("doctor:open-clawd-log"'));
     assert.ok(mainSource.includes("registerDoctorIpc"));
     assert.ok(doctorIpcSource.includes('ipcMain.handle("doctor:run-checks"'));
     assert.ok(doctorIpcSource.includes('ipcMain.handle("doctor:get-report"'));
-    assert.ok(
-      doctorIpcSource.includes('ipcMain.handle("doctor:test-connection"'),
-    );
-    assert.ok(
-      doctorIpcSource.includes('ipcMain.handle("doctor:open-clawd-log"'),
-    );
+    assert.ok(doctorIpcSource.includes('ipcMain.handle("doctor:test-connection"'));
+    assert.ok(doctorIpcSource.includes('ipcMain.handle("doctor:open-clawd-log"'));
     assert.ok(doctorIpcSource.includes("createConnectionTestDeduper"));
     assert.ok(doctorIpcSource.includes("createDoctorRunChecksDeduper"));
     assert.ok(doctorIpcSource.includes("runDedupedDoctorChecks"));
@@ -2722,11 +2529,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(doctorIpcSource.includes("openClawdLog"));
     assert.ok(doctorIpcSource.includes("formatDiagnosticReport"));
     assert.ok(doctorIpcSource.includes("getDoctorRedactionOptions"));
-    assert.ok(
-      doctorIpcSource.includes(
-        "redactDoctorResult(await runDedupedDoctorChecks(), getDoctorRedactionOptions(app))",
-      ),
-    );
+    assert.ok(doctorIpcSource.includes("redactDoctorResult(await runDedupedDoctorChecks(), getDoctorRedactionOptions(app))"));
     assert.ok(i18nSource.includes("doctorRunFailed"));
     assert.ok(i18nSource.includes("doctorFixApplied"));
     assert.ok(i18nSource.includes("doctorFixConfirmCodexDetail"));
@@ -2741,20 +2544,12 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("doctorOpenLog"));
     assert.ok(i18nSource.includes('doctorOpenLogOpened: "Debug log opened"'));
     assert.ok(i18nSource.includes('doctorOpenLogOpened: "已打开调试日志"'));
-    assert.ok(
-      i18nSource.includes('doctorOpenLogOpened: "디버그 로그를 열었습니다"'),
-    );
-    assert.ok(
-      i18nSource.includes('doctorOpenLogOpened: "デバッグログを開きました"'),
-    );
+    assert.ok(i18nSource.includes('doctorOpenLogOpened: "디버그 로그를 열었습니다"'));
+    assert.ok(i18nSource.includes('doctorOpenLogOpened: "デバッグログを開きました"'));
     assert.ok(!i18nSource.includes('doctorOpenLogOpened: "Debug log opened."'));
     assert.ok(!i18nSource.includes('doctorOpenLogOpened: "已打开调试日志。"'));
-    assert.ok(
-      !i18nSource.includes('doctorOpenLogOpened: "디버그 로그를 열었습니다."'),
-    );
-    assert.ok(
-      !i18nSource.includes('doctorOpenLogOpened: "デバッグログを開きました。"'),
-    );
+    assert.ok(!i18nSource.includes('doctorOpenLogOpened: "디버그 로그를 열었습니다."'));
+    assert.ok(!i18nSource.includes('doctorOpenLogOpened: "デバッグログを開きました。"'));
   });
 
   it("unifies the size slider on the simple volume-style control (no floating bubble, no ticks)", () => {
@@ -2770,16 +2565,8 @@ describe("settings renderer browser environment", () => {
     // drag affordances.
     assert.ok(/volume-control size-control/.test(tabSource));
     assert.ok(/volume-slider size-slider/.test(tabSource));
-    assert.ok(
-      /\.size-control\.dragging \.volume-slider::-webkit-slider-thumb/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.size-control\.pending \.volume-slider\s*\{[\s\S]*cursor:\s*ew-resize;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.size-control\.dragging \.volume-slider::-webkit-slider-thumb/.test(css));
+    assert.ok(/\.size-control\.pending \.volume-slider\s*\{[\s\S]*cursor:\s*ew-resize;/.test(css));
   });
 
   it("compensates every viewport unit for the injected text zoom", () => {
@@ -2789,24 +2576,11 @@ describe("settings renderer browser environment", () => {
     // settings pages that cannot scroll to the bottom. Every occurrence must
     // divide by --clawd-text-zoom or use the zoom-aware 100% chain instead.
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    const dashboardHtml = fs.readFileSync(
-      path.join(SRC_DIR, "dashboard.html"),
-      "utf8",
-    );
+    const dashboardHtml = fs.readFileSync(path.join(SRC_DIR, "dashboard.html"), "utf8");
     const mainSource = fs.readFileSync(MAIN_PROCESS, "utf8");
-    const bare =
-      css.match(/\d+(?:\.\d+)?v[hw]\b(?!\s*\/\s*var\(--clawd-text-zoom)/g) ||
-      [];
-    assert.deepStrictEqual(
-      bare,
-      [],
-      "settings.css has uncompensated viewport units",
-    );
-    assert.doesNotMatch(
-      dashboardHtml,
-      /\d+(?:\.\d+)?v[hw]\b/,
-      "dashboard.html must not use viewport units",
-    );
+    const bare = css.match(/\d+(?:\.\d+)?v[hw]\b(?!\s*\/\s*var\(--clawd-text-zoom)/g) || [];
+    assert.deepStrictEqual(bare, [], "settings.css has uncompensated viewport units");
+    assert.doesNotMatch(dashboardHtml, /\d+(?:\.\d+)?v[hw]\b/, "dashboard.html must not use viewport units");
     assert.match(mainSource, /height:calc\(100vh \/ \$\{resumeScale\}\)/);
   });
 
@@ -2816,42 +2590,27 @@ describe("settings renderer browser environment", () => {
     // The committed percent is per-display and lives main-side; a window move
     // never produces a settings-changed broadcast, so the row must subscribe
     // to the context-changed poke from the settings-window runtime…
-    assert.ok(
-      /onTextScaleContextChanged\(\(\) => \{\s*if \(!previewLive\) syncFromContext\(\);/.test(
-        tabSource,
-      ),
-      "text-scale row must re-pull context on display change, gated on previewLive",
-    );
+    assert.ok(/onTextScaleContextChanged\(\(\) => \{\s*if \(!previewLive\) syncFromContext\(\);/.test(tabSource),
+      "text-scale row must re-pull context on display change, gated on previewLive");
     // …and must not repaint to the committed value mid-drag (the preview
     // itself triggers pokes via applyTextScaleNow).
     assert.ok(/previewLive = true;/.test(tabSource));
     // Preview exits clear the flag: manual pointer release, commit (change),
     // and rollback (blur).
     // (Lookbehind excludes the `let previewLive = false;` declaration.)
-    assert.strictEqual(
-      (tabSource.match(/(?<!let )previewLive = false;/g) || []).length,
-      3,
-    );
+    assert.strictEqual((tabSource.match(/(?<!let )previewLive = false;/g) || []).length, 3);
     // Full re-renders must dispose the row (unsubscribe + roll back a
     // stranded transient preview) — see clearMountedControls.
     assert.ok(/unsubscribeContextChanged\(\);/.test(tabSource));
-    assert.ok(
-      /mountedControls\.textScale && typeof state\.mountedControls\.textScale\.dispose === "function"/.test(
-        uiCoreSource,
-      ),
-      "clearMountedControls must dispose the text-scale control",
-    );
+    assert.ok(/mountedControls\.textScale && typeof state\.mountedControls\.textScale\.dispose === "function"/.test(uiCoreSource),
+      "clearMountedControls must dispose the text-scale control");
     assert.ok(/state\.mountedControls\.textScale = null;/.test(uiCoreSource));
     // Renderer-side rollback rides IPC and can't be trusted during window
     // teardown — main must clear the transient preview when settings closes,
     // or a mid-drag ⌘W pins the preview scale to the display until restart.
     const mainSource = fs.readFileSync(MAIN_PROCESS, "utf8");
-    assert.ok(
-      /onBeforeClosed: \(\) => \{[^}]*endTextScalePreview\(\);/.test(
-        mainSource,
-      ),
-      "settings onBeforeClosed must end a live text-scale preview",
-    );
+    assert.ok(/onBeforeClosed: \(\) => \{[^}]*endTextScalePreview\(\);/.test(mainSource),
+      "settings onBeforeClosed must end a live text-scale preview");
   });
 
   it("keeps text-scale pointer drags stable while the Settings page live-zooms", async () => {
@@ -2877,14 +2636,7 @@ describe("settings renderer browser environment", () => {
 
     const slider = harness.content.querySelector(".text-scale-slider");
     assert.ok(slider);
-    let rect = {
-      left: 100,
-      width: 240,
-      top: 0,
-      height: 28,
-      right: 340,
-      bottom: 28,
-    };
+    let rect = { left: 100, width: 240, top: 0, height: 28, right: 340, bottom: 28 };
     slider.getBoundingClientRect = () => rect;
 
     slider.dispatchEvent({
@@ -2901,14 +2653,7 @@ describe("settings renderer browser environment", () => {
     // The manual pointer math must keep using the pointerdown geometry above:
     // screenX 145 is 95% on the original 240px track, but would be ~90% if the
     // now-wider track were used mid-drag.
-    rect = {
-      left: 100,
-      width: 384,
-      top: 0,
-      height: 45,
-      right: 484,
-      bottom: 45,
-    };
+    rect = { left: 100, width: 384, top: 0, height: 45, right: 484, bottom: 45 };
     slider.dispatchEvent({
       type: "pointermove",
       pointerId: 1,
@@ -2952,55 +2697,27 @@ describe("settings renderer browser environment", () => {
     const onKnobRule = css.match(/\.switch\.on::after\s*\{([\s\S]*?)\n\}/);
     assert.ok(switchRule, "settings.css should define the switch track");
     assert.ok(knobRule, "settings.css should define the switch knob");
-    assert.ok(
-      onKnobRule,
-      "settings.css should define the on-state knob transform",
-    );
-    assert.ok(
-      /transition:\s*background 0\.26s ease,\s*box-shadow 0\.26s ease,\s*transform 0\.16s ease;/.test(
-        switchRule[1],
-      ),
-    );
+    assert.ok(onKnobRule, "settings.css should define the on-state knob transform");
+    assert.ok(/transition:\s*background 0\.26s ease,\s*box-shadow 0\.26s ease,\s*transform 0\.16s ease;/.test(switchRule[1]));
     assert.ok(/transform:\s*translateX\(0\)\s+scale\(1\);/.test(knobRule[1]));
     assert.ok(!/transition:\s*left\b/.test(knobRule[1]));
-    assert.ok(
-      /transition:\s*transform 0\.28s cubic-bezier\(0\.2,\s*0\.8,\s*0\.2,\s*1\),\s*box-shadow 0\.2s ease;/.test(
-        knobRule[1],
-      ),
-    );
-    assert.ok(
-      /transform:\s*translateX\(16px\)\s+scale\(1\);/.test(onKnobRule[1]),
-    );
+    assert.ok(/transition:\s*transform 0\.28s cubic-bezier\(0\.2,\s*0\.8,\s*0\.2,\s*1\),\s*box-shadow 0\.2s ease;/.test(knobRule[1]));
+    assert.ok(/transform:\s*translateX\(16px\)\s+scale\(1\);/.test(onKnobRule[1]));
     assert.ok(!css.includes(".switch.on::after { left: 18px; }"));
-    assert.ok(
-      /\.switch:not\(\.disabled\):active::after\s*\{[\s\S]*transform:\s*translateX\(var\(--switch-knob-x,\s*0\)\)\s+scale\(0\.94\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.switch,[\s\S]*\.switch::after\s*\{[\s\S]*transition:\s*none;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.switch:not\(\.disabled\):active::after\s*\{[\s\S]*transform:\s*translateX\(var\(--switch-knob-x,\s*0\)\)\s+scale\(0\.94\);/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.switch,[\s\S]*\.switch::after\s*\{[\s\S]*transition:\s*none;/.test(css));
   });
 
   it("renders the Settings language picker as a dropdown over all supported langs", () => {
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
 
-    assert.ok(
-      new RegExp(
-        String.raw`const LANGUAGE_OPTIONS = \[` +
-          SUPPORTED_LANGS.map((lang) => String.raw`"${lang}"`).join(
-            String.raw`,\s*`,
-          ) +
-          String.raw`\];`,
-      ).test(generalSource),
-    );
+    assert.ok(new RegExp(
+      String.raw`const LANGUAGE_OPTIONS = \[` +
+      SUPPORTED_LANGS.map((lang) => String.raw`"${lang}"`).join(String.raw`,\s*`) +
+      String.raw`\];`
+    ).test(generalSource));
     assert.ok(generalSource.includes(`class="language-picker"`));
     assert.ok(generalSource.includes(`aria-haspopup="listbox"`));
     assert.ok(generalSource.includes(`role="listbox"`));
@@ -3012,26 +2729,10 @@ describe("settings renderer browser environment", () => {
     assert.ok(!generalSource.includes("--language-active-index"));
     assert.ok(!coreSource.includes("languageTransition"));
     assert.ok(/\.language-picker-menu\s*\{[\s\S]*box-shadow:/.test(css));
-    assert.ok(
-      /\.language-picker-option:hover,[\s\S]*\.language-picker-option:focus-visible\s*\{[\s\S]*background:/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.language-picker-option\.selected\s*\{[\s\S]*color:\s*var\(--accent\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*\.language-picker-menu/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.language-picker-trigger,[\s\S]*\.language-picker-chevron,[\s\S]*\.language-picker-menu[\s\S]*transition:\s*none;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.language-picker-option:hover,[\s\S]*\.language-picker-option:focus-visible\s*\{[\s\S]*background:/.test(css));
+    assert.ok(/\.language-picker-option\.selected\s*\{[\s\S]*color:\s*var\(--accent\);/.test(css));
+    assert.ok(/@media \(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*\.language-picker-menu/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.language-picker-trigger,[\s\S]*\.language-picker-chevron,[\s\S]*\.language-picker-menu[\s\S]*transition:\s*none;/.test(css));
     assert.ok(!css.includes(".language-segmented"));
   });
 
@@ -3058,17 +2759,14 @@ describe("settings renderer browser environment", () => {
 
     trigger.dispatchEvent({ type: "click" });
     assert.strictEqual(picker.classList.contains("open"), true);
-    assert.strictEqual(
-      harness.getLangMenu().attributes["aria-hidden"],
-      "false",
-    );
+    assert.strictEqual(harness.getLangMenu().attributes["aria-hidden"], "false");
     assert.strictEqual(options[0].tabIndex, 0);
     options[1].dispatchEvent({ type: "click" });
 
     assert.deepStrictEqual(
       harness.updateCalls,
       [{ key: "lang", value: "zh" }],
-      "clicking a language option should call settingsAPI.update with the new lang",
+      "clicking a language option should call settingsAPI.update with the new lang"
     );
     assert.strictEqual(picker.classList.contains("open"), false);
     assert.strictEqual(harness.getLangMenu().attributes["aria-hidden"], "true");
@@ -3080,7 +2778,7 @@ describe("settings renderer browser environment", () => {
     assert.deepStrictEqual(
       harness.updateCalls,
       [{ key: "lang", value: "zh" }],
-      "clicking the already displayed pending language should not submit a duplicate update",
+      "clicking the already displayed pending language should not submit a duplicate update"
     );
 
     trigger.dispatchEvent({ type: "click" });
@@ -3088,7 +2786,7 @@ describe("settings renderer browser environment", () => {
     assert.deepStrictEqual(
       harness.updateCalls,
       [{ key: "lang", value: "zh" }],
-      "clicking back to the committed language while pending should not submit a duplicate update",
+      "clicking back to the committed language while pending should not submit a duplicate update"
     );
     assert.strictEqual(harness.getLangValue().textContent, "English");
     assert.strictEqual(options[0].attributes["aria-selected"], "true");
@@ -3099,26 +2797,19 @@ describe("settings renderer browser environment", () => {
     });
     assert.strictEqual(harness.getContentRenderCount(), 2);
     assert.strictEqual(harness.getLangValue().textContent, "Chinese");
-    assert.strictEqual(
-      harness.getLangOptions()[1].attributes["aria-selected"],
-      "true",
-    );
+    assert.strictEqual(harness.getLangOptions()[1].attributes["aria-selected"], "true");
   });
 
   it("supports keyboard language selection and reverts when saving fails", async () => {
     const harness = loadGeneralLanguageRowForTest({
       snapshot: { lang: "en" },
-      update: () =>
-        Promise.resolve({ status: "error", message: "synthetic failure" }),
+      update: () => Promise.resolve({ status: "error", message: "synthetic failure" }),
     });
 
     harness.core.ops.requestRender({ content: true });
     const trigger = harness.getLangTrigger();
     trigger.dispatchEvent(createKeyboardEventForTest("ArrowDown"));
-    assert.strictEqual(
-      harness.getLangPicker().classList.contains("open"),
-      true,
-    );
+    assert.strictEqual(harness.getLangPicker().classList.contains("open"), true);
     const options = harness.getLangOptions();
     options[1].dispatchEvent(createKeyboardEventForTest("Enter"));
     await Promise.resolve();
@@ -3143,48 +2834,32 @@ describe("settings renderer browser environment", () => {
   });
 
   it("exposes aggregate and split bubble controls in the General tab", () => {
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     assert.ok(generalSource.includes('key: "hideBubbles"'));
     assert.ok(generalSource.includes("rowHideBubbles"));
     assert.ok(generalSource.includes("setAllBubblesHidden"));
-    assert.ok(generalSource.includes("hidden: nextRaw"));
+    assert.ok(generalSource.includes('{ hidden: nextRaw }'));
     assert.ok(generalSource.includes('keys.includes("hideBubbles")'));
     assert.ok(generalSource.includes("buildBubblePolicyRow()"));
     assert.ok(generalSource.includes("setBubbleCategoryEnabled"));
-    assert.ok(
-      generalSource.includes("state.mountedControls.bubblePolicyControls"),
-    );
-    assert.ok(
-      generalSource.includes("state.mountedControls.bubblePolicySummary"),
-    );
+    assert.ok(generalSource.includes("state.mountedControls.bubblePolicyControls"));
+    assert.ok(generalSource.includes("state.mountedControls.bubblePolicySummary"));
     assert.ok(generalSource.includes("confirmDisableUpdateBubbles"));
-    assert.ok(
-      generalSource.indexOf("buildBubblePolicyRow()") <
-        generalSource.indexOf('key: "bubbleFollowPet"'),
-    );
-    assert.ok(generalSource.includes('category === "update" && next === 0'));
+    assert.ok(generalSource.indexOf("buildBubblePolicyRow()") < generalSource.indexOf('key: "bubbleFollowPet"'));
+    assert.ok(generalSource.includes("category === \"update\" && next === 0"));
     assert.ok(generalSource.includes("notificationBubbleAutoCloseSeconds"));
     assert.ok(generalSource.includes("updateBubbleAutoCloseSeconds"));
     assert.ok(generalSource.includes("bubble-policy-prefix"));
     assert.ok(generalSource.includes('input.type = "text"'));
     assert.ok(generalSource.includes("input.maxLength = 4"));
     assert.ok(generalSource.includes('input.pattern = "[0-9]*"'));
-    assert.ok(
-      generalSource.includes('input.value.replace(/\\D+/g, "").slice(0, 4)'),
-    );
+    assert.ok(generalSource.includes('input.value.replace(/\\D+/g, "").slice(0, 4)'));
     assert.ok(generalSource.includes("showSettingsConfirmModal"));
     assert.ok(generalSource.includes("updateBubbleDisableConfirmTitle"));
     assert.ok(/\.bubble-policy-seconds\s*\{[\s\S]*width:\s*42px;/.test(css));
-    assert.ok(
-      /\.bubble-policy-seconds\s*\{[\s\S]*box-sizing:\s*border-box;[\s\S]*text-align:\s*center;[\s\S]*padding:\s*0 3px;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.bubble-policy-seconds\s*\{[\s\S]*box-sizing:\s*border-box;[\s\S]*text-align:\s*center;[\s\S]*padding:\s*0 3px;/.test(css));
     assert.ok(i18nSource.includes("rowHideBubbles"));
     assert.ok(i18nSource.includes("rowBubblePolicy"));
     assert.ok(i18nSource.includes("bubbleUpdateWarning"));
@@ -3192,16 +2867,10 @@ describe("settings renderer browser environment", () => {
   });
 
   it("registers the Session cleanup group with three number rows, atomic reset, and i18n keys", () => {
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     const uiCoreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
-    const actionsSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-actions.js"),
-      "utf8",
-    );
+    const actionsSource = fs.readFileSync(path.join(SRC_DIR, "settings-actions.js"), "utf8");
 
     // Group is mounted top-level in the General tab (not nested under HUD).
     assert.ok(generalSource.includes("buildSessionCleanupGroup()"));
@@ -3220,27 +2889,15 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes('"actionResetSessionCleanup"'));
 
     // patchInPlace covers the new keys in BOTH the existence guard and the sync loop.
-    assert.ok(
-      generalSource.match(
-        /SESSION_CLEANUP_NUMBER_KEYS\.has\(key\)[\s\S]+sessionCleanupControls\.get\(key\)\.syncFromSnapshot\(\)/,
-      ),
-    );
+    assert.ok(generalSource.match(/SESSION_CLEANUP_NUMBER_KEYS\.has\(key\)[\s\S]+sessionCleanupControls\.get\(key\)\.syncFromSnapshot\(\)/));
 
     // ui-core registers the helper and the mountedControls bag.
     assert.ok(uiCoreSource.includes("buildNumberInputRow"));
     assert.ok(uiCoreSource.includes("sessionCleanupControls: new Map()"));
-    assert.ok(
-      uiCoreSource.includes(
-        "state.mountedControls.sessionCleanupControls.clear()",
-      ),
-    );
+    assert.ok(uiCoreSource.includes("state.mountedControls.sessionCleanupControls.clear()"));
 
     // The command is registered in settings-actions.
-    assert.ok(
-      actionsSource.includes(
-        '"sessionCleanup.setTriple": setSessionCleanupTriple',
-      ),
-    );
+    assert.ok(actionsSource.includes('"sessionCleanup.setTriple": setSessionCleanupTriple'));
 
     // i18n keys present in all five languages.
     for (const key of [
@@ -3258,18 +2915,12 @@ describe("settings renderer browser environment", () => {
       "actionResetSessionCleanup",
     ]) {
       const matches = i18nSource.match(new RegExp(`\\b${key}:`, "g"));
-      assert.ok(
-        matches && matches.length >= 5,
-        `${key} should appear in all 5 language tables (saw ${matches ? matches.length : 0})`,
-      );
+      assert.ok(matches && matches.length >= 5, `${key} should appear in all 5 language tables (saw ${matches ? matches.length : 0})`);
     }
   });
 
   it("uses collapsible option lists for Session HUD and sound controls", () => {
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     assert.ok(generalSource.includes("function buildSessionHudOptionsList("));
@@ -3279,458 +2930,49 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes('id: "general:sound"'));
     assert.ok(generalSource.includes("sound-option-list"));
     assert.ok(generalSource.includes("state.mountedControls.soundSummary"));
-    assert.ok(
-      generalSource.includes(
-        'sw.setAttribute("aria-label", t("rowSoundEnabled"));',
-      ),
-    );
+    assert.ok(generalSource.includes('sw.setAttribute("aria-label", t("rowSoundEnabled"));'));
     assert.ok(generalSource.includes("toggleSound"));
     assert.ok(generalSource.includes("syncVolumePreview"));
-    assert.ok(
-      !/key:\s*"soundMuted",[\s\S]{0,120}descKey:\s*"rowSoundDesc"/.test(
-        generalSource,
-      ),
-    );
-    assert.ok(
-      generalSource.includes(
-        'state.transientUiState.generalSwitches.set("soundMuted"',
-      ),
-    );
-    assert.ok(
-      generalSource.includes(
-        'if (!result || result.status !== "ok" || result.noop)',
-      ),
-    );
+    assert.ok(!/key:\s*"soundMuted",[\s\S]{0,120}descKey:\s*"rowSoundDesc"/.test(generalSource));
+    assert.ok(generalSource.includes('state.transientUiState.generalSwitches.set("soundMuted"'));
+    assert.ok(generalSource.includes("if (!result || result.status !== \"ok\" || result.noop)"));
     assert.ok(generalSource.includes("sessionHudSummaryLabels"));
     assert.ok(generalSource.includes('key: "sessionHudShowStateLabels"'));
     assert.ok(generalSource.includes("session-hud-summary-control"));
-    assert.ok(
-      /\.settings-option-list\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*8px;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.settings-option-list \.settings-option-item\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--panel-bg\) 78%,\s*transparent\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.session-hud-collapsible \.collapsible-summary-chip,[\s\S]*\.sound-collapsible \.collapsible-summary-chip\s*\{[\s\S]*max-width:\s*min\(280px,\s*100%\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.session-hud-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*max-width:\s*none;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.sound-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*max-width:\s*none;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.bubble-policy-collapsible \.collapsible-group-summary\s*\{[^}]*flex:\s*0 0 auto;[^}]*flex-wrap:\s*nowrap;[^}]*max-width:\s*none;[^}]*\}/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      !/\.session-hud-collapsible \.collapsible-group-summary\s*\{[^}]*flex-wrap:\s*nowrap;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      !/\.sound-collapsible \.collapsible-group-summary\s*\{[^}]*flex-wrap:\s*nowrap;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*max-content\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.session-hud-summary-control\.compact\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*width:\s*auto;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-collapsible \.collapsible-group-header\s*\{[\s\S]*flex-wrap:\s*wrap;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 calc\(100% - 22px\);[\s\S]*margin-left:\s*22px;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*width:\s*min\(238px,\s*100%\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-text \.row-label\s*\{[\s\S]*text-overflow:\s*ellipsis;[\s\S]*white-space:\s*nowrap;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-text \.row-desc\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.sound-summary-control\s*\{[\s\S]*display:\s*inline-flex;/.test(css),
-    );
-    assert.ok(
-      /\.sound-summary-control\s*\{[\s\S]*min-width:\s*max-content;/.test(css),
-    );
-    assert.ok(
-      /\.sound-summary-control \.collapsible-summary-chip\s*\{[\s\S]*max-width:\s*none;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.sound-summary-control \.collapsible-summary-chip\s*\{[\s\S]*flex:\s*0 0 auto;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.sound-collapsible \.collapsible-group-text \.row-desc\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.settings-option-list\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*8px;/.test(css));
+    assert.ok(/\.settings-option-list \.settings-option-item\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--panel-bg\) 78%,\s*transparent\);/.test(css));
+    assert.ok(/\.session-hud-collapsible \.collapsible-summary-chip,[\s\S]*\.sound-collapsible \.collapsible-summary-chip\s*\{[\s\S]*max-width:\s*min\(280px,\s*100%\);/.test(css));
+    assert.ok(/\.session-hud-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*max-width:\s*none;/.test(css));
+    assert.ok(/\.sound-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*max-width:\s*none;/.test(css));
+    assert.ok(/\.bubble-policy-collapsible \.collapsible-group-summary\s*\{[^}]*flex:\s*0 0 auto;[^}]*flex-wrap:\s*nowrap;[^}]*max-width:\s*none;[^}]*\}/.test(css));
+    assert.ok(!/\.session-hud-collapsible \.collapsible-group-summary\s*\{[^}]*flex-wrap:\s*nowrap;/.test(css));
+    assert.ok(!/\.sound-collapsible \.collapsible-group-summary\s*\{[^}]*flex-wrap:\s*nowrap;/.test(css));
+    assert.ok(/\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*max-content\);/.test(css));
+    assert.ok(/\.session-hud-summary-control\.compact\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*width:\s*auto;/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-collapsible \.collapsible-group-header\s*\{[\s\S]*flex-wrap:\s*wrap;/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 calc\(100% - 22px\);[\s\S]*margin-left:\s*22px;/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*width:\s*min\(238px,\s*100%\);/.test(css));
+    assert.ok(/\.collapsible-group-text \.row-label\s*\{[\s\S]*text-overflow:\s*ellipsis;[\s\S]*white-space:\s*nowrap;/.test(css));
+    assert.ok(/\.collapsible-group-text \.row-desc\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2;/.test(css));
+    assert.ok(/\.sound-summary-control\s*\{[\s\S]*display:\s*inline-flex;/.test(css));
+    assert.ok(/\.sound-summary-control\s*\{[\s\S]*min-width:\s*max-content;/.test(css));
+    assert.ok(/\.sound-summary-control \.collapsible-summary-chip\s*\{[\s\S]*max-width:\s*none;/.test(css));
+    assert.ok(/\.sound-summary-control \.collapsible-summary-chip\s*\{[\s\S]*flex:\s*0 0 auto;/.test(css));
+    assert.ok(/\.sound-collapsible \.collapsible-group-text \.row-desc\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2;/.test(css));
     assert.ok(i18nSource.includes("rowSoundEnabled"));
-  });
-
-  it("places Hardware Buddy on the Remote Approval tab instead of General", () => {
-    const generalHarness = loadGeneralTabForTest({
-      snapshot: makeGeneralSnapshot(),
-    });
-    generalHarness.renderContent();
-
-    const sections = generalHarness.content.querySelectorAll(".section");
-    const sectionTitles = sections.map(
-      (section) => section.querySelector(".section-title").textContent,
-    );
-    assert.deepStrictEqual(sectionTitles, [
-      "Appearance",
-      "Session management",
-      "Alerts & feedback",
-      "Behavior & position",
-      "System & startup",
-      "Permissions",
-    ]);
-    assert.strictEqual(
-      generalHarness.content.querySelector(".hardware-buddy-collapsible"),
-      null,
-    );
-
-    const remoteHarness = loadTelegramApprovalTabForTest({
-      snapshot: {
-        tgApproval: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-        },
-        hardwareBuddy: {
-          enabled: false,
-          backend: "bleak",
-          address: "",
-          namePrefix: "Clawstick",
-          permissionsEnabled: false,
-        },
-      },
-    });
-    const telegramCard = remoteHarness.content.querySelector(
-      ".tg-approval-channel-card",
-    );
-    const hardwareBuddy = remoteHarness.content.querySelector(
-      ".hardware-buddy-collapsible",
-    );
-    assert.ok(hardwareBuddy, "Hardware Buddy panel should render");
-    assert.ok(telegramCard, "Telegram approval card should render");
-    assert.ok(
-      remoteHarness.content.children.indexOf(telegramCard) <
-        remoteHarness.content.children.indexOf(hardwareBuddy),
-    );
-    assert.strictEqual(
-      hardwareBuddy.dataset.groupId,
-      "remote-approval.hardware-buddy",
-    );
-  });
-
-  it("renders Hardware Buddy with the same remote approval channel header style", () => {
-    const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    const harness = loadTelegramApprovalTabForTest({
-      snapshot: {
-        tgApproval: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-        },
-        hardwareBuddy: {
-          enabled: true,
-          backend: "bleak",
-          address: "",
-          namePrefix: "Clawstick",
-          permissionsEnabled: true,
-        },
-      },
-    });
-    harness.core.runtime.hardwareBuddyStatus = {
-      started: true,
-      connected: true,
-      secure: true,
-      lastStatus: { data: { name: "Clawstick" } },
-    };
-    harness.render();
-
-    const hardwareBuddy = harness.content.querySelector(
-      ".hardware-buddy-collapsible",
-    );
-    const header = hardwareBuddy.querySelector(
-      ".hardware-buddy-channel-header",
-    );
-    const badge = header.querySelector(".hardware-buddy-channel-badge");
-    const replyBadge = hardwareBuddy.querySelector(
-      ".hardware-buddy-reply-badge",
-    );
-    const testButton = hardwareBuddy.querySelector(
-      ".hardware-buddy-test-button",
-    );
-    assert.strictEqual(
-      header.querySelector(".tg-approval-channel-name").textContent,
-      "hardwareBuddyTitle",
-    );
-    assert.strictEqual(
-      badge.querySelectorAll("span")[1].textContent,
-      "hardwareBuddyStatus_secure",
-    );
-    assert.ok(badge.classList.contains("tg-approval-badge-running"));
-    assert.strictEqual(replyBadge.textContent, "hardwareBuddyRepliesOn");
-    assert.strictEqual(
-      hardwareBuddy.querySelector(".hardware-buddy-repo-button"),
-      null,
-    );
-    assert.strictEqual(testButton.textContent, "hardwareBuddyTestButton");
-    assert.strictEqual(
-      hardwareBuddy.querySelector(".hardware-buddy-summary-control"),
-      null,
-    );
-    assert.strictEqual(
-      hardwareBuddy.querySelector(".hardware-buddy-quick-command-row"),
-      null,
-    );
-    assert.strictEqual(
-      hardwareBuddy.textContent.includes("hardwareBuddyQuickCommands"),
-      false,
-    );
-    assert.ok(
-      /\.remote-approval-channel-card\.collapsible-group\s*\{[\s\S]*margin:\s*8px 0 14px;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.tg-approval-channel-header\s*\{[\s\S]*justify-content:\s*space-between;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.hardware-buddy-status-control\s*\{[\s\S]*display:\s*inline-flex;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.hardware-buddy-test-button\s*\{[\s\S]*border:\s*1px solid var\(--accent\);/.test(
-        css,
-      ),
-    );
-  });
-
-  it("sends a Hardware Buddy test approval from the settings panel", async () => {
-    const calls = [];
-    const harness = loadTelegramApprovalTabForTest({
-      snapshot: {
-        tgApproval: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-        },
-        hardwareBuddy: {
-          enabled: true,
-          backend: "bleak",
-          address: "",
-          namePrefix: "Clawstick",
-          permissionsEnabled: true,
-        },
-      },
-      settingsAPI: {
-        testHardwareBuddyApproval: () => {
-          calls.push("test");
-          return Promise.resolve({ status: "ok", decision: "allow" });
-        },
-      },
-    });
-    harness.core.runtime.hardwareBuddyStatus = {
-      started: true,
-      connected: true,
-      secure: true,
-      lastStatus: { data: { name: "Clawstick" } },
-    };
-    harness.render();
-
-    const button = harness.content.querySelector(".hardware-buddy-test-button");
-    assert.strictEqual(button.disabled, false);
-    button.dispatchEvent({ type: "click" });
-    assert.deepStrictEqual(calls, ["test"]);
-    assert.equal(
-      harness.renderRequests[harness.renderRequests.length - 1].content,
-      true,
-    );
-
-    await Promise.resolve();
-    await Promise.resolve();
-    assert.deepStrictEqual(harness.core.runtime.hardwareBuddyTest.result, {
-      status: "ok",
-      decision: "allow",
-    });
-  });
-
-  it("renders Hardware Buddy test error codes and clears stale results when config changes", () => {
-    const harness = loadTelegramApprovalTabForTest({
-      snapshot: {
-        tgApproval: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-        },
-        hardwareBuddy: {
-          enabled: true,
-          backend: "bleak",
-          address: "",
-          namePrefix: "Clawstick",
-          permissionsEnabled: true,
-        },
-      },
-      settingsAPI: {
-        testHardwareBuddyApproval: () =>
-          Promise.resolve({ status: "error", code: "timeout" }),
-      },
-    });
-    harness.core.runtime.hardwareBuddyStatus = {
-      started: true,
-      connected: true,
-      secure: true,
-      lastStatus: { data: { name: "Clawstick" } },
-    };
-    harness.core.runtime.hardwareBuddyTest = {
-      pending: false,
-      result: {
-        status: "error",
-        code: "timeout",
-        message: "raw english fallback",
-      },
-      contextKey: "",
-    };
-    harness.core.helpers.t = (key) =>
-      key === "hardwareBuddyTestErr_timeout" ? "timeout translated" : key;
-    harness.render();
-
-    let desc = harness.content.querySelector(
-      ".hardware-buddy-test-row .row-desc",
-    );
-    assert.strictEqual(desc.textContent, "timeout translated");
-
-    harness.core.state.snapshot.hardwareBuddy.enabled = false;
-    harness.render();
-
-    desc = harness.content.querySelector(".hardware-buddy-test-row .row-desc");
-    assert.strictEqual(harness.core.runtime.hardwareBuddyTest.result, null);
-    assert.strictEqual(desc.textContent, "hardwareBuddyTestDisabled");
-  });
-
-  it("does not render Hardware Buddy Quick Command controls", () => {
-    const calls = [];
-    const harness = loadTelegramApprovalTabForTest({
-      snapshot: {
-        tgApproval: {
-          enabled: false,
-          allowedTgUserId: "123456789",
-          targetSessionKey: "telegram:123456789",
-        },
-        hardwareBuddy: {
-          enabled: false,
-          backend: "bleak",
-          address: "",
-          namePrefix: "Clawstick",
-          permissionsEnabled: false,
-          quickCommandsEnabled: true,
-        },
-      },
-      settingsAPI: {
-        getQuickCommandPresets: () => {
-          calls.push("presets");
-          return Promise.resolve({
-            enabled: true,
-            presets: [{ id: "plan_first", label: "先列计划" }],
-          });
-        },
-        sendQuickCommand: (payload) => {
-          calls.push(payload);
-          return Promise.resolve({
-            status: "ok",
-            quickCommand: { id: payload.id },
-          });
-        },
-      },
-    });
-    harness.core.runtime.quickCommandPresets = {
-      enabled: true,
-      presets: [
-        { id: "plan_first", label: "先列计划" },
-        { id: "show_diff", label: "show diff" },
-      ],
-    };
-    harness.render();
-
-    assert.strictEqual(
-      harness.content.querySelector(".hardware-buddy-quick-command-row"),
-      null,
-    );
-    assert.strictEqual(
-      harness.content.querySelector(".hardware-buddy-quick-command-button"),
-      null,
-    );
-    assert.strictEqual(
-      harness.content.textContent.includes("hardwareBuddyQuickCommands"),
-      false,
-    );
-    assert.strictEqual(harness.content.textContent.includes("先列计划"), false);
-    assert.strictEqual(calls.length, 0);
   });
 
   it("adds hover affordance to General sliders via the shared volume-style classes", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    assert.ok(
-      /\.volume-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.volume-slider:hover::-webkit-slider-thumb,[\s\S]*\.size-control\.dragging \.volume-slider::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*none;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.volume-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.volume-slider:hover::-webkit-slider-thumb,[\s\S]*\.size-control\.dragging \.volume-slider::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*none;/.test(css));
   });
 
   it("describes notification bubble seconds as an auto-close upper bound instead of a guaranteed visible duration", () => {
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
 
     assert.ok(i18nSource.includes("auto-close upper bound"));
-    assert.ok(
-      i18nSource.includes("later session states may dismiss it earlier"),
-    );
+    assert.ok(i18nSource.includes("later session states may dismiss it earlier"));
     assert.ok(i18nSource.includes("自动关闭上限"));
     assert.ok(i18nSource.includes("后续状态可能提前关闭"));
     assert.ok(i18nSource.includes("자동 종료 상한"));
@@ -3738,47 +2980,23 @@ describe("settings renderer browser environment", () => {
   });
 
   it("auto-commits bubble seconds shortly after valid input instead of waiting only for change", () => {
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     assert.ok(generalSource.includes("BUBBLE_SECONDS_AUTO_COMMIT_DELAY_MS"));
-    assert.ok(
-      generalSource.includes('input.addEventListener("input", () => {'),
-    );
+    assert.ok(generalSource.includes('input.addEventListener("input", () => {'));
     assert.ok(generalSource.includes("scheduleSecondsCommit(next);"));
     assert.ok(generalSource.includes('input.addEventListener("blur", () => {'));
     assert.ok(generalSource.includes("flushSecondsCommit();"));
-    assert.ok(
-      generalSource.includes('input.addEventListener("change", () => {'),
-    );
-    assert.ok(
-      generalSource.includes("const next = parseBubbleSecondsInputValue(raw);"),
-    );
-    assert.ok(
-      generalSource.includes(
-        'if (category === "update" && next === 0) return;',
-      ),
-    );
-    assert.ok(
-      generalSource.includes(
-        "commitSecondsValue(secondsInput, secondsKey, next, category)",
-      ),
-    );
-    assert.ok(
-      !generalSource.includes(
-        "commitSecondsValue(input, secondsKey, next, category).then(",
-      ),
-    );
+    assert.ok(generalSource.includes('input.addEventListener("change", () => {'));
+    assert.ok(generalSource.includes("const next = parseBubbleSecondsInputValue(raw);"));
+    assert.ok(generalSource.includes('if (category === "update" && next === 0) return;'));
+    assert.ok(generalSource.includes("commitSecondsValue(secondsInput, secondsKey, next, category)"));
+    assert.ok(!generalSource.includes("commitSecondsValue(input, secondsKey, next, category).then("));
   });
 
   it("keeps update bubble disable confirmation inside the Settings renderer", () => {
     const preloadSource = fs.readFileSync(PRELOAD_SETTINGS, "utf8");
     const mainSource = fs.readFileSync(MAIN_PROCESS, "utf8");
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     const uiCoreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
@@ -3787,32 +3005,14 @@ describe("settings renderer browser environment", () => {
     assert.ok(css.includes(".settings-confirm-modal"));
     assert.ok(css.includes(".settings-confirm-backdrop"));
     assert.ok(!preloadSource.includes("confirmDisableUpdateBubbles"));
-    assert.ok(
-      !preloadSource.includes("settings:confirm-disable-update-bubbles"),
-    );
+    assert.ok(!preloadSource.includes("settings:confirm-disable-update-bubbles"));
     assert.ok(!mainSource.includes("UPDATE_BUBBLE_DIALOG_STRINGS"));
-    assert.ok(
-      !mainSource.includes(
-        'ipcMain.handle("settings:confirm-disable-update-bubbles"',
-      ),
-    );
+    assert.ok(!mainSource.includes('ipcMain.handle("settings:confirm-disable-update-bubbles"'));
     assert.ok(i18nSource.includes("Hide update bubbles"));
     assert.ok(i18nSource.includes("隐藏更新气泡"));
-    assert.ok(
-      generalSource.includes(
-        '{ id: "confirm", label: t("updateBubbleDisableConfirmAction"), tone: "danger" }',
-      ),
-    );
-    assert.ok(
-      generalSource.includes(
-        '{ id: "cancel", label: t("updateBubbleDisableConfirmCancel"), tone: "accent", defaultFocus: true }',
-      ),
-    );
-    assert.ok(
-      generalSource.includes(
-        'if (actionId === "confirm") runToggleCommit(nextEnabled);',
-      ),
-    );
+    assert.ok(generalSource.includes('{ id: "confirm", label: t("updateBubbleDisableConfirmAction"), tone: "danger" }'));
+    assert.ok(generalSource.includes('{ id: "cancel", label: t("updateBubbleDisableConfirmCancel"), tone: "accent", defaultFocus: true }'));
+    assert.ok(generalSource.includes('if (actionId === "confirm") runToggleCommit(nextEnabled);'));
     assert.ok(uiCoreSource.includes('tone === "accent"'));
     assert.ok(uiCoreSource.includes('tone === "danger"'));
   });
@@ -3820,47 +3020,25 @@ describe("settings renderer browser environment", () => {
   it("keeps Claude hooks confirmations inside the Settings renderer", () => {
     const preloadSource = fs.readFileSync(PRELOAD_SETTINGS, "utf8");
     const mainSource = fs.readFileSync(MAIN_PROCESS, "utf8");
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    const agentsSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-agents.js"),
-      "utf8",
-    );
+    const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
     const uiCoreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     assert.ok(agentsSource.includes("confirmDisableClaudeHookManagement"));
     assert.ok(agentsSource.includes("runDisconnectClaudeHooks"));
     assert.ok(agentsSource.includes("showSettingsConfirmModal({"));
     assert.ok(agentsSource.includes("claudeHooksDisableConfirmTitle"));
     assert.ok(agentsSource.includes("claudeHooksDisconnectConfirmTitle"));
-    assert.ok(
-      uiCoreSource.includes(
-        "buttons.find((action) => action.action && action.action.defaultFocus)",
-      ),
-    );
-    assert.ok(
-      uiCoreSource.includes(
-        'button.className = `soft-btn${toneClass ? ` ${toneClass}` : ""}`;',
-      ),
-    );
+    assert.ok(uiCoreSource.includes("buttons.find((action) => action.action && action.action.defaultFocus)"));
+    assert.ok(uiCoreSource.includes('button.className = `soft-btn${toneClass ? ` ${toneClass}` : ""}`;'));
     assert.ok(uiCoreSource.includes('tone === "accent"'));
     assert.ok(uiCoreSource.includes('tone === "danger"'));
     assert.ok(css.includes(".settings-confirm-danger"));
     assert.ok(!preloadSource.includes("confirmDisableClaudeHooks"));
     assert.ok(!preloadSource.includes("confirmDisconnectClaudeHooks"));
-    assert.ok(
-      !mainSource.includes(
-        'ipcMain.handle("settings:confirm-disable-claude-hooks"',
-      ),
-    );
-    assert.ok(
-      !mainSource.includes(
-        'ipcMain.handle("settings:confirm-disconnect-claude-hooks"',
-      ),
-    );
+    assert.ok(!mainSource.includes('ipcMain.handle("settings:confirm-disable-claude-hooks"'));
+    assert.ok(!mainSource.includes('ipcMain.handle("settings:confirm-disconnect-claude-hooks"'));
     assert.ok(!mainSource.includes("CLAUDE_HOOKS_DIALOG_STRINGS"));
     assert.ok(i18nSource.includes("claudeHooksDisableConfirmTitle"));
     assert.ok(i18nSource.includes("claudeHooksDisableConfirmKeep"));
@@ -3868,10 +3046,7 @@ describe("settings renderer browser environment", () => {
   });
 
   it("wires the danger auto-pilot toggle with a confirm modal and red label", () => {
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
@@ -3880,18 +3055,12 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes("danger: true"));
     assert.ok(generalSource.includes("confirmAutoApproveAll"));
     assert.ok(generalSource.includes("showAutoApproveAllConfirmModal"));
-    assert.ok(
-      generalSource.includes(
-        '{ id: "enable", label: t("autoApproveAllConfirmEnable"), tone: "danger" }',
-      ),
-    );
+    assert.ok(generalSource.includes('{ id: "enable", label: t("autoApproveAllConfirmEnable"), tone: "danger" }'));
     // buildSwitchRow honors danger by painting the label red.
     assert.ok(coreSource.includes("row-label-danger"));
     assert.ok(css.includes(".row-label.row-label-danger"));
     // Simple title + localized confirm strings exist.
-    assert.ok(
-      i18nSource.includes('rowAutoApproveAll: "Auto-approve all requests"'),
-    );
+    assert.ok(i18nSource.includes('rowAutoApproveAll: "Auto-approve all requests"'));
     assert.ok(i18nSource.includes('rowAutoApproveAll: "自动放行所有请求"'));
     assert.ok(i18nSource.includes("autoApproveAllConfirmTitle"));
     // Lives in its own Permissions section, not under Bubbles.
@@ -3902,56 +3071,29 @@ describe("settings renderer browser environment", () => {
   it("clears successful switch transient state so rerenders do not keep wait cursors", () => {
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     assert.ok(
-      /clearTransientState\(seq\);\s*setSwitchVisual\(sw,\s*nextVisual,\s*\{\s*pending:\s*false\s*\}\);/.test(
-        coreSource,
-      ),
-      "successful switch actions must delete transient pending state before any later rerender",
+      /clearTransientState\(seq\);\s*setSwitchVisual\(sw,\s*nextVisual,\s*\{\s*pending:\s*false\s*\}\);/.test(coreSource),
+      "successful switch actions must delete transient pending state before any later rerender"
     );
     assert.ok(
-      !coreSource.includes(
-        "setTransientState({ visualOn: nextVisual, pending: false, seq });",
-      ),
-      "leaving a non-pending transient row lets rerendered controls inherit stale pending state",
+      !coreSource.includes("setTransientState({ visualOn: nextVisual, pending: false, seq });"),
+      "leaving a non-pending transient row lets rerendered controls inherit stale pending state"
     );
   });
 
   it("clears settings-broadcast transient state before patching or rerendering", () => {
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
-    assert.ok(
-      coreSource.includes("function clearTransientStateForChanges(changes)"),
-    );
-    assert.ok(
-      coreSource.includes(
-        "state.transientUiState.generalSwitches.delete(key);",
-      ),
-    );
-    assert.ok(
-      coreSource.includes(
-        'Object.prototype.hasOwnProperty.call(changes, "agents")',
-      ),
-    );
-    assert.ok(
-      coreSource.includes("state.transientUiState.agentSwitches.clear();"),
-    );
-    const clearIndex = coreSource.indexOf(
-      "clearTransientStateForChanges(changes);",
-    );
+    assert.ok(coreSource.includes("function clearTransientStateForChanges(changes)"));
+    assert.ok(coreSource.includes("state.transientUiState.generalSwitches.delete(key);"));
+    assert.ok(coreSource.includes('Object.prototype.hasOwnProperty.call(changes, "agents")'));
+    assert.ok(coreSource.includes("state.transientUiState.agentSwitches.clear();"));
+    const clearIndex = coreSource.indexOf("clearTransientStateForChanges(changes);");
     const patchIndex = coreSource.indexOf("activeTab.patchInPlace(changes");
-    const renderIndex = coreSource.indexOf(
-      "requestRender({ sidebar: true, content: true });",
-      patchIndex,
-    );
+    const renderIndex = coreSource.indexOf("requestRender({ sidebar: true, content: true });", patchIndex);
     assert.notStrictEqual(clearIndex, -1);
     assert.notStrictEqual(patchIndex, -1);
     assert.notStrictEqual(renderIndex, -1);
-    assert.ok(
-      clearIndex < patchIndex,
-      "broadcast cleanup must happen before in-place patching",
-    );
-    assert.ok(
-      clearIndex < renderIndex,
-      "broadcast cleanup must happen before full rerender",
-    );
+    assert.ok(clearIndex < patchIndex, "broadcast cleanup must happen before in-place patching");
+    assert.ok(clearIndex < renderIndex, "broadcast cleanup must happen before full rerender");
   });
 
   it("patches the Session HUD master switch without rebuilding General content", async () => {
@@ -3994,26 +3136,16 @@ describe("settings renderer browser environment", () => {
     const elapsed = harness.getSwitch("sessionHudShowElapsed");
     const contextUsage = harness.getSwitch("sessionHudShowContextUsage");
     const cleanup = harness.getSwitch("sessionHudCleanupDetached");
-    const summary =
-      harness.core.state.mountedControls.sessionHudSummary.element;
-    const optionList = harness.content.querySelector(
-      ".session-hud-option-list",
-    );
+    const summary = harness.core.state.mountedControls.sessionHudSummary.element;
+    const optionList = harness.content.querySelector(".session-hud-option-list");
     assert.ok(master);
     assert.ok(labels);
     assert.ok(elapsed);
     assert.ok(contextUsage);
     assert.ok(cleanup);
     assert.ok(optionList);
-    assert.ok(
-      optionList.children.every((child) =>
-        child.classList.contains("settings-option-item"),
-      ),
-    );
-    assert.strictEqual(
-      harness.getSwitchMeta("sessionHudEnabled").row.querySelector(".row-desc"),
-      null,
-    );
+    assert.ok(optionList.children.every((child) => child.classList.contains("settings-option-item")));
+    assert.strictEqual(harness.getSwitchMeta("sessionHudEnabled").row.querySelector(".row-desc"), null);
     assert.strictEqual(summary.children.length, 1);
     assert.strictEqual(summary.children[0].textContent, "HUD: off");
     assert.strictEqual(summary.classList.contains("compact"), true);
@@ -4036,15 +3168,12 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       harness.getContentRenderCount(),
       beforeRenderCount,
-      "Session HUD master broadcasts should patch mounted controls instead of rebuilding General",
+      "Session HUD master broadcasts should patch mounted controls instead of rebuilding General"
     );
     assert.strictEqual(harness.getSwitch("sessionHudEnabled"), master);
     assert.strictEqual(harness.getSwitch("sessionHudShowStateLabels"), labels);
     assert.strictEqual(harness.getSwitch("sessionHudShowElapsed"), elapsed);
-    assert.strictEqual(
-      harness.getSwitch("sessionHudShowContextUsage"),
-      contextUsage,
-    );
+    assert.strictEqual(harness.getSwitch("sessionHudShowContextUsage"), contextUsage);
     assert.strictEqual(harness.getSwitch("sessionHudCleanupDetached"), cleanup);
     assert.strictEqual(master.classList.contains("on"), true);
     assert.strictEqual(master.classList.contains("pending"), false);
@@ -4068,14 +3197,12 @@ describe("settings renderer browser environment", () => {
 
     assert.ok(
       elapsed.eventListeners.click && elapsed.eventListeners.click.length > 0,
-      "Session HUD child switches must remain wired after being enabled in place",
+      "Session HUD child switches must remain wired after being enabled in place"
     );
     elapsed.eventListeners.click[0]();
     await Promise.resolve();
     await Promise.resolve();
-    assert.deepStrictEqual(updateCalls, [
-      { key: "sessionHudShowElapsed", value: false },
-    ]);
+    assert.deepStrictEqual(updateCalls, [{ key: "sessionHudShowElapsed", value: false }]);
   });
 
   it("groups sound and volume into one collapsible control with in-place summary updates", () => {
@@ -4096,22 +3223,12 @@ describe("settings renderer browser environment", () => {
     assert.ok(volumeControl);
     assert.ok(volumeSlider);
     assert.ok(optionList);
-    assert.ok(
-      optionList.children.every((child) =>
-        child.classList.contains("settings-option-item"),
-      ),
-    );
-    assert.strictEqual(
-      harness.getSwitchMeta("soundMuted").row.querySelector(".row-desc"),
-      null,
-    );
+    assert.ok(optionList.children.every((child) => child.classList.contains("settings-option-item")));
+    assert.strictEqual(harness.getSwitchMeta("soundMuted").row.querySelector(".row-desc"), null);
     assert.strictEqual(summary.children.length, 2);
     assert.strictEqual(summary.children[0].textContent, "on · 50%");
     assert.ok(summary.children[1].classList.contains("sound-header-switch"));
-    assert.strictEqual(
-      summary.children[1].attributes["aria-label"],
-      "Enable sound effects",
-    );
+    assert.strictEqual(summary.children[1].attributes["aria-label"], "Enable sound effects");
 
     volumeSlider.value = "75";
     for (const listener of volumeSlider.eventListeners.input || []) listener();
@@ -4124,15 +3241,9 @@ describe("settings renderer browser environment", () => {
     });
 
     assert.strictEqual(harness.getContentRenderCount(), beforeRenderCount);
-    assert.strictEqual(
-      harness.core.state.mountedControls.soundSummary.element,
-      summary,
-    );
+    assert.strictEqual(harness.core.state.mountedControls.soundSummary.element, summary);
     assert.strictEqual(volumeSlider.value, "25");
-    assert.strictEqual(
-      volumeSlider.style.getPropertyValue("--volume-fill"),
-      "25%",
-    );
+    assert.strictEqual(volumeSlider.style.getPropertyValue("--volume-fill"), "25%");
     assert.strictEqual(summary.children[0].textContent, "on · 25%");
 
     harness.core.ops.applyChanges({
@@ -4174,18 +3285,11 @@ describe("settings renderer browser environment", () => {
     let stopped = false;
     let prevented = false;
     headerSwitch.eventListeners.click[0]({
-      stopPropagation: () => {
-        stopped = true;
-      },
-      preventDefault: () => {
-        prevented = true;
-      },
+      stopPropagation: () => { stopped = true; },
+      preventDefault: () => { prevented = true; },
     });
     assert.strictEqual(headerSwitch.classList.contains("pending"), true);
-    assert.strictEqual(
-      harness.getSwitch("soundMuted").classList.contains("pending"),
-      true,
-    );
+    assert.strictEqual(harness.getSwitch("soundMuted").classList.contains("pending"), true);
     assert.strictEqual(summary.element.children[0].textContent, "off · 100%");
     headerSwitch.eventListeners.click[0]({
       stopPropagation: () => {},
@@ -4229,12 +3333,8 @@ describe("settings renderer browser environment", () => {
     let stopped = false;
     let prevented = false;
     childSwitch.eventListeners.click[0]({
-      stopPropagation: () => {
-        stopped = true;
-      },
-      preventDefault: () => {
-        prevented = true;
-      },
+      stopPropagation: () => { stopped = true; },
+      preventDefault: () => { prevented = true; },
     });
 
     assert.deepStrictEqual(updateCalls, [{ key: "soundMuted", value: true }]);
@@ -4255,10 +3355,7 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(headerSwitch.classList.contains("on"), false);
     assert.strictEqual(headerSwitch.classList.contains("pending"), false);
     assert.strictEqual(summary.element.children[0].textContent, "off · 100%");
-    assert.strictEqual(
-      harness.core.state.transientUiState.generalSwitches.has("soundMuted"),
-      false,
-    );
+    assert.strictEqual(harness.core.state.transientUiState.generalSwitches.has("soundMuted"), false);
   });
 
   it("restores the sound summary switch when a toggle is a noop", async () => {
@@ -4294,10 +3391,7 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(childSwitch.classList.contains("on"), true);
     assert.strictEqual(childSwitch.classList.contains("pending"), false);
     assert.strictEqual(summary.element.children[0].textContent, "on · 100%");
-    assert.strictEqual(
-      harness.core.state.transientUiState.generalSwitches.has("soundMuted"),
-      false,
-    );
+    assert.strictEqual(harness.core.state.transientUiState.generalSwitches.has("soundMuted"), false);
   });
 
   it("renders Claude hook management in the Agents claude-code group with autoStart gated", () => {
@@ -4305,43 +3399,23 @@ describe("settings renderer browser environment", () => {
       snapshot: {
         manageClaudeHooksAutomatically: false,
         autoStartWithClaude: true,
-        agents: {
-          "claude-code": { integrationInstalled: true, enabled: true },
-        },
+        agents: { "claude-code": { integrationInstalled: true, enabled: true } },
       },
       agentMetadata: [
-        {
-          id: "claude-code",
-          name: "Claude Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "claude-code", name: "Claude Code", eventSource: "hook", capabilities: {} },
       ],
     });
 
     harness.core.ops.requestRender({ content: true });
 
-    const manage = harness.core.state.mountedControls.generalSwitches.get(
-      "manageClaudeHooksAutomatically",
-    );
-    const autoStart = harness.core.state.mountedControls.generalSwitches.get(
-      "autoStartWithClaude",
-    );
-    assert.ok(
-      manage,
-      "manage-hooks switch should mount inside the Agents claude-code group",
-    );
-    assert.ok(
-      autoStart,
-      "autoStart switch should mount inside the Agents claude-code group",
-    );
+    const manage = harness.core.state.mountedControls.generalSwitches.get("manageClaudeHooksAutomatically");
+    const autoStart = harness.core.state.mountedControls.generalSwitches.get("autoStartWithClaude");
+    assert.ok(manage, "manage-hooks switch should mount inside the Agents claude-code group");
+    assert.ok(autoStart, "autoStart switch should mount inside the Agents claude-code group");
     // Master is off, so the child autoStart is disabled at render time (D2: Agents
     // does a full rebuild on these keys instead of an in-place patch).
     assert.strictEqual(autoStart.element.classList.contains("disabled"), true);
-    assert.ok(
-      autoStart.extraElement,
-      "autoStart shows the disabled note when management is off",
-    );
+    assert.ok(autoStart.extraElement, "autoStart shows the disabled note when management is off");
   });
 
   it("re-gates autoStart when Claude hook management toggles via applyChanges (D2 full rebuild)", () => {
@@ -4353,25 +3427,15 @@ describe("settings renderer browser environment", () => {
     const harness = loadAgentsTabForTest({
       snapshot: { ...baseSnapshot },
       agentMetadata: [
-        {
-          id: "claude-code",
-          name: "Claude Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "claude-code", name: "Claude Code", eventSource: "hook", capabilities: {} },
       ],
     });
 
     harness.core.ops.requestRender({ content: true });
 
     // Master is on, so the child autoStart starts enabled with no disabled note.
-    let autoStart = harness.core.state.mountedControls.generalSwitches.get(
-      "autoStartWithClaude",
-    );
-    assert.ok(
-      autoStart,
-      "autoStart switch should mount inside the Agents claude-code group",
-    );
+    let autoStart = harness.core.state.mountedControls.generalSwitches.get("autoStartWithClaude");
+    assert.ok(autoStart, "autoStart switch should mount inside the Agents claude-code group");
     assert.strictEqual(autoStart.element.classList.contains("disabled"), false);
     assert.strictEqual(autoStart.extraElement, null);
 
@@ -4382,15 +3446,10 @@ describe("settings renderer browser environment", () => {
       snapshot: { ...baseSnapshot, manageClaudeHooksAutomatically: false },
     });
 
-    autoStart = harness.core.state.mountedControls.generalSwitches.get(
-      "autoStartWithClaude",
-    );
+    autoStart = harness.core.state.mountedControls.generalSwitches.get("autoStartWithClaude");
     assert.ok(autoStart, "autoStart switch should remount after the rebuild");
     assert.strictEqual(autoStart.element.classList.contains("disabled"), true);
-    assert.ok(
-      autoStart.extraElement,
-      "autoStart shows the disabled note after management is turned off",
-    );
+    assert.ok(autoStart.extraElement, "autoStart shows the disabled note after management is turned off");
 
     // Turning management back on re-enables the child and drops the note.
     harness.core.ops.applyChanges({
@@ -4398,9 +3457,7 @@ describe("settings renderer browser environment", () => {
       snapshot: { ...baseSnapshot, manageClaudeHooksAutomatically: true },
     });
 
-    autoStart = harness.core.state.mountedControls.generalSwitches.get(
-      "autoStartWithClaude",
-    );
+    autoStart = harness.core.state.mountedControls.generalSwitches.get("autoStartWithClaude");
     assert.strictEqual(autoStart.element.classList.contains("disabled"), false);
     assert.strictEqual(autoStart.extraElement, null);
   });
@@ -4431,10 +3488,7 @@ describe("settings renderer browser environment", () => {
     harness.renderContent();
 
     const aggregate = harness.getSwitch("hideBubbles");
-    const notificationPolicy =
-      harness.core.state.mountedControls.bubblePolicyControls.get(
-        "notificationBubbleAutoCloseSeconds",
-      );
+    const notificationPolicy = harness.core.state.mountedControls.bubblePolicyControls.get("notificationBubbleAutoCloseSeconds");
     const notificationSwitch = notificationPolicy.row.querySelector(".switch");
     const notificationSeconds = notificationPolicy.row.querySelector("input");
     assert.ok(aggregate);
@@ -4452,7 +3506,7 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       harness.getContentRenderCount(),
       beforeRenderCount,
-      "hide-bubbles broadcasts should patch summary and category controls in place",
+      "hide-bubbles broadcasts should patch summary and category controls in place"
     );
     assert.strictEqual(harness.getSwitch("hideBubbles"), aggregate);
     assert.strictEqual(aggregate.classList.contains("on"), true);
@@ -4515,20 +3569,12 @@ describe("settings renderer browser environment", () => {
   });
 
   it("moves Claude hook management out of General into the Agents claude-code group", () => {
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
-    const agentsSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-agents.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
+    const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
     // No longer rendered or patched by the General tab.
     assert.ok(!generalSource.includes('key: "manageClaudeHooksAutomatically"'));
     assert.ok(!generalSource.includes('key: "autoStartWithClaude"'));
-    assert.ok(
-      !generalSource.includes("CLAUDE_HOOK_MANAGEMENT_CHILD_SWITCH_KEYS"),
-    );
+    assert.ok(!generalSource.includes("CLAUDE_HOOK_MANAGEMENT_CHILD_SWITCH_KEYS"));
     assert.ok(!generalSource.includes("manageClaudeHooksAutomatically"));
     // Built in the Agents claude-code group as top-level pref rows.
     assert.ok(agentsSource.includes("buildClaudeHookManagementRows"));
@@ -4539,11 +3585,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(agentsSource.includes("rowStartWithClaude"));
     // autoStart stays gated on the master (disabled + extra note computed at render).
     assert.ok(agentsSource.includes("disabled: !manageHooksEnabled"));
-    assert.ok(
-      agentsSource.includes(
-        'descExtraKey: manageHooksEnabled ? null : "rowStartWithClaudeDisabledDesc"',
-      ),
-    );
+    assert.ok(agentsSource.includes('descExtraKey: manageHooksEnabled ? null : "rowStartWithClaudeDisabledDesc"'));
     // Confirm/disconnect flows moved with the switches.
     assert.ok(agentsSource.includes("confirmDisableClaudeHookManagement"));
     assert.ok(agentsSource.includes("runDisconnectClaudeHooks"));
@@ -4555,21 +3597,15 @@ describe("settings renderer browser environment", () => {
     harness.renderContent();
 
     const aggregate = harness.getSwitch("hideBubbles");
-    const notificationPolicy =
-      harness.core.state.mountedControls.bubblePolicyControls.get(
-        "notificationBubbleAutoCloseSeconds",
-      );
+    const notificationPolicy = harness.core.state.mountedControls.bubblePolicyControls.get("notificationBubbleAutoCloseSeconds");
     const notificationSwitch = notificationPolicy.row.querySelector(".switch");
     const notificationSeconds = notificationPolicy.row.querySelector("input");
-    const summary =
-      harness.core.state.mountedControls.bubblePolicySummary.element;
+    const summary = harness.core.state.mountedControls.bubblePolicySummary.element;
     assert.ok(aggregate);
     assert.strictEqual(aggregate.classList.contains("on"), true);
     assert.strictEqual(notificationSwitch.classList.contains("on"), false);
     assert.strictEqual(notificationSeconds.disabled, true);
-    assert.ok(
-      summary.children.every((chip) => !chip.classList.contains("accent")),
-    );
+    assert.ok(summary.children.every((chip) => !chip.classList.contains("accent")));
 
     const beforeRenderCount = harness.getContentRenderCount();
     harness.core.ops.applyChanges({
@@ -4584,9 +3620,7 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(notificationSeconds.disabled, false);
     assert.strictEqual(notificationSeconds.value, "8");
     assert.strictEqual(summary.children.length, 3);
-    assert.ok(
-      summary.children.every((chip) => chip.classList.contains("accent")),
-    );
+    assert.ok(summary.children.every((chip) => chip.classList.contains("accent")));
   });
 
   it("rerenders General content for mixed non-patchable broadcasts", () => {
@@ -4606,10 +3640,7 @@ describe("settings renderer browser environment", () => {
 
     assert.strictEqual(harness.getContentRenderCount(), beforeRenderCount + 1);
     assert.notStrictEqual(harness.getSwitch("sessionHudEnabled"), master);
-    assert.strictEqual(
-      harness.getSwitch("sessionHudEnabled").classList.contains("on"),
-      true,
-    );
+    assert.strictEqual(harness.getSwitch("sessionHudEnabled").classList.contains("on"), true);
   });
 
   it("patches combined bubble aggregate and seconds broadcasts in place", () => {
@@ -4621,10 +3652,7 @@ describe("settings renderer browser environment", () => {
     harness.renderContent();
 
     const aggregate = harness.getSwitch("hideBubbles");
-    const notificationPolicy =
-      harness.core.state.mountedControls.bubblePolicyControls.get(
-        "notificationBubbleAutoCloseSeconds",
-      );
+    const notificationPolicy = harness.core.state.mountedControls.bubblePolicyControls.get("notificationBubbleAutoCloseSeconds");
     const notificationSwitch = notificationPolicy.row.querySelector(".switch");
     const notificationSeconds = notificationPolicy.row.querySelector("input");
 
@@ -4654,14 +3682,10 @@ describe("settings renderer browser environment", () => {
     const harness = loadGeneralTabForTest({ snapshot: initialSnapshot });
     harness.renderContent();
 
-    const notificationPolicy =
-      harness.core.state.mountedControls.bubblePolicyControls.get(
-        "notificationBubbleAutoCloseSeconds",
-      );
+    const notificationPolicy = harness.core.state.mountedControls.bubblePolicyControls.get("notificationBubbleAutoCloseSeconds");
     const notificationSwitch = notificationPolicy.row.querySelector(".switch");
     const notificationSeconds = notificationPolicy.row.querySelector("input");
-    const summary =
-      harness.core.state.mountedControls.bubblePolicySummary.element;
+    const summary = harness.core.state.mountedControls.bubblePolicySummary.element;
     assert.strictEqual(notificationSwitch.classList.contains("on"), false);
     assert.strictEqual(notificationSeconds.disabled, true);
 
@@ -4680,21 +3704,9 @@ describe("settings renderer browser environment", () => {
 
   it("uses a roomier grid layout for Settings confirmation buttons", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    assert.ok(
-      /\.settings-confirm-modal\s*\{[\s\S]*width:\s*min\(480px,\s*100%\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.settings-confirm-actions\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(136px,\s*1fr\)\);[\s\S]*gap:\s*9px;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.settings-confirm-actions\s+\.soft-btn\s*\{[\s\S]*min-height:\s*42px;[\s\S]*padding:\s*6px 10px;[\s\S]*white-space:\s*normal;[\s\S]*text-align:\s*center;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.settings-confirm-modal\s*\{[\s\S]*width:\s*min\(480px,\s*100%\);/.test(css));
+    assert.ok(/\.settings-confirm-actions\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(136px,\s*1fr\)\);[\s\S]*gap:\s*9px;/.test(css));
+    assert.ok(/\.settings-confirm-actions\s+\.soft-btn\s*\{[\s\S]*min-height:\s*42px;[\s\S]*padding:\s*6px 10px;[\s\S]*white-space:\s*normal;[\s\S]*text-align:\s*center;/.test(css));
   });
 
   it("provides a persisted collapsible Settings group helper with smart default collapse", () => {
@@ -4703,75 +3715,32 @@ describe("settings renderer browser environment", () => {
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     assert.ok(coreSource.includes("COLLAPSED_GROUPS_STORAGE_KEY"));
     assert.ok(coreSource.includes("function buildCollapsibleGroup("));
-    assert.ok(
-      coreSource.includes("localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY)"),
-    );
-    assert.ok(
-      coreSource.includes("localStorage.setItem(COLLAPSED_GROUPS_STORAGE_KEY"),
-    );
+    assert.ok(coreSource.includes("localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY)"));
+    assert.ok(coreSource.includes("localStorage.setItem(COLLAPSED_GROUPS_STORAGE_KEY"));
     assert.ok(coreSource.includes("defaultCollapsed = false"));
     assert.ok(coreSource.includes('header.setAttribute("aria-expanded"'));
     assert.ok(coreSource.includes("collapsibleSummary"));
     assert.ok(coreSource.includes("function createDisclosureChevron("));
-    assert.ok(
-      coreSource.includes(
-        'createDisclosureChevron("collapsible-group-chevron")',
-      ),
-    );
+    assert.ok(coreSource.includes('createDisclosureChevron("collapsible-group-chevron")'));
     assert.ok(coreSource.includes('svg.setAttribute("viewBox", "0 0 20 20")'));
     assert.ok(coreSource.includes('path.setAttribute("d", "M8 5l5 5-5 5")'));
     assert.ok(!coreSource.includes('chevron.textContent = "\\u25B8";'));
     assert.ok(!coreSource.includes("chevron.innerHTML"));
     assert.ok(/\.collapsible-group-header\s*\{[\s\S]*gap:\s*4px;/.test(css));
-    assert.ok(
-      /\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*align-items:\s*center;[\s\S]*justify-content:\s*center;[\s\S]*width:\s*18px;[\s\S]*height:\s*18px;[\s\S]*opacity:\s*0\.72;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);[\s\S]*transition:[\s\S]*transform 0\.22s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),[\s\S]*color 0\.16s ease,[\s\S]*opacity 0\.16s ease/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-chevron svg,\s*\.anim-override-chevron svg\s*\{[\s\S]*width:\s*16px;[\s\S]*height:\s*16px;[\s\S]*overflow:\s*visible;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-chevron path,\s*\.anim-override-chevron path\s*\{[\s\S]*fill:\s*none;[\s\S]*stroke:\s*currentColor;[\s\S]*stroke-width:\s*2\.2;[\s\S]*stroke-linecap:\s*round;[\s\S]*stroke-linejoin:\s*round;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-header:hover\s+\.collapsible-group-chevron\s*\{[\s\S]*color:\s*var\(--text-secondary\);[\s\S]*opacity:\s*0\.95;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group\.collapsed\s+\.collapsible-group-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group:not\(\.collapsed\)\s+\.collapsible-group-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(90deg\);[\s\S]*color:\s*var\(--accent\);[\s\S]*opacity:\s*1;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.collapsible-group-chevron,[\s\S]*\.anim-override-chevron,[\s\S]*transition:\s*none;/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*align-items:\s*center;[\s\S]*justify-content:\s*center;[\s\S]*width:\s*18px;[\s\S]*height:\s*18px;[\s\S]*opacity:\s*0\.72;/.test(css));
+    assert.ok(/\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);[\s\S]*transition:[\s\S]*transform 0\.22s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),[\s\S]*color 0\.16s ease,[\s\S]*opacity 0\.16s ease/.test(css));
+    assert.ok(/\.collapsible-group-chevron svg,\s*\.anim-override-chevron svg\s*\{[\s\S]*width:\s*16px;[\s\S]*height:\s*16px;[\s\S]*overflow:\s*visible;/.test(css));
+    assert.ok(/\.collapsible-group-chevron path,\s*\.anim-override-chevron path\s*\{[\s\S]*fill:\s*none;[\s\S]*stroke:\s*currentColor;[\s\S]*stroke-width:\s*2\.2;[\s\S]*stroke-linecap:\s*round;[\s\S]*stroke-linejoin:\s*round;/.test(css));
+    assert.ok(/\.collapsible-group-header:hover\s+\.collapsible-group-chevron\s*\{[\s\S]*color:\s*var\(--text-secondary\);[\s\S]*opacity:\s*0\.95;/.test(css));
+    assert.ok(/\.collapsible-group\.collapsed\s+\.collapsible-group-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);/.test(css));
+    assert.ok(/\.collapsible-group:not\(\.collapsed\)\s+\.collapsible-group-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(90deg\);[\s\S]*color:\s*var\(--accent\);[\s\S]*opacity:\s*1;/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.collapsible-group-chevron,[\s\S]*\.anim-override-chevron,[\s\S]*transition:\s*none;/.test(css));
     assert.ok(i18nSource.includes("collapsibleExpand"));
     assert.ok(i18nSource.includes("collapsibleCollapse"));
   });
 
   it("groups Theme cards and exposes theme import actions in Settings", () => {
-    const tabSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-theme.js"),
-      "utf8",
-    );
+    const tabSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-theme.js"), "utf8");
     const preloadSource = fs.readFileSync(PRELOAD_SETTINGS, "utf8");
     const settingsIpcSource = fs.readFileSync(SETTINGS_IPC, "utf8");
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
@@ -4793,16 +3762,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(tabSource.includes('footer.className = "theme-card-footer";'));
     assert.ok(tabSource.includes('caps.powerProfile === "scripted"'));
     assert.ok(tabSource.includes("themeCapabilityFineMotion"));
-    assert.ok(
-      tabSource.includes(
-        'if (!theme.active) indicator.setAttribute("aria-hidden", "true");',
-      ),
-    );
-    assert.ok(
-      !tabSource.includes(
-        "if (theme.active || canDelete || canRemoveCodexPet)",
-      ),
-    );
+    assert.ok(tabSource.includes('if (!theme.active) indicator.setAttribute("aria-hidden", "true");'));
+    assert.ok(!tabSource.includes("if (theme.active || canDelete || canRemoveCodexPet)"));
     assert.ok(coreSource.includes("codexPetZipImportPending"));
     assert.ok(coreSource.includes("userThemeZipImportPending"));
     assert.ok(coreSource.includes("codexPetRemovalPendingThemeId"));
@@ -4811,31 +3772,17 @@ describe("settings renderer browser environment", () => {
     assert.ok(preloadSource.includes("openCodexPetsDir"));
     assert.ok(preloadSource.includes("importCodexPetZip"));
     assert.ok(preloadSource.includes("removeCodexPet"));
-    assert.ok(
-      settingsIpcSource.includes('handle("settings:open-user-themes-dir"'),
-    );
-    assert.ok(
-      settingsIpcSource.includes('handle("settings:import-user-theme-zip"'),
-    );
-    assert.ok(
-      settingsIpcSource.includes('handle("settings:open-codex-pets-dir"'),
-    );
-    assert.ok(
-      settingsIpcSource.includes('handle("settings:import-codex-pet-zip"'),
-    );
+    assert.ok(settingsIpcSource.includes('handle("settings:open-user-themes-dir"'));
+    assert.ok(settingsIpcSource.includes('handle("settings:import-user-theme-zip"'));
+    assert.ok(settingsIpcSource.includes('handle("settings:open-codex-pets-dir"'));
+    assert.ok(settingsIpcSource.includes('handle("settings:import-codex-pet-zip"'));
     assert.ok(settingsIpcSource.includes('handle("settings:remove-codex-pet"'));
     assert.ok(css.includes(".theme-section-title"));
     assert.ok(css.includes(".theme-action-group"));
     assert.ok(css.includes(".theme-action-buttons"));
     assert.ok(css.includes(".theme-uninstall-btn"));
-    assert.ok(
-      /\.theme-card-footer\s*\{[^}]*min-height:\s*26px;[^}]*margin-top:\s*auto;[^}]*\}/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.theme-card-check\s*\{[^}]*white-space:\s*nowrap;[^}]*\}/.test(css),
-    );
+    assert.ok(/\.theme-card-footer\s*\{[^}]*min-height:\s*26px;[^}]*margin-top:\s*auto;[^}]*\}/.test(css));
+    assert.ok(/\.theme-card-check\s*\{[^}]*white-space:\s*nowrap;[^}]*\}/.test(css));
     assert.ok(i18nSource.includes("themeImportPetZip"));
     assert.ok(i18nSource.includes("themeImportUserThemeZip"));
     assert.ok(i18nSource.includes("themeImportUserThemeZipHint"));
@@ -4847,31 +3794,16 @@ describe("settings renderer browser environment", () => {
     const strings = loadSettingsI18nForTest();
     assert.strictEqual(strings.en.themeActionGroupCodexPets, "Codex Pets");
     assert.strictEqual(strings.en.themeActionGroupUserThemes, "User themes");
-    assert.strictEqual(
-      strings.en.themeImportPetZip,
-      "Import Codex Pet package (.zip)",
-    );
-    assert.strictEqual(
-      strings.en.themeImportUserThemeZip,
-      "Import Clawd theme package (.zip)",
-    );
+    assert.strictEqual(strings.en.themeImportPetZip, "Import Codex Pet package (.zip)");
+    assert.strictEqual(strings.en.themeImportUserThemeZip, "Import Clawd theme package (.zip)");
     assert.ok(strings.en.themeImportUserThemeZipHint.includes("theme.json"));
-    assert.strictEqual(
-      strings.en.themeOpenUserThemesFolder,
-      "Open themes folder",
-    );
+    assert.strictEqual(strings.en.themeOpenUserThemesFolder, "Open themes folder");
     assert.strictEqual(strings.en.themeRefreshThemes, "Refresh themes");
     assert.strictEqual(strings.en.themeCapabilityFineMotion, "Fine motion");
-    assert.strictEqual(
-      strings.zh.themeImportPetZip,
-      "导入 Codex Pet 包（.zip）",
-    );
+    assert.strictEqual(strings.zh.themeImportPetZip, "导入 Codex Pet 包（.zip）");
     assert.strictEqual(strings.zh.themeCapabilityFineMotion, "精细动效");
     assert.strictEqual(strings.zh.themeActionGroupCodexPets, "Codex Pets");
-    assert.strictEqual(
-      strings.zh.themeImportUserThemeZip,
-      "导入 Clawd 主题包（.zip）",
-    );
+    assert.strictEqual(strings.zh.themeImportUserThemeZip, "导入 Clawd 主题包（.zip）");
     assert.ok(strings.zh.themeImportUserThemeZipHint.includes("theme.json"));
     assert.strictEqual(strings.zh.themeOpenUserThemesFolder, "打开主题文件夹");
   });
@@ -4881,18 +3813,8 @@ describe("settings renderer browser environment", () => {
       themes: [
         { id: "clawd", name: "Clawd", builtin: true, active: true },
         { id: "calico", name: "Calico", builtin: true, active: false },
-        {
-          id: "pet-active",
-          name: "Pet Active",
-          managedCodexPet: true,
-          active: true,
-        },
-        {
-          id: "pet-inactive",
-          name: "Pet Inactive",
-          managedCodexPet: true,
-          active: false,
-        },
+        { id: "pet-active", name: "Pet Active", managedCodexPet: true, active: true },
+        { id: "pet-inactive", name: "Pet Inactive", managedCodexPet: true, active: false },
         { id: "user-theme", name: "User Theme", active: false },
       ],
     });
@@ -4921,8 +3843,7 @@ describe("settings renderer browser environment", () => {
     }
 
     const deleteButton = content.querySelector(".theme-delete-btn");
-    const inactiveUninstallButton = content
-      .querySelectorAll(".theme-uninstall-btn")
+    const inactiveUninstallButton = content.querySelectorAll(".theme-uninstall-btn")
       .find((button) => {
         const card = findAncestorByClass(button, "theme-card");
         return card && card.getAttribute("aria-checked") === "false";
@@ -4948,56 +3869,29 @@ describe("settings renderer browser environment", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     assert.ok(coreSource.includes("function measureCollapsibleBodyHeight("));
     assert.ok(coreSource.includes("function preserveScrollAnchor("));
-    assert.ok(
-      coreSource.includes('body.style.setProperty("--collapsible-body-height"'),
-    );
+    assert.ok(coreSource.includes('body.style.setProperty("--collapsible-body-height"'));
     assert.ok(coreSource.includes("requestAnimationFrame(() => {"));
     assert.ok(coreSource.includes("collapsing"));
     assert.ok(coreSource.includes("expanding"));
-    assert.ok(
-      coreSource.includes("function setBodyInteractivity(isCollapsed)"),
-    );
+    assert.ok(coreSource.includes("function setBodyInteractivity(isCollapsed)"));
     assert.ok(coreSource.includes('body.setAttribute("aria-hidden"'));
     assert.ok(coreSource.includes("body.inert = isCollapsed"));
     assert.ok(!coreSource.includes("body.hidden = collapsed;"));
-    assert.ok(
-      /\.collapsible-group-body\s*\{[\s\S]*max-height:\s*var\(--collapsible-body-height,\s*0px\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-body\s*\{[\s\S]*transition:\s*max-height 0\.22s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),\s*opacity 0\.16s ease,\s*transform 0\.18s ease,\s*padding 0\.18s ease,\s*border-color 0\.18s ease;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group\.collapsed\s+\.collapsible-group-body\s*\{[\s\S]*opacity:\s*0;[\s\S]*transform:\s*translateY\(-4px\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.collapsible-group-body/.test(
-        css,
-      ),
-    );
+    assert.ok(/\.collapsible-group-body\s*\{[\s\S]*max-height:\s*var\(--collapsible-body-height,\s*0px\);/.test(css));
+    assert.ok(/\.collapsible-group-body\s*\{[\s\S]*transition:\s*max-height 0\.22s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),\s*opacity 0\.16s ease,\s*transform 0\.18s ease,\s*padding 0\.18s ease,\s*border-color 0\.18s ease;/.test(css));
+    assert.ok(/\.collapsible-group\.collapsed\s+\.collapsible-group-body\s*\{[\s\S]*opacity:\s*0;[\s\S]*transform:\s*translateY\(-4px\);/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.collapsible-group-body/.test(css));
   });
 
   it("collapses only the detailed bubble policy controls while keeping primary bubble rows visible", () => {
-    const generalSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-general.js"),
-      "utf8",
-    );
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
     const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
     assert.ok(generalSource.includes("buildBubblePolicySummary"));
     assert.ok(generalSource.includes("helpers.buildCollapsibleGroup({"));
     assert.ok(generalSource.includes('id: "general:bubble-policy"'));
     assert.ok(generalSource.includes("defaultCollapsed: true"));
     assert.ok(generalSource.includes('title: t("rowBubblePolicy")'));
-    assert.ok(
-      generalSource.includes(
-        "const summaryControl = buildBubblePolicySummary();",
-      ),
-    );
+    assert.ok(generalSource.includes("const summaryControl = buildBubblePolicySummary();"));
     assert.ok(generalSource.includes("summary: summaryControl.element"));
     assert.ok(generalSource.includes("children: [buildBubblePolicyList()]"));
     assert.ok(generalSource.includes('key: "bubbleFollowPet"'));
@@ -5009,18 +3903,11 @@ describe("settings renderer browser environment", () => {
   });
 
   it("renders Agent management as collapsed per-agent groups with master switches always visible", () => {
-    const agentsSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-agents.js"),
-      "utf8",
-    );
+    const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
     assert.ok(agentsSource.includes("function buildAgentGroup(agent)"));
-    assert.ok(
-      agentsSource.includes("const masterRow = buildAgentMasterRow(agent);"),
-    );
-    assert.ok(
-      agentsSource.includes("const detailRows = buildAgentDetailRows(agent);"),
-    );
-    assert.ok(agentsSource.includes("id: `agents:${agent.id}`"));
+    assert.ok(agentsSource.includes("const masterRow = buildAgentMasterRow(agent);"));
+    assert.ok(agentsSource.includes("const detailRows = buildAgentDetailRows(agent);"));
+    assert.ok(agentsSource.includes('id: `agents:${agent.id}`'));
     assert.ok(agentsSource.includes("defaultCollapsed: true"));
     assert.ok(agentsSource.includes("headerContent: masterRow"));
     assert.ok(agentsSource.includes("children: detailRows"));
@@ -5031,67 +3918,34 @@ describe("settings renderer browser environment", () => {
   });
 
   it("uses a dedicated Settings agent ordering helper before rendering Agent management groups", () => {
-    const agentsSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-agents.js"),
-      "utf8",
-    );
-    const agentOrderSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-agent-order.js"),
-      "utf8",
-    );
+    const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
+    const agentOrderSource = fs.readFileSync(path.join(SRC_DIR, "settings-agent-order.js"), "utf8");
     assert.ok(agentOrderSource.includes("function isAgentCollapsible("));
-    assert.ok(
-      agentOrderSource.includes("function sortAgentMetadataForSettings("),
-    );
+    assert.ok(agentOrderSource.includes("function sortAgentMetadataForSettings("));
     assert.ok(agentOrderSource.includes("COLLAPSIBLE_AGENT_PRIORITY"));
     assert.ok(agentOrderSource.includes("NON_COLLAPSIBLE_AGENT_PRIORITY"));
     assert.ok(agentsSource.includes("ClawdSettingsAgentOrder"));
-    assert.ok(
-      agentsSource.includes(
-        "sortAgentMetadataForSettings(runtime.agentMetadata",
-      ),
-    );
+    assert.ok(agentsSource.includes("sortAgentMetadataForSettings(runtime.agentMetadata"));
     assert.ok(agentsSource.includes("function categorizeAgentsForSections("));
     assert.ok(agentsSource.includes("function renderAgentSections("));
   });
 
   it("keeps Agent management capability-driven for Gemini wait-for-input alerts", () => {
-    const agentsSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-agents.js"),
-      "utf8",
-    );
+    const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
     assert.ok(agentsSource.includes("if (caps.notificationHook) {"));
     assert.ok(agentsSource.includes('flag: "notificationHookEnabled"'));
     assert.ok(!agentsSource.includes('agent.id === "gemini-cli"'));
     assert.ok(!agentsSource.includes('agent.id !== "gemini-cli"'));
     assert.ok(!agentsSource.includes("Gemini CLI"));
-    assert.ok(
-      !agentsSource.includes(
-        'if (disabled || btn.classList.contains("active")) return;',
-      ),
-    );
-    assert.ok(
-      agentsSource.includes(
-        'if (btn.disabled || btn.classList.contains("active")) return;',
-      ),
-    );
+    assert.ok(!agentsSource.includes("if (disabled || btn.classList.contains(\"active\")) return;"));
+    assert.ok(agentsSource.includes("if (btn.disabled || btn.classList.contains(\"active\")) return;"));
     assert.ok(!agentsSource.includes("codex-permission-mode-transitioning"));
   });
 
   it("confirms before uninstalling an agent integration", () => {
-    const agentsSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-agents.js"),
-      "utf8",
-    );
-    const i18nSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-i18n.js"),
-      "utf8",
-    );
-    assert.ok(
-      agentsSource.includes(
-        'window.confirm(t("agentIntegrationUninstallConfirm"))',
-      ),
-    );
+    const agentsSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
+    const i18nSource = fs.readFileSync(path.join(SRC_DIR, "settings-i18n.js"), "utf8");
+    assert.ok(agentsSource.includes('window.confirm(t("agentIntegrationUninstallConfirm"))'));
     assert.ok(i18nSource.includes("agentIntegrationUninstallConfirm"));
   });
 
@@ -5103,14 +3957,12 @@ describe("settings renderer browser environment", () => {
       skippedAgentIds: ["claude-code", "codex"],
     };
     const harness = loadAgentsTabForTest({
-      agentMetadata: [
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
-      ],
+      agentMetadata: [{
+        id: "qwen-code",
+        name: "Qwen Code",
+        eventSource: "hook",
+        capabilities: {},
+      }],
       settingsAPI: {
         detectAgentInstallations: () => {
           calls++;
@@ -5122,37 +3974,23 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(calls, 0);
     harness.core.ops.requestRender({ content: true });
     assert.strictEqual(calls, 1);
-    assert.strictEqual(
-      harness.core.runtime.agentInstallationHintsPending,
-      true,
-    );
+    assert.strictEqual(harness.core.runtime.agentInstallationHintsPending, true);
 
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
-    assert.strictEqual(
-      harness.core.runtime.agentInstallationHints.checkedAt,
-      detectionResult.checkedAt,
-    );
+    assert.strictEqual(harness.core.runtime.agentInstallationHints.checkedAt, detectionResult.checkedAt);
     assert.deepStrictEqual(
-      harness.core.runtime.agentInstallationHints.agents.map(
-        (agent) => agent.agentId,
-      ),
-      ["qwen-code"],
+      harness.core.runtime.agentInstallationHints.agents.map((agent) => agent.agentId),
+      ["qwen-code"]
     );
     assert.deepStrictEqual(
       harness.core.runtime.agentInstallationHints.skippedAgentIds,
-      detectionResult.skippedAgentIds,
+      detectionResult.skippedAgentIds
     );
-    assert.strictEqual(
-      harness.core.runtime.agentInstallationHintsFetched,
-      true,
-    );
-    assert.strictEqual(
-      harness.core.runtime.agentInstallationHintsPending,
-      false,
-    );
+    assert.strictEqual(harness.core.runtime.agentInstallationHintsFetched, true);
+    assert.strictEqual(harness.core.runtime.agentInstallationHintsPending, false);
 
     harness.core.ops.requestRender({ content: true });
     await Promise.resolve();
@@ -5172,18 +4010,8 @@ describe("settings renderer browser environment", () => {
       },
       agentMetadata: [
         { id: "pi", name: "Pi", eventSource: "extension", capabilities: {} },
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
-        {
-          id: "hermes",
-          name: "Hermes Agent",
-          eventSource: "plugin-event",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
+        { id: "hermes", name: "Hermes Agent", eventSource: "plugin-event", capabilities: {} },
       ],
     });
     harness.core.runtime.agentInstallationHints = {
@@ -5200,32 +4028,16 @@ describe("settings renderer browser environment", () => {
     harness.core.ops.requestRender({ content: true });
 
     const connected = harness.content.querySelector(".agent-section-connected");
-    const recommended = harness.content.querySelector(
-      ".agent-section-recommended",
-    );
-    const unavailable = harness.content.querySelector(
-      ".agent-section-unavailable",
-    );
+    const recommended = harness.content.querySelector(".agent-section-recommended");
+    const unavailable = harness.content.querySelector(".agent-section-unavailable");
     assert.ok(connected);
     assert.ok(recommended);
     assert.ok(unavailable);
-    assert.strictEqual(
-      connected.querySelector(".section-title").textContent,
-      "Connected",
-    );
-    assert.strictEqual(
-      recommended.querySelector(".section-title").textContent,
-      "Detected locally",
-    );
-    assert.strictEqual(
-      unavailable.querySelector(".section-title").textContent,
-      "Not detected locally",
-    );
+    assert.strictEqual(connected.querySelector(".section-title").textContent, "Connected");
+    assert.strictEqual(recommended.querySelector(".section-title").textContent, "Detected locally");
+    assert.strictEqual(unavailable.querySelector(".section-title").textContent, "Not detected locally");
 
-    const labelsFor = (section) =>
-      section
-        .querySelectorAll(".agent-summary-row .row-label")
-        .map((el) => el.textContent);
+    const labelsFor = (section) => section.querySelectorAll(".agent-summary-row .row-label").map((el) => el.textContent);
     assert.deepStrictEqual(labelsFor(connected), ["Hermes Agent"]);
     assert.deepStrictEqual(labelsFor(recommended), ["Qwen Code"]);
     assert.deepStrictEqual(labelsFor(unavailable), ["Pi"]);
@@ -5241,18 +4053,8 @@ describe("settings renderer browser environment", () => {
         dismissedAgentInstallHints: {},
       },
       agentMetadata: [
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
-        {
-          id: "hermes",
-          name: "Hermes Agent",
-          eventSource: "plugin-event",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
+        { id: "hermes", name: "Hermes Agent", eventSource: "plugin-event", capabilities: {} },
       ],
     });
     harness.core.runtime.agentInstallationHints = {
@@ -5272,9 +4074,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(banner, "detected unintegrated agents should render a banner");
     assert.ok(harness.content.querySelector(".agent-install-hint-install"));
     assert.ok(harness.content.querySelector(".agent-install-hint-dismiss"));
-    const desc = harness.content.querySelector(
-      ".agent-install-hint-desc",
-    ).textContent;
+    const desc = harness.content.querySelector(".agent-install-hint-desc").textContent;
     assert.match(desc, /Qwen Code/);
     assert.doesNotMatch(desc, /Hermes/);
   });
@@ -5288,29 +4088,19 @@ describe("settings renderer browser environment", () => {
         dismissedAgentInstallHints: { "qwen-code": true },
       },
       agentMetadata: [
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
       ],
     });
     harness.core.runtime.agentInstallationHints = {
       checkedAt: 1,
-      agents: [
-        { agentId: "qwen-code", detectedInstalled: true, confidence: "high" },
-      ],
+      agents: [{ agentId: "qwen-code", detectedInstalled: true, confidence: "high" }],
       skippedAgentIds: [],
     };
     harness.core.runtime.agentInstallationHintsFetched = true;
 
     harness.core.ops.requestRender({ content: true });
 
-    assert.strictEqual(
-      harness.content.querySelector(".agent-install-hint-banner"),
-      null,
-    );
+    assert.strictEqual(harness.content.querySelector(".agent-install-hint-banner"), null);
   });
 
   it("clears install dismissals when the detector no longer sees the agent", async () => {
@@ -5328,12 +4118,7 @@ describe("settings renderer browser environment", () => {
       },
       agentMetadata: [
         { id: "codex", name: "Codex", eventSource: "hook", capabilities: {} },
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
       ],
       settingsAPI: {
         command: (action, payload) => {
@@ -5344,9 +4129,7 @@ describe("settings renderer browser environment", () => {
     });
     harness.core.runtime.agentInstallationHints = {
       checkedAt: 1,
-      agents: [
-        { agentId: "qwen-code", detectedInstalled: false, confidence: "low" },
-      ],
+      agents: [{ agentId: "qwen-code", detectedInstalled: false, confidence: "low" }],
       skippedAgentIds: ["codex"],
     };
     harness.core.runtime.agentInstallationHintsFetched = true;
@@ -5355,10 +4138,7 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    assert.strictEqual(
-      harness.content.querySelector(".agent-install-hint-banner"),
-      null,
-    );
+    assert.strictEqual(harness.content.querySelector(".agent-install-hint-banner"), null);
     assert.strictEqual(calls[0][0], "clearAgentInstallHints");
     assert.deepStrictEqual([...calls[0][1].agentIds], ["qwen-code"]);
   });
@@ -5367,9 +4147,7 @@ describe("settings renderer browser environment", () => {
     const calls = [];
     const detectionResult = {
       checkedAt: 2,
-      agents: [
-        { agentId: "qwen-code", detectedInstalled: true, confidence: "high" },
-      ],
+      agents: [{ agentId: "qwen-code", detectedInstalled: true, confidence: "high" }],
       skippedAgentIds: [],
     };
     const harness = loadAgentsTabForTest({
@@ -5380,12 +4158,7 @@ describe("settings renderer browser environment", () => {
         dismissedAgentInstallHints: {},
       },
       agentMetadata: [
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
       ],
       settingsAPI: {
         command: (action, payload) => {
@@ -5399,9 +4172,7 @@ describe("settings renderer browser environment", () => {
     harness.core.runtime.agentInstallationHintsFetched = true;
 
     harness.core.ops.requestRender({ content: true });
-    harness.content
-      .querySelector(".agent-install-hint-install")
-      .dispatchEvent({ type: "click", bubbles: false });
+    harness.content.querySelector(".agent-install-hint-install").dispatchEvent({ type: "click", bubbles: false });
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -5412,9 +4183,7 @@ describe("settings renderer browser environment", () => {
     calls.length = 0;
     harness.core.runtime.agentInstallationHintsFetched = true;
     harness.core.ops.requestRender({ content: true });
-    harness.content
-      .querySelector(".agent-install-hint-dismiss")
-      .dispatchEvent({ type: "click", bubbles: false });
+    harness.content.querySelector(".agent-install-hint-dismiss").dispatchEvent({ type: "click", bubbles: false });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -5426,9 +4195,7 @@ describe("settings renderer browser environment", () => {
     const toasts = [];
     const detectionResult = {
       checkedAt: 2,
-      agents: [
-        { agentId: "qwen-code", detectedInstalled: true, confidence: "high" },
-      ],
+      agents: [{ agentId: "qwen-code", detectedInstalled: true, confidence: "high" }],
       skippedAgentIds: [],
     };
     const harness = loadAgentsTabForTest({
@@ -5439,16 +4206,10 @@ describe("settings renderer browser environment", () => {
         dismissedAgentInstallHints: {},
       },
       agentMetadata: [
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
       ],
       settingsAPI: {
-        command: () =>
-          Promise.resolve({ status: "skipped", message: "Qwen missing" }),
+        command: () => Promise.resolve({ status: "skipped", message: "Qwen missing" }),
         detectAgentInstallations: () => Promise.resolve(detectionResult),
       },
     });
@@ -5459,9 +4220,7 @@ describe("settings renderer browser environment", () => {
     harness.core.runtime.agentInstallationHintsFetched = true;
 
     harness.core.ops.requestRender({ content: true });
-    harness.content
-      .querySelector(".agent-install-hint-install")
-      .dispatchEvent({ type: "click", bubbles: false });
+    harness.content.querySelector(".agent-install-hint-install").dispatchEvent({ type: "click", bubbles: false });
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -5483,8 +4242,7 @@ describe("settings renderer browser environment", () => {
         { id: "pi", name: "Pi", eventSource: "extension", capabilities: {} },
       ],
       settingsAPI: {
-        command: () =>
-          Promise.resolve({ status: "skipped", message: "Pi missing" }),
+        command: () => Promise.resolve({ status: "skipped", message: "Pi missing" }),
       },
     });
     harness.core.ops.showToast = (message, options = {}) => {
@@ -5492,9 +4250,7 @@ describe("settings renderer browser environment", () => {
     };
 
     harness.core.ops.requestRender({ content: true });
-    harness.content
-      .querySelector(".agent-integration-action")
-      .dispatchEvent({ type: "click", bubbles: false });
+    harness.content.querySelector(".agent-integration-action").dispatchEvent({ type: "click", bubbles: false });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -5514,26 +4270,14 @@ describe("settings renderer browser environment", () => {
         dismissedAgentCleanupHints: {},
       },
       agentMetadata: [
-        {
-          id: "claude-code",
-          name: "Claude Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "claude-code", name: "Claude Code", eventSource: "hook", capabilities: {} },
         { id: "codex", name: "Codex", eventSource: "hook", capabilities: {} },
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
       ],
     });
     harness.core.runtime.agentInstallationHints = {
       checkedAt: 1,
-      agents: [
-        { agentId: "qwen-code", detectedInstalled: false, confidence: "low" },
-      ],
+      agents: [{ agentId: "qwen-code", detectedInstalled: false, confidence: "low" }],
       skippedAgentIds: ["claude-code", "codex"],
     };
     harness.core.runtime.agentInstallationHintsFetched = true;
@@ -5541,15 +4285,10 @@ describe("settings renderer browser environment", () => {
     harness.core.ops.requestRender({ content: true });
 
     const banner = harness.content.querySelector(".agent-cleanup-hint-banner");
-    assert.ok(
-      banner,
-      "installed agents missing from detector entries should render cleanup banner",
-    );
+    assert.ok(banner, "installed agents missing from detector entries should render cleanup banner");
     assert.ok(harness.content.querySelector(".agent-cleanup-hint-remove"));
     assert.ok(harness.content.querySelector(".agent-cleanup-hint-dismiss"));
-    const desc = harness.content.querySelector(
-      ".agent-cleanup-hint-desc",
-    ).textContent;
+    const desc = harness.content.querySelector(".agent-cleanup-hint-desc").textContent;
     assert.match(desc, /Qwen Code/);
     assert.doesNotMatch(desc, /Claude Code/);
     assert.doesNotMatch(desc, /Codex/);
@@ -5564,29 +4303,19 @@ describe("settings renderer browser environment", () => {
         dismissedAgentCleanupHints: { "qwen-code": true },
       },
       agentMetadata: [
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
       ],
     });
     harness.core.runtime.agentInstallationHints = {
       checkedAt: 1,
-      agents: [
-        { agentId: "qwen-code", detectedInstalled: false, confidence: "low" },
-      ],
+      agents: [{ agentId: "qwen-code", detectedInstalled: false, confidence: "low" }],
       skippedAgentIds: [],
     };
     harness.core.runtime.agentInstallationHintsFetched = true;
 
     harness.core.ops.requestRender({ content: true });
 
-    assert.strictEqual(
-      harness.content.querySelector(".agent-cleanup-hint-banner"),
-      null,
-    );
+    assert.strictEqual(harness.content.querySelector(".agent-cleanup-hint-banner"), null);
   });
 
   it("clears cleanup dismissals when the detector sees the agent restored", async () => {
@@ -5599,12 +4328,7 @@ describe("settings renderer browser environment", () => {
         dismissedAgentCleanupHints: { "qwen-code": true },
       },
       agentMetadata: [
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
       ],
       settingsAPI: {
         command: (action, payload) => {
@@ -5615,9 +4339,7 @@ describe("settings renderer browser environment", () => {
     });
     harness.core.runtime.agentInstallationHints = {
       checkedAt: 1,
-      agents: [
-        { agentId: "qwen-code", detectedInstalled: true, confidence: "high" },
-      ],
+      agents: [{ agentId: "qwen-code", detectedInstalled: true, confidence: "high" }],
       skippedAgentIds: [],
     };
     harness.core.runtime.agentInstallationHintsFetched = true;
@@ -5626,10 +4348,7 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    assert.strictEqual(
-      harness.content.querySelector(".agent-cleanup-hint-banner"),
-      null,
-    );
+    assert.strictEqual(harness.content.querySelector(".agent-cleanup-hint-banner"), null);
     assert.strictEqual(calls[0][0], "clearAgentCleanupHints");
     assert.deepStrictEqual([...calls[0][1].agentIds], ["qwen-code"]);
   });
@@ -5638,9 +4357,7 @@ describe("settings renderer browser environment", () => {
     const calls = [];
     const detectionResult = {
       checkedAt: 2,
-      agents: [
-        { agentId: "qwen-code", detectedInstalled: false, confidence: "low" },
-      ],
+      agents: [{ agentId: "qwen-code", detectedInstalled: false, confidence: "low" }],
       skippedAgentIds: [],
     };
     const harness = loadAgentsTabForTest({
@@ -5651,12 +4368,7 @@ describe("settings renderer browser environment", () => {
         dismissedAgentCleanupHints: {},
       },
       agentMetadata: [
-        {
-          id: "qwen-code",
-          name: "Qwen Code",
-          eventSource: "hook",
-          capabilities: {},
-        },
+        { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
       ],
       settingsAPI: {
         command: (action, payload) => {
@@ -5670,9 +4382,7 @@ describe("settings renderer browser environment", () => {
     harness.core.runtime.agentInstallationHintsFetched = true;
 
     harness.core.ops.requestRender({ content: true });
-    harness.content
-      .querySelector(".agent-cleanup-hint-remove")
-      .dispatchEvent({ type: "click", bubbles: false });
+    harness.content.querySelector(".agent-cleanup-hint-remove").dispatchEvent({ type: "click", bubbles: false });
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -5684,9 +4394,7 @@ describe("settings renderer browser environment", () => {
     calls.length = 0;
     harness.core.runtime.agentInstallationHintsFetched = true;
     harness.core.ops.requestRender({ content: true });
-    harness.content
-      .querySelector(".agent-cleanup-hint-dismiss")
-      .dispatchEvent({ type: "click", bubbles: false });
+    harness.content.querySelector(".agent-cleanup-hint-dismiss").dispatchEvent({ type: "click", bubbles: false });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -5705,16 +4413,14 @@ describe("settings renderer browser environment", () => {
           },
         },
       },
-      agentMetadata: [
-        {
-          id: "codex",
-          name: "Codex",
-          eventSource: "hook",
-          capabilities: {
-            permissionApproval: true,
-          },
+      agentMetadata: [{
+        id: "codex",
+        name: "Codex",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
         },
-      ],
+      }],
       collapsedGroups: {
         "agents:codex": false,
       },
@@ -5748,7 +4454,7 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       harness.getContentRenderCount(),
       before,
-      "Codex agent broadcasts should patch mounted switches instead of rebuilding and truncating switch motion",
+      "Codex agent broadcasts should patch mounted switches instead of rebuilding and truncating switch motion"
     );
   });
 
@@ -5763,16 +4469,14 @@ describe("settings renderer browser environment", () => {
           },
         },
       },
-      agentMetadata: [
-        {
-          id: "codex",
-          name: "Codex",
-          eventSource: "hook",
-          capabilities: {
-            permissionApproval: true,
-          },
+      agentMetadata: [{
+        id: "codex",
+        name: "Codex",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
         },
-      ],
+      }],
       collapsedGroups: {
         "agents:codex": false,
       },
@@ -5803,24 +4507,12 @@ describe("settings renderer browser environment", () => {
       },
     });
 
-    const permissionsSwitch = [
-      ...harness.core.state.mountedControls.agentSwitches.values(),
-    ].find(
-      (meta) => meta.agentId === "codex" && meta.flag === "permissionsEnabled",
-    );
-    assert.ok(
-      permissionsSwitch,
-      "Codex Permissions switch should stay mounted",
-    );
+    const permissionsSwitch = [...harness.core.state.mountedControls.agentSwitches.values()]
+      .find((meta) => meta.agentId === "codex" && meta.flag === "permissionsEnabled");
+    assert.ok(permissionsSwitch, "Codex Permissions switch should stay mounted");
     assert.strictEqual(harness.getContentRenderCount(), before);
-    assert.strictEqual(
-      permissionsSwitch.element.classList.contains("disabled"),
-      true,
-    );
-    assert.strictEqual(
-      permissionsSwitch.element.attributes["aria-disabled"],
-      "true",
-    );
+    assert.strictEqual(permissionsSwitch.element.classList.contains("disabled"), true);
+    assert.strictEqual(permissionsSwitch.element.attributes["aria-disabled"], "true");
     assert.strictEqual(permissionsSwitch.element.attributes.tabindex, "-1");
   });
 
@@ -5836,16 +4528,14 @@ describe("settings renderer browser environment", () => {
           },
         },
       },
-      agentMetadata: [
-        {
-          id: "codex",
-          name: "Codex",
-          eventSource: "hook",
-          capabilities: {
-            permissionApproval: true,
-          },
+      agentMetadata: [{
+        id: "codex",
+        name: "Codex",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
         },
-      ],
+      }],
       collapsedGroups: {
         "agents:codex": false,
       },
@@ -5854,18 +4544,10 @@ describe("settings renderer browser environment", () => {
     harness.core.ops.requestRender({ content: true });
     harness.raf.flush();
 
-    const soundSwitch = [
-      ...harness.core.state.mountedControls.agentSwitches.values(),
-    ].find(
-      (meta) =>
-        meta.agentId === "codex" &&
-        meta.flag === "nativeNotificationSoundEnabled",
-    );
+    const soundSwitch = [...harness.core.state.mountedControls.agentSwitches.values()]
+      .find((meta) => meta.agentId === "codex" && meta.flag === "nativeNotificationSoundEnabled");
     assert.ok(soundSwitch, "Codex native sound switch should be mounted");
-    assert.strictEqual(
-      soundSwitch.element.classList.contains("disabled"),
-      true,
-    );
+    assert.strictEqual(soundSwitch.element.classList.contains("disabled"), true);
 
     harness.core.ops.applyChanges({
       changes: {
@@ -5890,14 +4572,8 @@ describe("settings renderer browser environment", () => {
       },
     });
 
-    assert.strictEqual(
-      soundSwitch.element.classList.contains("disabled"),
-      false,
-    );
-    assert.strictEqual(
-      soundSwitch.element.attributes["aria-disabled"],
-      "false",
-    );
+    assert.strictEqual(soundSwitch.element.classList.contains("disabled"), false);
+    assert.strictEqual(soundSwitch.element.attributes["aria-disabled"], "false");
     assert.strictEqual(soundSwitch.element.attributes.tabindex, "0");
   });
 
@@ -5912,16 +4588,14 @@ describe("settings renderer browser environment", () => {
           },
         },
       },
-      agentMetadata: [
-        {
-          id: "claude-code",
-          name: "Claude Code",
-          eventSource: "hook",
-          capabilities: {
-            permissionApproval: true,
-          },
+      agentMetadata: [{
+        id: "claude-code",
+        name: "Claude Code",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
         },
-      ],
+      }],
       collapsedGroups: {
         "agents:claude-code": false,
       },
@@ -5930,21 +4604,10 @@ describe("settings renderer browser environment", () => {
     harness.core.ops.requestRender({ content: true });
     harness.raf.flush();
 
-    const subagentSwitch = [
-      ...harness.core.state.mountedControls.agentSwitches.values(),
-    ].find(
-      (meta) =>
-        meta.agentId === "claude-code" &&
-        meta.flag === "subagentPermissionsEnabled",
-    );
-    assert.ok(
-      subagentSwitch,
-      "Claude subagent permission switch should be mounted",
-    );
-    assert.strictEqual(
-      subagentSwitch.element.classList.contains("disabled"),
-      false,
-    );
+    const subagentSwitch = [...harness.core.state.mountedControls.agentSwitches.values()]
+      .find((meta) => meta.agentId === "claude-code" && meta.flag === "subagentPermissionsEnabled");
+    assert.ok(subagentSwitch, "Claude subagent permission switch should be mounted");
+    assert.strictEqual(subagentSwitch.element.classList.contains("disabled"), false);
 
     harness.core.ops.applyChanges({
       changes: {
@@ -5967,14 +4630,8 @@ describe("settings renderer browser environment", () => {
       },
     });
 
-    assert.strictEqual(
-      subagentSwitch.element.classList.contains("disabled"),
-      true,
-    );
-    assert.strictEqual(
-      subagentSwitch.element.attributes["aria-disabled"],
-      "true",
-    );
+    assert.strictEqual(subagentSwitch.element.classList.contains("disabled"), true);
+    assert.strictEqual(subagentSwitch.element.attributes["aria-disabled"], "true");
     assert.strictEqual(subagentSwitch.element.attributes.tabindex, "-1");
   });
 
@@ -5988,16 +4645,14 @@ describe("settings renderer browser environment", () => {
           },
         },
       },
-      agentMetadata: [
-        {
-          id: "codebuddy",
-          name: "CodeBuddy",
-          eventSource: "hook",
-          capabilities: {
-            permissionApproval: true,
-          },
+      agentMetadata: [{
+        id: "codebuddy",
+        name: "CodeBuddy",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
         },
-      ],
+      }],
       collapsedGroups: {
         "agents:codebuddy": false,
       },
@@ -6006,20 +4661,12 @@ describe("settings renderer browser environment", () => {
     harness.core.ops.requestRender({ content: true });
     harness.raf.flush();
 
-    const subagentSwitch = [
-      ...harness.core.state.mountedControls.agentSwitches.values(),
-    ].find((meta) => meta.flag === "subagentPermissionsEnabled");
+    const subagentSwitch = [...harness.core.state.mountedControls.agentSwitches.values()]
+      .find((meta) => meta.flag === "subagentPermissionsEnabled");
     assert.strictEqual(subagentSwitch, undefined);
-    const permissionsSwitch = [
-      ...harness.core.state.mountedControls.agentSwitches.values(),
-    ].find(
-      (meta) =>
-        meta.agentId === "codebuddy" && meta.flag === "permissionsEnabled",
-    );
-    assert.ok(
-      permissionsSwitch,
-      "CodeBuddy permission switch should still be mounted",
-    );
+    const permissionsSwitch = [...harness.core.state.mountedControls.agentSwitches.values()]
+      .find((meta) => meta.agentId === "codebuddy" && meta.flag === "permissionsEnabled");
+    assert.ok(permissionsSwitch, "CodeBuddy permission switch should still be mounted");
   });
 
   it("slides the Codex permission mode pill when mode broadcasts patch in place", () => {
@@ -6033,16 +4680,14 @@ describe("settings renderer browser environment", () => {
           },
         },
       },
-      agentMetadata: [
-        {
-          id: "codex",
-          name: "Codex",
-          eventSource: "hook",
-          capabilities: {
-            permissionApproval: true,
-          },
+      agentMetadata: [{
+        id: "codex",
+        name: "Codex",
+        eventSource: "hook",
+        capabilities: {
+          permissionApproval: true,
         },
-      ],
+      }],
       collapsedGroups: {
         "agents:codex": false,
       },
@@ -6050,17 +4695,9 @@ describe("settings renderer browser environment", () => {
 
     harness.core.ops.requestRender({ content: true });
     harness.raf.flush();
-    const segmented = harness.content.querySelector(
-      ".codex-permission-mode-segmented",
-    );
-    assert.ok(
-      segmented,
-      "Codex permission mode should use the sliding segmented control",
-    );
-    assert.strictEqual(
-      segmented.style.getPropertyValue("--codex-permission-mode-active-index"),
-      "1",
-    );
+    const segmented = harness.content.querySelector(".codex-permission-mode-segmented");
+    assert.ok(segmented, "Codex permission mode should use the sliding segmented control");
+    assert.strictEqual(segmented.style.getPropertyValue("--codex-permission-mode-active-index"), "1");
 
     harness.core.ops.applyChanges({
       changes: {
@@ -6083,15 +4720,9 @@ describe("settings renderer browser environment", () => {
       },
     });
 
-    assert.strictEqual(
-      segmented.style.getPropertyValue("--codex-permission-mode-active-index"),
-      "1",
-    );
+    assert.strictEqual(segmented.style.getPropertyValue("--codex-permission-mode-active-index"), "1");
     harness.raf.flush();
-    assert.strictEqual(
-      segmented.style.getPropertyValue("--codex-permission-mode-active-index"),
-      "0",
-    );
+    assert.strictEqual(segmented.style.getPropertyValue("--codex-permission-mode-active-index"), "0");
   });
 
   it("patches agent-only broadcasts in place without requiring Codex-specific rows", () => {
@@ -6104,16 +4735,14 @@ describe("settings renderer browser environment", () => {
           },
         },
       },
-      agentMetadata: [
-        {
-          id: "gemini-cli",
-          name: "Gemini CLI",
-          eventSource: "hook",
-          capabilities: {
-            notificationHook: true,
-          },
+      agentMetadata: [{
+        id: "gemini-cli",
+        name: "Gemini CLI",
+        eventSource: "hook",
+        capabilities: {
+          notificationHook: true,
         },
-      ],
+      }],
       collapsedGroups: {
         "agents:gemini-cli": false,
       },
@@ -6145,37 +4774,31 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       harness.getContentRenderCount(),
       before,
-      "agent-only broadcasts should update mounted controls in place instead of rebuilding the expanded group",
+      "agent-only broadcasts should update mounted controls in place instead of rebuilding the expanded group"
     );
   });
 
   it("ignores stale Codex hook health results after the badge becomes not installed", async () => {
     let resolveHealth;
-    const healthPromise = new Promise((resolve) => {
-      resolveHealth = resolve;
-    });
+    const healthPromise = new Promise((resolve) => { resolveHealth = resolve; });
     const harness = loadAgentsTabForTest({
       snapshot: {
         agents: {
           codex: { integrationInstalled: true, enabled: true },
         },
       },
-      agentMetadata: [
-        {
-          id: "codex",
-          name: "Codex",
-          eventSource: "hook",
-          capabilities: { permissionApproval: true },
-        },
-      ],
+      agentMetadata: [{
+        id: "codex",
+        name: "Codex",
+        eventSource: "hook",
+        capabilities: { permissionApproval: true },
+      }],
       doctor: { codexHookHealth: () => healthPromise },
     });
 
     harness.core.ops.requestRender({ content: true });
-    const findIntegrationBadge = () =>
-      harness.content
-        .querySelectorAll(".agent-badge")
-        .find((candidate) => candidate.classList.contains("integration"));
+    const findIntegrationBadge = () => harness.content.querySelectorAll(".agent-badge")
+      .find((candidate) => candidate.classList.contains("integration"));
     let badge = findIntegrationBadge();
     assert.ok(badge);
     assert.strictEqual(badge.textContent, "Installed");
@@ -6196,11 +4819,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(badge);
     assert.strictEqual(badge.textContent, "Not installed");
 
-    resolveHealth({
-      healthy: false,
-      signature: "not-registered",
-      reasonKey: "codexHookHealthReasonInactive",
-    });
+    resolveHealth({ healthy: false, signature: "not-registered", reasonKey: "codexHookHealthReasonInactive" });
     await Promise.resolve();
     await Promise.resolve();
 
@@ -6219,42 +4838,32 @@ describe("settings renderer browser environment", () => {
           },
         },
       },
-      agentMetadata: [
-        {
-          id: "gemini-cli",
-          name: "Gemini CLI",
-          eventSource: "hook",
-          capabilities: {
-            notificationHook: true,
-          },
+      agentMetadata: [{
+        id: "gemini-cli",
+        name: "Gemini CLI",
+        eventSource: "hook",
+        capabilities: {
+          notificationHook: true,
         },
-      ],
+      }],
       collapsedGroups: {
         "agents:gemini-cli": false,
       },
     });
 
     harness.core.ops.requestRender({ content: true });
-    const expandedBody = harness.content.querySelector(
-      ".collapsible-group-body",
-    );
+    const expandedBody = harness.content.querySelector(".collapsible-group-body");
     assert.ok(expandedBody, "agent group body should render");
     assert.notStrictEqual(
       expandedBody.style.getPropertyValue("--collapsible-body-height"),
       "0px",
-      "expanded groups should not paint one frame at 0px height before the next animation frame runs",
+      "expanded groups should not paint one frame at 0px height before the next animation frame runs"
     );
   });
 
   it("uses animated switches and local theme override patching in the Animation Map subtab", () => {
-    const animMapSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-anim-map.js"),
-      "utf8",
-    );
-    const overridesSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-anim-overrides.js"),
-      "utf8",
-    );
+    const animMapSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-map.js"), "utf8");
+    const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     assert.ok(animMapSource.includes("state.transientUiState.animMapSwitches"));
     assert.ok(animMapSource.includes("state.mountedControls.animMapSwitches"));
@@ -6263,23 +4872,11 @@ describe("settings renderer browser environment", () => {
     assert.ok(!animMapSource.includes("helpers.attachActivation(sw"));
     assert.ok(animMapSource.includes("function renderMapSubtab(parent)"));
     assert.ok(animMapSource.includes("function patchMapInPlace(changes)"));
-    assert.ok(
-      animMapSource.includes(
-        'Object.prototype.hasOwnProperty.call(changes, "themeOverrides")',
-      ),
-    );
-    assert.ok(
-      animMapSource.includes(
-        "helpers.setSwitchVisual(meta.element, readAnimMapVisualOn(meta.themeId, meta.stateKey), { pending: false });",
-      ),
-    );
+    assert.ok(animMapSource.includes('Object.prototype.hasOwnProperty.call(changes, "themeOverrides")'));
+    assert.ok(animMapSource.includes("helpers.setSwitchVisual(meta.element, readAnimMapVisualOn(meta.themeId, meta.stateKey), { pending: false });"));
     // Folded in: the Animation & Sound Overrides tab renders + patches the map subtab.
-    assert.ok(
-      overridesSource.includes("ClawdSettingsTabAnimMap.renderMapSubtab"),
-    );
-    assert.ok(
-      overridesSource.includes("ClawdSettingsTabAnimMap.patchMapInPlace"),
-    );
+    assert.ok(overridesSource.includes("ClawdSettingsTabAnimMap.renderMapSubtab"));
+    assert.ok(overridesSource.includes("ClawdSettingsTabAnimMap.patchMapInPlace"));
     assert.ok(coreSource.includes("activeTab.patchInPlace(changes"));
   });
 
@@ -6290,13 +4887,10 @@ describe("settings renderer browser environment", () => {
     // Map is the default subtab; rendering the overrides tab should mount the
     // five interrupt on/off switches under it (folded in, not a standalone tab).
     harness.core.tabs.animOverrides.render(harness.content);
-    assert.strictEqual(
-      harness.core.state.mountedControls.animMapSwitches.size,
-      5,
-    );
+    assert.strictEqual(harness.core.state.mountedControls.animMapSwitches.size, 5);
     assert.ok(
       harness.core.state.mountedControls.animMapReset,
-      "the reset-all control should mount under the subtab",
+      "the reset-all control should mount under the subtab"
     );
   });
 
@@ -6393,7 +4987,7 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       harness.getContentRenderCount(),
       before + 1,
-      "theme changes should force a rebuild so Animation Map switches use the new theme id",
+      "theme changes should force a rebuild so Animation Map switches use the new theme id"
     );
   });
 
@@ -6405,11 +4999,7 @@ describe("settings renderer browser environment", () => {
       },
     });
     // Simulate having opened the Animations subtab earlier: its card data is cached.
-    harness.core.runtime.animationOverridesData = {
-      theme: { id: "clawd" },
-      cards: [],
-      sounds: [],
-    };
+    harness.core.runtime.animationOverridesData = { theme: { id: "clawd" }, cards: [], sounds: [] };
     // A mounted map switch so patchMapInPlace takes the in-place themeOverrides branch.
     const sw = new FakeElement("div");
     sw.className = "switch on";
@@ -6421,119 +5011,57 @@ describe("settings renderer browser environment", () => {
     });
 
     harness.core.ops.applyChanges({
-      changes: {
-        themeOverrides: { clawd: { states: { error: { disabled: true } } } },
-      },
-      snapshot: {
-        theme: "clawd",
-        themeOverrides: { clawd: { states: { error: { disabled: true } } } },
-      },
+      changes: { themeOverrides: { clawd: { states: { error: { disabled: true } } } } },
+      snapshot: { theme: "clawd", themeOverrides: { clawd: { states: { error: { disabled: true } } } } },
     });
 
     assert.strictEqual(
       harness.core.runtime.animationOverridesData,
       null,
-      "a map-subtab theme-override patch must invalidate the cached cards so Animations/Sounds refetch",
+      "a map-subtab theme-override patch must invalidate the cached cards so Animations/Sounds refetch"
     );
   });
 
   it("keeps stale sound override prefs resettable from the settings UI", () => {
-    const overridesSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-anim-overrides.js"),
-      "utf8",
-    );
+    const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
     assert.ok(
       overridesSource.includes("resetBtn.disabled = !slot.hasStoredOverride;"),
-      "sound override row reset must stay enabled when prefs still contain a stale sound override entry",
+      "sound override row reset must stay enabled when prefs still contain a stale sound override entry"
     );
   });
 
   it("uses the shared SVG chevron treatment for Animation Overrides rows", () => {
-    const overridesSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-anim-overrides.js"),
-      "utf8",
-    );
+    const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
 
     assert.ok(!overridesSource.includes('chevron.textContent = "\\u25B8";'));
     assert.ok(!overridesSource.includes("chevron.innerHTML"));
-    assert.ok(
-      overridesSource.includes(
-        'helpers.createDisclosureChevron("anim-override-chevron")',
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*align-items:\s*center;[\s\S]*justify-content:\s*center;[\s\S]*width:\s*18px;[\s\S]*height:\s*18px;[\s\S]*opacity:\s*0\.72;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);[\s\S]*transition:[\s\S]*transform 0\.22s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),[\s\S]*color 0\.16s ease,[\s\S]*opacity 0\.16s ease/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-chevron svg,\s*\.anim-override-chevron svg\s*\{[\s\S]*width:\s*16px;[\s\S]*height:\s*16px;[\s\S]*overflow:\s*visible;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.collapsible-group-chevron path,\s*\.anim-override-chevron path\s*\{[\s\S]*fill:\s*none;[\s\S]*stroke:\s*currentColor;[\s\S]*stroke-width:\s*2\.2;[\s\S]*stroke-linecap:\s*round;[\s\S]*stroke-linejoin:\s*round;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.anim-override-row > summary:hover \.anim-override-chevron\s*\{[\s\S]*color:\s*var\(--text-secondary\);[\s\S]*opacity:\s*0\.95;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.anim-override-row\[open\]\s*>\s*summary\s+\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(90deg\);[\s\S]*color:\s*var\(--accent\);[\s\S]*opacity:\s*1;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.anim-override-chevron,[\s\S]*transition:\s*none;/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.anim-override-thumb\s*\{[\s\S]*transform:\s*translateX\(-3px\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      /\.anim-override-summary-text\s*\{[\s\S]*transform:\s*translateX\(-3px\);/.test(
-        css,
-      ),
-    );
-    assert.ok(
-      !/\.anim-override-summary-change\s*\{[\s\S]*translateX\(-3px\)/.test(css),
-    );
+    assert.ok(overridesSource.includes('helpers.createDisclosureChevron("anim-override-chevron")'));
+    assert.ok(/\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*align-items:\s*center;[\s\S]*justify-content:\s*center;[\s\S]*width:\s*18px;[\s\S]*height:\s*18px;[\s\S]*opacity:\s*0\.72;/.test(css));
+    assert.ok(/\.collapsible-group-chevron,\s*\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(0deg\);[\s\S]*transition:[\s\S]*transform 0\.22s cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\),[\s\S]*color 0\.16s ease,[\s\S]*opacity 0\.16s ease/.test(css));
+    assert.ok(/\.collapsible-group-chevron svg,\s*\.anim-override-chevron svg\s*\{[\s\S]*width:\s*16px;[\s\S]*height:\s*16px;[\s\S]*overflow:\s*visible;/.test(css));
+    assert.ok(/\.collapsible-group-chevron path,\s*\.anim-override-chevron path\s*\{[\s\S]*fill:\s*none;[\s\S]*stroke:\s*currentColor;[\s\S]*stroke-width:\s*2\.2;[\s\S]*stroke-linecap:\s*round;[\s\S]*stroke-linejoin:\s*round;/.test(css));
+    assert.ok(/\.anim-override-row > summary:hover \.anim-override-chevron\s*\{[\s\S]*color:\s*var\(--text-secondary\);[\s\S]*opacity:\s*0\.95;/.test(css));
+    assert.ok(/\.anim-override-row\[open\]\s*>\s*summary\s+\.anim-override-chevron\s*\{[\s\S]*transform:\s*translateX\(-6px\) rotate\(90deg\);[\s\S]*color:\s*var\(--accent\);[\s\S]*opacity:\s*1;/.test(css));
+    assert.ok(/@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.anim-override-chevron,[\s\S]*transition:\s*none;/.test(css));
+    assert.ok(/\.anim-override-thumb\s*\{[\s\S]*transform:\s*translateX\(-3px\);/.test(css));
+    assert.ok(/\.anim-override-summary-text\s*\{[\s\S]*transform:\s*translateX\(-3px\);/.test(css));
+    assert.ok(!/\.anim-override-summary-change\s*\{[\s\S]*translateX\(-3px\)/.test(css));
   });
 
   it("uses captured poster previews for trusted scripted animation override SVGs", () => {
     const html = fs.readFileSync(SETTINGS_HTML, "utf8");
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     const previewHtml = fs.readFileSync(SETTINGS_ANIMATION_PREVIEW, "utf8");
-    const overridesSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-anim-overrides.js"),
-      "utf8",
-    );
-    const animationOverridesSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-animation-overrides-main.js"),
-      "utf8",
-    );
+    const overridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-anim-overrides.js"), "utf8");
+    const animationOverridesSource = fs.readFileSync(path.join(SRC_DIR, "settings-animation-overrides-main.js"), "utf8");
     const preloadSource = fs.readFileSync(PRELOAD_SETTINGS, "utf8");
     const rendererSource = fs.readFileSync(SETTINGS_RENDERER, "utf8");
 
     assert.ok(html.includes("img-src 'self' data: file:"));
     assert.ok(!html.includes("frame-src"));
     assert.ok(html.includes("settings-anim-overrides-merge.js"));
-    const themeTabSource = fs.readFileSync(
-      path.join(SRC_DIR, "settings-tab-theme.js"),
-      "utf8",
-    );
+    const themeTabSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-theme.js"), "utf8");
     assert.ok(!html.includes("object-src"));
     assert.ok(css.includes(".theme-thumb-atlas-frame"));
     assert.ok(css.includes("width: 800%;"));
@@ -6546,71 +5074,25 @@ describe("settings renderer browser environment", () => {
     assert.ok(previewHtml.includes("script-src 'unsafe-inline'"));
     assert.ok(previewHtml.includes("window.renderAnimationPreviewPoster"));
     assert.ok(previewHtml.includes("width: 285%;"));
-    assert.ok(
-      animationOverridesSource.includes(
-        "ANIMATION_OVERRIDE_PREVIEW_POSTER_VERSION",
-      ),
-    );
+    assert.ok(animationOverridesSource.includes("ANIMATION_OVERRIDE_PREVIEW_POSTER_VERSION"));
     assert.ok(!overridesSource.includes('document.createElement("iframe")'));
-    assert.ok(
-      overridesSource.includes(
-        'if (url.protocol === "data:" || url.protocol === "blob:") return fileUrl;',
-      ),
-    );
+    assert.ok(overridesSource.includes('if (url.protocol === "data:" || url.protocol === "blob:") return fileUrl;'));
     assert.ok(overridesSource.includes("getCardPreviewUrl(card)"));
     assert.ok(overridesSource.includes("getAssetPreviewUrl(selected)"));
-    assert.ok(
-      animationOverridesSource.includes(
-        "function needsScriptedAnimationPreviewPoster",
-      ),
-    );
-    assert.ok(
-      animationOverridesSource.includes(
-        "function isObjectChannelSvgAnimationFile",
-      ),
-    );
-    assert.ok(
-      animationOverridesSource.includes(
-        'theme.rendering.svgChannel === "object"',
-      ),
-    );
-    assert.ok(
-      animationOverridesSource.includes(
-        "function captureAnimationPreviewPosterDataUrl",
-      ),
-    );
-    assert.ok(
-      animationOverridesSource.includes(
-        "function scheduleAnimationPreviewPosters",
-      ),
-    );
+    assert.ok(animationOverridesSource.includes("function needsScriptedAnimationPreviewPoster"));
+    assert.ok(animationOverridesSource.includes("function isObjectChannelSvgAnimationFile"));
+    assert.ok(animationOverridesSource.includes('theme.rendering.svgChannel === "object"'));
+    assert.ok(animationOverridesSource.includes("function captureAnimationPreviewPosterDataUrl"));
+    assert.ok(animationOverridesSource.includes("function scheduleAnimationPreviewPosters"));
     assert.ok(animationOverridesSource.includes("capturePage"));
-    assert.ok(
-      animationOverridesSource.includes(
-        "settings:animation-preview-poster-ready",
-      ),
-    );
+    assert.ok(animationOverridesSource.includes("settings:animation-preview-poster-ready"));
     assert.ok(preloadSource.includes("onAnimationPreviewPosterReady"));
     assert.ok(rendererSource.includes("onAnimationPreviewPosterReady"));
     assert.ok(animationOverridesSource.includes("theme._builtin"));
-    assert.ok(
-      animationOverridesSource.includes("trustedRuntime.scriptedSvgFiles"),
-    );
-    assert.ok(
-      animationOverridesSource.includes(
-        "currentFilePreviewUrl: preview.previewImageUrl",
-      ),
-    );
-    assert.ok(
-      animationOverridesSource.includes(
-        "previewPosterPending: preview.previewPosterPending",
-      ),
-    );
-    assert.ok(
-      !animationOverridesSource.includes(
-        "function hydrateAnimationPreviewPosters",
-      ),
-    );
+    assert.ok(animationOverridesSource.includes("trustedRuntime.scriptedSvgFiles"));
+    assert.ok(animationOverridesSource.includes("currentFilePreviewUrl: preview.previewImageUrl"));
+    assert.ok(animationOverridesSource.includes("previewPosterPending: preview.previewPosterPending"));
+    assert.ok(!animationOverridesSource.includes("function hydrateAnimationPreviewPosters"));
   });
 
   it("merges pushed animation preview posters without accepting stale cache keys", () => {
@@ -6625,87 +5107,59 @@ describe("settings renderer browser environment", () => {
 
     const data = {
       theme: { id: "cloudling" },
-      assets: [
-        {
-          name: "cloudling-thinking.svg",
-          previewImageUrl: null,
-          previewPosterCacheKey: "K1",
-          previewPosterPending: true,
-        },
-      ],
-      sections: [
-        {
-          cards: [
-            {
-              currentFile: "cloudling-thinking.svg",
-              currentFilePreviewUrl: null,
-              currentFilePreviewPosterCacheKey: "K1",
-              previewPosterPending: true,
-            },
-          ],
-        },
-      ],
-      cards: [
-        {
+      assets: [{
+        name: "cloudling-thinking.svg",
+        previewImageUrl: null,
+        previewPosterCacheKey: "K1",
+        previewPosterPending: true,
+      }],
+      sections: [{
+        cards: [{
           currentFile: "cloudling-thinking.svg",
           currentFilePreviewUrl: null,
           currentFilePreviewPosterCacheKey: "K1",
           previewPosterPending: true,
-        },
-      ],
+        }],
+      }],
+      cards: [{
+        currentFile: "cloudling-thinking.svg",
+        currentFilePreviewUrl: null,
+        currentFilePreviewPosterCacheKey: "K1",
+        previewPosterPending: true,
+      }],
     };
     merge.mergePosterCacheIntoAnimationData(data, cache);
-    assert.strictEqual(
-      data.assets[0].previewImageUrl,
-      "data:image/png;base64,poster-k1",
-    );
+    assert.strictEqual(data.assets[0].previewImageUrl, "data:image/png;base64,poster-k1");
     assert.strictEqual(data.assets[0].previewPosterPending, false);
-    assert.strictEqual(
-      data.sections[0].cards[0].currentFilePreviewUrl,
-      "data:image/png;base64,poster-k1",
-    );
-    assert.strictEqual(
-      data.cards[0].currentFilePreviewUrl,
-      "data:image/png;base64,poster-k1",
-    );
+    assert.strictEqual(data.sections[0].cards[0].currentFilePreviewUrl, "data:image/png;base64,poster-k1");
+    assert.strictEqual(data.cards[0].currentFilePreviewUrl, "data:image/png;base64,poster-k1");
 
     const mismatch = {
       theme: { id: "cloudling" },
-      assets: [
-        {
-          name: "cloudling-thinking.svg",
-          previewImageUrl: null,
-          previewPosterCacheKey: "K2",
-          previewPosterPending: true,
-        },
-      ],
-      sections: [
-        {
-          cards: [
-            {
-              currentFile: "cloudling-thinking.svg",
-              currentFilePreviewUrl: null,
-              currentFilePreviewPosterCacheKey: "K2",
-              previewPosterPending: true,
-            },
-          ],
-        },
-      ],
-      cards: [
-        {
+      assets: [{
+        name: "cloudling-thinking.svg",
+        previewImageUrl: null,
+        previewPosterCacheKey: "K2",
+        previewPosterPending: true,
+      }],
+      sections: [{
+        cards: [{
           currentFile: "cloudling-thinking.svg",
           currentFilePreviewUrl: null,
           currentFilePreviewPosterCacheKey: "K2",
           previewPosterPending: true,
-        },
-      ],
+        }],
+      }],
+      cards: [{
+        currentFile: "cloudling-thinking.svg",
+        currentFilePreviewUrl: null,
+        currentFilePreviewPosterCacheKey: "K2",
+        previewPosterPending: true,
+      }],
     };
     merge.mergePosterCacheIntoAnimationData(mismatch, cache);
     assert.strictEqual(mismatch.assets[0].previewImageUrl, null);
-    assert.strictEqual(
-      mismatch.sections[0].cards[0].currentFilePreviewUrl,
-      null,
-    );
+    assert.strictEqual(mismatch.sections[0].cards[0].currentFilePreviewUrl, null);
     assert.strictEqual(mismatch.cards[0].currentFilePreviewUrl, null);
   });
 
@@ -6723,86 +5177,59 @@ describe("settings renderer browser environment", () => {
     });
     deferred.resolve({
       theme: { id: "cloudling" },
-      assets: [
-        {
-          name: "cloudling-thinking.svg",
-          previewImageUrl: null,
-          previewPosterCacheKey: "K1",
-          previewPosterPending: true,
-        },
-      ],
-      sections: [
-        {
-          cards: [
-            {
-              currentFile: "cloudling-thinking.svg",
-              currentFilePreviewUrl: null,
-              currentFilePreviewPosterCacheKey: "K1",
-              previewPosterPending: true,
-            },
-          ],
-        },
-      ],
-      cards: [
-        {
+      assets: [{
+        name: "cloudling-thinking.svg",
+        previewImageUrl: null,
+        previewPosterCacheKey: "K1",
+        previewPosterPending: true,
+      }],
+      sections: [{
+        cards: [{
           currentFile: "cloudling-thinking.svg",
           currentFilePreviewUrl: null,
           currentFilePreviewPosterCacheKey: "K1",
           previewPosterPending: true,
-        },
-      ],
+        }],
+      }],
+      cards: [{
+        currentFile: "cloudling-thinking.svg",
+        currentFilePreviewUrl: null,
+        currentFilePreviewPosterCacheKey: "K1",
+        previewPosterPending: true,
+      }],
     });
     await fetchPromise;
 
-    assert.strictEqual(
-      core.runtime.animationOverridesData.assets[0].previewImageUrl,
-      "data:image/png;base64,pushed",
-    );
-    assert.strictEqual(
-      core.runtime.animationOverridesData.sections[0].cards[0]
-        .currentFilePreviewUrl,
-      "data:image/png;base64,pushed",
-    );
-    assert.strictEqual(
-      core.runtime.animationOverridesData.cards[0].currentFilePreviewUrl,
-      "data:image/png;base64,pushed",
-    );
+    assert.strictEqual(core.runtime.animationOverridesData.assets[0].previewImageUrl, "data:image/png;base64,pushed");
+    assert.strictEqual(core.runtime.animationOverridesData.sections[0].cards[0].currentFilePreviewUrl, "data:image/png;base64,pushed");
+    assert.strictEqual(core.runtime.animationOverridesData.cards[0].currentFilePreviewUrl, "data:image/png;base64,pushed");
   });
 
   it("patches pending animation override data when a poster push arrives after fetch", async () => {
     const core = loadSettingsCoreForTest({
-      getAnimationOverridesData: () =>
-        Promise.resolve({
-          theme: { id: "cloudling" },
-          assets: [
-            {
-              name: "cloudling-thinking.svg",
-              previewImageUrl: null,
-              previewPosterCacheKey: "K1",
-              previewPosterPending: true,
-            },
-          ],
-          sections: [
-            {
-              cards: [
-                {
-                  currentFile: "cloudling-thinking.svg",
-                  currentFilePreviewUrl: null,
-                  currentFilePreviewPosterCacheKey: "K1",
-                  previewPosterPending: true,
-                },
-              ],
-            },
-          ],
-          cards: [
-            {
-              currentFile: "cloudling-thinking.svg",
-              currentFilePreviewUrl: null,
-              currentFilePreviewPosterCacheKey: "K1",
-              previewPosterPending: true,
-            },
-          ],
-        }),
+      getAnimationOverridesData: () => Promise.resolve({
+        theme: { id: "cloudling" },
+        assets: [{
+          name: "cloudling-thinking.svg",
+          previewImageUrl: null,
+          previewPosterCacheKey: "K1",
+          previewPosterPending: true,
+        }],
+        sections: [{
+          cards: [{
+            currentFile: "cloudling-thinking.svg",
+            currentFilePreviewUrl: null,
+            currentFilePreviewPosterCacheKey: "K1",
+            previewPosterPending: true,
+          }],
+        }],
+        cards: [{
+          currentFile: "cloudling-thinking.svg",
+          currentFilePreviewUrl: null,
+          currentFilePreviewPosterCacheKey: "K1",
+          previewPosterPending: true,
+        }],
+      }),
     });
 
     await core.ops.fetchAnimationOverridesData();
@@ -6813,23 +5240,10 @@ describe("settings renderer browser environment", () => {
       previewPosterCacheKey: "K1",
     });
 
-    assert.strictEqual(
-      core.runtime.animationOverridesData.assets[0].previewImageUrl,
-      "data:image/png;base64,late-push",
-    );
-    assert.strictEqual(
-      core.runtime.animationOverridesData.assets[0].previewPosterPending,
-      false,
-    );
-    assert.strictEqual(
-      core.runtime.animationOverridesData.sections[0].cards[0]
-        .currentFilePreviewUrl,
-      "data:image/png;base64,late-push",
-    );
-    assert.strictEqual(
-      core.runtime.animationOverridesData.cards[0].currentFilePreviewUrl,
-      "data:image/png;base64,late-push",
-    );
+    assert.strictEqual(core.runtime.animationOverridesData.assets[0].previewImageUrl, "data:image/png;base64,late-push");
+    assert.strictEqual(core.runtime.animationOverridesData.assets[0].previewPosterPending, false);
+    assert.strictEqual(core.runtime.animationOverridesData.sections[0].cards[0].currentFilePreviewUrl, "data:image/png;base64,late-push");
+    assert.strictEqual(core.runtime.animationOverridesData.cards[0].currentFilePreviewUrl, "data:image/png;base64,late-push");
   });
 
   it("does not let a stale rejected animation overrides fetch clear newer data", async () => {
@@ -6842,21 +5256,13 @@ describe("settings renderer browser environment", () => {
 
     const oldPromise = core.ops.fetchAnimationOverridesData();
     const newPromise = core.ops.fetchAnimationOverridesData();
-    newFetch.resolve({
-      theme: { id: "calico" },
-      assets: [{ name: "calico-idle.png" }],
-      sections: [],
-      cards: [],
-    });
+    newFetch.resolve({ theme: { id: "calico" }, assets: [{ name: "calico-idle.png" }], sections: [], cards: [] });
     await newPromise;
     oldFetch.reject(new Error("old failed"));
     await oldPromise;
 
     assert.strictEqual(core.runtime.animationOverridesData.theme.id, "calico");
-    assert.strictEqual(
-      core.runtime.animationOverridesData.assets[0].name,
-      "calico-idle.png",
-    );
+    assert.strictEqual(core.runtime.animationOverridesData.assets[0].name, "calico-idle.png");
   });
 
   it("renders pending scripted animation previews as placeholders instead of SVG images", () => {
@@ -6932,43 +5338,27 @@ describe("settings renderer browser environment", () => {
       ...modalRoot.querySelectorAll("img"),
     ].filter((img) => String(img.src || "").includes(".svg"));
     assert.strictEqual(svgImages.length, 0);
-    assert.ok(
-      parent.querySelectorAll(".anim-override-preview-pending").length >= 2,
-    );
-    assert.ok(
-      modalRoot.querySelectorAll(".anim-override-preview-pending").length >= 1,
-    );
+    assert.ok(parent.querySelectorAll(".anim-override-preview-pending").length >= 2);
+    assert.ok(modalRoot.querySelectorAll(".anim-override-preview-pending").length >= 1);
   });
 
   it("keeps localized shortcut labels from collapsing into vertical CJK text", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
-    assert.match(
-      css,
-      /\.shortcut-row-control\s*\{[\s\S]*?flex:\s*1 1 0;[\s\S]*?min-width:\s*0;[\s\S]*?flex-wrap:\s*wrap;[\s\S]*?justify-content:\s*flex-start;[\s\S]*?\}/,
-    );
-    assert.match(
-      css,
-      /\.shortcut-row \.row-text\s*\{[\s\S]*?flex:\s*0 0 190px;[\s\S]*?\}/,
-    );
-    assert.match(
-      css,
-      /\.shortcut-row \.row-label\s*\{[\s\S]*?word-break:\s*keep-all;[\s\S]*?overflow-wrap:\s*normal;[\s\S]*?\}/,
-    );
-    assert.match(
-      css,
-      /\.shortcut-value\s*\{[\s\S]*?flex:\s*1 1 190px;[\s\S]*?min-width:\s*160px;[\s\S]*?max-width:\s*286px;[\s\S]*?\}/,
-    );
+    assert.match(css, /\.shortcut-row-control\s*\{[\s\S]*?flex:\s*1 1 0;[\s\S]*?min-width:\s*0;[\s\S]*?flex-wrap:\s*wrap;[\s\S]*?justify-content:\s*flex-start;[\s\S]*?\}/);
+    assert.match(css, /\.shortcut-row \.row-text\s*\{[\s\S]*?flex:\s*0 0 190px;[\s\S]*?\}/);
+    assert.match(css, /\.shortcut-row \.row-label\s*\{[\s\S]*?word-break:\s*keep-all;[\s\S]*?overflow-wrap:\s*normal;[\s\S]*?\}/);
+    assert.match(css, /\.shortcut-value\s*\{[\s\S]*?flex:\s*1 1 190px;[\s\S]*?min-width:\s*160px;[\s\S]*?max-width:\s*286px;[\s\S]*?\}/);
   });
 
   it("counts sound overrides in the theme-overrides reset gate", () => {
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     assert.ok(
       coreSource.includes("function hasAnyThemeOverride(themeId)"),
-      "settings-ui-core.js should expose a helper for any stored theme override",
+      "settings-ui-core.js should expose a helper for any stored theme override"
     );
     assert.ok(
       coreSource.includes("...(map.sounds ? Object.keys(map.sounds) : []),"),
-      "sound overrides must participate in the global reset-all gate",
+      "sound overrides must participate in the global reset-all gate"
     );
   });
 
@@ -6986,9 +5376,7 @@ describe("settings renderer browser environment", () => {
 
     assert.strictEqual(core.readers.hasAnyThemeOverride("cloudling"), false);
 
-    core.state.snapshot.themeOverrides.cloudling.hitbox.wide[
-      "cloudling-thinking.svg"
-    ] = true;
+    core.state.snapshot.themeOverrides.cloudling.hitbox.wide["cloudling-thinking.svg"] = true;
     assert.strictEqual(core.readers.hasAnyThemeOverride("cloudling"), true);
   });
 
@@ -7045,19 +5433,14 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       core.runtime.animationOverridesData,
       previousData,
-      "Animation Overrides should keep the last rendered data while the async refresh is pending",
+      "Animation Overrides should keep the last rendered data while the async refresh is pending"
     );
-    assert.strictEqual(
-      renderCount,
-      0,
-      "pending refresh should not immediately rerender into an empty loading page",
-    );
+    assert.strictEqual(renderCount, 0, "pending refresh should not immediately rerender into an empty loading page");
   });
 
   it("lets Animation Overrides patch theme override broadcasts before a full content render", () => {
     const core = loadSettingsCoreForTest({
-      getAnimationOverridesData: () =>
-        Promise.resolve({ cards: [], sections: [], sounds: [] }),
+      getAnimationOverridesData: () => Promise.resolve({ cards: [], sections: [], sounds: [] }),
     });
     core.state.activeTab = "animOverrides";
     core.state.snapshot = {
@@ -7077,10 +5460,7 @@ describe("settings renderer browser environment", () => {
     core.tabs.animOverrides = {
       patchInPlace(changes) {
         patchCount++;
-        assert.ok(
-          changes &&
-            Object.prototype.hasOwnProperty.call(changes, "themeOverrides"),
-        );
+        assert.ok(changes && Object.prototype.hasOwnProperty.call(changes, "themeOverrides"));
         return true;
       },
     };
@@ -7133,58 +5513,39 @@ describe("settings renderer browser environment", () => {
     const meta = parent.querySelector(".anim-override-meta");
     assert.ok(meta);
     assert.deepStrictEqual(
-      meta
-        .querySelectorAll(".anim-override-meta-label")
-        .map((label) => label.textContent),
-      [
-        "animOverridesCurrentTheme: Cloudling",
-        "animOverridesReplacementConfig",
-      ],
+      meta.querySelectorAll(".anim-override-meta-label").map((label) => label.textContent),
+      ["animOverridesCurrentTheme: Cloudling", "animOverridesReplacementConfig"]
     );
 
     const primary = meta.querySelector(".anim-override-meta-primary-actions");
-    const secondary = meta.querySelector(
-      ".anim-override-meta-secondary-actions",
-    );
+    const secondary = meta.querySelector(".anim-override-meta-secondary-actions");
     assert.deepStrictEqual(
       primary.querySelectorAll("button").map((button) => button.textContent),
-      ["animOverridesOpenThemeTab", "animOverridesOpenAssets"],
+      ["animOverridesOpenThemeTab", "animOverridesOpenAssets"]
     );
     assert.deepStrictEqual(
       secondary.querySelectorAll("button").map((button) => button.textContent),
-      ["animOverridesImport", "animOverridesExport", "animOverridesResetAll"],
+      ["animOverridesImport", "animOverridesExport", "animOverridesResetAll"]
     );
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     assert.match(
       css,
-      /\.anim-override-meta\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto;/,
+      /\.anim-override-meta\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto;/
     );
     assert.match(
       css,
-      /\.anim-override-meta-actions\s*\{[\s\S]*align-items:\s*center;[\s\S]*justify-content:\s*flex-end;/,
+      /\.anim-override-meta-actions\s*\{[\s\S]*align-items:\s*center;[\s\S]*justify-content:\s*flex-end;/
     );
     assert.match(
       css,
-      /@media \(max-width:\s*640px\)\s*\{[\s\S]*\.anim-override-meta-actions\s*\{[\s\S]*justify-content:\s*flex-start;/,
+      /@media \(max-width:\s*640px\)\s*\{[\s\S]*\.anim-override-meta-actions\s*\{[\s\S]*justify-content:\s*flex-start;/
     );
 
     const strings = loadSettingsI18nForTest();
-    assert.strictEqual(
-      strings.en.animOverridesReplacementConfig,
-      "Animation override settings",
-    );
-    assert.strictEqual(
-      strings.zh.animOverridesReplacementConfig,
-      "动画覆盖设置",
-    );
-    assert.strictEqual(
-      strings.ko.animOverridesReplacementConfig,
-      "애니메이션 덮어쓰기 설정",
-    );
-    assert.strictEqual(
-      strings.ja.animOverridesReplacementConfig,
-      "アニメーション上書き設定",
-    );
+    assert.strictEqual(strings.en.animOverridesReplacementConfig, "Animation override settings");
+    assert.strictEqual(strings.zh.animOverridesReplacementConfig, "动画覆盖设置");
+    assert.strictEqual(strings.ko.animOverridesReplacementConfig, "애니메이션 덮어쓰기 설정");
+    assert.strictEqual(strings.ja.animOverridesReplacementConfig, "アニメーション上書き設定");
     assert.strictEqual(strings.en.animOverridesImport, "Import config…");
     assert.strictEqual(strings.zh.animOverridesImport, "导入配置…");
     assert.strictEqual(strings.ko.animOverridesImport, "설정 가져오기…");
@@ -7193,29 +5554,18 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(strings.zh.animOverridesExport, "导出配置…");
     assert.strictEqual(strings.ko.animOverridesExport, "설정 내보내기…");
     assert.strictEqual(strings.ja.animOverridesExport, "設定をエクスポート…");
-    assert.strictEqual(
-      strings.en.animOverridesResetAll,
-      "Restore theme defaults",
-    );
+    assert.strictEqual(strings.en.animOverridesResetAll, "Restore theme defaults");
     assert.strictEqual(strings.zh.animOverridesResetAll, "恢复主题默认");
-    assert.strictEqual(
-      strings.ko.animOverridesResetAll,
-      "테마 기본값으로 복원",
-    );
-    assert.strictEqual(
-      strings.ja.animOverridesResetAll,
-      "テーマのデフォルトに戻す",
-    );
+    assert.strictEqual(strings.ko.animOverridesResetAll, "테마 기본값으로 복원");
+    assert.strictEqual(strings.ja.animOverridesResetAll, "テーマのデフォルトに戻す");
     assert.match(
       css,
-      /@media \(max-width:\s*640px\)\s*\{[\s\S]*\.anim-override-meta\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+      /@media \(max-width:\s*640px\)\s*\{[\s\S]*\.anim-override-meta\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);/
     );
   });
 
   it("does not build Animation Overrides theme actions on the Sounds subtab", () => {
-    const runtime = createAnimOverridesRuntime(createAnimOverrideCard(), {
-      animOverridesSubtab: "sounds",
-    });
+    const runtime = createAnimOverridesRuntime(createAnimOverrideCard(), { animOverridesSubtab: "sounds" });
     const modalRoot = new FakeElement("div");
     let activationCount = 0;
     const { core } = loadAnimOverridesTabForTest({
@@ -7224,8 +5574,7 @@ describe("settings renderer browser environment", () => {
       helpersOverrides: {
         attachActivation: (el, invoke) => {
           activationCount += 1;
-          if (typeof invoke === "function")
-            el.addEventListener("click", () => invoke());
+          if (typeof invoke === "function") el.addEventListener("click", () => invoke());
           return el;
         },
       },
@@ -7235,11 +5584,7 @@ describe("settings renderer browser environment", () => {
     core.tabs.animOverrides.render(parent, core);
 
     assert.strictEqual(parent.querySelector(".anim-override-meta"), null);
-    assert.strictEqual(
-      activationCount,
-      1,
-      "only the Sounds directory button should be wired",
-    );
+    assert.strictEqual(activationCount, 1, "only the Sounds directory button should be wired");
   });
 
   it("uses specific fade timing labels and gives the slider label enough room", () => {
@@ -7256,43 +5601,43 @@ describe("settings renderer browser environment", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     assert.match(
       css,
-      /\.anim-override-slider-row\s*\{[\s\S]*grid-template-columns:\s*96px minmax\(0,\s*1fr\) 100px;/,
+      /\.anim-override-slider-row\s*\{[\s\S]*grid-template-columns:\s*96px minmax\(0,\s*1fr\) 100px;/
     );
     assert.match(
       css,
-      /\.anim-override-number-field\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*white-space:\s*nowrap;/,
+      /\.anim-override-number-field\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*white-space:\s*nowrap;/
     );
     assert.match(
       css,
-      /\.anim-override-slider-row input\[type="number"\]\s*\{[\s\S]*width:\s*76px;[\s\S]*text-align:\s*center;/,
+      /\.anim-override-slider-row input\[type="number"\]\s*\{[\s\S]*width:\s*76px;[\s\S]*text-align:\s*center;/
     );
     assert.match(
       css,
-      /\.anim-override-slider-row input\[type="range"\]\s*\{[\s\S]*--anim-override-fill:\s*0%;/,
+      /\.anim-override-slider-row input\[type="range"\]\s*\{[\s\S]*--anim-override-fill:\s*0%;/
     );
     assert.match(
       css,
-      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-runnable-track\s*\{[\s\S]*var\(--accent\) var\(--anim-override-fill\)/,
+      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-runnable-track\s*\{[\s\S]*var\(--accent\) var\(--anim-override-fill\)/
     );
     assert.match(
       css,
-      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-runnable-track\s*\{[\s\S]*var\(--row-border\) var\(--anim-override-fill\)/,
+      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-runnable-track\s*\{[\s\S]*var\(--row-border\) var\(--anim-override-fill\)/
     );
     assert.match(
       css,
-      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-thumb\s*\{[\s\S]*-webkit-appearance:\s*none;[\s\S]*box-shadow:/,
+      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-thumb\s*\{[\s\S]*-webkit-appearance:\s*none;[\s\S]*box-shadow:/
     );
     assert.match(
       css,
-      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-thumb\s*\{[\s\S]*color-mix\(in srgb,\s*var\(--accent\)/,
+      /\.anim-override-slider-row input\[type="range"\]::-webkit-slider-thumb\s*\{[\s\S]*color-mix\(in srgb,\s*var\(--accent\)/
     );
     assert.match(
       css,
-      /\.anim-override-slider-row input\[type="range"\]:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/,
+      /\.anim-override-slider-row input\[type="range"\]:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/
     );
     assert.match(
       css,
-      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*accent-color:\s*Highlight;/,
+      /@media \(forced-colors:\s*active\)\s*\{[\s\S]*accent-color:\s*Highlight;/
     );
   });
 
@@ -7304,8 +5649,7 @@ describe("settings renderer browser environment", () => {
       triggerKind: "thinking",
       currentFile: "cloudling-thinking.svg",
       currentFileUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
-      currentFilePreviewUrl:
-        "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      currentFilePreviewUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
       bindingLabel: "states.thinking[0]",
       transition: { in: 120, out: 180 },
       supportsAutoReturn: false,
@@ -7345,8 +5689,7 @@ describe("settings renderer browser environment", () => {
         command: () => Promise.resolve({ status: "ok" }),
       },
       opsOverrides: {
-        fetchAnimationOverridesData: () =>
-          Promise.resolve(runtime.animationOverridesData),
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
       },
     });
     const parent = new FakeElement("main");
@@ -7358,50 +5701,28 @@ describe("settings renderer browser environment", () => {
     };
     core.ops.requestRender = ({ content = false, modal = false } = {}) => {
       if (content) renderContent();
-      if (modal && typeof core.renderHooks.modal === "function")
-        core.renderHooks.modal();
+      if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
     };
     renderContent();
 
-    const range = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
-    assert.ok(
-      range,
-      "expanded animation override row should render a fade-in range input",
-    );
-    assert.strictEqual(
-      range.style.getPropertyValue("--anim-override-fill"),
-      "12%",
-    );
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    assert.ok(range, "expanded animation override row should render a fade-in range input");
+    assert.strictEqual(range.style.getPropertyValue("--anim-override-fill"), "12%");
     range.value = "260";
     for (const listener of range.eventListeners.input || []) listener();
-    assert.strictEqual(
-      range.style.getPropertyValue("--anim-override-fill"),
-      "26%",
-    );
+    assert.strictEqual(range.style.getPropertyValue("--anim-override-fill"), "26%");
     for (const listener of range.eventListeners.change || []) listener();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
-    const nextRange = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
-    assert.strictEqual(
-      contentRenderCount,
-      1,
-      "timing slider commits should not rebuild the content pane",
-    );
-    assert.strictEqual(
-      nextRange,
-      range,
-      "timing slider commits should keep the mounted range control in place",
-    );
+    const nextRange = parent.querySelectorAll("input").find((input) => input.type === "range");
+    assert.strictEqual(contentRenderCount, 1, "timing slider commits should not rebuild the content pane");
+    assert.strictEqual(nextRange, range, "timing slider commits should keep the mounted range control in place");
     assert.strictEqual(
       nextRange.value,
       "260",
-      "stale refreshes should not flash the slider back to the old committed timing",
+      "stale refreshes should not flash the slider back to the old committed timing"
     );
   });
 
@@ -7443,17 +5764,12 @@ describe("settings renderer browser environment", () => {
     };
     core.ops.requestRender = ({ content = false, modal = false } = {}) => {
       if (content) renderContent();
-      if (modal && typeof core.renderHooks.modal === "function")
-        core.renderHooks.modal();
+      if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
     };
     renderContent();
 
-    const range = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
-    const resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
     assert.ok(range);
     assert.ok(resetButton);
     assert.strictEqual(resetButton.disabled, true);
@@ -7469,20 +5785,9 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(payloads.length, 1);
     assert.strictEqual(payloads[0].transitionThemeDefault.in, 150);
     assert.strictEqual(payloads[0].transitionThemeDefault.out, 150);
-    assert.strictEqual(
-      contentRenderCount,
-      1,
-      "timing-only commits should keep the content DOM mounted",
-    );
-    assert.strictEqual(
-      resetButton.disabled,
-      false,
-      "first timing commit should enable the slot reset button",
-    );
-    assert.ok(
-      parent.querySelector(".anim-override-badge-dot"),
-      "first timing commit should show the changed badge",
-    );
+    assert.strictEqual(contentRenderCount, 1, "timing-only commits should keep the content DOM mounted");
+    assert.strictEqual(resetButton.disabled, false, "first timing commit should enable the slot reset button");
+    assert.ok(parent.querySelector(".anim-override-badge-dot"), "first timing commit should show the changed badge");
   });
 
   it("clears Animation Overrides reset affordances when timing returns to the theme default", async () => {
@@ -7526,12 +5831,8 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const range = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
-    const resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
     assert.ok(range);
     assert.ok(resetButton);
     assert.strictEqual(resetButton.disabled, false);
@@ -7549,11 +5850,7 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(payloads[0].transition.out, 150);
     assert.strictEqual(payloads[0].transitionThemeDefault.in, 150);
     assert.strictEqual(payloads[0].transitionThemeDefault.out, 150);
-    assert.strictEqual(
-      resetButton.disabled,
-      true,
-      "returning to default timing should disable slot reset",
-    );
+    assert.strictEqual(resetButton.disabled, true, "returning to default timing should disable slot reset");
     assert.strictEqual(parent.querySelector(".anim-override-badge-dot"), null);
   });
 
@@ -7572,20 +5869,14 @@ describe("settings renderer browser environment", () => {
         },
       },
       opsOverrides: {
-        fetchAnimationOverridesData: () =>
-          Promise.resolve(runtime.animationOverridesData),
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
       },
     });
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const ranges = parent
-      .querySelectorAll("input")
-      .filter((input) => input.type === "range");
-    assert.ok(
-      ranges.length >= 2,
-      "expanded row should render fade in and fade out sliders",
-    );
+    const ranges = parent.querySelectorAll("input").filter((input) => input.type === "range");
+    assert.ok(ranges.length >= 2, "expanded row should render fade in and fade out sliders");
 
     ranges[0].value = "260";
     for (const listener of ranges[0].eventListeners.input || []) listener();
@@ -7600,14 +5891,11 @@ describe("settings renderer browser environment", () => {
     await Promise.resolve();
 
     assert.strictEqual(payloads.length, 2);
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(payloads[0].transition)), {
-      in: 260,
-      out: 180,
-    });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(payloads[0].transition)), { in: 260, out: 180 });
     assert.deepStrictEqual(
       JSON.parse(JSON.stringify(payloads[1].transition)),
       { in: 260, out: 300 },
-      "second fade commit should use the pending/latest fade-in value, not the stale rendered card",
+      "second fade commit should use the pending/latest fade-in value, not the stale rendered card"
     );
   });
 
@@ -7619,8 +5907,7 @@ describe("settings renderer browser environment", () => {
       triggerKind: "thinking",
       currentFile: "cloudling-thinking.svg",
       currentFileUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
-      currentFilePreviewUrl:
-        "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      currentFilePreviewUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
       bindingLabel: "states.thinking[0]",
       transition: { in: 120, out: 180 },
       supportsAutoReturn: false,
@@ -7664,8 +5951,7 @@ describe("settings renderer browser environment", () => {
         },
       },
       opsOverrides: {
-        fetchAnimationOverridesData: () =>
-          Promise.resolve(runtime.animationOverridesData),
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
       },
     });
     const parent = new FakeElement("main");
@@ -7674,26 +5960,15 @@ describe("settings renderer browser environment", () => {
     const inputs = parent.querySelectorAll("input");
     const range = inputs.find((input) => input.type === "range");
     const number = inputs.find((input) => input.type === "number");
-    assert.ok(
-      range,
-      "expanded animation override row should render a fade-in range input",
-    );
-    assert.ok(
-      number,
-      "expanded animation override row should render a fade-in number input",
-    );
-    assert.ok(
-      number.parentNode.classList.contains("anim-override-number-field"),
-    );
+    assert.ok(range, "expanded animation override row should render a fade-in range input");
+    assert.ok(number, "expanded animation override row should render a fade-in number input");
+    assert.ok(number.parentNode.classList.contains("anim-override-number-field"));
     const unit = number.parentNode.querySelector(".anim-override-slider-unit");
     assert.ok(unit, "timing number input should render an inline unit label");
     assert.strictEqual(unit.textContent, "ms");
     number.value = "260";
     for (const listener of number.eventListeners.input || []) listener();
-    assert.strictEqual(
-      range.style.getPropertyValue("--anim-override-fill"),
-      "26%",
-    );
+    assert.strictEqual(range.style.getPropertyValue("--anim-override-fill"), "26%");
     for (const listener of number.eventListeners.change || []) listener();
     for (const listener of number.eventListeners.blur || []) listener();
     await Promise.resolve();
@@ -7711,20 +5986,12 @@ describe("settings renderer browser environment", () => {
     core.tabs.animOverrides.render(parent, core);
 
     const row = parent.querySelector(".anim-override-toggle-row");
-    const input = parent
-      .querySelectorAll("input")
-      .find((candidate) => candidate.type === "checkbox");
+    const input = parent.querySelectorAll("input").find((candidate) => candidate.type === "checkbox");
     const title = parent.querySelector(".anim-override-toggle-title");
 
-    assert.ok(
-      row,
-      "expanded animation override row should render a wide-hitbox toggle row",
-    );
+    assert.ok(row, "expanded animation override row should render a wide-hitbox toggle row");
     assert.strictEqual(row.tagName, "DIV");
-    assert.strictEqual(
-      input.getAttribute("aria-label"),
-      "animOverridesWideHitboxToggle",
-    );
+    assert.strictEqual(input.getAttribute("aria-label"), "animOverridesWideHitboxToggle");
     assert.ok(title);
     assert.strictEqual((title.eventListeners.click || []).length, 0);
   });
@@ -7751,20 +6018,17 @@ describe("settings renderer browser environment", () => {
       opsOverrides: {
         fetchAnimationOverridesData: () => {
           fetchCount++;
-          Object.assign(
-            runtime.animationOverridesData.cards[0],
-            fetchCount === 1
-              ? {
-                  wideHitboxEnabled: true,
-                  wideHitboxOverridden: true,
-                  wideHitboxThemeDefault: false,
-                }
-              : {
-                  wideHitboxEnabled: false,
-                  wideHitboxOverridden: false,
-                  wideHitboxThemeDefault: false,
-                },
-          );
+          Object.assign(runtime.animationOverridesData.cards[0], fetchCount === 1
+            ? {
+                wideHitboxEnabled: true,
+                wideHitboxOverridden: true,
+                wideHitboxThemeDefault: false,
+              }
+            : {
+                wideHitboxEnabled: false,
+                wideHitboxOverridden: false,
+                wideHitboxThemeDefault: false,
+              });
           return Promise.resolve(runtime.animationOverridesData);
         },
       },
@@ -7778,62 +6042,33 @@ describe("settings renderer browser environment", () => {
     };
     core.ops.requestRender = ({ content = false, modal = false } = {}) => {
       if (content) renderContent();
-      if (modal && typeof core.renderHooks.modal === "function")
-        core.renderHooks.modal();
+      if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
     };
     renderContent();
 
-    const toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
-    assert.ok(
-      toggle,
-      "expanded animation override row should render a wide-hitbox checkbox",
-    );
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    assert.ok(toggle, "expanded animation override row should render a wide-hitbox checkbox");
 
     toggle.checked = true;
     for (const listener of toggle.eventListeners.change || []) listener();
     await Promise.resolve();
     await Promise.resolve();
-    let resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
-    assert.ok(
-      parent.querySelector(".anim-override-badge-dot"),
-      "wide-hitbox commit should update the summary changed badge in place",
-    );
-    assert.strictEqual(
-      resetButton.disabled,
-      false,
-      "wide-hitbox commit should enable reset affordance in place",
-    );
+    let resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.ok(parent.querySelector(".anim-override-badge-dot"), "wide-hitbox commit should update the summary changed badge in place");
+    assert.strictEqual(resetButton.disabled, false, "wide-hitbox commit should enable reset affordance in place");
 
     toggle.checked = false;
     for (const listener of toggle.eventListeners.change || []) listener();
     await Promise.resolve();
     await Promise.resolve();
-    resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
-    assert.strictEqual(
-      parent.querySelector(".anim-override-badge-dot"),
-      null,
-      "theme-default hitbox commit should clear the changed badge in place",
-    );
-    assert.strictEqual(
-      resetButton.disabled,
-      true,
-      "theme-default hitbox commit should disable reset affordance in place",
-    );
+    resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
+    assert.strictEqual(parent.querySelector(".anim-override-badge-dot"), null, "theme-default hitbox commit should clear the changed badge in place");
+    assert.strictEqual(resetButton.disabled, true, "theme-default hitbox commit should disable reset affordance in place");
 
     assert.strictEqual(payloads.length, 2);
     assert.strictEqual(payloads[0].enabled, true);
     assert.strictEqual(payloads[1].enabled, null);
-    assert.strictEqual(
-      contentRenderCount,
-      1,
-      "wide-hitbox toggle commits should not rebuild the content pane",
-    );
+    assert.strictEqual(contentRenderCount, 1, "wide-hitbox toggle commits should not rebuild the content pane");
   });
 
   it("shows the wide hitbox reset chip for stale overrides that already match the theme default", () => {
@@ -7848,16 +6083,9 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const resetChip = parent
-      .querySelectorAll("button")
-      .find(
-        (button) =>
-          button.textContent === "animOverridesWideHitboxResetToTheme",
-      );
-    assert.ok(
-      resetChip,
-      "wide-hitbox reset chip should render for stale no-op overrides",
-    );
+    const resetChip = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    assert.ok(resetChip, "wide-hitbox reset chip should render for stale no-op overrides");
     assert.strictEqual(resetChip.hidden, false);
     assert.strictEqual(resetChip.disabled, false);
   });
@@ -7880,17 +6108,13 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
     toggle.checked = true;
     for (const listener of toggle.eventListeners.change || []) listener();
     await Promise.resolve();
     await Promise.resolve();
 
-    assert.ok(
-      toasts.some((message) => String(message).includes("unknown error")),
-    );
+    assert.ok(toasts.some((message) => String(message).includes("unknown error")));
   });
 
   it("preserves pending wide hitbox state across full Animation Overrides rerenders", async () => {
@@ -7906,10 +6130,9 @@ describe("settings renderer browser environment", () => {
       runtime,
       modalRoot,
       settingsAPI: {
-        command: () =>
-          new Promise((resolve) => {
-            resolveCommand = resolve;
-          }),
+        command: () => new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
       },
       opsOverrides: {
         fetchAnimationOverridesData: () => {
@@ -7929,81 +6152,39 @@ describe("settings renderer browser environment", () => {
     };
     core.ops.requestRender = ({ content = false, modal = false } = {}) => {
       if (content) renderContent();
-      if (modal && typeof core.renderHooks.modal === "function")
-        core.renderHooks.modal();
+      if (modal && typeof core.renderHooks.modal === "function") core.renderHooks.modal();
     };
     renderContent();
 
-    let toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
-    assert.ok(
-      toggle,
-      "expanded animation override row should render a wide-hitbox checkbox",
-    );
+    let toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    assert.ok(toggle, "expanded animation override row should render a wide-hitbox checkbox");
 
     toggle.checked = true;
     for (const listener of toggle.eventListeners.change || []) listener();
 
     renderContent();
 
-    toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
-    const resetChip = parent
-      .querySelectorAll("button")
-      .find(
-        (button) =>
-          button.textContent === "animOverridesWideHitboxResetToTheme",
-      );
-    let resetButton = parent
-      .querySelectorAll("button")
+    toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const resetChip = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    let resetButton = parent.querySelectorAll("button")
       .find((button) => button.textContent === "animOverridesReset");
     assert.ok(toggle, "wide-hitbox checkbox should still exist after rerender");
-    assert.strictEqual(
-      toggle.checked,
-      true,
-      "pending wide-hitbox toggles should stay on across rerenders",
-    );
-    assert.strictEqual(
-      toggle.disabled,
-      true,
-      "pending wide-hitbox toggles should stay disabled across rerenders",
-    );
-    assert.ok(
-      resetChip,
-      "wide-hitbox reset chip should still exist after rerender",
-    );
-    assert.strictEqual(
-      resetChip.hidden,
-      false,
-      "pending wide-hitbox rerenders should keep the reset chip visible",
-    );
-    assert.strictEqual(
-      resetChip.disabled,
-      true,
-      "pending wide-hitbox rerenders should keep the reset chip disabled",
-    );
-    assert.ok(
-      resetButton,
-      "pending wide-hitbox rerenders should keep the slot reset button mounted",
-    );
-    assert.strictEqual(
-      resetButton.disabled,
-      true,
-      "slot reset should stay disabled while a wide-hitbox edit is pending",
-    );
+    assert.strictEqual(toggle.checked, true, "pending wide-hitbox toggles should stay on across rerenders");
+    assert.strictEqual(toggle.disabled, true, "pending wide-hitbox toggles should stay disabled across rerenders");
+    assert.ok(resetChip, "wide-hitbox reset chip should still exist after rerender");
+    assert.strictEqual(resetChip.hidden, false, "pending wide-hitbox rerenders should keep the reset chip visible");
+    assert.strictEqual(resetChip.disabled, true, "pending wide-hitbox rerenders should keep the reset chip disabled");
+    assert.ok(resetButton, "pending wide-hitbox rerenders should keep the slot reset button mounted");
+    assert.strictEqual(resetButton.disabled, true, "slot reset should stay disabled while a wide-hitbox edit is pending");
 
     resolveCommand({ status: "ok" });
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
-    toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
-    resetButton = parent
-      .querySelectorAll("button")
+    toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    resetButton = parent.querySelectorAll("button")
       .find((button) => button.textContent === "animOverridesReset");
     assert.strictEqual(toggle.checked, true);
     assert.strictEqual(toggle.disabled, false);
@@ -8028,20 +6209,12 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const range = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
-    const toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
     range.value = "260";
     for (const listener of range.eventListeners.change || []) listener();
 
-    assert.strictEqual(
-      toggle.disabled,
-      true,
-      "wide-hitbox toggle should be blocked while timing is pending",
-    );
+    assert.strictEqual(toggle.disabled, true, "wide-hitbox toggle should be blocked while timing is pending");
     toggle.checked = true;
     for (const listener of toggle.eventListeners.change || []) listener();
     await Promise.resolve();
@@ -8049,7 +6222,7 @@ describe("settings renderer browser environment", () => {
     assert.deepStrictEqual(
       calls.map((call) => call.name),
       ["setAnimationOverride"],
-      "blocked wide-hitbox changes should not enqueue a second override command",
+      "blocked wide-hitbox changes should not enqueue a second override command"
     );
   });
 
@@ -8082,27 +6255,19 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const range = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
-    const resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
     range.value = "260";
     for (const listener of range.eventListeners.change || []) listener();
 
-    assert.strictEqual(
-      resetButton.disabled,
-      true,
-      "slot reset should be blocked while timing is pending",
-    );
+    assert.strictEqual(resetButton.disabled, true, "slot reset should be blocked while timing is pending");
     for (const listener of resetButton.eventListeners.click || []) listener();
     await Promise.resolve();
 
     assert.deepStrictEqual(
       calls.map((call) => call.name),
       ["setAnimationOverride"],
-      "blocked slot reset should not enqueue a reset command",
+      "blocked slot reset should not enqueue a reset command"
     );
   });
 
@@ -8124,20 +6289,12 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
-    const range = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
     toggle.checked = true;
     for (const listener of toggle.eventListeners.change || []) listener();
 
-    assert.strictEqual(
-      range.disabled,
-      true,
-      "timing slider should be blocked while wide-hitbox is pending",
-    );
+    assert.strictEqual(range.disabled, true, "timing slider should be blocked while wide-hitbox is pending");
     range.value = "260";
     for (const listener of range.eventListeners.change || []) listener();
     await Promise.resolve();
@@ -8145,7 +6302,7 @@ describe("settings renderer browser environment", () => {
     assert.deepStrictEqual(
       calls.map((call) => call.name),
       ["setWideHitboxOverride"],
-      "blocked timing changes should not enqueue a second override command",
+      "blocked timing changes should not enqueue a second override command"
     );
   });
 
@@ -8156,28 +6313,23 @@ describe("settings renderer browser environment", () => {
       wideHitboxThemeDefault: false,
     });
     const runtime = createAnimOverridesRuntime(card);
-    runtime.pendingWideHitboxOverrideEdits = new Map([
-      [
-        card.id,
-        {
-          seq: 1,
-          currentFile: card.currentFile,
-          themeDefault: false,
-          effectiveEnabled: true,
-          commandEnabled: true,
-        },
-      ],
-    ]);
+    runtime.pendingWideHitboxOverrideEdits = new Map([[
+      card.id,
+      {
+        seq: 1,
+        currentFile: card.currentFile,
+        themeDefault: false,
+        effectiveEnabled: true,
+        commandEnabled: true,
+      },
+    ]]);
     const modalRoot = new FakeElement("div");
     const { core } = loadAnimOverridesTabForTest({ runtime, modalRoot });
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
-    const resetButton = parent
-      .querySelectorAll("button")
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const resetButton = parent.querySelectorAll("button")
       .find((button) => button.textContent === "animOverridesReset");
     assert.strictEqual(runtime.pendingWideHitboxOverrideEdits.size, 0);
     assert.strictEqual(toggle.disabled, false);
@@ -8210,20 +6362,11 @@ describe("settings renderer browser environment", () => {
     core.tabs.animOverrides.render(parent, core);
 
     const summaryDot = parent.querySelector(".anim-override-badge-dot");
-    const resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
 
-    assert.ok(
-      summaryDot,
-      "hitbox-only overrides should still show the overridden summary badge",
-    );
+    assert.ok(summaryDot, "hitbox-only overrides should still show the overridden summary badge");
     assert.ok(resetButton, "expanded row should render a reset button");
-    assert.strictEqual(
-      resetButton.disabled,
-      false,
-      "hitbox-only overrides should enable the reset button",
-    );
+    assert.strictEqual(resetButton.disabled, false, "hitbox-only overrides should enable the reset button");
   });
 
   it("clears hitbox-only overrides when resetting an animation override slot", async () => {
@@ -8251,8 +6394,7 @@ describe("settings renderer browser environment", () => {
         },
       },
       opsOverrides: {
-        fetchAnimationOverridesData: () =>
-          Promise.resolve(runtime.animationOverridesData),
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
       },
       readersOverrides: {
         readThemeOverrideMap: () => ({
@@ -8267,42 +6409,24 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
     assert.ok(resetButton, "expanded row should render a reset button");
-    const resetPromises = (resetButton.eventListeners.click || []).map(
-      (listener) => listener(),
-    );
+    const resetPromises = (resetButton.eventListeners.click || []).map((listener) => listener());
     await Promise.resolve();
     await Promise.resolve();
 
-    const toggleWhileResetPending = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
-    const resetChipWhileResetPending = parent
-      .querySelectorAll("button")
-      .find(
-        (button) =>
-          button.textContent === "animOverridesWideHitboxResetToTheme",
-      );
-    assert.strictEqual(
-      toggleWhileResetPending.disabled,
-      true,
-      "slot reset should block wide-hitbox toggles while pending",
-    );
-    assert.strictEqual(
-      resetChipWhileResetPending.disabled,
-      true,
-      "slot reset should block wide-hitbox reset chips while pending",
-    );
+    const toggleWhileResetPending = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    const resetChipWhileResetPending = parent.querySelectorAll("button")
+      .find((button) => button.textContent === "animOverridesWideHitboxResetToTheme");
+    assert.strictEqual(toggleWhileResetPending.disabled, true, "slot reset should block wide-hitbox toggles while pending");
+    assert.strictEqual(resetChipWhileResetPending.disabled, true, "slot reset should block wide-hitbox reset chips while pending");
 
     resolveAnimationReset({ status: "ok" });
     await Promise.all(resetPromises);
 
     assert.deepStrictEqual(
       calls.map((call) => call.name),
-      ["setAnimationOverride", "setWideHitboxOverride"],
+      ["setAnimationOverride", "setWideHitboxOverride"]
     );
     assert.strictEqual(calls[1].payload.enabled, null);
     assert.strictEqual(runtime.pendingWideHitboxOverrideEdits.size, 0);
@@ -8369,13 +6493,9 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
     assert.ok(resetButton, "expanded row should render a reset button");
-    const resetPromises = (resetButton.eventListeners.click || []).map(
-      (listener) => listener(),
-    );
+    const resetPromises = (resetButton.eventListeners.click || []).map((listener) => listener());
     await Promise.resolve();
     await Promise.resolve();
 
@@ -8384,20 +6504,14 @@ describe("settings renderer browser environment", () => {
 
     assert.deepStrictEqual(
       calls.map((call) => call.name),
-      ["setAnimationOverride", "setWideHitboxOverride"],
+      ["setAnimationOverride", "setWideHitboxOverride"]
     );
     assert.strictEqual(calls[1].payload.file, replacementFile);
     assert.strictEqual(calls[1].payload.enabled, null);
     assert.strictEqual(runtime.pendingWideHitboxOverrideEdits.size, 0);
     assert.strictEqual(runtime.pendingAnimationOverrideResets.size, 0);
-    const toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
-    assert.strictEqual(
-      toggle.checked,
-      true,
-      "base file wide-hitbox default should be restored after reset",
-    );
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
+    assert.strictEqual(toggle.checked, true, "base file wide-hitbox default should be restored after reset");
     assert.strictEqual(toggle.disabled, false);
   });
 
@@ -8419,23 +6533,15 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const range = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
-    const toggle = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "checkbox");
+    const range = parent.querySelectorAll("input").find((input) => input.type === "range");
+    const toggle = parent.querySelectorAll("input").find((input) => input.type === "checkbox");
     range.value = "260";
     for (const listener of range.eventListeners.change || []) listener();
     await Promise.resolve();
     await Promise.resolve();
 
     assert.strictEqual(runtime.pendingAnimationOverrideEdits.size, 0);
-    assert.strictEqual(
-      toggle.disabled,
-      false,
-      "wide-hitbox toggle should unlock after a rejected timing command",
-    );
+    assert.strictEqual(toggle.disabled, false, "wide-hitbox toggle should unlock after a rejected timing command");
     assert.ok(toasts.some((message) => String(message).includes("ipc failed")));
   });
 
@@ -8469,20 +6575,11 @@ describe("settings renderer browser environment", () => {
     core.tabs.animOverrides.render(parent, core);
 
     const summaryDot = parent.querySelector(".anim-override-badge-dot");
-    const resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
 
-    assert.ok(
-      summaryDot,
-      "reaction-only overrides should show the overridden summary badge",
-    );
+    assert.ok(summaryDot, "reaction-only overrides should show the overridden summary badge");
     assert.ok(resetButton, "expanded row should render a reset button");
-    assert.strictEqual(
-      resetButton.disabled,
-      false,
-      "reaction-only overrides should enable the reset button",
-    );
+    assert.strictEqual(resetButton.disabled, false, "reaction-only overrides should enable the reset button");
   });
 
   it("does not keep reset-slot null timing values as pending slider edits", async () => {
@@ -8503,8 +6600,7 @@ describe("settings renderer browser environment", () => {
         },
       },
       opsOverrides: {
-        fetchAnimationOverridesData: () =>
-          Promise.resolve(runtime.animationOverridesData),
+        fetchAnimationOverridesData: () => Promise.resolve(runtime.animationOverridesData),
       },
       readersOverrides: {
         readThemeOverrideMap: () => ({
@@ -8524,9 +6620,7 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const resetButton = parent
-      .querySelectorAll("button")
-      .find((button) => button.textContent === "animOverridesReset");
+    const resetButton = parent.querySelectorAll("button").find((button) => button.textContent === "animOverridesReset");
     assert.ok(resetButton, "expanded row should render a reset button");
     for (const listener of resetButton.eventListeners.click || []) listener();
     await Promise.resolve();
@@ -8535,9 +6629,8 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(payloads.length, 1);
     assert.strictEqual(payloads[0].autoReturnMs, null);
     assert.ok(
-      !core.runtime.pendingAnimationOverrideEdits ||
-        core.runtime.pendingAnimationOverrideEdits.size === 0,
-      "reset-slot null timing values should not leak into the pending timing edit map",
+      !core.runtime.pendingAnimationOverrideEdits || core.runtime.pendingAnimationOverrideEdits.size === 0,
+      "reset-slot null timing values should not leak into the pending timing edit map"
     );
   });
 
@@ -8562,9 +6655,7 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const fadeInRange = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
+    const fadeInRange = parent.querySelectorAll("input").find((input) => input.type === "range");
     fadeInRange.value = "260";
     for (const listener of fadeInRange.eventListeners.input || []) listener();
     for (const listener of fadeInRange.eventListeners.change || []) listener();
@@ -8584,10 +6675,10 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       core.tabs.animOverrides.patchInPlace(
         { themeOverrides: acknowledgedSnapshot.themeOverrides },
-        { previousSnapshot, snapshot: acknowledgedSnapshot },
+        { previousSnapshot, snapshot: acknowledgedSnapshot }
       ),
       true,
-      "the in-flight timing edit broadcast should be safe to reconcile in place",
+      "the in-flight timing edit broadcast should be safe to reconcile in place"
     );
 
     const unrelatedSnapshot = {
@@ -8604,31 +6695,28 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       core.tabs.animOverrides.patchInPlace(
         { themeOverrides: unrelatedSnapshot.themeOverrides },
-        { previousSnapshot, snapshot: unrelatedSnapshot },
+        { previousSnapshot, snapshot: unrelatedSnapshot }
       ),
       false,
-      "unrelated themeOverrides broadcasts should fall through to a full content refresh",
+      "unrelated themeOverrides broadcasts should fall through to a full content refresh"
     );
     assert.strictEqual(fetchCount, 1);
   });
 
   it("routes matching Animation Overrides timing broadcasts through applyChanges in place", () => {
     const core = loadSettingsCoreForTest({
-      getAnimationOverridesData: () =>
-        Promise.resolve({
-          theme: { id: "cloudling", name: "Cloudling" },
-          assets: [],
-          sections: [],
-          cards: [
-            {
-              id: "state:thinking",
-              slotType: "state",
-              stateKey: "thinking",
-              transition: { in: 260, out: 180 },
-            },
-          ],
-          sounds: [],
-        }),
+      getAnimationOverridesData: () => Promise.resolve({
+        theme: { id: "cloudling", name: "Cloudling" },
+        assets: [],
+        sections: [],
+        cards: [{
+          id: "state:thinking",
+          slotType: "state",
+          stateKey: "thinking",
+          transition: { in: 260, out: 180 },
+        }],
+        sounds: [],
+      }),
     });
     core.state.activeTab = "animOverrides";
     core.state.snapshot = {
@@ -8639,14 +6727,12 @@ describe("settings renderer browser environment", () => {
       theme: { id: "cloudling", name: "Cloudling" },
       assets: [],
       sections: [],
-      cards: [
-        {
-          id: "state:thinking",
-          slotType: "state",
-          stateKey: "thinking",
-          transition: { in: 120, out: 180 },
-        },
-      ],
+      cards: [{
+        id: "state:thinking",
+        slotType: "state",
+        stateKey: "thinking",
+        transition: { in: 120, out: 180 },
+      }],
       sounds: [],
     };
     core.runtime.animOverridesSubtab = "animations";
@@ -8687,37 +6773,26 @@ describe("settings renderer browser environment", () => {
       snapshot: nextSnapshot,
     });
 
-    assert.strictEqual(
-      contentRenderCount,
-      0,
-      "matching timing ack should avoid rebuilding content",
-    );
-    assert.strictEqual(
-      modalRenderCount,
-      0,
-      "modal render happens after the async fetch settles",
-    );
+    assert.strictEqual(contentRenderCount, 0, "matching timing ack should avoid rebuilding content");
+    assert.strictEqual(modalRenderCount, 0, "modal render happens after the async fetch settles");
   });
 
   it("routes default-matching timing broadcasts through applyChanges in place", () => {
     const core = loadSettingsCoreForTest({
-      getAnimationOverridesData: () =>
-        Promise.resolve({
-          theme: { id: "cloudling", name: "Cloudling" },
-          assets: [],
-          sections: [],
-          cards: [
-            {
-              id: "state:thinking",
-              slotType: "state",
-              stateKey: "thinking",
-              transition: { in: 150, out: 150 },
-              transitionThemeDefault: { in: 150, out: 150 },
-              hasTransitionOverride: false,
-            },
-          ],
-          sounds: [],
-        }),
+      getAnimationOverridesData: () => Promise.resolve({
+        theme: { id: "cloudling", name: "Cloudling" },
+        assets: [],
+        sections: [],
+        cards: [{
+          id: "state:thinking",
+          slotType: "state",
+          stateKey: "thinking",
+          transition: { in: 150, out: 150 },
+          transitionThemeDefault: { in: 150, out: 150 },
+          hasTransitionOverride: false,
+        }],
+        sounds: [],
+      }),
     });
     core.state.activeTab = "animOverrides";
     core.state.snapshot = {
@@ -8736,16 +6811,14 @@ describe("settings renderer browser environment", () => {
       theme: { id: "cloudling", name: "Cloudling" },
       assets: [],
       sections: [],
-      cards: [
-        {
-          id: "state:thinking",
-          slotType: "state",
-          stateKey: "thinking",
-          transition: { in: 160, out: 150 },
-          transitionThemeDefault: { in: 150, out: 150 },
-          hasTransitionOverride: true,
-        },
-      ],
+      cards: [{
+        id: "state:thinking",
+        slotType: "state",
+        stateKey: "thinking",
+        transition: { in: 160, out: 150 },
+        transitionThemeDefault: { in: 150, out: 150 },
+        hasTransitionOverride: true,
+      }],
       sounds: [],
     };
     core.runtime.animOverridesSubtab = "animations";
@@ -8776,11 +6849,7 @@ describe("settings renderer browser environment", () => {
       snapshot: nextSnapshot,
     });
 
-    assert.strictEqual(
-      contentRenderCount,
-      0,
-      "default timing ack should avoid rebuilding content",
-    );
+    assert.strictEqual(contentRenderCount, 0, "default timing ack should avoid rebuilding content");
   });
 
   it("does not patch mixed-key Animation Overrides broadcasts in place", () => {
@@ -8804,9 +6873,7 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    const fadeInRange = parent
-      .querySelectorAll("input")
-      .find((input) => input.type === "range");
+    const fadeInRange = parent.querySelectorAll("input").find((input) => input.type === "range");
     fadeInRange.value = "260";
     for (const listener of fadeInRange.eventListeners.input || []) listener();
     for (const listener of fadeInRange.eventListeners.change || []) listener();
@@ -8828,10 +6895,10 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(
       core.tabs.animOverrides.patchInPlace(
         { lang: "ja", themeOverrides: snapshot.themeOverrides },
-        { previousSnapshot, snapshot },
+        { previousSnapshot, snapshot }
       ),
       false,
-      "mixed-key broadcasts should fall through so non-timing UI side effects can render",
+      "mixed-key broadcasts should fall through so non-timing UI side effects can render"
     );
     assert.strictEqual(fetchCount, 0);
   });
@@ -8849,10 +6916,7 @@ describe("settings renderer browser environment", () => {
       transition: { in: 260, out: 180 },
       seq: 1,
     });
-    core.state.mountedControls.animOverrideTimingSliders.set(
-      "state:thinking:transition.in",
-      { row: {} },
-    );
+    core.state.mountedControls.animOverrideTimingSliders.set("state:thinking:transition.in", { row: {} });
     core.runtime.pendingAnimationOverrideResets = new Set(["state:thinking"]);
 
     core.ops.applyChanges({
@@ -8866,10 +6930,7 @@ describe("settings renderer browser environment", () => {
 
     assert.strictEqual(core.runtime.pendingAnimationOverrideEdits.size, 0);
     assert.strictEqual(core.runtime.pendingAnimationOverrideResets.size, 0);
-    assert.strictEqual(
-      core.state.mountedControls.animOverrideTimingSliders.size,
-      0,
-    );
+    assert.strictEqual(core.state.mountedControls.animOverrideTimingSliders.size, 0);
   });
 
   it("does not patch Animation Overrides broadcasts without a pending timing edit", () => {
@@ -8880,8 +6941,7 @@ describe("settings renderer browser environment", () => {
       triggerKind: "thinking",
       currentFile: "cloudling-thinking.svg",
       currentFileUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
-      currentFilePreviewUrl:
-        "file:///themes/cloudling/assets/cloudling-thinking.svg",
+      currentFilePreviewUrl: "file:///themes/cloudling/assets/cloudling-thinking.svg",
       bindingLabel: "states.thinking[0]",
       transition: { in: 120, out: 180 },
       supportsAutoReturn: false,
@@ -8928,13 +6988,157 @@ describe("settings renderer browser environment", () => {
     const parent = new FakeElement("main");
     core.tabs.animOverrides.render(parent, core);
 
-    assert.strictEqual(
-      core.tabs.animOverrides.patchInPlace({
-        themeOverrides: { cloudling: { states: {} } },
-      }),
-      false,
-    );
+    assert.strictEqual(core.tabs.animOverrides.patchInPlace({ themeOverrides: { cloudling: { states: {} } } }), false);
     assert.strictEqual(fetchCount, 0);
+  });
+
+  it("re-arms the WSL auto scan when the user leaves the Agents tab before the fetch resolves", async () => {
+    const detectCalls = [];
+    let resolveFirstFetch;
+    const firstFetch = new Promise((resolve) => { resolveFirstFetch = resolve; });
+    const pendingHints = {
+      checkedAt: 1,
+      agents: [],
+      skippedAgentIds: [],
+      wslAgents: [],
+      wslDistros: [],
+      wslPending: true,
+      wslSupported: true,
+    };
+    const scannedHints = { ...pendingHints, wslPending: false, wslDistros: [{ name: "Ubuntu", default: true }] };
+    const harness = loadAgentsTabForTest({
+      snapshot: { agents: {} },
+      settingsAPI: {
+        detectAgentInstallations: (opts) => {
+          detectCalls.push(opts || null);
+          if (detectCalls.length === 1) return firstFetch;
+          if (opts && opts.refreshWsl) return Promise.resolve(scannedHints);
+          return Promise.resolve(pendingHints);
+        },
+      },
+    });
+
+    // Mount fetch fires while the Agents tab is active…
+    const mountFetch = harness.core.ops.fetchAgentInstallationHints();
+    // …but the user switches away before it resolves.
+    harness.core.state.activeTab = "general";
+    resolveFirstFetch(pendingHints);
+    await mountFetch;
+    await Promise.resolve();
+
+    // The auto scan was (correctly) not fired for an absent user, but the
+    // fetched flag must be re-armed or the auto scan is lost for the session.
+    assert.strictEqual(detectCalls.length, 1, "no scan while the tab is not visible");
+    assert.strictEqual(harness.core.runtime.agentInstallationHintsFetched, false,
+      "fetched flag re-armed after the trigger was skipped");
+
+    // Returning to the tab re-fetches and kicks the real WSL scan.
+    harness.core.state.activeTab = "agents";
+    await harness.core.ops.fetchAgentInstallationHints();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const refreshCalls = detectCalls.filter((c) => c && c.refreshWsl === true);
+    assert.strictEqual(refreshCalls.length, 1, "returning to the tab fires the real WSL scan");
+    assert.strictEqual(harness.core.runtime.agentInstallationHints.wslPending, false);
+  });
+
+  it("first Agents-tab fetch that reports wslPending triggers exactly one WSL scan", async () => {
+    const detectCalls = [];
+    const pendingHints = {
+      checkedAt: 1,
+      agents: [],
+      skippedAgentIds: [],
+      wslAgents: [],
+      wslDistros: [],
+      wslPending: true,
+      wslSupported: true,
+    };
+    const scannedHints = { ...pendingHints, wslPending: false };
+    const harness = loadAgentsTabForTest({
+      snapshot: { agents: {} },
+      settingsAPI: {
+        detectAgentInstallations: (opts) => {
+          detectCalls.push(opts || null);
+          if (opts && opts.refreshWsl) return Promise.resolve(scannedHints);
+          return Promise.resolve(pendingHints);
+        },
+      },
+    });
+
+    await harness.core.ops.fetchAgentInstallationHints();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const refreshCalls = detectCalls.filter((c) => c && c.refreshWsl === true);
+    assert.strictEqual(refreshCalls.length, 1, "wslPending fetch on the active tab auto-triggers the scan once");
+    assert.strictEqual(harness.core.runtime.agentInstallationHints.wslPending, false);
+    assert.strictEqual(detectCalls.length, 2, "no further fetch after the scan settles");
+  });
+
+  it("WSL row offers Unpair on hooksFilesPresent even when the deployed badge is dark", () => {
+    function buildHarness(wslEntryOverrides) {
+      const detectionResult = {
+        checkedAt: 2,
+        agents: [{ agentId: "qwen-code", detectedInstalled: true, confidence: "high" }],
+        skippedAgentIds: [],
+        wslAgents: [{
+          agentId: "qwen-code",
+          agentName: "Qwen Code",
+          distro: "Ubuntu",
+          detectedInstalled: true,
+          confidence: "high",
+          reason: "parent-dir",
+          detail: "",
+          wslHome: "/home/u",
+          wslParentDir: "/home/u/.qwen",
+          hooksDeployed: false,
+          hooksFilesPresent: false,
+          ...wslEntryOverrides,
+        }],
+        wslDistros: [{ name: "Ubuntu", default: true }],
+        wslPending: false,
+        wslSupported: true,
+      };
+      const harness = loadAgentsTabForTest({
+        snapshot: {
+          agents: { "qwen-code": { integrationInstalled: false, enabled: false } },
+          dismissedAgentInstallHints: {},
+        },
+        agentMetadata: [
+          { id: "qwen-code", name: "Qwen Code", eventSource: "hook", capabilities: {} },
+        ],
+        settingsAPI: {
+          detectAgentInstallations: () => Promise.resolve(detectionResult),
+        },
+      });
+      harness.core.runtime.agentInstallationHints = detectionResult;
+      harness.core.runtime.agentInstallationHintsFetched = true;
+      harness.core.ops.requestRender({ content: true });
+      return harness;
+    }
+
+    // Paired + registered: badge on, Pair + Unpair buttons.
+    let harness = buildHarness({ hooksDeployed: true, hooksFilesPresent: true });
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-deployed").length, 1);
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-action").length, 2);
+
+    // Files on disk but registration gone (post-Unpair, or the distro was
+    // paired with a non-claude agent that registers in its own config):
+    // the badge goes dark but the Unpair entry point must survive.
+    harness = buildHarness({ hooksDeployed: false, hooksFilesPresent: true });
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-deployed").length, 0,
+      "badge dark without claude-settings registration");
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-action").length, 2,
+      "Unpair stays available while hook files exist");
+
+    // Clean distro: no badge, Pair only.
+    harness = buildHarness({ hooksDeployed: false, hooksFilesPresent: false });
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-deployed").length, 0);
+    assert.strictEqual(harness.content.querySelectorAll(".agent-instance-action").length, 1,
+      "only Pair when nothing is deployed");
   });
 });
 
@@ -8945,7 +7149,7 @@ describe("macOS platform detection (Settings shortcut labels)", () => {
     const source = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     assert.ok(
       source.includes('(navigator.platform || "").startsWith("Mac")'),
-      "settings-ui-core.js must use startsWith('Mac'); word-boundary regex caused #135",
+      "settings-ui-core.js must use startsWith('Mac'); word-boundary regex caused #135"
     );
   });
 

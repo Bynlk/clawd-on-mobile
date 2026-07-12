@@ -50,6 +50,31 @@ function normalizeTmuxClientTarget(value) {
   return /^[\w./:-]+$/.test(text) ? text : null;
 }
 
+// $TMUX is "<socket>,<serverPid>,<sessionN>"; the first field is the socket
+// path used for `tmux -S <socket>` focus. Pure env parse, no subprocess — safe
+// to call from a cache-hit path that skips the full resolve() walk.
+function tmuxSocketFromEnv() {
+  if (!process.env.TMUX) return null;
+  return normalizeTmuxSocketPath(process.env.TMUX.split(",")[0]);
+}
+
+// Liveness probe with ZERO subprocess spawn: process.kill(pid, 0) is a syscall,
+// not a spawn (so it never risks the WindowsTerminal console flash this whole
+// change exists to avoid). ESRCH => process gone; EPERM => alive but not ours.
+// Cannot detect PID reuse (same limitation as src/state.js isProcessAlive) —
+// callers pair it with session-scoped cache invalidation. See
+// docs/plans/plan-issue-627-hook-snapshot-flash-cache.md.
+function processAlive(pid) {
+  const n = Number(pid);
+  if (!Number.isFinite(n) || n <= 0) return false;
+  try {
+    process.kill(n, 0);
+    return true;
+  } catch (e) {
+    return !!(e && e.code === "EPERM");
+  }
+}
+
 // ── getPlatformConfig ────────────────────────────────────────────────────────
 // Returns { terminalNames: Set, systemBoundary: Set, editorMap: Object, editorPathChecks: Array }
 // Options:
@@ -154,7 +179,11 @@ function getWindowsProcessSnapshot(execFileSync) {
     const out = execFileSync(
       "powershell.exe",
       [
-        "-NoProfile", "-NonInteractive", "-Command",
+        // -WindowStyle Hidden is belt-and-suspenders alongside windowsHide:
+        // when Windows Terminal is the OS default terminal app, its console
+        // delegation does not always honor CREATE_NO_WINDOW (#627), and the
+        // in-process flag shortens any window that still leaks through.
+        "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command",
         WINDOWS_PROCESS_SNAPSHOT_SCRIPT,
       ],
       { encoding: "utf8", timeout: 3000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }
@@ -334,13 +363,16 @@ function createPidResolver(options) {
       }
     }
 
-    let tmuxSocket = null;
-    if (process.env.TMUX) {
-      const socketPath = process.env.TMUX.split(",")[0];
-      tmuxSocket = normalizeTmuxSocketPath(socketPath);
-    }
+    const tmuxSocket = tmuxSocketFromEnv();
 
-    _cached = { stablePid: terminalPid || lastGoodPid, agentPid, agentCommandLine, detectedEditor, pidChain, foregroundWtHwnd, tmuxSocket, tmuxClient };
+    // provenance for the cross-process pid cache (#627). snapshotOk = the
+    // Windows Get-CimInstance snapshot actually returned processes; terminalPid
+    // = the raw terminal match BEFORE the `|| lastGoodPid` fallback. Callers use
+    // these to refuse caching a degraded walk (empty snapshot → stablePid
+    // silently decays to process.ppid) instead of reverse-inferring from
+    // stablePid. Non-Windows has no snapshot step, so snapshotOk is trivially true.
+    const snapshotOk = isWin ? !!(winSnapshot && winSnapshot.size > 0) : true;
+    _cached = { stablePid: terminalPid || lastGoodPid, terminalPid, snapshotOk, agentPid, agentCommandLine, detectedEditor, pidChain, foregroundWtHwnd, tmuxSocket, tmuxClient };
     return _cached;
   };
 }
@@ -392,7 +424,10 @@ function readStdinJsonDetailed(options = {}) {
       let payload = {};
       let parseError = null;
       try {
-        const text = raw.toString();
+        let text = raw.toString();
+        // A PowerShell/.NET intermediary can prefix the payload with a UTF-8
+        // BOM (#638); trim() below would hide it but JSON.parse rejects it.
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
         if (text.trim()) payload = JSON.parse(text);
       } catch (err) {
         parseError = String((err && err.message) || "parse error").slice(0, 120);
@@ -445,4 +480,6 @@ module.exports = {
   readStdinJsonDetailed,
   DEFAULT_STDIN_READ_TIMEOUT_MS,
   buildElectronLaunchConfig,
+  tmuxSocketFromEnv,
+  processAlive,
 };

@@ -44,6 +44,9 @@ function createPermissionHarness({ logPath = null } = {}) {
         once: (event, cb) => {
           if (event === "did-finish-load") this._didFinishLoad = cb;
         },
+        on: (event, cb) => {
+          if (event === "render-process-gone") this._renderGoneHandler = cb;
+        },
         send: (...args) => {
           this.sentEvents.push(args);
         },

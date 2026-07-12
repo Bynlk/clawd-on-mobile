@@ -310,6 +310,18 @@ function quoteHookCommandArg(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`;
 }
 
+// WSL detection for the hook command format, mirroring install.js's
+// resolveInstallWslDistro: CLAWD_WSL_DISTRO is injected by the Windows-side
+// one-click deploy, WSL_DISTRO_NAME by WSL init itself. Gated on linux so a
+// stale variable in some other environment cannot flip the format.
+function resolveWslDistroEnv() {
+  if (process.env.CLAWD_WSL_DISTRO) return process.env.CLAWD_WSL_DISTRO;
+  if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
+    return process.env.WSL_DISTRO_NAME;
+  }
+  return null;
+}
+
 function quotePowerShellSingleArg(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
@@ -362,6 +374,22 @@ function extractFirstQuotedToken(command) {
 }
 
 /**
+ * Windows interpreter token that parses in Git Bash, PowerShell, and cmd.
+ * No QUOTED command token parses in all three (`& "..."` is PowerShell-only,
+ * a bare `"..."` is a string literal in PowerShell, and an unquoted backslash
+ * path is eaten by bash), so the token must be unquoted: an absolute path
+ * written with forward slashes when it needs no quoting, and a bare `node`
+ * PATH lookup otherwise (the default install under "C:\Program Files" is on
+ * PATH by the Node installer).
+ */
+function portableWindowsNodeToken(nodeBin) {
+  const raw = String(nodeBin || "").trim();
+  return /^[A-Za-z]:[\\/]/.test(raw) && !NON_PORTABLE_COMMAND_TOKEN_RE.test(raw)
+    ? raw.replace(/\\/g, "/")
+    : "node";
+}
+
+/**
  * Format a Node-based hook command consistently across installers.
  *
  * POSIX hook launchers can execute a plain quoted command. On Windows, some
@@ -370,14 +398,34 @@ function extractFirstQuotedToken(command) {
  * Antigravity) shell out through `cmd.exe /d /s /c <command>`, which mangles
  * any quoted path with a space — those use windowsWrapper:"encoded" to wrap
  * everything in PowerShell -EncodedCommand and bypass cmd's parser entirely.
- * Callers choose the wrapper that matches the target agent while sharing
- * the quoting rules.
+ * Launchers that execute hooks through a POSIX shell on Windows (Qoder CLI
+ * runs command hooks via Git Bash — see issue #597) need
+ * windowsWrapper:"portable": an unquoted forward-slash interpreter token plus
+ * double-quoted arguments, which parses under bash, cmd, and PowerShell-free
+ * spawn paths alike. Same known limit as buildPortableStatuslineCommand:
+ * inside double quotes bash/PowerShell still expand `$` and backticks, so an
+ * install path containing those is rewritten before node sees it — accepted,
+ * since no quoting form is inert in every target shell. Callers choose the
+ * wrapper that matches the target agent while sharing the quoting rules.
  */
 function formatNodeHookCommand(nodeBin, scriptPath, options = {}) {
   const platform = options.platform || process.platform;
   const args = Array.isArray(options.args) ? options.args : [];
   if (platform === "win32" && options.windowsWrapper === "encoded") {
     return buildWindowsEncodedNodeHookCommand(nodeBin, scriptPath, args, options);
+  }
+  if (platform === "win32" && options.windowsWrapper === "portable") {
+    const rest = [String(scriptPath).replace(/\\/g, "/"), ...args].map(quoteHookCommandArg).join(" ");
+    return `${portableWindowsNodeToken(nodeBin)} ${rest}`;
+  }
+  // WSL: plain (unquoted) form. A quoted command without a shell field breaks
+  // hook runners that naive-split on spaces (quotes become part of the
+  // executable name — the root cause of silent WSL hook failures; see
+  // install.js buildCommandHookSpec). Plain works under both naive-split and
+  // sh -c semantics since WSL-side paths contain no spaces.
+  const wslDistro = options.wslDistro !== undefined ? options.wslDistro : resolveWslDistroEnv();
+  if (platform !== "win32" && wslDistro) {
+    return [nodeBin, scriptPath, ...args].join(" ");
   }
   const command = [nodeBin, scriptPath, ...args].map(quoteHookCommandArg).join(" ");
   if (platform !== "win32") return command;
@@ -419,11 +467,7 @@ function buildPortableStatuslineCommand(nodeBin, scriptPath, options = {}) {
   const platform = options.platform || process.platform;
   const script = String(scriptPath).replace(/\\/g, "/");
   if (platform !== "win32") return `"${nodeBin}" "${script}"`;
-  const raw = String(nodeBin || "").trim();
-  const nodeToken = /^[A-Za-z]:[\\/]/.test(raw) && !NON_PORTABLE_COMMAND_TOKEN_RE.test(raw)
-    ? raw.replace(/\\/g, "/")
-    : "node";
-  return `${nodeToken} "${script}"`;
+  return `${portableWindowsNodeToken(nodeBin)} "${script}"`;
 }
 
 /**
@@ -456,6 +500,14 @@ function extractExistingNodeBinFromCommands(commands, marker) {
       const token = match && match[1];
       if (!token || token.includes(marker)) continue;
       if (isAbsoluteCommandToken(token)) return token;
+    }
+    // Portable Windows form (`C:/path/node.exe "script" "arg"`): the
+    // interpreter token is deliberately unquoted, so also accept a bare
+    // absolute first token.
+    const bare = cmd.trim().match(/^(\S+)/);
+    const bareToken = bare && bare[1];
+    if (bareToken && !bareToken.includes(marker) && isAbsoluteCommandToken(bareToken)) {
+      return bareToken;
     }
   }
   return null;
@@ -632,6 +684,7 @@ module.exports = {
   removeMatchingCommandHooks,
   removeMatchingHttpHooks,
   formatNodeHookCommand,
+  resolveWslDistroEnv,
   buildPortableStatuslineCommand,
   buildWindowsEncodedNodeHookCommand,
   decodeWindowsEncodedCommand,
