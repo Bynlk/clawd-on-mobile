@@ -11,6 +11,7 @@ Thumbs.db
 .claude/
 # OpenCode local config
 .opencode/
+.worktrees/
 # Development plans & review notes
 PLAN.md
 PLAN-*.md
@@ -142,4 +143,3 @@ android/build-release.log
 Editor/script backups
 *.bak
 plaintext
-
