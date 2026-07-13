@@ -333,24 +333,33 @@ function createCliRelay(env = process.env) {
   return relay;
 }
 
-module.exports = { createRelayServer, createCliRelay, bearerToken, timingSafeStringEqual };
-
-if (require.main === module) {
-  const BIND_ADDR = process.env.BIND_ADDR || "10.8.0.1";
-  const relay = createCliRelay(process.env);
-
-  relay.listen().then(() => {
-    defaultLog("server_started", { bindAddr: BIND_ADDR, port: relay.address().port });
+function runCli(env = process.env, { processRef = process } = {}) {
+  const bindAddr = env.BIND_ADDR || "10.8.0.1";
+  const relay = createCliRelay(env);
+  const started = relay.listen().then(() => {
+    defaultLog("server_started", { bindAddr, port: relay.address().port });
     console.log(`[relay] 中继服务器启动在端口 ${relay.address().port} (ws://)`);
+    return relay.address();
   }).catch((error) => {
     defaultLog("server_start_failed", { error: error.message });
-    process.exitCode = 1;
+    processRef.exitCode = 1;
+    throw error;
   });
 
   const shutdown = (signal) => {
     defaultLog("shutdown_initiated", { signal });
-    relay.close().then(() => process.exit(0), () => process.exit(1));
+    return relay.close().then(
+      () => processRef.exit(0),
+      () => processRef.exit(1)
+    );
   };
-  process.once("SIGTERM", () => shutdown("SIGTERM"));
-  process.once("SIGINT", () => shutdown("SIGINT"));
+  processRef.once("SIGTERM", () => shutdown("SIGTERM"));
+  processRef.once("SIGINT", () => shutdown("SIGINT"));
+  return { relay, started, shutdown };
+}
+
+module.exports = { createRelayServer, createCliRelay, runCli, bearerToken, timingSafeStringEqual };
+
+if (require.main === module) {
+  runCli();
 }

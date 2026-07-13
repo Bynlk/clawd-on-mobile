@@ -390,9 +390,46 @@ it("production relay retains handshake abuse limits across disconnects", async (
 });
 
 it("production Relay uses the single-phone registry and managed-session envelope", () => {
-  const source = fs.readFileSync(path.join(__dirname, "..", "relay/relay-server.js"), "utf8");
-  assert.match(source, /RelayPairRegistry/);
-  assert.match(source, /pairs\.forward\([^,]+, role, data, ws\)/);
-  assert.match(source, /relay_client_disconnected/);
-  assert.doesNotMatch(source, /pair\.phones\b/);
+  const canonical = fs.readFileSync(path.join(__dirname, "..", "relay/relay-server.js"), "utf8");
+  const root = fs.readFileSync(path.join(__dirname, "..", "relay-server.js"), "utf8");
+  assert.match(canonical, /RelayPairRegistry/);
+  assert.match(canonical, /pairs\.forward\([^,]+, role, data, ws\)/);
+  assert.match(canonical, /relay_client_disconnected/);
+  assert.match(root, /require\(["']\.\/relay\/relay-server["']\)/);
+  for (const source of [canonical, root]) {
+    assert.doesNotMatch(source, /FIXED_TOKEN|searchParams\.get\(["']token|token\.slice|pair\.phones\b/);
+  }
+});
+
+it("both shipped Relay entry points enforce submitted Bearer authentication", async (t) => {
+  const token = "99".repeat(32);
+  for (const relative of ["relay/relay-server.js", "relay-server.js"]) {
+    await t.test(relative, async (t) => {
+      const port = await reservePort();
+      const child = spawn(process.execPath, [path.join(__dirname, "..", relative)], {
+        env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      t.after(() => terminateChild(child));
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`${relative} start timeout`)), 5000);
+        child.stdout.on("data", (data) => {
+          if (String(data).includes("中继服务器启动")) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+        child.once("exit", (code) => reject(new Error(`${relative} exited early: ${code}`)));
+      });
+
+      for (const submitted of [undefined, "aa".repeat(32)]) {
+        const ws = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, submitted);
+        const result = waitForClose(ws);
+        assert.equal(await result, 4001);
+      }
+      const valid = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, token);
+      t.after(() => valid.close());
+      assert.equal(valid.readyState, WebSocket.OPEN);
+    });
+  }
 });

@@ -8,9 +8,14 @@ umask 077
 WG_PORT="${WG_PORT:-51820}"
 WG_SUBNET="${WG_SUBNET:-10.8.0.0/24}"
 RELAY_PORT="${RELAY_PORT:-7891}"
+FORCE_RESET_ALL="${FORCE_RESET_ALL:-0}"
 FORCE_PHONE_KEY="${FORCE_PHONE_KEY:-0}"
 NODE_MIN_MAJOR=18
 NODE_RELEASE="v22.17.0"
+
+# FORCE_PHONE_KEY was the deployer's old reinstall flag. Phone-only replacement is
+# now the management API, so retaining this flag as a full-reset alias is safest.
+if [ "${FORCE_PHONE_KEY}" = "1" ]; then FORCE_RESET_ALL=1; fi
 
 IFACE="clawd"
 WG_DIR="/etc/wireguard"
@@ -24,6 +29,28 @@ RELAY_ENV="/etc/clawd-relay/relay.env"
 UNIT="/etc/systemd/system/clawd-relay.service"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
+TEST_MODE="${CLAWD_INSTALL_TEST_MODE:-0}"
+INSTALL_ROOT=""
+if [ "${TEST_MODE}" = "1" ]; then
+  INSTALL_ROOT="${CLAWD_INSTALL_ROOT:?CLAWD_INSTALL_ROOT is required in test mode}"
+  case "${INSTALL_ROOT}" in /*) ;; *) printf 'invalid test root\n' >&2; exit 64 ;; esac
+  [ "${INSTALL_ROOT}" != "/" ] || { printf 'invalid test root\n' >&2; exit 64; }
+fi
+
+install_path() { printf '%s%s' "${INSTALL_ROOT}" "$1"; }
+WG_DIR_FS="$(install_path "${WG_DIR}")"
+WG_KEY_DIR_FS="$(install_path "${WG_KEY_DIR}")"
+WG_CONF_FS="$(install_path "${WG_CONF}")"
+RELAY_ROOT_FS="$(install_path "${RELAY_ROOT}")"
+APP_DIR_FS="$(install_path "${APP_DIR}")"
+NODE_RUNTIME_DIR_FS="$(install_path "${NODE_RUNTIME_DIR}")"
+RELAY_ETC_FS="$(install_path "${RELAY_ETC}")"
+RELAY_ENV_FS="$(install_path "${RELAY_ENV}")"
+UNIT_FS="$(install_path "${UNIT}")"
+SYSTEMD_RUN_FS="$(install_path "/run/systemd/system")"
+VAR_TMP_FS="$(install_path "/var/tmp")"
+RELEASES_FS="${RELAY_ROOT_FS}/releases"
+
 SUBNET_BASE="${WG_SUBNET%.*/*}"
 SERVER_IP="${SUBNET_BASE}.1"
 PC_IP="${SUBNET_BASE}.2"
@@ -31,9 +58,14 @@ PHONE_IP="${SUBNET_BASE}.3"
 
 log() { printf '[wg-relay] %s\n' "$*" >&2; }
 die() { log "ERROR: $2"; exit "$1"; }
+checkpoint() {
+  if [ "${TEST_MODE}" = "1" ] && [ "${CLAWD_INSTALL_FAIL_STAGE:-}" = "$1" ]; then
+    die 97 "injected failure at $1"
+  fi
+}
 
 SUDO=""
-if [ "$(id -u)" -ne 0 ]; then
+if [ "${TEST_MODE}" != "1" ] && [ "$(id -u)" -ne 0 ]; then
   if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
     SUDO="sudo"
   else
@@ -42,7 +74,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 command -v systemctl >/dev/null 2>&1 || die 15 "systemd is required"
-[ -d /run/systemd/system ] || die 15 "systemd is not running"
+[ -d "${SYSTEMD_RUN_FS}" ] || die 15 "systemd is not running (/run/systemd/system)"
 
 PKG=""
 if command -v apt-get >/dev/null 2>&1; then
@@ -55,20 +87,30 @@ else
   die 10 "supported package manager required (apt/dnf/yum)"
 fi
 
-$SUDO mkdir -p "${RELAY_ROOT}" "${RELAY_ETC}" "${WG_DIR}"
-$SUDO chmod 700 "${RELAY_ETC}" "${WG_DIR}"
-BACKUP_DIR="$($SUDO mktemp -d /var/tmp/clawd-relay-backup.XXXXXX)"
+$SUDO mkdir -p "${RELAY_ROOT_FS}" "${RELAY_ETC_FS}" "${WG_DIR_FS}" "${RELEASES_FS}" "${VAR_TMP_FS}" "$(dirname "${UNIT_FS}")"
+$SUDO chmod 755 "${RELAY_ROOT_FS}" "${RELEASES_FS}"
+$SUDO chmod 700 "${RELAY_ETC_FS}" "${WG_DIR_FS}"
+BACKUP_DIR="$($SUDO mktemp -d "${VAR_TMP_FS}/clawd-relay-backup.XXXXXX")"
 $SUDO chmod 700 "${BACKUP_DIR}"
 COMMITTED=0
+ROLLING_BACK=0
+SERVICE_SNAPSHOT_DONE=0
+FIREWALL_ADDED=""
+TEMP_ITEMS=()
+NEW_RELEASES=()
+OLD_RELEASES=()
 
+remember_temp() { TEMP_ITEMS+=("$1"); }
+remember_release() { NEW_RELEASES+=("$1"); }
+
+item_exists() { $SUDO test -e "$1" || $SUDO test -L "$1"; }
 backup_item() {
   local source="$1" name="$2"
-  if $SUDO test -e "${source}"; then
+  if item_exists "${source}"; then
     $SUDO cp -a "${source}" "${BACKUP_DIR}/${name}"
     $SUDO touch "${BACKUP_DIR}/${name}.present"
   fi
 }
-
 restore_item() {
   local destination="$1" name="$2"
   $SUDO rm -rf "${destination}"
@@ -77,32 +119,85 @@ restore_item() {
   fi
 }
 
-backup_item "${APP_DIR}" app
-backup_item "${NODE_RUNTIME_DIR}" node
-backup_item "${WG_KEY_DIR}" keys
-backup_item "${WG_CONF}" wg-conf
-backup_item "${RELAY_ENV}" relay-env
-backup_item "${UNIT}" relay-unit
+backup_item "${APP_DIR_FS}" app
+backup_item "${NODE_RUNTIME_DIR_FS}" node
+backup_item "${WG_KEY_DIR_FS}" keys
+backup_item "${WG_CONF_FS}" wg-conf
+backup_item "${RELAY_ENV_FS}" relay-env
+backup_item "${UNIT_FS}" relay-unit
 
-rollback_on_exit() {
-  local status=$?
-  if [ "${status}" -ne 0 ] && [ "${COMMITTED}" -ne 1 ]; then
-    set +e
-    log "restoring previous Relay installation"
-    restore_item "${APP_DIR}" app
-    restore_item "${NODE_RUNTIME_DIR}" node
-    restore_item "${WG_KEY_DIR}" keys
-    restore_item "${WG_CONF}" wg-conf
-    restore_item "${RELAY_ENV}" relay-env
-    restore_item "${UNIT}" relay-unit
-    $SUDO systemctl daemon-reload >/dev/null 2>&1
-    $SUDO systemctl restart "wg-quick@${IFACE}" >/dev/null 2>&1
-    $SUDO systemctl restart clawd-relay.service >/dev/null 2>&1
+service_enabled() { $SUDO systemctl is-enabled --quiet "$1" >/dev/null 2>&1 && printf 1 || printf 0; }
+service_active() { $SUDO systemctl is-active --quiet "$1" >/dev/null 2>&1 && printf 1 || printf 0; }
+WG_WAS_ENABLED="$(service_enabled "wg-quick@${IFACE}")"
+WG_WAS_ACTIVE="$(service_active "wg-quick@${IFACE}")"
+RELAY_WAS_ENABLED="$(service_enabled clawd-relay.service)"
+RELAY_WAS_ACTIVE="$(service_active clawd-relay.service)"
+SERVICE_SNAPSHOT_DONE=1
+
+restore_service() {
+  local service="$1" was_enabled="$2" was_active="$3"
+  if [ "${was_enabled}" = 1 ]; then
+    $SUDO systemctl enable "${service}" >/dev/null 2>&1
+  else
+    $SUDO systemctl disable "${service}" >/dev/null 2>&1
   fi
+  if [ "${was_active}" = 1 ]; then
+    $SUDO systemctl restart "${service}" >/dev/null 2>&1
+  else
+    $SUDO systemctl stop "${service}" >/dev/null 2>&1
+  fi
+}
+
+undo_firewall() {
+  case "${FIREWALL_ADDED}" in
+    ufw) $SUDO ufw --force delete allow "${WG_PORT}/udp" >/dev/null 2>&1 ;;
+    firewalld)
+      $SUDO firewall-cmd --permanent --remove-port="${WG_PORT}/udp" >/dev/null 2>&1
+      $SUDO firewall-cmd --reload >/dev/null 2>&1
+      ;;
+    iptables) $SUDO iptables -D INPUT -p udp --dport "${WG_PORT}" -j ACCEPT >/dev/null 2>&1 ;;
+  esac
+}
+
+cleanup_temporaries() {
+  local item
+  for item in "${TEMP_ITEMS[@]:-}"; do [ -z "${item}" ] || $SUDO rm -rf "${item}"; done
+}
+
+rollback() {
+  [ "${ROLLING_BACK}" = 0 ] || return
+  ROLLING_BACK=1
+  set +e
+  log "restoring previous Relay installation"
+  undo_firewall
+  restore_item "${APP_DIR_FS}" app
+  restore_item "${NODE_RUNTIME_DIR_FS}" node
+  restore_item "${WG_KEY_DIR_FS}" keys
+  restore_item "${WG_CONF_FS}" wg-conf
+  restore_item "${RELAY_ENV_FS}" relay-env
+  restore_item "${UNIT_FS}" relay-unit
+  local release
+  for release in "${NEW_RELEASES[@]:-}"; do [ -z "${release}" ] || $SUDO rm -rf "${release}"; done
+  if [ "${SERVICE_SNAPSHOT_DONE}" = 1 ]; then
+    $SUDO systemctl daemon-reload >/dev/null 2>&1
+    restore_service "wg-quick@${IFACE}" "${WG_WAS_ENABLED}" "${WG_WAS_ACTIVE}"
+    restore_service clawd-relay.service "${RELAY_WAS_ENABLED}" "${RELAY_WAS_ACTIVE}"
+  fi
+}
+
+on_exit() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if [ "${status}" -ne 0 ] && [ "${COMMITTED}" -ne 1 ]; then rollback; fi
+  cleanup_temporaries
   $SUDO rm -rf "${BACKUP_DIR}"
   exit "${status}"
 }
-trap rollback_on_exit EXIT
+on_signal() { exit "$1"; }
+trap on_exit EXIT
+trap 'on_signal 129' HUP
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 
 log "step: install-system-dependencies"
 case "${PKG}" in
@@ -122,116 +217,143 @@ command -v wg >/dev/null 2>&1 || die 10 "wireguard-tools installation failed"
 command -v wg-quick >/dev/null 2>&1 || die 10 "wg-quick installation failed"
 
 if ! $SUDO modprobe wireguard 2>/dev/null; then
-  [ -d /sys/module/wireguard ] || die 11 "kernel WireGuard support is unavailable"
+  [ -d "$(install_path "/sys/module/wireguard")" ] || die 11 "kernel WireGuard support is unavailable"
 fi
 
-node_major() {
-  "$1" --version 2>/dev/null | sed -n 's/^v\([0-9][0-9]*\).*/\1/p'
+node_major() { "$1" --version 2>/dev/null | sed -n 's/^v\([0-9][0-9]*\).*/\1/p'; }
+atomic_link() {
+  local target="$1" canonical="$2" temporary="${2}.tmp.$$.$RANDOM"
+  $SUDO ln -s "${target}" "${temporary}"
+  remember_temp "${temporary}"
+  if [ "${TEST_MODE}" = 1 ]; then
+    $SUDO rm -rf "${canonical}"
+    $SUDO mv -f "${temporary}" "${canonical}"
+  else
+    if item_exists "${canonical}" && ! $SUDO test -L "${canonical}"; then $SUDO rm -rf "${canonical}"; fi
+    $SUDO mv -Tf "${temporary}" "${canonical}"
+  fi
+}
+old_release_target() {
+  local canonical="$1" target
+  if $SUDO test -L "${canonical}"; then
+    target="$($SUDO readlink "${canonical}")"
+    case "${target}" in "${RELEASES_FS}"/*) OLD_RELEASES+=("${target}") ;; esac
+  fi
 }
 
-NODE_BIN=""
+NODE_BIN_FS=""
+NODE_BIN_UNIT=""
+SYSTEM_NODE=""
 if command -v node >/dev/null 2>&1; then
-  NODE_VERSION="$(node --version 2>/dev/null || printf '')"
   SYSTEM_NODE="$(command -v node)"
-  SYSTEM_NODE_MAJOR="$(printf '%s' "${NODE_VERSION}" | sed -n 's/^v\([0-9][0-9]*\).*/\1/p')"
-  if [ -n "${SYSTEM_NODE_MAJOR}" ] && [ "${SYSTEM_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
-    NODE_BIN="${SYSTEM_NODE}"
+  SYSTEM_NODE_MAJOR="$(node_major "${SYSTEM_NODE}")"
+  if [ -n "${SYSTEM_NODE_MAJOR}" ] && [ "${SYSTEM_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ] && [ "${CLAWD_INSTALL_FORCE_BUNDLED_NODE:-0}" != 1 ]; then
+    NODE_BIN_FS="${SYSTEM_NODE}"
+    NODE_BIN_UNIT="${SYSTEM_NODE}"
   fi
 fi
-if [ -z "${NODE_BIN}" ] && [ -x "${NODE_RUNTIME_DIR}/bin/node" ]; then
-  BUNDLED_NODE_MAJOR="$(node_major "${NODE_RUNTIME_DIR}/bin/node")"
+if [ -z "${NODE_BIN_FS}" ] && [ "${CLAWD_INSTALL_FORCE_BUNDLED_NODE:-0}" != 1 ] && [ -x "${NODE_RUNTIME_DIR_FS}/bin/node" ]; then
+  BUNDLED_NODE_MAJOR="$(node_major "${NODE_RUNTIME_DIR_FS}/bin/node")"
   if [ -n "${BUNDLED_NODE_MAJOR}" ] && [ "${BUNDLED_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
-    NODE_BIN="${NODE_RUNTIME_DIR}/bin/node"
+    NODE_BIN_FS="${NODE_RUNTIME_DIR_FS}/bin/node"
+    NODE_BIN_UNIT="${NODE_RUNTIME_DIR}/bin/node"
   fi
 fi
 
-if [ -z "${NODE_BIN}" ]; then
+if [ -z "${NODE_BIN_FS}" ]; then
   log "step: install-verified-node"
-  case "$(uname -m)" in
-    x86_64|amd64) NODE_ARCH="x64" ;;
-    aarch64|arm64) NODE_ARCH="arm64" ;;
-    *) die 10 "unsupported Node architecture" ;;
-  esac
-  NODE_ARCHIVE="node-${NODE_RELEASE}-linux-${NODE_ARCH}.tar.gz"
-  NODE_URL="https://nodejs.org/dist/${NODE_RELEASE}"
-  DOWNLOAD_DIR="$(mktemp -d)"
-  curl -fsSLo "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" "${NODE_URL}/${NODE_ARCHIVE}" || die 10 "Node download failed"
-  curl -fsSLo "${DOWNLOAD_DIR}/SHASUMS256.txt" "${NODE_URL}/SHASUMS256.txt" || die 10 "Node checksum download failed"
-  grep "  ${NODE_ARCHIVE}$" "${DOWNLOAD_DIR}/SHASUMS256.txt" > "${DOWNLOAD_DIR}/expected.sha256" || die 10 "Node checksum missing"
-  (cd "${DOWNLOAD_DIR}" && sha256sum -c expected.sha256 >/dev/null) || die 10 "Node checksum verification failed"
-  NODE_TMP="$($SUDO mktemp -d /opt/clawd-relay/.node.tmp.XXXXXX)"
-  $SUDO tar -xzf "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" -C "${NODE_TMP}" --strip-components=1
-  CANDIDATE_NODE_MAJOR="$(node_major "${NODE_TMP}/bin/node")"
+  RELEASE_ID="$(date +%s).$$.$RANDOM"
+  NODE_RELEASE_FS="${RELEASES_FS}/node-${RELEASE_ID}"
+  remember_release "${NODE_RELEASE_FS}"
+  if [ "${TEST_MODE}" = 1 ] && [ -n "${CLAWD_INSTALL_TEST_NODE_SOURCE:-}" ]; then
+    $SUDO mkdir -p "${NODE_RELEASE_FS}/bin"
+    $SUDO ln -s "${CLAWD_INSTALL_TEST_NODE_SOURCE}" "${NODE_RELEASE_FS}/bin/node"
+  else
+    case "$(uname -m)" in
+      x86_64|amd64) NODE_ARCH="x64" ;;
+      aarch64|arm64) NODE_ARCH="arm64" ;;
+      *) die 10 "unsupported Node architecture" ;;
+    esac
+    NODE_ARCHIVE="node-${NODE_RELEASE}-linux-${NODE_ARCH}.tar.gz"
+    NODE_URL="https://nodejs.org/dist/${NODE_RELEASE}"
+    DOWNLOAD_DIR="$(mktemp -d)"; remember_temp "${DOWNLOAD_DIR}"
+    curl -fsSLo "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" "${NODE_URL}/${NODE_ARCHIVE}" || die 10 "Node download failed"
+    curl -fsSLo "${DOWNLOAD_DIR}/SHASUMS256.txt" "${NODE_URL}/SHASUMS256.txt" || die 10 "Node checksum download failed"
+    grep "  ${NODE_ARCHIVE}$" "${DOWNLOAD_DIR}/SHASUMS256.txt" > "${DOWNLOAD_DIR}/expected.sha256" || die 10 "Node checksum missing"
+    (cd "${DOWNLOAD_DIR}" && sha256sum -c expected.sha256 >/dev/null) || die 10 "Node checksum verification failed"
+    $SUDO mkdir -p "${NODE_RELEASE_FS}"
+    $SUDO tar -xzf "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" -C "${NODE_RELEASE_FS}" --strip-components=1
+  fi
+  $SUDO chmod 755 "${NODE_RELEASE_FS}"
+  CANDIDATE_NODE_MAJOR="$(node_major "${NODE_RELEASE_FS}/bin/node")"
   [ -n "${CANDIDATE_NODE_MAJOR}" ] && [ "${CANDIDATE_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ] || die 10 "installed Node is too old"
-  $SUDO rm -rf "${NODE_RUNTIME_DIR}"
-  $SUDO mv "${NODE_TMP}" "${NODE_RUNTIME_DIR}"
-  rm -rf "${DOWNLOAD_DIR}"
-  NODE_BIN="${NODE_RUNTIME_DIR}/bin/node"
+  old_release_target "${NODE_RUNTIME_DIR_FS}"
+  atomic_link "${NODE_RELEASE_FS}" "${NODE_RUNTIME_DIR_FS}"
+  checkpoint node-runtime-switch
+  NODE_BIN_FS="${NODE_RUNTIME_DIR_FS}/bin/node"
+  NODE_BIN_UNIT="${NODE_RUNTIME_DIR}/bin/node"
 fi
-[ "$(node_major "${NODE_BIN}")" -ge "${NODE_MIN_MAJOR}" ] || die 10 "Node >=18 is required"
+[ "$(node_major "${NODE_BIN_FS}")" -ge "${NODE_MIN_MAJOR}" ] || die 10 "Node >=18 is required"
 
 log "step: install-relay-app"
-[ -f "${SCRIPT_DIR}/app/relay-server.js" ] || die 16 "uploaded Relay app is incomplete"
-[ -f "${SCRIPT_DIR}/app/pair-registry.js" ] || die 16 "uploaded Relay app is incomplete"
-[ -f "${SCRIPT_DIR}/app/relay-token-store.js" ] || die 16 "uploaded Relay app is incomplete"
-[ -f "${SCRIPT_DIR}/app/wg-management.js" ] || die 16 "uploaded Relay app is incomplete"
-[ -f "${SCRIPT_DIR}/app/node_modules/ws/package.json" ] || die 16 "bundled node_modules/ws is missing"
-APP_TMP="$($SUDO mktemp -d /opt/clawd-relay/.app.tmp.XXXXXX)"
-$SUDO cp -a "${SCRIPT_DIR}/app/." "${APP_TMP}/"
-$SUDO find "${APP_TMP}" -type d -exec chmod 755 {} +
-$SUDO find "${APP_TMP}" -type f -exec chmod 644 {} +
-"${NODE_BIN}" --check "${APP_TMP}/relay-server.js" >/dev/null
-NODE_PATH="${APP_TMP}/node_modules" "${NODE_BIN}" -e 'require(process.argv[1]); require("ws")' "${APP_TMP}/relay-server.js" >/dev/null
-$SUDO rm -rf "${APP_DIR}"
-$SUDO mv "${APP_TMP}" "${APP_DIR}"
+APP_SOURCE="${SCRIPT_DIR}/app"
+if [ "${TEST_MODE}" = 1 ] && [ -n "${CLAWD_INSTALL_APP_SOURCE:-}" ]; then APP_SOURCE="${CLAWD_INSTALL_APP_SOURCE}"; fi
+[ -f "${APP_SOURCE}/relay-server.js" ] || die 16 "uploaded Relay app is incomplete"
+[ -f "${APP_SOURCE}/pair-registry.js" ] || die 16 "uploaded Relay app is incomplete"
+[ -f "${APP_SOURCE}/relay-token-store.js" ] || die 16 "uploaded Relay app is incomplete"
+[ -f "${APP_SOURCE}/wg-management.js" ] || die 16 "uploaded Relay app is incomplete"
+[ -f "${APP_SOURCE}/node_modules/ws/package.json" ] || die 16 "bundled node_modules/ws is missing"
+RELEASE_ID="$(date +%s).$$.$RANDOM"
+APP_RELEASE_FS="${RELEASES_FS}/app-${RELEASE_ID}"
+remember_release "${APP_RELEASE_FS}"
+$SUDO mkdir -p "${APP_RELEASE_FS}"
+$SUDO cp -a "${APP_SOURCE}/." "${APP_RELEASE_FS}/"
+$SUDO find "${APP_RELEASE_FS}" -type d -exec chmod 755 {} +
+$SUDO find "${APP_RELEASE_FS}" -type f -exec chmod 644 {} +
+"${NODE_BIN_FS}" --check "${APP_RELEASE_FS}/relay-server.js" >/dev/null
+NODE_PATH="${APP_RELEASE_FS}/node_modules" "${NODE_BIN_FS}" -e 'require(process.argv[1]); require("ws")' "${APP_RELEASE_FS}/relay-server.js" >/dev/null
+old_release_target "${APP_DIR_FS}"
+atomic_link "${APP_RELEASE_FS}" "${APP_DIR_FS}"
+checkpoint app-release-switch
 
 log "step: discover-endpoint"
 ENDPOINT_HOST_VALUE="${ENDPOINT_HOST:-}"
-if [ -z "${ENDPOINT_HOST_VALUE}" ]; then
-  ENDPOINT_HOST_VALUE="$(curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || true)"
-fi
-if [ -z "${ENDPOINT_HOST_VALUE}" ]; then
-  ENDPOINT_HOST_VALUE="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
-fi
+if [ -z "${ENDPOINT_HOST_VALUE}" ]; then ENDPOINT_HOST_VALUE="$(curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || true)"; fi
+if [ -z "${ENDPOINT_HOST_VALUE}" ]; then ENDPOINT_HOST_VALUE="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"; fi
 [ -n "${ENDPOINT_HOST_VALUE}" ] || die 17 "public endpoint discovery failed"
 case "${ENDPOINT_HOST_VALUE}" in *[!A-Za-z0-9.:-]*) die 17 "public endpoint is invalid" ;; esac
 ENDPOINT="${ENDPOINT_HOST_VALUE}:${WG_PORT}"
 
 log "step: generate-wireguard-keys"
-$SUDO mkdir -p "${WG_KEY_DIR}"
-$SUDO chmod 700 "${WG_KEY_DIR}"
-
+$SUDO mkdir -p "${WG_KEY_DIR_FS}"
+$SUDO chmod 700 "${WG_KEY_DIR_FS}"
 generate_key_pair() {
-  local name="$1" force="$2"
-  local private_path="${WG_KEY_DIR}/${name}.key"
-  local public_path="${WG_KEY_DIR}/${name}.pub"
-  if [ "${force}" != "1" ] && $SUDO test -s "${private_path}" && $SUDO test -s "${public_path}"; then
-    return
-  fi
+  local name="$1" force="$2" private_path="${WG_KEY_DIR_FS}/$1.key" public_path="${WG_KEY_DIR_FS}/$1.pub"
+  if [ "${force}" != 1 ] && $SUDO test -s "${private_path}" && $SUDO test -s "${public_path}"; then return; fi
   local private_tmp public_tmp
-  private_tmp="$($SUDO mktemp "${WG_KEY_DIR}/.${name}.key.tmp.XXXXXX")"
-  public_tmp="$($SUDO mktemp "${WG_KEY_DIR}/.${name}.pub.tmp.XXXXXX")"
+  private_tmp="$($SUDO mktemp "${WG_KEY_DIR_FS}/.${name}.key.tmp.XXXXXX")"; remember_temp "${private_tmp}"
+  public_tmp="$($SUDO mktemp "${WG_KEY_DIR_FS}/.${name}.pub.tmp.XXXXXX")"; remember_temp "${public_tmp}"
   wg genkey | $SUDO tee "${private_tmp}" >/dev/null
   $SUDO sh -c "wg pubkey < '${private_tmp}' > '${public_tmp}'"
   $SUDO chmod 600 "${private_tmp}" "${public_tmp}"
   $SUDO mv "${private_tmp}" "${private_path}"
   $SUDO mv "${public_tmp}" "${public_path}"
 }
+generate_key_pair server "${FORCE_RESET_ALL}"
+generate_key_pair pc "${FORCE_RESET_ALL}"
+generate_key_pair phone "${FORCE_RESET_ALL}"
+$SUDO find "${WG_KEY_DIR_FS}" -type f -exec chmod 600 {} +
+checkpoint wireguard-keys
 
-generate_key_pair server 0
-generate_key_pair pc 0
-generate_key_pair phone "${FORCE_PHONE_KEY}"
-$SUDO find "${WG_KEY_DIR}" -type f -exec chmod 600 {} +
-
-SERVER_PRIV="$($SUDO cat "${WG_KEY_DIR}/server.key")"
-SERVER_PUB="$($SUDO cat "${WG_KEY_DIR}/server.pub")"
-PC_PRIV="$($SUDO cat "${WG_KEY_DIR}/pc.key")"
-PC_PUB="$($SUDO cat "${WG_KEY_DIR}/pc.pub")"
-PHONE_PRIV="$($SUDO cat "${WG_KEY_DIR}/phone.key")"
-PHONE_PUB="$($SUDO cat "${WG_KEY_DIR}/phone.pub")"
+SERVER_PRIV="$($SUDO cat "${WG_KEY_DIR_FS}/server.key")"
+SERVER_PUB="$($SUDO cat "${WG_KEY_DIR_FS}/server.pub")"
+PC_PRIV="$($SUDO cat "${WG_KEY_DIR_FS}/pc.key")"
+PC_PUB="$($SUDO cat "${WG_KEY_DIR_FS}/pc.pub")"
+PHONE_PRIV="$($SUDO cat "${WG_KEY_DIR_FS}/phone.key")"
+PHONE_PUB="$($SUDO cat "${WG_KEY_DIR_FS}/phone.pub")"
 
 log "step: write-wireguard-config"
-WG_CONF_TMP="$($SUDO mktemp --suffix=.conf /etc/wireguard/.clawd.tmp.XXXXXX)"
+WG_CONF_TMP="$($SUDO mktemp "${WG_DIR_FS}/.clawd.tmp.XXXXXX.conf")"; remember_temp "${WG_CONF_TMP}"
 printf '%s\n' "[Interface]
 Address = ${SERVER_IP}/24
 ListenPort = ${WG_PORT}
@@ -248,29 +370,28 @@ PublicKey = ${PHONE_PUB}
 AllowedIPs = ${PHONE_IP}/32" | $SUDO tee "${WG_CONF_TMP}" >/dev/null
 $SUDO chmod 600 "${WG_CONF_TMP}"
 $SUDO wg-quick strip "${WG_CONF_TMP}" >/dev/null || die 18 "WireGuard config validation failed"
-$SUDO mv "${WG_CONF_TMP}" "${WG_CONF}"
-$SUDO chmod 600 "${WG_CONF}"
-
-if command -v ss >/dev/null 2>&1 && ss -lun 2>/dev/null | grep -q ":${WG_PORT} "; then
-  $SUDO wg show "${IFACE}" >/dev/null 2>&1 || die 12 "WireGuard UDP port is already in use"
-fi
+$SUDO mv "${WG_CONF_TMP}" "${WG_CONF_FS}"
+$SUDO chmod 600 "${WG_CONF_FS}"
+checkpoint wireguard-config
 
 read_env_value() {
   local key="$1"
-  if $SUDO test -f "${RELAY_ENV}"; then
-    $SUDO sed -n "s/^${key}=//p" "${RELAY_ENV}"
-  fi
+  if $SUDO test -f "${RELAY_ENV_FS}"; then $SUDO sed -n "s/^${key}=//p" "${RELAY_ENV_FS}"; fi
 }
-
 RELAY_TOKEN="$(read_env_value RELAY_TOKEN)"
 MANAGEMENT_TOKEN="$(read_env_value MANAGEMENT_TOKEN)"
-if ! [[ "${RELAY_TOKEN}" =~ ^[0-9a-fA-F]{64}$ ]]; then RELAY_TOKEN="$(openssl rand -hex 32)"; fi
-if ! [[ "${MANAGEMENT_TOKEN}" =~ ^[0-9a-fA-F]{64}$ ]]; then MANAGEMENT_TOKEN="$(openssl rand -hex 32)"; fi
-if [ "${RELAY_TOKEN,,}" = "${MANAGEMENT_TOKEN,,}" ]; then MANAGEMENT_TOKEN="$(openssl rand -hex 32)"; fi
-[ "${RELAY_TOKEN,,}" != "${MANAGEMENT_TOKEN,,}" ] || die 19 "token generation failed"
+if [ "${FORCE_RESET_ALL}" = 1 ] || ! [[ "${RELAY_TOKEN}" =~ ^[0-9a-fA-F]{64}$ ]]; then RELAY_TOKEN="$(openssl rand -hex 32)"; fi
+if [ "${FORCE_RESET_ALL}" = 1 ] || ! [[ "${MANAGEMENT_TOKEN}" =~ ^[0-9a-fA-F]{64}$ ]]; then MANAGEMENT_TOKEN="$(openssl rand -hex 32)"; fi
+RELAY_TOKEN_NORMALIZED="$(printf '%s' "${RELAY_TOKEN}" | tr '[:upper:]' '[:lower:]')"
+MANAGEMENT_TOKEN_NORMALIZED="$(printf '%s' "${MANAGEMENT_TOKEN}" | tr '[:upper:]' '[:lower:]')"
+if [ "${RELAY_TOKEN_NORMALIZED}" = "${MANAGEMENT_TOKEN_NORMALIZED}" ]; then
+  MANAGEMENT_TOKEN="$(openssl rand -hex 32)"
+  MANAGEMENT_TOKEN_NORMALIZED="$(printf '%s' "${MANAGEMENT_TOKEN}" | tr '[:upper:]' '[:lower:]')"
+fi
+[ "${RELAY_TOKEN_NORMALIZED}" != "${MANAGEMENT_TOKEN_NORMALIZED}" ] || die 19 "token generation failed"
 
 log "step: write-relay-environment"
-RELAY_ENV_TMP="$($SUDO mktemp /etc/clawd-relay/.relay.env.tmp.XXXXXX)"
+RELAY_ENV_TMP="$($SUDO mktemp "${RELAY_ETC_FS}/.relay.env.tmp.XXXXXX")"; remember_temp "${RELAY_ENV_TMP}"
 printf '%s\n' "RELAY_TOKEN=${RELAY_TOKEN}
 MANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}
 BIND_ADDR=${SERVER_IP}
@@ -287,11 +408,12 @@ PHONE_PUBLIC_KEY_PATH=${WG_KEY_DIR}/phone.pub
 SERVER_PUBLIC_KEY_PATH=${WG_KEY_DIR}/server.pub
 RELAY_ENV_PATH=${RELAY_ENV}" | $SUDO tee "${RELAY_ENV_TMP}" >/dev/null
 $SUDO chmod 600 "${RELAY_ENV_TMP}"
-$SUDO mv "${RELAY_ENV_TMP}" "${RELAY_ENV}"
-$SUDO chmod 600 "${RELAY_ENV}"
+$SUDO mv "${RELAY_ENV_TMP}" "${RELAY_ENV_FS}"
+$SUDO chmod 600 "${RELAY_ENV_FS}"
+checkpoint relay-environment
 
 log "step: write-systemd-unit"
-UNIT_TMP="$($SUDO mktemp /etc/systemd/system/.clawd-relay.service.tmp.XXXXXX)"
+UNIT_TMP="$($SUDO mktemp "$(dirname "${UNIT_FS}")/.clawd-relay.service.tmp.XXXXXX")"; remember_temp "${UNIT_TMP}"
 printf '%s\n' "[Unit]
 Description=Clawd Relay
 Requires=wg-quick@${IFACE}.service
@@ -300,7 +422,7 @@ After=network-online.target wg-quick@${IFACE}.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/clawd-relay/relay.env
-ExecStart=${NODE_BIN} ${APP_DIR}/relay-server.js
+ExecStart=${NODE_BIN_UNIT} ${APP_DIR}/relay-server.js
 Restart=always
 RestartSec=3
 UMask=0077
@@ -308,19 +430,28 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target" | $SUDO tee "${UNIT_TMP}" >/dev/null
 $SUDO chmod 644 "${UNIT_TMP}"
-$SUDO mv "${UNIT_TMP}" "${UNIT}"
+$SUDO mv "${UNIT_TMP}" "${UNIT_FS}"
+checkpoint systemd-unit
 
 log "step: firewall"
 if command -v ufw >/dev/null 2>&1 && $SUDO ufw status >/dev/null 2>&1; then
-  $SUDO ufw allow "${WG_PORT}/udp" >/dev/null || die 14 "ufw update failed"
+  if ! $SUDO ufw status | grep -Fq "${WG_PORT}/udp"; then
+    $SUDO ufw allow "${WG_PORT}/udp" >/dev/null || die 14 "ufw update failed"
+    FIREWALL_ADDED=ufw
+  fi
 elif command -v firewall-cmd >/dev/null 2>&1 && $SUDO firewall-cmd --state >/dev/null 2>&1; then
-  $SUDO firewall-cmd --permanent --add-port="${WG_PORT}/udp" >/dev/null || die 14 "firewalld update failed"
-  $SUDO firewall-cmd --reload >/dev/null || die 14 "firewalld reload failed"
+  if ! $SUDO firewall-cmd --permanent --query-port="${WG_PORT}/udp" >/dev/null 2>&1; then
+    $SUDO firewall-cmd --permanent --add-port="${WG_PORT}/udp" >/dev/null || die 14 "firewalld update failed"
+    $SUDO firewall-cmd --reload >/dev/null || die 14 "firewalld reload failed"
+    FIREWALL_ADDED=firewalld
+  fi
 elif command -v iptables >/dev/null 2>&1; then
   if ! $SUDO iptables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null; then
     $SUDO iptables -A INPUT -p udp --dport "${WG_PORT}" -j ACCEPT || die 14 "iptables update failed"
+    FIREWALL_ADDED=iptables
   fi
 fi
+checkpoint firewall-rule
 
 log "step: enable-and-verify-services"
 $SUDO systemctl daemon-reload || die 20 "systemd reload failed"
@@ -328,10 +459,12 @@ $SUDO systemctl enable "wg-quick@${IFACE}" >/dev/null || die 20 "WireGuard enabl
 $SUDO systemctl restart "wg-quick@${IFACE}" || die 20 "WireGuard start failed"
 $SUDO systemctl is-enabled --quiet "wg-quick@${IFACE}" || die 20 "WireGuard is not enabled"
 $SUDO systemctl is-active --quiet "wg-quick@${IFACE}" || die 20 "WireGuard is not active"
+checkpoint wireguard-service
 $SUDO systemctl enable clawd-relay.service >/dev/null || die 20 "Relay enable failed"
 $SUDO systemctl restart clawd-relay.service || die 20 "Relay start failed"
 $SUDO systemctl is-enabled --quiet clawd-relay.service || die 20 "Relay is not enabled"
 $SUDO systemctl is-active --quiet clawd-relay.service || die 20 "Relay is not active"
+checkpoint relay-service
 
 PC_CONF="[Interface]
 PrivateKey = ${PC_PRIV}
@@ -351,11 +484,7 @@ PublicKey = ${SERVER_PUB}
 Endpoint = ${ENDPOINT}
 AllowedIPs = ${WG_SUBNET}
 PersistentKeepalive = 25"
-
-json_string() {
-  "${NODE_BIN}" -e 'let value="";process.stdin.setEncoding("utf8");process.stdin.on("data",c=>value+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(value)));'
-}
-
+json_string() { "${NODE_BIN_FS}" -e 'let value="";process.stdin.setEncoding("utf8");process.stdin.on("data",c=>value+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(value)));'; }
 ENDPOINT_JSON="$(printf '%s' "${ENDPOINT}" | json_string)"
 SUBNET_JSON="$(printf '%s' "${WG_SUBNET}" | json_string)"
 RELAY_URL_JSON="$(printf 'ws://%s:%s' "${SERVER_IP}" "${RELAY_PORT}" | json_string)"
@@ -366,8 +495,14 @@ MANAGEMENT_TOKEN_JSON="$(printf '%s' "${MANAGEMENT_TOKEN}" | json_string)"
 READBACK_JSON="$(printf '{"schemaVersion":1,"endpoint":%s,"subnet":%s,"relayUrl":%s,"pcConfig":%s,"phoneConfig":%s,"relayToken":%s,"managementToken":%s}' \
   "${ENDPOINT_JSON}" "${SUBNET_JSON}" "${RELAY_URL_JSON}" "${PC_CONFIG_JSON}" \
   "${PHONE_CONFIG_JSON}" "${RELAY_TOKEN_JSON}" "${MANAGEMENT_TOKEN_JSON}")"
+checkpoint readback
 COMMITTED=1
 printf '<<<CLAWD_JSON>>>'
 printf '%s' "${READBACK_JSON}"
 printf '<<<END_CLAWD_JSON>>>\n'
+
+# Old successful releases are no longer needed after the readback transaction commits.
+for old_release in "${OLD_RELEASES[@]:-}"; do
+  [ -z "${old_release}" ] || [ "${old_release}" = "${APP_RELEASE_FS}" ] || $SUDO rm -rf "${old_release}"
+done
 log "done"

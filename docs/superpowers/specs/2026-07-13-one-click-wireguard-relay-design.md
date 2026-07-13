@@ -127,7 +127,7 @@ SSH 密码只作为本次部署调用中的短生命周期引用，无论成功�
 
 ### 4.3 VPS 安装结果
 
-安装器支持 apt、dnf、yum，并要求 systemd。它必须幂等，重复执行时复用服务器和 PC 密钥，除非执行“重新部署并重置全部密钥”。
+安装器支持 apt、dnf、yum，并要求 systemd。它必须幂等：默认重复执行复用服务器、PC、手机三组密钥和 Relay/管理两枚 Token；只有显式 `FORCE_RESET_ALL=1` 才同时重置上述全部秘密。兼容旧 SSH 部署参数时，`FORCE_PHONE_KEY=1` 等价于全量重置；日常只更换手机必须使用管理 API，不得借此重生成服务器或 PC 密钥。
 
 固定目录：
 
@@ -146,7 +146,7 @@ SSH 密码只作为本次部署调用中的短生命周期引用，无论成功�
 
 防火墙只新增 `51820/udp`。安装器不打开 `7891/tcp`。云厂商安全组不受 VPS 内脚本控制；若握手超时，UI 明确提示用户在云控制台放行所选 UDP 端口。
 
-配置文件先写临时文件、验证后原子替换。修复/重部署失败时保留上一份可工作的配置和服务。
+配置文件先写同目录临时文件、验证后原子替换。Relay app 和缺失/过旧时安装的 Node runtime 写入版本化 release 目录，再原子切换 `/opt/clawd-relay/app`、`/opt/clawd-relay/node` canonical symlink。安装器在任何变更前记录两个服务各自的 enabled/active 状态和现有防火墙规则；失败或信号中断时恢复旧文件、release 指针和服务状态，只删除本轮新增的防火墙规则，并清理本轮临时目录。
 
 ### 4.4 部署回传
 
@@ -286,7 +286,7 @@ POST /api/manage/phone/rotate
 6. 返回新手机配置和新 Relay Token给 PC。
 7. PC 加密保存新 Token，重连 Relay，并生成新二维码。
 
-只要第 1 至 4 步没有全部成功，就不提交轮换；旧配置继续工作。成功后旧手机同时失去 WireGuard Peer 和 Relay Token，即使保存了旧二维码也无法连接。日常重新配对不使用 SSH。
+同一个管理实例把完整的 snapshot→commit/rollback 事务串行化；后一请求只能在前一请求提交或回滚后取快照，前一请求失败不会阻塞队列。只要第 1 至 4 步没有全部成功，就不提交轮换；旧配置继续工作。成功后旧手机同时失去 WireGuard Peer 和 Relay Token，即使保存了旧二维码也无法连接。连续成功轮换会逐次关闭每个被取代 Token 的 pair。日常重新配对不使用 SSH。
 
 ## 9. Relay 行为
 
@@ -449,7 +449,12 @@ POST /api/manage/phone/rotate
 - 管理 API GREEN：只接受精确 `10.8.0.2` 或其规范 IPv4-mapped 地址，管理 token 使用 timing-safe 比较；`GET /api/manage/status` 和 `POST /api/manage/phone/rotate` 共用 Relay 私网端口，POST 仅接受小型版本 1 JSON，旧 `/api/start`、`/api/stop` 返回 404。管理与 token 测试 21/21 通过。
 - Installer RED：`node --test test/install-wg-relay-script.test.js` 退出码 1；9 项中 7 项按预期失败，证明旧脚本会静默跳过 systemd/Relay、没有 Node 校验安装、未安装完整 bundle、未写严格 env 和未验证服务。自审再以 3/3 预期失败锁定可执行位、OpenSSL 依赖和 readback 构造前过早提交。
 - Installer 实现：systemd、上传 app、bundled `node_modules/ws`、WireGuard 和 Node >=18 均为硬前置；Node 缺失或过旧时下载固定 Node 22 archive 并以官方 SHA-256 清单校验。Relay app 安装到 `/opt/clawd-relay/app`，env、WG 配置和 key 文件均为 `0600`；unit 使用 `/etc/clawd-relay/relay.env` 并提供 PC/phone IP、WG/密钥路径和 endpoint。只开放 WireGuard UDP，两个服务均执行 enable/restart/is-enabled/is-active 硬验证，失败恢复旧 app/config/unit/service 状态。
-- Installer GREEN：`bash -n relay/install-wg-relay.sh` 退出码 0；installer source/fixture 12/12 通过。固定 Node archive URL 以 HTTP 200 实际验证存在。
+- Installer 初版 GREEN 的准确证据仅为 12/12 项 source contract（静态源码契约）通过，不能作为幂等、回滚或真实 shell 执行证明；固定 Node archive URL 的 HTTP 200 也只证明该归档当时存在。
 - mixed-case Token 回归 RED/GREEN：Task 2 明确保留 mixed-case hex token；新增 token-store 用例先观察 lowercasing 失败，再改为保留原 token 字节、仅在“两个 token 是否同值”判断时忽略 hex 大小写，筛选测试 2/2 通过。
-- 邻近回归：`bash -n relay/install-wg-relay.sh && node --test test/relay-auth-management.test.js test/relay-server-bind.test.js test/relay-managed-session-forwarding.test.js test/install-wg-relay-script.test.js test/wg-relay-bundle.test.js test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 0；178 项全部通过，0 失败、0 跳过；`git diff --check` 退出码 0。
-- 全量基线：`npm test` 退出码 1；失败集中在本 Task owned files 之外的既有 permission sanitizer、README 多语言文件缺失、HTTP server/settings renderer/update bubble 等测试。Task 3 与直接邻近 178 项均独立全绿，不以基线失败掩盖新增回归，也不越界修改无关文件。
+- 事务串行化 RED：两个可控 deferred 并发用例运行 2 项、失败 2 项，证明第二次轮换会在第一次事务尚未结束时进入生成/应用阶段。GREEN 后 2/2 通过：第二次快照包含第一次已提交手机公钥，按顺序关闭旧 Token 与第一次新 Token；第一次失败后第二次仍可成功。
+- 双入口 RED/GREEN：新增规范入口 `runCli`、根入口兼容 wrapper 以及两个真实 spawn 严格 Bearer 回归；RED 时根入口缺失 Bearer 返回旧 `4000` 且规范入口未导出 `runCli`，GREEN 后新增 5/5 项通过。两个入口均不再含 query-token fallback、Token 前缀日志、`FIXED_TOKEN` 或 `pair.phones`。
+- Installer 可执行夹具 RED：加入实际执行上传脚本、隔离文件系统 root 和命令 shim 后，15 项中 12 项静态 source contract 通过、3 项可执行用例按预期失败，失败点均为旧脚本不识别测试隔离入口；未触碰生产绝对路径。
+- Installer 可执行夹具 GREEN：17/17 项通过，其中 13 项是 source contract，4 项是真实 shell fixture。可执行证据覆盖首次安装、默认重跑复用全部密钥/Token、`FORCE_RESET_ALL=1` 与旧 `FORCE_PHONE_KEY=1` 全量重置、10 个 mutation checkpoint 逐阶段失败恢复、已有防火墙规则保留、本轮新增规则撤销、enabled/active 独立恢复、版本化 app/node symlink 及无临时/失败 release 残留；静态契约不再被称为幂等或回滚证明。
+- 非 root 部署权限 RED/GREEN：新增 executable fixture 断言先以 1/1 失败证明 `umask 077` 会把代码/runtime release 根目录留为 `0700`；修复后 `/opt/clawd-relay` 与 Node release 为 `0755`，秘密目录和文件仍为 `0700`/`0600`，筛选用例 1/1 通过。
+- 当前聚焦验证：`bash -n relay/install-wg-relay.sh` 退出码 0；指定四个 Task 3 测试文件退出码 0，Relay 三文件 44/44、Installer 17/17。Task 2 邻接 bundle/SSH/deploy 128/128，排除既有越界 i18n 基线后的 11 个 Relay/mobile 邻近文件 242/242；`git diff --check` 退出码 0。
+- 扩大邻近范围时，`test/settings-tab-wg-relay.test.js` 仍有 2 个既有失败：外部 `settings-i18n.js` 的 `sidebarWgRelay` 为 0/5。该文件不在 Task 3 授权范围，本次不以越界修改掩盖基线失败；聚焦 Task 3 为 0 失败。

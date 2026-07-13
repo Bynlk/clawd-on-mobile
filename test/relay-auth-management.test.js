@@ -19,6 +19,13 @@ const NEW_PHONE_PRIVATE = Buffer.alloc(32, 3).toString("base64");
 const NEW_PHONE_PUBLIC = Buffer.alloc(32, 4).toString("base64");
 const SERVER_PUBLIC = Buffer.alloc(32, 5).toString("base64");
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+
 function loadCreateRelayServer() {
   assert.match(RELAY_SERVER_SOURCE, /createRelayServer/, "relay server must expose a factory");
   const { createRelayServer } = require(RELAY_SERVER_PATH);
@@ -162,6 +169,95 @@ function createManagementFixture(t, options = {}) {
     endpoint: "203.0.113.10:51820",
   });
   return { management, tokenStore, pairs, paths, oldFiles, calls, currentToken: () => activeToken };
+}
+
+function createConcurrentManagementFixture(t, { failFirst = false } = {}) {
+  const { createWgManagement } = loadManagementModules();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-wg-management-concurrent-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const paths = {
+    wgConfigPath: path.join(dir, "clawd.conf"),
+    phonePrivateKeyPath: path.join(dir, "phone.key"),
+    phonePublicKeyPath: path.join(dir, "phone.pub"),
+    serverPublicKeyPath: path.join(dir, "server.pub"),
+  };
+  fs.writeFileSync(paths.wgConfigPath, oldWgConfig(), { mode: 0o600 });
+  fs.writeFileSync(paths.phonePrivateKeyPath, `${OLD_PHONE_PRIVATE}\n`, { mode: 0o600 });
+  fs.writeFileSync(paths.phonePublicKeyPath, `${OLD_PHONE_PUBLIC}\n`, { mode: 0o600 });
+  fs.writeFileSync(paths.serverPublicKeyPath, `${SERVER_PUBLIC}\n`, { mode: 0o600 });
+
+  const keyPairs = [
+    {
+      privateKey: Buffer.alloc(32, 7).toString("base64"),
+      publicKey: Buffer.alloc(32, 8).toString("base64"),
+    },
+    {
+      privateKey: Buffer.alloc(32, 9).toString("base64"),
+      publicKey: Buffer.alloc(32, 10).toString("base64"),
+    },
+  ];
+  const relayTokens = ["77".repeat(32), "88".repeat(32)];
+  const firstStarted = deferred();
+  const releaseFirst = deferred();
+  const calls = [];
+  const applyArgs = [];
+  const closedTokens = [];
+  const activeConnections = new Set([RELAY_TOKEN]);
+  let generationIndex = 0;
+  let relayTokenIndex = 0;
+  let activeToken = RELAY_TOKEN;
+  const tokenStore = {
+    current: () => activeToken,
+    managementToken: () => MANAGEMENT_TOKEN,
+    rotate(next) {
+      activeToken = next;
+      activeConnections.add(next);
+    },
+    restore(previous) { activeToken = previous; },
+  };
+  const pairs = {
+    closeToken(token) {
+      closedTokens.push(token);
+      activeConnections.delete(token);
+      return true;
+    },
+  };
+  const management = createWgManagement({
+    fs,
+    command: async (_file, args) => {
+      calls.push(`apply-${applyArgs.length + 1}`);
+      applyArgs.push(args);
+      return { stdout: "" };
+    },
+    generateKeyPair: async () => {
+      const index = generationIndex++;
+      calls.push(`generate-${index + 1}`);
+      if (index === 0) {
+        firstStarted.resolve();
+        await releaseFirst.promise;
+        if (failFirst) throw new Error("first generation failed");
+      }
+      return keyPairs[index];
+    },
+    generateRelayToken: () => relayTokens[relayTokenIndex++],
+    tokenStore,
+    pairs,
+    paths,
+    wgInterface: "clawd",
+    pcIp: "10.8.0.2",
+    phoneIp: "10.8.0.3",
+    subnet: "10.8.0.0/24",
+    endpoint: "203.0.113.10:51820",
+  });
+  const context = {
+    remoteAddress: "10.8.0.2",
+    authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+    body: { version: 1 },
+  };
+  return {
+    management, context, firstStarted, releaseFirst, calls, applyArgs,
+    closedTokens, activeConnections, keyPairs, relayTokens,
+  };
 }
 
 function connect(relay, role, token) {
@@ -337,6 +433,43 @@ describe("Relay token store", () => {
 });
 
 describe("WireGuard phone rotation transaction", () => {
+  it("serializes complete rotations so the second snapshots the first committed state", async (t) => {
+    const fixture = createConcurrentManagementFixture(t);
+    const first = fixture.management.rotatePhone(fixture.context);
+    await fixture.firstStarted.promise;
+    const second = fixture.management.rotatePhone(fixture.context);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(fixture.calls, ["generate-1"]);
+    fixture.releaseFirst.resolve();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    assert.equal(firstResult.relayToken, fixture.relayTokens[0]);
+    assert.equal(secondResult.relayToken, fixture.relayTokens[1]);
+    assert.equal(fixture.applyArgs.length, 2);
+    assert.ok(fixture.applyArgs[0].includes(OLD_PHONE_PUBLIC));
+    assert.ok(fixture.applyArgs[1].includes(fixture.keyPairs[0].publicKey));
+    assert.deepEqual(fixture.closedTokens, [RELAY_TOKEN, fixture.relayTokens[0]]);
+    assert.deepEqual([...fixture.activeConnections], [fixture.relayTokens[1]]);
+  });
+
+  it("continues the serialized queue after a failed rotation", async (t) => {
+    const fixture = createConcurrentManagementFixture(t, { failFirst: true });
+    const first = fixture.management.rotatePhone(fixture.context);
+    await fixture.firstStarted.promise;
+    const second = fixture.management.rotatePhone(fixture.context);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(fixture.calls, ["generate-1"]);
+    fixture.releaseFirst.resolve();
+    await assert.rejects(first, /rotation_failed/);
+    const secondResult = await second;
+
+    assert.equal(secondResult.relayToken, fixture.relayTokens[0]);
+    assert.deepEqual(fixture.calls, ["generate-1", "generate-2", "apply-1"]);
+    assert.deepEqual(fixture.closedTokens, [RELAY_TOKEN]);
+  });
+
   it("commits in order and returns a complete Task 2-compatible phone config", async (t) => {
     const fixture = createManagementFixture(t);
     const result = await fixture.management.rotatePhone({

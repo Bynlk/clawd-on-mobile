@@ -158,7 +158,7 @@ function createWgManagement({
     return { version: 1, status: "ok" };
   }
 
-  async function rotatePhone(context) {
+  async function executeRotation(context) {
     authorize(context);
     validateBody(context.body);
 
@@ -244,6 +244,13 @@ function createWgManagement({
       `AllowedIPs = ${subnet}\n` +
       `PersistentKeepalive = 25`;
     return { version: 1, phoneConfig, relayToken: candidate.relayToken };
+  }
+
+  let rotationQueue = Promise.resolve();
+  function rotatePhone(context) {
+    const operation = rotationQueue.then(() => executeRotation(context));
+    rotationQueue = operation.catch(() => {});
+    return operation;
   }
 
   return Object.freeze({ authorize, status, rotatePhone });
