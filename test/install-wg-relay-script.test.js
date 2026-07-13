@@ -118,6 +118,13 @@ describe("persistent WireGuard Relay installer source contracts", () => {
     assert.doesNotMatch(SOURCE, /(?:ufw|firewall-cmd|iptables)[^\n]*(?:RELAY_PORT|7891)[^\n]*(?:tcp|TCP)/);
   });
 
+  it("persists 0600 ownership metadata and migrates only installer-owned firewall state", () => {
+    assert.match(SOURCE, /FIREWALL_METADATA/);
+    assert.match(SOURCE, /chmod 600[^\n]*FIREWALL_METADATA/);
+    assert.match(SOURCE, /OLD_FIREWALL_BACKEND/);
+    assert.match(SOURCE, /remove_obsolete_firewall/);
+  });
+
   it("uses same-directory temp-file renames and emits strict schemaVersion 1 readback", () => {
     assert.match(SOURCE, /mktemp[^\n]*RELAY_ETC_FS/);
     assert.match(SOURCE, /mv[^\n]*RELAY_ENV_TMP[^\n]*RELAY_ENV_FS/);
@@ -139,6 +146,7 @@ describe("persistent WireGuard Relay installer source contracts", () => {
     assert.ok(committedIndex > readbackIndex);
     assert.match(SOURCE, /printf '%s' "\$\{READBACK_JSON\}"/);
   });
+
 });
 
 const MUTATION_STAGES = [
@@ -149,6 +157,7 @@ const MUTATION_STAGES = [
   "relay-environment",
   "systemd-unit",
   "firewall-rule",
+  "firewall-migration",
   "wireguard-service",
   "relay-service",
   "readback",
@@ -314,8 +323,10 @@ case \"$command\" in
     if [ "$service" = clawd-relay-firewall ]; then
       unit="$CLAWD_INSTALL_ROOT/etc/systemd/system/clawd-relay-firewall.service"
       grep -q '^ExecStart=.*iptables.*ip6tables' "$unit"
-      iptables -C INPUT -p udp --dport 51820 -j ACCEPT 2>/dev/null || iptables -A INPUT -p udp --dport 51820 -j ACCEPT
-      ip6tables -C INPUT -p udp --dport 51820 -j ACCEPT 2>/dev/null || ip6tables -A INPUT -p udp --dport 51820 -j ACCEPT
+      firewall_port="$(sed -n 's/.*--dport \\([0-9][0-9]*\\).*/\\1/p' "$unit" | head -1)"
+      [ -n "$firewall_port" ]
+      iptables -C INPUT -p udp --dport "$firewall_port" -j ACCEPT 2>/dev/null || iptables -A INPUT -p udp --dport "$firewall_port" -j ACCEPT
+      ip6tables -C INPUT -p udp --dport "$firewall_port" -j ACCEPT 2>/dev/null || ip6tables -A INPUT -p udp --dport "$firewall_port" -j ACCEPT
     fi
     active=active
     ;;
@@ -331,10 +342,13 @@ printf '%s %s\\n' \"$enabled\" \"$active\" > \"$file\"
 rule=\"$STATE_DIR/firewall-udp\"
 case \"\${1:-}\" in
   status)
+    if [ \"\${CLAWD_TEST_UFW_INACTIVE:-0}\" = 1 ]; then printf 'Status: inactive\\n'; exit 0; fi
     [ \"\${CLAWD_TEST_FIREWALL:-ufw}\" = ufw ] || exit 1
+    printf 'Status: active\\n'
     if [ -f \"$rule\" ]; then
-      printf '%s/udp ALLOW Anywhere\\n' \"$(cat \"$rule\")\"
-      printf '%s/udp (v6) ALLOW Anywhere (v6)\\n' \"$(cat \"$rule\")\"
+      while IFS= read -r port; do
+        [ -z \"$port\" ] || printf '%s/udp ALLOW Anywhere\\n%s/udp (v6) ALLOW Anywhere (v6)\\n' \"$port\" \"$port\"
+      done < \"$rule\"
     else
       case \"\${CLAWD_TEST_UFW_STATUS:-empty}\" in
         allow) printf '51820/udp ALLOW Anywhere\\n51820/udp (v6) ALLOW Anywhere (v6)\\n' ;;
@@ -344,16 +358,29 @@ case \"\${1:-}\" in
       esac
     fi
     ;;
-  allow) printf '%s' \"\${2%/udp}\" > \"$rule\"; printf 'add\\n' >> \"$STATE_DIR/ufw-operations\" ;;
+  allow)
+    port=\"\${2%/udp}\"
+    { [ ! -f \"$rule\" ] || ! grep -qx \"$port\" \"$rule\"; } && printf '%s\\n' \"$port\" >> \"$rule\"
+    printf 'add\\n' >> \"$STATE_DIR/ufw-operations\"
+    ;;
   --force)
-    [ \"\${2:-}\" = delete ] && [ \"\${3:-}\" = allow ] && rm -f \"$rule\" && printf 'remove\\n' >> \"$STATE_DIR/ufw-operations\"
+    if [ \"\${2:-}\" = delete ] && [ \"\${3:-}\" = allow ]; then
+      port=\"\${4%/udp}\"
+      if [ -f \"$rule\" ]; then
+        grep -vx \"$port\" \"$rule\" > \"$rule.next\" || true
+        if [ -s \"$rule.next\" ]; then mv \"$rule.next\" \"$rule\"; else rm -f \"$rule\" \"$rule.next\"; fi
+      fi
+      printf 'remove\\n' >> \"$STATE_DIR/ufw-operations\"
+    fi
     ;;
   *) exit 2 ;;
 esac
 `);
   writeExecutable(path.join(binDir, "firewall-cmd"), `${prelude}
-[ \"\${CLAWD_TEST_FIREWALL:-ufw}\" = firewalld ] || exit 1
 rule=\"$STATE_DIR/firewalld-permanent-udp\"
+runtime=\"$STATE_DIR/firewalld-runtime-udp\"
+known=\"$STATE_DIR/firewalld-known\"
+if [ \"\${CLAWD_TEST_FIREWALL:-ufw}\" = firewalld ]; then touch \"$known\"; else [ -f \"$known\" ] || exit 1; fi
 case \"\${1:-}\" in
   --state) printf 'running\\n' ;;
   --permanent)
@@ -375,18 +402,29 @@ case \"\${1:-}\" in
     count=0; [ ! -f \"$count_file\" ] || count=$(cat \"$count_file\")
     count=$((count + 1)); printf '%s' \"$count\" > \"$count_file\"
     if [ \"\${CLAWD_TEST_FIREWALLD_FAIL_FIRST_RELOAD:-0}\" = 1 ] && [ \"$count\" = 1 ]; then exit 1; fi
+    if [ -f \"$rule\" ]; then cp \"$rule\" \"$runtime\"; else rm -f \"$runtime\"; fi
     ;;
+  --query-port=*) [ -f \"$runtime\" ] ;;
   *) exit 2 ;;
 esac
 `);
   const iptablesShim = `${prelude}
-[ "\${CLAWD_TEST_FIREWALL:-ufw}" = iptables ] || exit 2
 family="$(basename "$0")"
 rule="$STATE_DIR/$family-udp"
+[ "\${CLAWD_TEST_FIREWALL:-ufw}" = iptables ] || [ -f "$rule" ] || exit 2
 case "\${1:-}" in
-  -C) [ -f "$rule" ] ;;
-  -A) printf '%s' "\${6:-}" > "$rule"; printf 'add\\n' >> "$STATE_DIR/$family-operations" ;;
-  -D) rm -f "$rule"; printf 'remove\\n' >> "$STATE_DIR/$family-operations" ;;
+  -C) [ -f "$rule" ] && grep -qx "\${6:-}" "$rule" ;;
+  -A)
+    { [ ! -f "$rule" ] || ! grep -qx "\${6:-}" "$rule"; } && printf '%s\\n' "\${6:-}" >> "$rule"
+    printf 'add\\n' >> "$STATE_DIR/$family-operations"
+    ;;
+  -D)
+    if [ -f "$rule" ]; then
+      grep -vx "\${6:-}" "$rule" > "$rule.next" || true
+      if [ -s "$rule.next" ]; then mv "$rule.next" "$rule"; else rm -f "$rule" "$rule.next"; fi
+    fi
+    printf 'remove\\n' >> "$STATE_DIR/$family-operations"
+    ;;
   *) exit 2 ;;
 esac
 `;
@@ -528,7 +566,7 @@ function createExecutableFixture(t) {
     CLAWD_INSTALL_TEST_NODE_MANIFEST: nodeFixture.manifest,
     CLAWD_INSTALL_TEST_SMOKE_START: smokeControl,
     CLAWD_INSTALL_FORCE_BUNDLED_NODE: "1",
-    ENDPOINT_HOST: "198.51.100.40",
+    ENDPOINT_HOST: "8.8.4.4",
     WG_SUBNET: "10.8.0.0/24",
   };
 
@@ -551,7 +589,7 @@ function createExecutableFixture(t) {
         cwd: path.dirname(INSTALLER_PATH),
         env: { ...env, ...extraEnv },
         encoding: "utf8",
-        timeout: 20_000,
+        timeout: 60_000,
       });
     },
   };
@@ -568,6 +606,110 @@ function installedSecrets(root) {
     relayToken: value("RELAY_TOKEN"),
     managementToken: value("MANAGEMENT_TOKEN"),
   };
+}
+
+function installedFirewallMetadata(root) {
+  const file = path.join(root, "etc", "clawd-relay", "firewall.env");
+  const values = Object.fromEntries(fs.readFileSync(file, "utf8").trim().split("\n").map((line) => line.split("=", 2)));
+  return { file, values };
+}
+
+function validatePrivilegedIntegration({
+  env,
+  platform = process.platform,
+  uid = typeof process.getuid === "function" ? process.getuid() : -1,
+  markerPath = "/root/.clawd-relay-disposable-vps",
+  expectedMarkerUid = 0,
+} = {}) {
+  if (!env || env.CLAWD_RUN_PRIVILEGED_INSTALL_INTEGRATION !== "1") return { enabled: false };
+  if (platform !== "linux") throw new Error("privileged integration requires Linux");
+  if (uid !== 0) throw new Error("privileged integration requires root");
+  const nonce = env.CLAWD_PRIVILEGED_VPS_NONCE;
+  if (typeof nonce !== "string" || !/^[a-f0-9]{32,128}$/.test(nonce)) {
+    throw new Error("CLAWD_PRIVILEGED_VPS_NONCE is required");
+  }
+  let stat;
+  try { stat = fs.lstatSync(markerPath); } catch { throw new Error("disposable VPS marker is required"); }
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== expectedMarkerUid) {
+    throw new Error("disposable VPS marker must be a root-owned regular file");
+  }
+  if ((stat.mode & 0o777) !== 0o600) throw new Error("disposable VPS marker must be mode 0600");
+  const markerNonce = fs.readFileSync(markerPath, "utf8").trim();
+  if (markerNonce !== nonce) throw new Error("disposable VPS marker nonce does not match");
+  return { enabled: true, markerPath };
+}
+
+const PRIVILEGED_INSTALL_PATHS = [
+  "/opt/clawd-relay",
+  "/etc/clawd-relay",
+  "/etc/wireguard/clawd",
+  "/etc/wireguard/clawd.conf",
+  "/etc/systemd/system/clawd-relay.service",
+  "/etc/systemd/system/clawd-relay-firewall.service",
+  "/run/lock/clawd-relay.lock",
+];
+
+function runPrivilegedCommand(file, args, { allowFailure = false } = {}) {
+  const result = childProcess.spawnSync(file, args, { encoding: "utf8" });
+  if (!allowFailure && result.status !== 0) {
+    throw new Error(`${path.basename(file)} cleanup command failed`);
+  }
+  return result;
+}
+
+function cleanupPrivilegedInstall(metadata) {
+  runPrivilegedCommand("systemctl", ["stop", "clawd-relay.service"], { allowFailure: true });
+  runPrivilegedCommand("systemctl", ["disable", "clawd-relay.service"], { allowFailure: true });
+  runPrivilegedCommand("systemctl", ["stop", "wg-quick@clawd.service"], { allowFailure: true });
+  runPrivilegedCommand("systemctl", ["disable", "wg-quick@clawd.service"], { allowFailure: true });
+  runPrivilegedCommand("systemctl", ["stop", "clawd-relay-firewall.service"], { allowFailure: true });
+  runPrivilegedCommand("systemctl", ["disable", "clawd-relay-firewall.service"], { allowFailure: true });
+
+  if (metadata) {
+    const port = metadata.PORT;
+    if (metadata.BACKEND === "ufw" && (metadata.IPV4 === "1" || metadata.IPV6 === "1")) {
+      runPrivilegedCommand("ufw", ["--force", "delete", "allow", `${port}/udp`]);
+    } else if (metadata.BACKEND === "firewalld" && (metadata.IPV4 === "1" || metadata.IPV6 === "1")) {
+      runPrivilegedCommand("firewall-cmd", ["--permanent", `--remove-port=${port}/udp`]);
+      runPrivilegedCommand("firewall-cmd", ["--reload"]);
+    } else if (metadata.BACKEND === "iptables") {
+      if (metadata.IPV4 === "1") {
+        runPrivilegedCommand("iptables", ["-D", "INPUT", "-p", "udp", "--dport", port, "-j", "ACCEPT"]);
+      }
+      if (metadata.IPV6 === "1") {
+        runPrivilegedCommand("ip6tables", ["-D", "INPUT", "-p", "udp", "--dport", port, "-j", "ACCEPT"]);
+      }
+    }
+  }
+  for (const target of PRIVILEGED_INSTALL_PATHS) fs.rmSync(target, { recursive: true, force: true });
+  runPrivilegedCommand("systemctl", ["daemon-reload"]);
+}
+
+function verifyPrivilegedCleanup(metadata) {
+  for (const target of PRIVILEGED_INSTALL_PATHS) assert.equal(fs.existsSync(target), false, target);
+  assert.deepEqual(
+    fs.readdirSync("/var/tmp").filter((name) => name.startsWith("clawd-relay-backup.")),
+    [],
+  );
+  for (const service of ["clawd-relay.service", "wg-quick@clawd.service", "clawd-relay-firewall.service"]) {
+    assert.notEqual(runPrivilegedCommand("systemctl", ["is-active", "--quiet", service], { allowFailure: true }).status, 0);
+    assert.notEqual(runPrivilegedCommand("systemctl", ["is-enabled", "--quiet", service], { allowFailure: true }).status, 0);
+  }
+  if (!metadata) return;
+  const port = metadata.PORT;
+  if (metadata.BACKEND === "ufw" && (metadata.IPV4 === "1" || metadata.IPV6 === "1")) {
+    const status = runPrivilegedCommand("ufw", ["status"]).stdout.split(/\r?\n/);
+    assert.equal(status.some((line) => line.trim().startsWith(`${port}/udp`) && /\bALLOW\b/.test(line)), false);
+  } else if (metadata.BACKEND === "firewalld" && (metadata.IPV4 === "1" || metadata.IPV6 === "1")) {
+    assert.notEqual(runPrivilegedCommand("firewall-cmd", ["--permanent", `--query-port=${port}/udp`], { allowFailure: true }).status, 0);
+  } else if (metadata.BACKEND === "iptables") {
+    if (metadata.IPV4 === "1") {
+      assert.notEqual(runPrivilegedCommand("iptables", ["-C", "INPUT", "-p", "udp", "--dport", port, "-j", "ACCEPT"], { allowFailure: true }).status, 0);
+    }
+    if (metadata.IPV6 === "1") {
+      assert.notEqual(runPrivilegedCommand("ip6tables", ["-C", "INPUT", "-p", "udp", "--dport", port, "-j", "ACCEPT"], { allowFailure: true }).status, 0);
+    }
+  }
 }
 
 function snapshotTree(root) {
@@ -927,6 +1069,83 @@ exit 0
     assert.equal(fs.existsSync(path.join(ipv6.stateDir, "ufw-operations")), false);
   });
 
+  it("falls through an inactive UFW installation to active firewalld", (t) => {
+    const fixture = createExecutableFixture(t);
+    const result = fixture.run({
+      CLAWD_TEST_FIREWALL: "firewalld",
+      CLAWD_TEST_UFW_INACTIVE: "1",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.existsSync(path.join(fixture.stateDir, "firewalld-permanent-udp")), true);
+    assert.equal(fs.existsSync(path.join(fixture.stateDir, "ufw-operations")), false);
+    assert.equal(installedFirewallMetadata(fixture.root).values.BACKEND, "firewalld");
+  });
+
+  it("repairs firewalld permanent/runtime drift before declaring success", (t) => {
+    const fixture = createExecutableFixture(t);
+    fs.writeFileSync(path.join(fixture.stateDir, "firewalld-permanent-udp"), "51820/udp");
+    const result = fixture.run({ CLAWD_TEST_FIREWALL: "firewalld" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readFileSync(path.join(fixture.stateDir, "firewalld-runtime-udp"), "utf8"), "51820/udp");
+    assert.equal(fs.readFileSync(path.join(fixture.stateDir, "firewalld-reload-count"), "utf8"), "1");
+    assert.equal(fs.existsSync(path.join(fixture.stateDir, "firewalld-operations")), false);
+  });
+
+  it("removes only obsolete owned UFW rules after a verified WG port transition", (t) => {
+    const fixture = createExecutableFixture(t);
+    const first = fixture.run();
+    assert.equal(first.status, 0, first.stderr);
+    const firstMetadata = installedFirewallMetadata(fixture.root);
+    assert.equal(fs.statSync(firstMetadata.file).mode & 0o777, 0o600);
+    assert.deepEqual(firstMetadata.values, {
+      BACKEND: "ufw", PORT: "51820", IPV4: "1", IPV6: "1", UNIT: "0",
+    });
+
+    const changed = fixture.run({ WG_PORT: "51821" });
+    assert.equal(changed.status, 0, changed.stderr);
+    assert.deepEqual(fs.readFileSync(path.join(fixture.stateDir, "firewall-udp"), "utf8").trim().split("\n"), ["51821"]);
+    assert.equal(installedFirewallMetadata(fixture.root).values.PORT, "51821");
+  });
+
+  it("disables and removes old iptables persistence when switching to UFW", (t) => {
+    const fixture = createExecutableFixture(t);
+    const first = fixture.run({ CLAWD_TEST_FIREWALL: "iptables" });
+    assert.equal(first.status, 0, first.stderr);
+    const switched = fixture.run({ CLAWD_TEST_FIREWALL: "ufw" });
+    assert.equal(switched.status, 0, switched.stderr);
+    assert.equal(fs.existsSync(path.join(fixture.stateDir, "iptables-udp")), false);
+    assert.equal(fs.existsSync(path.join(fixture.stateDir, "ip6tables-udp")), false);
+    assert.equal(fs.existsSync(path.join(fixture.root, "etc", "systemd", "system", "clawd-relay-firewall.service")), false);
+    assert.equal(fs.readFileSync(path.join(fixture.stateDir, "service-clawd-relay-firewall"), "utf8"), "disabled inactive\n");
+    assert.equal(installedFirewallMetadata(fixture.root).values.BACKEND, "ufw");
+  });
+
+  it("keeps old owned firewall metadata and rules when a transition rolls back", (t) => {
+    const fixture = createExecutableFixture(t);
+    const first = fixture.run();
+    assert.equal(first.status, 0, first.stderr);
+    const before = fs.readFileSync(installedFirewallMetadata(fixture.root).file, "utf8");
+    const failed = fixture.run({ WG_PORT: "51821", CLAWD_INSTALL_FAIL_STAGE: "firewall-migration" });
+    assert.notEqual(failed.status, 0);
+    assert.equal(fs.readFileSync(path.join(fixture.stateDir, "firewall-udp"), "utf8"), "51820\n");
+    assert.equal(fs.readFileSync(installedFirewallMetadata(fixture.root).file, "utf8"), before);
+  });
+
+  it("rejects malformed, noncanonical, or non-global ENDPOINT_HOST values", (t) => {
+    for (const endpoint of [
+      "999.1.1.1",
+      "-bad.example",
+      "bad..example",
+      "2001:db8::1",
+      "2606:4700:4700:0:0:0:0:1111",
+    ]) {
+      const fixture = createExecutableFixture(t);
+      const result = fixture.run({ ENDPOINT_HOST: endpoint });
+      assert.equal(result.status, 17, `${endpoint}: ${result.stderr}`);
+      assert.equal(fs.existsSync(path.join(fixture.root, "opt", "clawd-relay", "current")), false);
+    }
+  });
+
   it("persists iptables and ip6tables rules through a generated oneshot unit and reboot simulation", (t) => {
     const fixture = createExecutableFixture(t);
     const installed = fixture.run({ CLAWD_TEST_FIREWALL: "iptables" });
@@ -1052,15 +1271,68 @@ exit 0
   });
 });
 
-it("runs the privileged Linux installer integration only with explicit real-VPS opt-in", {
-  skip: process.env.CLAWD_RUN_PRIVILEGED_INSTALL_INTEGRATION !== "1",
-}, () => {
+describe("privileged Linux installer guard", () => {
+  it("requires opt-in, root, a fixed regular 0600 marker, and matching nonce", (t) => {
+    assert.deepEqual(validatePrivilegedIntegration({ env: {} }), { enabled: false });
+    assert.throws(() => validatePrivilegedIntegration({
+      env: { CLAWD_RUN_PRIVILEGED_INSTALL_INTEGRATION: "1" },
+      platform: "linux",
+      uid: 0,
+    }), /nonce/i);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-privileged-guard-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const markerPath = path.join(dir, ".clawd-relay-disposable-vps");
+    fs.writeFileSync(markerPath, "wrong\n", { mode: 0o600 });
+    const options = {
+      env: {
+        CLAWD_RUN_PRIVILEGED_INSTALL_INTEGRATION: "1",
+        CLAWD_PRIVILEGED_VPS_NONCE: "ab".repeat(16),
+      },
+      platform: "linux",
+      uid: 0,
+      markerPath,
+      expectedMarkerUid: fs.statSync(markerPath).uid,
+    };
+    assert.throws(() => validatePrivilegedIntegration(options), /marker.*nonce/i);
+    fs.writeFileSync(markerPath, `${options.env.CLAWD_PRIVILEGED_VPS_NONCE}\n`, { mode: 0o600 });
+    assert.deepEqual(validatePrivilegedIntegration(options), { enabled: true, markerPath });
+    fs.chmodSync(markerPath, 0o644);
+    assert.throws(() => validatePrivilegedIntegration(options), /0600/);
+  });
+});
+
+it("runs the privileged Linux installer integration only on an explicitly marked disposable VPS", (t) => {
+  const authorization = validatePrivilegedIntegration({ env: process.env });
+  if (!authorization.enabled) {
+    t.skip("requires explicit disposable-VPS opt-in");
+    return;
+  }
   assert.equal(process.platform, "linux");
   assert.equal(typeof process.getuid === "function" ? process.getuid() : -1, 0);
-  const result = childProcess.spawnSync(INSTALLER_PATH, [], {
-    env: { ...process.env, CLAWD_INSTALL_TEST_MODE: "0" },
-    encoding: "utf8",
-    timeout: 120_000,
-  });
-  assert.equal(result.status, 0, result.stderr);
+  for (const target of PRIVILEGED_INSTALL_PATHS) {
+    if (fs.existsSync(target)) throw new Error(`disposable VPS is not clean: ${target}`);
+  }
+  for (const service of ["clawd-relay.service", "wg-quick@clawd.service", "clawd-relay-firewall.service"]) {
+    if (runPrivilegedCommand("systemctl", ["is-active", "--quiet", service], { allowFailure: true }).status === 0 ||
+        runPrivilegedCommand("systemctl", ["is-enabled", "--quiet", service], { allowFailure: true }).status === 0) {
+      throw new Error(`disposable VPS service is not clean: ${service}`);
+    }
+  }
+  let metadata = null;
+  try {
+    const result = childProcess.spawnSync(INSTALLER_PATH, [], {
+      env: { ...process.env, CLAWD_INSTALL_TEST_MODE: "0" },
+      encoding: "utf8",
+      timeout: 120_000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    metadata = installedFirewallMetadata("/").values;
+  } finally {
+    if (!metadata && fs.existsSync("/etc/clawd-relay/firewall.env")) {
+      metadata = installedFirewallMetadata("/").values;
+    }
+    cleanupPrivilegedInstall(metadata);
+    verifyPrivilegedCleanup(metadata);
+  }
 });

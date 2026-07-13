@@ -25,6 +25,7 @@ RELAY_ETC="/etc/clawd-relay"
 RELAY_ENV="/etc/clawd-relay/relay.env"
 UNIT="/etc/systemd/system/clawd-relay.service"
 FIREWALL_UNIT="/etc/systemd/system/clawd-relay-firewall.service"
+FIREWALL_METADATA="/etc/clawd-relay/firewall.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 log() { printf '[wg-relay] %s\n' "$*" >&2; }
@@ -83,6 +84,7 @@ RELAY_ETC_FS="$(install_path "${RELAY_ETC}")"
 RELAY_ENV_FS="$(install_path "${RELAY_ENV}")"
 UNIT_FS="$(install_path "${UNIT}")"
 FIREWALL_UNIT_FS="$(install_path "${FIREWALL_UNIT}")"
+FIREWALL_METADATA_FS="$(install_path "${FIREWALL_METADATA}")"
 SYSTEMD_RUN_FS="$(install_path "/run/systemd/system")"
 VAR_TMP_FS="$(install_path "/var/tmp")"
 RELEASES_FS="${RELAY_ROOT_FS}/releases"
@@ -215,6 +217,9 @@ SERVICE_SNAPSHOT_DONE=0
 FIREWALL_ADDED=""
 IPTABLES4_ADDED=0
 IPTABLES6_ADDED=0
+OLD_FIREWALL_REMOVED_V4=0
+OLD_FIREWALL_REMOVED_V6=0
+OLD_FIREWALL_REMOVED_UNIT=0
 CURRENT_SWITCHED=0
 APP_LINK_CREATED=0
 NODE_LINK_CREATED=0
@@ -244,6 +249,42 @@ backup_item "${WG_CONF_FS}" wg-conf
 backup_item "${RELAY_ENV_FS}" relay-env
 backup_item "${UNIT_FS}" relay-unit
 backup_item "${FIREWALL_UNIT_FS}" firewall-unit
+backup_item "${FIREWALL_METADATA_FS}" firewall-metadata
+
+OLD_FIREWALL_BACKEND=""
+OLD_FIREWALL_PORT=""
+OLD_FIREWALL_IPV4=0
+OLD_FIREWALL_IPV6=0
+OLD_FIREWALL_UNIT=0
+if item_exists "${FIREWALL_METADATA_FS}"; then
+  EXPECTED_OWNER_UID=0
+  if [ "${TEST_MODE}" = 1 ]; then EXPECTED_OWNER_UID="$(id -u)"; fi
+  $SUDO test -f "${FIREWALL_METADATA_FS}" && $SUDO test ! -L "${FIREWALL_METADATA_FS}" ||
+    die 14 "firewall metadata is unsafe"
+  [ "$($SUDO stat -c '%u:%a' "${FIREWALL_METADATA_FS}")" = "${EXPECTED_OWNER_UID}:600" ] ||
+    die 14 "firewall metadata ownership or mode is unsafe"
+  [ "$($SUDO cat "${FIREWALL_METADATA_FS}" | wc -l | tr -d ' ')" -eq 5 ] ||
+    die 14 "firewall metadata is invalid"
+  for metadata_key in BACKEND PORT IPV4 IPV6 UNIT; do
+    [ "$($SUDO sed -n "s/^${metadata_key}=//p" "${FIREWALL_METADATA_FS}" | wc -l | tr -d ' ')" -eq 1 ] ||
+      die 14 "firewall metadata is invalid"
+  done
+  OLD_FIREWALL_BACKEND="$($SUDO sed -n 's/^BACKEND=//p' "${FIREWALL_METADATA_FS}")"
+  OLD_FIREWALL_PORT="$($SUDO sed -n 's/^PORT=//p' "${FIREWALL_METADATA_FS}")"
+  OLD_FIREWALL_IPV4="$($SUDO sed -n 's/^IPV4=//p' "${FIREWALL_METADATA_FS}")"
+  OLD_FIREWALL_IPV6="$($SUDO sed -n 's/^IPV6=//p' "${FIREWALL_METADATA_FS}")"
+  OLD_FIREWALL_UNIT="$($SUDO sed -n 's/^UNIT=//p' "${FIREWALL_METADATA_FS}")"
+  case "${OLD_FIREWALL_BACKEND}" in ufw|firewalld|iptables) ;; *) die 14 "firewall metadata is invalid" ;; esac
+  [[ "${OLD_FIREWALL_PORT}" =~ ^[0-9]+$ ]] && [ "${OLD_FIREWALL_PORT}" -ge 1 ] &&
+    [ "${OLD_FIREWALL_PORT}" -le 65535 ] || die 14 "firewall metadata is invalid"
+  for metadata_flag in "${OLD_FIREWALL_IPV4}" "${OLD_FIREWALL_IPV6}" "${OLD_FIREWALL_UNIT}"; do
+    [ "${metadata_flag}" = 0 ] || [ "${metadata_flag}" = 1 ] || die 14 "firewall metadata is invalid"
+  done
+  if [ "${OLD_FIREWALL_BACKEND}" != iptables ] &&
+    [ "${OLD_FIREWALL_IPV4}" != "${OLD_FIREWALL_IPV6}" ]; then
+    die 14 "firewall metadata is invalid"
+  fi
+fi
 
 service_enabled() { $SUDO systemctl is-enabled --quiet "$1" >/dev/null 2>&1 && printf 1 || printf 0; }
 service_active() { $SUDO systemctl is-active --quiet "$1" >/dev/null 2>&1 && printf 1 || printf 0; }
@@ -283,6 +324,79 @@ undo_firewall() {
   esac
 }
 
+restore_obsolete_firewall() {
+  [ -n "${OLD_FIREWALL_BACKEND}" ] || return 0
+  case "${OLD_FIREWALL_BACKEND}" in
+    ufw)
+      if [ "${OLD_FIREWALL_REMOVED_V4}" = 1 ] || [ "${OLD_FIREWALL_REMOVED_V6}" = 1 ]; then
+        $SUDO ufw allow "${OLD_FIREWALL_PORT}/udp" >/dev/null 2>&1
+      fi
+      ;;
+    firewalld)
+      if [ "${OLD_FIREWALL_REMOVED_V4}" = 1 ] || [ "${OLD_FIREWALL_REMOVED_V6}" = 1 ]; then
+        $SUDO firewall-cmd --permanent --add-port="${OLD_FIREWALL_PORT}/udp" >/dev/null 2>&1
+        $SUDO firewall-cmd --reload >/dev/null 2>&1
+      fi
+      ;;
+    iptables)
+      if [ "${OLD_FIREWALL_REMOVED_V4}" = 1 ]; then
+        $SUDO iptables -C INPUT -p udp --dport "${OLD_FIREWALL_PORT}" -j ACCEPT >/dev/null 2>&1 ||
+          $SUDO iptables -A INPUT -p udp --dport "${OLD_FIREWALL_PORT}" -j ACCEPT >/dev/null 2>&1
+      fi
+      if [ "${OLD_FIREWALL_REMOVED_V6}" = 1 ]; then
+        $SUDO ip6tables -C INPUT -p udp --dport "${OLD_FIREWALL_PORT}" -j ACCEPT >/dev/null 2>&1 ||
+          $SUDO ip6tables -A INPUT -p udp --dport "${OLD_FIREWALL_PORT}" -j ACCEPT >/dev/null 2>&1
+      fi
+      ;;
+  esac
+}
+
+remove_obsolete_firewall() {
+  [ -n "${OLD_FIREWALL_BACKEND}" ] || return 0
+  if [ "${OLD_FIREWALL_BACKEND}" = "${NEW_FIREWALL_BACKEND}" ] &&
+    [ "${OLD_FIREWALL_PORT}" = "${WG_PORT}" ]; then
+    return 0
+  fi
+  case "${OLD_FIREWALL_BACKEND}" in
+    ufw)
+      if [ "${OLD_FIREWALL_IPV4}" = 1 ] || [ "${OLD_FIREWALL_IPV6}" = 1 ]; then
+        OLD_FIREWALL_REMOVED_V4="${OLD_FIREWALL_IPV4}"
+        OLD_FIREWALL_REMOVED_V6="${OLD_FIREWALL_IPV6}"
+        $SUDO ufw --force delete allow "${OLD_FIREWALL_PORT}/udp" >/dev/null ||
+          die 14 "obsolete ufw cleanup failed"
+      fi
+      ;;
+    firewalld)
+      if [ "${OLD_FIREWALL_IPV4}" = 1 ] || [ "${OLD_FIREWALL_IPV6}" = 1 ]; then
+        OLD_FIREWALL_REMOVED_V4="${OLD_FIREWALL_IPV4}"
+        OLD_FIREWALL_REMOVED_V6="${OLD_FIREWALL_IPV6}"
+        $SUDO firewall-cmd --permanent --remove-port="${OLD_FIREWALL_PORT}/udp" >/dev/null ||
+          die 14 "obsolete firewalld cleanup failed"
+        $SUDO firewall-cmd --reload >/dev/null || die 14 "obsolete firewalld reload failed"
+      fi
+      ;;
+    iptables)
+      if [ "${OLD_FIREWALL_IPV4}" = 1 ]; then
+        OLD_FIREWALL_REMOVED_V4=1
+        $SUDO iptables -D INPUT -p udp --dport "${OLD_FIREWALL_PORT}" -j ACCEPT >/dev/null ||
+          die 14 "obsolete iptables cleanup failed"
+      fi
+      if [ "${OLD_FIREWALL_IPV6}" = 1 ]; then
+        OLD_FIREWALL_REMOVED_V6=1
+        $SUDO ip6tables -D INPUT -p udp --dport "${OLD_FIREWALL_PORT}" -j ACCEPT >/dev/null ||
+          die 14 "obsolete ip6tables cleanup failed"
+      fi
+      ;;
+  esac
+  if [ "${OLD_FIREWALL_UNIT}" = 1 ] && [ "${NEW_FIREWALL_BACKEND}" != iptables ]; then
+    OLD_FIREWALL_REMOVED_UNIT=1
+    $SUDO systemctl stop clawd-relay-firewall.service >/dev/null || die 14 "obsolete firewall service stop failed"
+    $SUDO systemctl disable clawd-relay-firewall.service >/dev/null || die 14 "obsolete firewall service disable failed"
+    $SUDO rm -f "${FIREWALL_UNIT_FS}"
+    $SUDO systemctl daemon-reload || die 14 "obsolete firewall unit reload failed"
+  fi
+}
+
 cleanup_temporaries() {
   local item
   for item in "${TEMP_ITEMS[@]:-}"; do [ -z "${item}" ] || $SUDO rm -rf "${item}"; done
@@ -294,6 +408,7 @@ rollback() {
   set +e
   log "restoring previous Relay installation"
   undo_firewall
+  restore_obsolete_firewall
   if [ "${CURRENT_SWITCHED}" = 1 ]; then
     if [ "${CURRENT_WAS_PRESENT}" = 1 ]; then
       atomic_link "${CURRENT_OLD_TARGET}" "${CURRENT_FS}"
@@ -308,6 +423,7 @@ rollback() {
   restore_item "${RELAY_ENV_FS}" relay-env
   restore_item "${UNIT_FS}" relay-unit
   restore_item "${FIREWALL_UNIT_FS}" firewall-unit
+  restore_item "${FIREWALL_METADATA_FS}" firewall-metadata
   if [ "${NODE_CACHE_ARCHIVE_CREATED}" = 1 ]; then $SUDO rm -f "${NODE_CACHE_ARCHIVE}"; fi
   local release
   for release in "${NEW_RELEASES[@]:-}"; do [ -z "${release}" ] || $SUDO rm -rf "${release}"; done
@@ -475,7 +591,63 @@ ENDPOINT_HOST_VALUE="${ENDPOINT_HOST:-}"
 if [ -z "${ENDPOINT_HOST_VALUE}" ]; then ENDPOINT_HOST_VALUE="$(curl -fsS --max-time 8 https://api.ipify.org 2>/dev/null || true)"; fi
 if [ -z "${ENDPOINT_HOST_VALUE}" ]; then ENDPOINT_HOST_VALUE="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"; fi
 [ -n "${ENDPOINT_HOST_VALUE}" ] || die 17 "public endpoint discovery failed"
-case "${ENDPOINT_HOST_VALUE}" in *[!A-Za-z0-9.:-]*) die 17 "public endpoint is invalid" ;; esac
+if ! "${NODE_BIN_FS}" - "${ENDPOINT_HOST_VALUE}" <<'NODE'
+const net = require("node:net");
+const host = process.argv[2];
+function ipv4ToInt(value) {
+  return value.split(".").reduce((result, octet) => ((result << 8) | Number(octet)) >>> 0, 0);
+}
+function ipv4InCidr(value, base, prefix) {
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  return (value & mask) === (ipv4ToInt(base) & mask);
+}
+function ipv6ToBigInt(value) {
+  const halves = value.toLowerCase().split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return null;
+  return [...left, ...Array(missing).fill("0"), ...right]
+    .reduce((result, group) => (result << 16n) | BigInt(`0x${group}`), 0n);
+}
+function ipv6InCidr(value, base, prefix) {
+  const shift = BigInt(128 - prefix);
+  return (value >> shift) === (ipv6ToBigInt(base) >> shift);
+}
+function globallyRoutable(value) {
+  const version = net.isIP(value);
+  if (version === 4) {
+    if (value.split(".").some((octet) => String(Number(octet)) !== octet)) return false;
+    const numeric = ipv4ToInt(value);
+    return ![
+      ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8],
+      ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24],
+      ["192.88.99.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15],
+      ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4],
+    ].some(([base, prefix]) => ipv4InCidr(numeric, base, prefix));
+  }
+  if (version === 6) {
+    if (value !== value.toLowerCase()) return false;
+    if (new URL(`http://[${value}]/`).hostname !== `[${value}]`) return false;
+    const numeric = ipv6ToBigInt(value);
+    return ipv6InCidr(numeric, "2000::", 3) && ![
+      ["2001::", 23], ["2001:db8::", 32], ["2002::", 16], ["3fff::", 20],
+    ].some(([base, prefix]) => ipv6InCidr(numeric, base, prefix));
+  }
+  return false;
+}
+if (net.isIP(host)) process.exit(globallyRoutable(host) ? 0 : 1);
+if (host !== host.toLowerCase() || host.length > 253 || /^\d+(?:\.\d+)+$/.test(host) ||
+    host === "localhost" || host.endsWith(".local")) process.exit(1);
+const labels = host.split(".");
+if (labels.length < 2 || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) {
+  process.exit(1);
+}
+NODE
+then
+  die 17 "public endpoint is invalid"
+fi
 case "${ENDPOINT_HOST_VALUE}" in
   *:*) ENDPOINT="[${ENDPOINT_HOST_VALUE}]:${WG_PORT}" ;;
   *) ENDPOINT="${ENDPOINT_HOST_VALUE}:${WG_PORT}" ;;
@@ -591,45 +763,76 @@ $SUDO mv "${UNIT_TMP}" "${UNIT_FS}"
 checkpoint systemd-unit
 
 log "step: firewall"
-if command -v ufw >/dev/null 2>&1 && $SUDO ufw status >/dev/null 2>&1; then
-  UFW_STATUS="$($SUDO ufw status)"
+NEW_FIREWALL_BACKEND=""
+NEW_FIREWALL_IPV4=0
+NEW_FIREWALL_IPV6=0
+NEW_FIREWALL_UNIT=0
+inherit_firewall_ownership() {
+  if [ "${OLD_FIREWALL_BACKEND}" = "$1" ] && [ "${OLD_FIREWALL_PORT}" = "${WG_PORT}" ]; then
+    NEW_FIREWALL_IPV4="${OLD_FIREWALL_IPV4}"
+    NEW_FIREWALL_IPV6="${OLD_FIREWALL_IPV6}"
+    NEW_FIREWALL_UNIT="${OLD_FIREWALL_UNIT}"
+  fi
+}
+UFW_STATUS=""
+if command -v ufw >/dev/null 2>&1; then
+  UFW_STATUS="$($SUDO ufw status 2>/dev/null || true)"
+fi
+if printf '%s\n' "${UFW_STATUS}" | awk '$1 == "Status:" && $2 == "active" { found=1 } END { exit !found }'; then
+  NEW_FIREWALL_BACKEND=ufw
+  inherit_firewall_ownership ufw
   UFW_V4=0
   UFW_V6=0
   printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "ALLOW" { found=1 } END { exit !found }' && UFW_V4=1
   printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "(v6)" && $3 == "ALLOW" { found=1 } END { exit !found }' && UFW_V6=1
-  if [[ "${ENDPOINT_HOST_VALUE}" == *:* ]] && [ "${UFW_V4}" != "${UFW_V6}" ]; then
-    die 14 "ufw lacks exact IPv6 rule coverage"
+  if [ "${UFW_V4}" != "${UFW_V6}" ]; then
+    die 14 "ufw has partial address-family coverage"
   fi
   if [ "${UFW_V4}" = 0 ]; then
     $SUDO ufw allow "${WG_PORT}/udp" >/dev/null || die 14 "ufw update failed"
     FIREWALL_ADDED=ufw
+    NEW_FIREWALL_IPV4=1
+    NEW_FIREWALL_IPV6=1
     UFW_STATUS="$($SUDO ufw status)"
     printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "ALLOW" { found=1 } END { exit !found }' ||
       die 14 "ufw IPv4 rule verification failed"
-    if [[ "${ENDPOINT_HOST_VALUE}" == *:* ]]; then
-      printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "(v6)" && $3 == "ALLOW" { found=1 } END { exit !found }' ||
-        die 14 "ufw IPv6 rule verification failed"
-    fi
+    printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "(v6)" && $3 == "ALLOW" { found=1 } END { exit !found }' ||
+      die 14 "ufw IPv6 rule verification failed"
   fi
 elif command -v firewall-cmd >/dev/null 2>&1 && $SUDO firewall-cmd --state >/dev/null 2>&1; then
+  NEW_FIREWALL_BACKEND=firewalld
+  inherit_firewall_ownership firewalld
+  FIREWALLD_ADDED=0
   if ! $SUDO firewall-cmd --permanent --query-port="${WG_PORT}/udp" >/dev/null 2>&1; then
     $SUDO firewall-cmd --permanent --add-port="${WG_PORT}/udp" >/dev/null || die 14 "firewalld update failed"
     FIREWALL_ADDED=firewalld
-    $SUDO firewall-cmd --reload >/dev/null || die 14 "firewalld reload failed"
-    $SUDO firewall-cmd --permanent --query-port="${WG_PORT}/udp" >/dev/null 2>&1 ||
-      die 14 "firewalld rule verification failed"
+    FIREWALLD_ADDED=1
+    NEW_FIREWALL_IPV4=1
+    NEW_FIREWALL_IPV6=1
   fi
+  if [ "${FIREWALLD_ADDED}" = 1 ] ||
+    ! $SUDO firewall-cmd --query-port="${WG_PORT}/udp" >/dev/null 2>&1; then
+    $SUDO firewall-cmd --reload >/dev/null || die 14 "firewalld reload failed"
+  fi
+  $SUDO firewall-cmd --permanent --query-port="${WG_PORT}/udp" >/dev/null 2>&1 ||
+    die 14 "firewalld permanent rule verification failed"
+  $SUDO firewall-cmd --query-port="${WG_PORT}/udp" >/dev/null 2>&1 ||
+    die 14 "firewalld runtime rule verification failed"
 elif command -v iptables >/dev/null 2>&1 && command -v ip6tables >/dev/null 2>&1; then
+  NEW_FIREWALL_BACKEND=iptables
+  inherit_firewall_ownership iptables
   IPTABLES_BIN="$(command -v iptables)"
   IP6TABLES_BIN="$(command -v ip6tables)"
   FIREWALL_ADDED=iptables
   if ! $SUDO iptables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null; then
     $SUDO iptables -A INPUT -p udp --dport "${WG_PORT}" -j ACCEPT || die 14 "iptables update failed"
     IPTABLES4_ADDED=1
+    NEW_FIREWALL_IPV4=1
   fi
   if ! $SUDO ip6tables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null; then
     $SUDO ip6tables -A INPUT -p udp --dport "${WG_PORT}" -j ACCEPT || die 14 "ip6tables update failed"
     IPTABLES6_ADDED=1
+    NEW_FIREWALL_IPV6=1
   fi
   $SUDO iptables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null ||
     die 14 "iptables rule verification failed"
@@ -655,9 +858,28 @@ WantedBy=multi-user.target" | $SUDO tee "${FIREWALL_UNIT_TMP}" >/dev/null
   $SUDO systemctl restart clawd-relay-firewall.service || die 14 "firewall service start failed"
   $SUDO systemctl is-enabled --quiet clawd-relay-firewall.service || die 14 "firewall service is not enabled"
   $SUDO systemctl is-active --quiet clawd-relay-firewall.service || die 14 "firewall service is not active"
+  NEW_FIREWALL_UNIT=1
 else
   die 14 "no supported firewall backend"
 fi
+
+FIREWALL_METADATA_TMP="$($SUDO mktemp "${RELAY_ETC_FS}/.firewall.env.tmp.XXXXXX")"
+remember_temp "${FIREWALL_METADATA_TMP}"
+printf '%s\n' "BACKEND=${NEW_FIREWALL_BACKEND}
+PORT=${WG_PORT}
+IPV4=${NEW_FIREWALL_IPV4}
+IPV6=${NEW_FIREWALL_IPV6}
+UNIT=${NEW_FIREWALL_UNIT}" | $SUDO tee "${FIREWALL_METADATA_TMP}" >/dev/null
+$SUDO chmod 600 "${FIREWALL_METADATA_TMP}"
+$SUDO mv "${FIREWALL_METADATA_TMP}" "${FIREWALL_METADATA_FS}"
+$SUDO chmod 600 "${FIREWALL_METADATA_FS}"
+"${NODE_BIN_FS}" -e '
+  const fs = require("node:fs");
+  for (const target of process.argv.slice(1)) {
+    const descriptor = fs.openSync(target, "r");
+    try { fs.fsyncSync(descriptor); } finally { fs.closeSync(descriptor); }
+  }
+' "${FIREWALL_METADATA_FS}" "${RELAY_ETC_FS}"
 checkpoint firewall-rule
 
 log "step: enable-and-verify-services"
@@ -672,6 +894,9 @@ $SUDO systemctl restart clawd-relay.service || die 20 "Relay start failed"
 $SUDO systemctl is-enabled --quiet clawd-relay.service || die 20 "Relay is not enabled"
 $SUDO systemctl is-active --quiet clawd-relay.service || die 20 "Relay is not active"
 checkpoint relay-service
+
+remove_obsolete_firewall
+checkpoint firewall-migration
 
 PC_CONF="[Interface]
 PrivateKey = ${PC_PRIV}
