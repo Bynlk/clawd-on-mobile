@@ -18,6 +18,7 @@ class ManagedSessionMobileBridge {
     this.leaseTtlMs = Number.isInteger(options.leaseTtlMs) ? options.leaseTtlMs : 60_000;
     this.now = typeof options.now === "function" ? options.now : Date.now;
     this.enabled = false;
+    this.subscriptions = new Map();
     this.attached = false;
     this.leases = new Map();
     this.acknowledgements = new Map();
@@ -47,6 +48,7 @@ class ManagedSessionMobileBridge {
     this.leases.clear();
     this.acknowledgements.clear();
     this.identitiesByTransport.clear();
+    this.subscriptions.clear();
   }
 
   _handleMessage(ws, message) {
@@ -57,58 +59,96 @@ class ManagedSessionMobileBridge {
     try {
       switch (message.type) {
         case "managed_content_sync_set":
-          this.enabled = message.enabled === true;
-          if (!this.enabled) this.leases.clear();
-          this._send(ws, { type: "managed_content_sync_state", enabled: this.enabled, requestId });
-          if (this.enabled) {
-            this._sendCapabilities(ws);
-            this._sendSessions(ws);
+          {
+            const transportId = this.mobileServer.getClientId(ws) || identity;
+            const enabled = message.enabled === true;
+            if (enabled) {
+              this.subscriptions.set(transportId, ws);
+            } else {
+              this.subscriptions.delete(transportId);
+              for (const [sessionId, lease] of this.leases) {
+                if (lease.transportId === transportId) {
+                  this.leases.delete(sessionId);
+                  this._broadcastLease(sessionId, null);
+                }
+              }
+            }
+            this.enabled = this.subscriptions.size > 0;
+            this._send(ws, { type: "managed_content_sync_state", enabled, requestId });
+            if (enabled) {
+              this._sendCapabilities(ws);
+              this._sendSessions(ws);
+            }
           }
           break;
         case "managed_capabilities_request":
-          this._requireEnabled();
+          this._requireEnabled(ws);
           this._sendCapabilities(ws, requestId);
           break;
         case "managed_sessions_request":
-          this._requireEnabled();
+          this._requireEnabled(ws);
           this._sendSessions(ws, requestId);
           break;
         case "managed_session_create": {
-          this._requireEnabled();
+          this._requireEnabled(ws);
           const session = this.runtime.create(message);
           this._send(ws, { type: "managed_session_created", session, requestId });
           break;
         }
         case "managed_session_history_request":
-          this._requireEnabled();
+          this._requireEnabled(ws);
           this._sendHistory(ws, message, requestId);
           break;
         case "managed_session_ack":
-          this._requireEnabled();
+          this._requireEnabled(ws);
           this._recordAck(identity, message.sessionId, message.sequence);
           break;
         case "managed_session_input_lease_acquire":
-          this._requireEnabled();
+          this._requireEnabled(ws);
           this._acquireLease(ws, identity, message.sessionId, requestId);
           break;
         case "managed_session_input_lease_release":
-          this._requireEnabled();
+          this._requireEnabled(ws);
           this._releaseLease(identity, message.sessionId);
           break;
         case "managed_session_input":
-          this._requireLease(identity, message.sessionId);
-          this.runtime.write(message.sessionId, message.data, {
+          this._requireLease(ws, identity, message.sessionId);
+          {
+            const record = this.runtime.write(message.sessionId, message.data, {
             raw: message.raw === true,
             submit: message.submit !== false,
-          });
+            });
+            this._send(ws, {
+              type: "managed_session_command_result",
+              command: "input",
+              sessionId: message.sessionId,
+              sequence: record && Number.isInteger(record.sequence) ? record.sequence : null,
+              requestId,
+            });
+          }
           break;
         case "managed_session_resize":
-          this._requireLease(identity, message.sessionId);
+          this._requireLease(ws, identity, message.sessionId);
           this.runtime.resize(message.sessionId, message.cols, message.rows);
+          this._send(ws, {
+            type: "managed_session_command_result",
+            command: "resize",
+            sessionId: message.sessionId,
+            requestId,
+          });
           break;
         case "managed_session_interrupt":
-          this._requireLease(identity, message.sessionId);
-          this.runtime.interrupt(message.sessionId);
+          this._requireLease(ws, identity, message.sessionId);
+          {
+            const record = this.runtime.interrupt(message.sessionId);
+            this._send(ws, {
+              type: "managed_session_command_result",
+              command: "interrupt",
+              sessionId: message.sessionId,
+              sequence: record && Number.isInteger(record.sequence) ? record.sequence : null,
+              requestId,
+            });
+          }
           break;
         default:
           this._error(ws, "unsupported_managed_message", requestId, message.sessionId);
@@ -149,6 +189,7 @@ class ManagedSessionMobileBridge {
     chunks.forEach((chunk, index) => {
       this._send(ws, {
         ...chunk,
+        resetRequired: history.resetRequired && index === 0,
         chunkIndex: index,
         chunkCount: chunks.length,
         hasMore: history.hasMore || index < chunks.length - 1,
@@ -197,8 +238,8 @@ class ManagedSessionMobileBridge {
     this._broadcastLease(sessionId, null);
   }
 
-  _requireLease(identity, sessionId) {
-    this._requireEnabled();
+  _requireLease(ws, identity, sessionId) {
+    this._requireEnabled(ws);
     const current = this._activeLease(sessionId);
     if (!current || current.owner !== identity) throw new Error("input_lease_required");
     current.touchedAt = this.now();
@@ -239,36 +280,45 @@ class ManagedSessionMobileBridge {
     const transportId = event.clientId;
     const identities = this.identitiesByTransport.get(transportId) || new Set([transportId]);
     for (const [sessionId, lease] of this.leases) {
-      if (lease.transportId === transportId || identities.has(lease.owner)) {
+      if (lease.transportId === transportId) {
         this.leases.delete(sessionId);
         this._broadcastLease(sessionId, null);
       }
     }
     for (const identity of identities) this.acknowledgements.delete(identity);
     this.identitiesByTransport.delete(transportId);
+    this.subscriptions.delete(transportId);
+    this.enabled = this.subscriptions.size > 0;
   }
 
   _handleDelta(record) {
-    if (!this.enabled) return;
-    this.mobileServer.broadcast({ type: "managed_session_delta", record });
+    for (const ws of this.subscriptions.values()) {
+      this._send(ws, { type: "managed_session_delta", record });
+    }
   }
 
   _handleSessionsChanged(sessions) {
-    if (!this.enabled) return;
-    this.mobileServer.broadcast({ type: "managed_sessions_snapshot", sessions });
+    for (const ws of this.subscriptions.values()) {
+      this._send(ws, { type: "managed_sessions_snapshot", sessions });
+    }
   }
 
   _broadcastLease(sessionId, owner) {
-    this.mobileServer.broadcast({
-      type: "managed_session_input_lease_changed",
-      sessionId,
-      owner,
-      granted: false,
-    });
+    for (const ws of this.subscriptions.values()) {
+      this._send(ws, {
+        type: "managed_session_input_lease_changed",
+        sessionId,
+        owner,
+        granted: false,
+      });
+    }
   }
 
-  _requireEnabled() {
-    if (!this.enabled) throw new Error("content_sync_disabled");
+  _requireEnabled(ws) {
+    const transportId = this.mobileServer.getClientId(ws);
+    if (!transportId || !this.subscriptions.has(transportId)) {
+      throw new Error("content_sync_disabled");
+    }
   }
 
   _send(ws, payload) {

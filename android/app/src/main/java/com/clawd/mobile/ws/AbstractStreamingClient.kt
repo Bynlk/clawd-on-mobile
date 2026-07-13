@@ -9,6 +9,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
 import okhttp3.Response
+import com.clawd.mobile.console.ConsoleServerMessage
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.BufferOverflow
 
 /**
  * Shared implementation for [StreamingClient] transport implementations.
@@ -77,6 +80,10 @@ abstract class AbstractStreamingClient(
 
     private val _permissionRequests = MutableSharedFlow<PermissionRequestData>(extraBufferCapacity = 16)
     override val permissionRequests: SharedFlow<PermissionRequestData> = _permissionRequests
+    private val _permissionResolved = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    override val permissionResolved: SharedFlow<String> = _permissionResolved
+    private val _approvalResults = MutableSharedFlow<ApprovalResultData>(extraBufferCapacity = 16)
+    override val approvalResults: SharedFlow<ApprovalResultData> = _approvalResults
 
     private val _syncing = MutableStateFlow(false)
     override val syncing: StateFlow<Boolean> = _syncing
@@ -90,6 +97,23 @@ abstract class AbstractStreamingClient(
     private val _reactions = MutableSharedFlow<String>(extraBufferCapacity = 8)
     override val reactions: SharedFlow<String> = _reactions
 
+    private val consoleDataQueue = Channel<ConsoleServerMessage>(
+        capacity = 512,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    private val consoleControlQueue = Channel<ConsoleServerMessage>(
+        capacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    private val _consoleMessages = MutableSharedFlow<ConsoleServerMessage>(extraBufferCapacity = 128)
+    override val consoleMessages: SharedFlow<ConsoleServerMessage> = _consoleMessages
+    private val consoleDataPump = scope.launch {
+        for (message in consoleDataQueue) _consoleMessages.emit(message)
+    }
+    private val consoleControlPump = scope.launch {
+        for (message in consoleControlQueue) _consoleMessages.emit(message)
+    }
+
     // Lazy because `tag` is an abstract val not yet initialized during parent constructor
     protected val messageHandler by lazy {
         MessageHandler(
@@ -99,10 +123,20 @@ abstract class AbstractStreamingClient(
             displayState = _displayState,
             syncing = _syncing,
             permissionRequests = _permissionRequests,
+            permissionResolved = _permissionResolved,
+            approvalResults = _approvalResults,
             reactions = _reactions,
             scope = scope,
             messageParser = messageParser,
             sendPong = { pongJson -> sendMessage(pongJson) },
+            onConsoleMessage = { message ->
+                val queue = when (message) {
+                    is ConsoleServerMessage.Delta,
+                    is ConsoleServerMessage.HistoryChunk -> consoleDataQueue
+                    else -> consoleControlQueue
+                }
+                queue.trySend(message)
+            },
         )
     }
 

@@ -3,6 +3,13 @@ package com.clawd.mobile.ws
 import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.SessionData
 import kotlinx.serialization.json.JsonElement
+import com.clawd.mobile.console.ConsoleServerMessage
+
+data class ApprovalResultData(
+    val requestId: String,
+    val ok: Boolean,
+    val error: String? = null,
+)
 
 /**
  * Typed result of parsing a single message.
@@ -46,6 +53,16 @@ sealed class ParsedMessage {
         override val timestamp: Long,
     ) : ParsedMessage()
 
+    data class PermissionResolved(
+        val requestId: String,
+        override val timestamp: Long,
+    ) : ParsedMessage()
+
+    data class ApprovalResult(
+        val result: ApprovalResultData,
+        override val timestamp: Long,
+    ) : ParsedMessage()
+
     data class Reaction(
         val svg: String?,
         override val timestamp: Long,
@@ -62,6 +79,11 @@ sealed class ParsedMessage {
 
     data class PeerDisconnected(
         val role: String,
+        override val timestamp: Long,
+    ) : ParsedMessage()
+
+    data class Console(
+        val message: ConsoleServerMessage,
         override val timestamp: Long,
     ) : ParsedMessage()
 

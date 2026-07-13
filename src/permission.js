@@ -849,7 +849,7 @@ function notifyPermissionsChanged(reason) {
   }
 }
 
-function notifyPermissionResolved(permEntry, reason) {
+function notifyPermissionResolved(permEntry, reason, decision = null) {
   if (!permEntry || permEntry.isCodexNotify || permEntry.isKimiNotify) return;
   if (typeof ctx.onPermissionResolved !== "function") return;
   const hasPendingForSession = pendingPermissions.some((entry) =>
@@ -862,6 +862,7 @@ function notifyPermissionResolved(permEntry, reason) {
     ctx.onPermissionResolved(permEntry, {
       reason: reason || "resolved",
       hasPendingForSession,
+      decision,
     });
   } catch (err) {
     permLog(`onPermissionResolved failed: ${err && err.message ? err.message : err}`);
@@ -1536,7 +1537,7 @@ function applyPermissionSuggestion(perm, index, options = {}) {
 
   pendingPermissions.splice(idx, 1);
   notifyPermissionsChanged("resolved");
-  notifyPermissionResolved(permEntry, "resolved");
+  notifyPermissionResolved(permEntry, "resolved", behavior);
 
   if (permEntry.autoCloseTimer) {
     clearTimeout(permEntry.autoCloseTimer);

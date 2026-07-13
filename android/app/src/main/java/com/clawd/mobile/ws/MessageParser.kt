@@ -3,6 +3,7 @@ package com.clawd.mobile.ws
 import com.clawd.mobile.data.*
 import com.clawd.mobile.util.SafeExecutor
 import kotlinx.serialization.json.*
+import com.clawd.mobile.console.*
 
 /**
  * Parses raw message JSON into typed [ParsedMessage] instances.
@@ -31,12 +32,76 @@ class MessageParser {
             "tool_output" -> parseToolOutput(obj, timestamp)
             "session_deleted" -> parseSessionDeleted(obj, timestamp)
             "permission_request" -> parsePermissionRequest(obj, timestamp)
+            "permission_resolved" -> ParsedMessage.PermissionResolved(
+                requestId = obj["id"]?.jsonPrimitive?.contentOrNull ?: return null,
+                timestamp = timestamp,
+            )
+            "approval_result" -> ParsedMessage.ApprovalResult(
+                result = ApprovalResultData(
+                    requestId = obj["id"]?.jsonPrimitive?.contentOrNull ?: return null,
+                    ok = obj["ok"]?.jsonPrimitive?.booleanOrNull ?: false,
+                    error = obj["error"]?.jsonPrimitive?.contentOrNull,
+                ),
+                timestamp = timestamp,
+            )
             "reaction" -> parseReaction(obj, timestamp)
             "disconnect" -> ParsedMessage.Disconnect(timestamp)
             "peer_connected" -> parsePeerConnected(obj, timestamp)
             "peer_disconnected" -> parsePeerDisconnected(obj, timestamp)
-            else -> ParsedMessage.Unknown(type, timestamp)
+            else -> if (type.startsWith("managed_")) {
+                ParsedMessage.Console(parseConsole(type, obj), timestamp)
+            } else ParsedMessage.Unknown(type, timestamp)
         }
+    }
+
+    private fun parseConsole(type: String, obj: JsonObject): ConsoleServerMessage = try {
+        when (type) {
+            "managed_content_sync_state" -> ConsoleServerMessage.SyncState(
+                obj["enabled"]?.jsonPrimitive?.booleanOrNull ?: false
+            )
+            "managed_capabilities" -> ConsoleServerMessage.Capabilities(
+                agents = obj["agents"]?.let { json.decodeFromJsonElement<List<ManagedAgent>>(it) } ?: emptyList(),
+                directories = obj["directories"]?.let { json.decodeFromJsonElement<List<String>>(it) } ?: emptyList(),
+            )
+            "managed_sessions_snapshot" -> ConsoleServerMessage.SessionsSnapshot(
+                obj["sessions"]?.let { json.decodeFromJsonElement<List<ManagedSession>>(it) } ?: emptyList()
+            )
+            "managed_session_created" -> ConsoleServerMessage.SessionCreated(
+                json.decodeFromJsonElement(obj.getValue("session"))
+            )
+            "managed_session_history_chunk" -> ConsoleServerMessage.HistoryChunk(
+                sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull ?: "",
+                records = obj["records"]?.let { json.decodeFromJsonElement<List<ConsoleRecord>>(it) } ?: emptyList(),
+                resetRequired = obj["resetRequired"]?.jsonPrimitive?.booleanOrNull ?: false,
+                oldestSequence = obj["oldestSequence"]?.jsonPrimitive?.longOrNull ?: 0,
+                latestSequence = obj["latestSequence"]?.jsonPrimitive?.longOrNull ?: 0,
+                hasMore = obj["hasMore"]?.jsonPrimitive?.booleanOrNull ?: false,
+                chunkIndex = obj["chunkIndex"]?.jsonPrimitive?.intOrNull ?: 0,
+                chunkCount = obj["chunkCount"]?.jsonPrimitive?.intOrNull ?: 1,
+            )
+            "managed_session_delta" -> ConsoleServerMessage.Delta(
+                json.decodeFromJsonElement(obj.getValue("record"))
+            )
+            "managed_session_input_lease_changed" -> ConsoleServerMessage.LeaseChanged(
+                sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull ?: "",
+                owner = obj["owner"]?.jsonPrimitive?.contentOrNull,
+                granted = obj["granted"]?.jsonPrimitive?.booleanOrNull ?: false,
+            )
+            "managed_session_error" -> ConsoleServerMessage.Error(
+                code = obj["code"]?.jsonPrimitive?.contentOrNull ?: "managed_command_failed",
+                requestId = obj["requestId"]?.jsonPrimitive?.contentOrNull,
+                sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull,
+            )
+            "managed_session_command_result" -> ConsoleServerMessage.CommandResult(
+                requestId = obj["requestId"]?.jsonPrimitive?.contentOrNull ?: "",
+                sessionId = obj["sessionId"]?.jsonPrimitive?.contentOrNull ?: "",
+                command = obj["command"]?.jsonPrimitive?.contentOrNull ?: "",
+                sequence = obj["sequence"]?.jsonPrimitive?.longOrNull,
+            )
+            else -> ConsoleServerMessage.Unknown(type)
+        }
+    } catch (_: Exception) {
+        ConsoleServerMessage.Error("invalid_managed_payload")
     }
 
     // ── Snapshot ────────────────────────────────────────────────────────

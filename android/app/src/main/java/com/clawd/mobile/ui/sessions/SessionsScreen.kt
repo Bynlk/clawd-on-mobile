@@ -159,8 +159,9 @@ fun SessionsScreen(
                 onTabSelected = { tab ->
                     selectedTab = tab
                     when (tab) {
-                        1 -> { showDevicesPlaceholder = true }
-                        2 -> navController.navigate("settings")
+                        1 -> navController.navigate("console")
+                        2 -> { showDevicesPlaceholder = true }
+                        3 -> navController.navigate("settings")
                     }
                 }
             )

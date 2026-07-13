@@ -15,8 +15,13 @@ const RECONNECT_BACKOFF_MULTIPLIER = 2;
 const MSG_BUFFER_MAX = 50;
 
 class RelayBridge extends EventEmitter {
-  constructor() {
+  constructor(options = {}) {
     super();
+    this.WebSocketImpl = options.WebSocketImpl || WebSocket;
+    this.localToken = typeof options.localToken === "string" ? options.localToken : "";
+    this.getLocalPort = typeof options.getLocalPort === "function"
+      ? options.getLocalPort
+      : () => 23334;
     this.relayWs = null;
     this.localWs = null;
     this.config = null;
@@ -106,7 +111,7 @@ class RelayBridge extends EventEmitter {
     const relayUrl = `${url}/mobile/ws?role=pc`;
 
     console.log(TAG, `连接 relay: ${url}`);
-    const ws = new WebSocket(relayUrl, {
+    const ws = new this.WebSocketImpl(relayUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -165,10 +170,12 @@ class RelayBridge extends EventEmitter {
   connectToLocal() {
     if (!this.running) return;
     // 连接到本地 mobile WS server（端口 23334，路径 /mobile/ws）
-    const localUrl = "ws://localhost:23334/mobile/ws?role=pc";
+    const localUrl = `ws://127.0.0.1:${this.getLocalPort()}/mobile/ws?role=pc`;
     console.log(TAG, `连接本地: ${localUrl}`);
 
-    const ws = new WebSocket(localUrl);
+    const ws = new this.WebSocketImpl(localUrl, {
+      headers: { Authorization: `Bearer ${this.localToken}` },
+    });
 
     ws.on("open", () => {
       console.log(TAG, "已连接到本地 hook server");
@@ -197,7 +204,7 @@ class RelayBridge extends EventEmitter {
   // --- 消息转发 ---
 
   forwardToLocal(data) {
-    if (this.localWs && this.localWs.readyState === WebSocket.OPEN) {
+    if (this.localWs && this.localWs.readyState === this.WebSocketImpl.OPEN) {
       this.localWs.send(data);
     } else {
       this.bufferMsg(data);
@@ -205,7 +212,7 @@ class RelayBridge extends EventEmitter {
   }
 
   forwardToRelay(data) {
-    if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
+    if (this.relayWs && this.relayWs.readyState === this.WebSocketImpl.OPEN) {
       this.relayWs.send(data);
     }
   }
@@ -220,7 +227,7 @@ class RelayBridge extends EventEmitter {
   flushBuffer() {
     while (this.msgBuffer.length > 0) {
       const msg = this.msgBuffer.shift();
-      if (this.localWs && this.localWs.readyState === WebSocket.OPEN) {
+      if (this.localWs && this.localWs.readyState === this.WebSocketImpl.OPEN) {
         this.localWs.send(msg);
       }
     }
@@ -274,7 +281,7 @@ class RelayBridge extends EventEmitter {
   }
 
   closeWs(ws, reason) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === this.WebSocketImpl.OPEN) {
       try { ws.close(1000, reason); } catch {}
     }
   }
@@ -287,9 +294,9 @@ let instance = null;
  * 初始化 relay bridge（从 prefs 读取配置）
  * @param {object} prefs — prefs 模块实例
  */
-function initRelayBridge(prefs) {
+function initRelayBridge(prefs, options = {}) {
   if (instance) instance.destroy();
-  instance = new RelayBridge();
+  instance = new RelayBridge(options);
   instance.init(prefs);
   return instance;
 }

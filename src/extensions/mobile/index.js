@@ -13,6 +13,7 @@ function activateMobileExtension({ runtimeEvents, mobileIntegration, resolvePerm
       bridge.onPermissionAdded?.(entry, id);
     }),
     runtimeEvents.on("permission-removed", ({ entry }) => bridge.onPermissionRemoved?.(entry)),
+    runtimeEvents.on("permission-resolved", ({ entry, outcome }) => bridge.onPermissionResolved?.(entry, outcome)),
     runtimeEvents.on("session-updated", ({ sessionId, data }) => bridge.onMobileStateChange?.(sessionId, "state", data)),
     runtimeEvents.on("tool-output", ({ sessionId, data }) => bridge.onMobileToolOutput?.(sessionId, data)),
     runtimeEvents.on("session-snapshot", ({ snapshot }) => bridge.onMobileSessionSnapshot?.(snapshot)),

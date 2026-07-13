@@ -89,6 +89,16 @@ Thinking when you prompt, typing when tools run, grooving or juggling for subage
 - **Installable** — it's a PWA: add it to your home screen for an app-like experience
 > The mobile companion line — from the first prototype to token rotation — is built and led by core contributor [@Bynlk](https://github.com/Bynlk), who also maintains [clawd-on-mobile](https://github.com/Bynlk/clawd-on-mobile), a sister fork with a native Android app.
 
+### Native Android Agent Console (fork feature)
+- **Chat-style managed sessions** — the Android app can create, inspect, and control sessions launched by this fork's bundled PTY runtime; no `tmux`, SSH, or other user-installed tool is required
+- **Rich timeline** — user input, terminal-visible replies and Thinking, tool calls/results, approvals, unified diffs, code, logs, status, and raw-terminal fallback remain in sequence
+- **Process-lifetime history** — history is bounded in desktop memory and is cleared when Clawd restarts; externally launched sessions remain state-only
+- **Opt-in privacy** — full content sync is off by default because code, commands, paths, output, and secrets may reach paired phones
+- **Multi-phone control** — all paired phones may observe, but one device at a time holds the input lease
+- **Self-hosted Relay** — Relay forwards frames without storing console history; public deployments must use WSS/TLS and pairing tokens
+
+See [Android Agent Console](docs/project/android-agent-console.md) for usage, boundaries, protocol, and failure behavior.
+
 ### System
 - **Click-through** — transparent areas pass clicks to windows below; only Clawd's body is interactive
 - **Position memory** — Clawd remembers where you left it across restarts (including mini mode)

@@ -13,6 +13,7 @@ describe("activateMobileExtension", () => {
       setupPermissionHooks(ctx) {
         ctx.onPermissionAdded = (entry, id) => received.push(["added", entry, id]);
         ctx.onPermissionRemoved = (entry) => received.push(["removed", entry]);
+        ctx.onPermissionResolved = (entry, outcome) => received.push(["resolved", entry, outcome]);
       },
       setupStateChangeHooks(ctx) {
         ctx.onMobileStateChange = (sessionId, type, data) => received.push(["state", sessionId, type, data]);
@@ -25,14 +26,16 @@ describe("activateMobileExtension", () => {
     const entry = { toolName: "Bash" };
 
     runtimeEvents.emitReference("permission-added", { entry, id: "p-1" });
+    runtimeEvents.emitReference("permission-resolved", { entry, outcome: { decision: "allow" } });
     runtimeEvents.emit("session-updated", { sessionId: "s-1", data: { state: "working" } });
     dispose();
     runtimeEvents.emitReference("permission-removed", { entry });
 
-    assert.equal(received.length, 2);
+    assert.equal(received.length, 3);
     assert.deepEqual(received[0], ["added", entry, "p-1"]);
     assert.strictEqual(received[0][1], entry);
     assert.equal(entry._mobileApprovalId, "p-1");
-    assert.deepEqual(received[1], ["state", "s-1", "state", { state: "working" }]);
+    assert.deepEqual(received[1], ["resolved", entry, { decision: "allow" }]);
+    assert.deepEqual(received[2], ["state", "s-1", "state", { state: "working" }]);
   });
 });

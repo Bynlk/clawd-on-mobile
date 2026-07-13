@@ -86,6 +86,14 @@ fun SettingsScreen(
             }
 
             AccordionSection(
+                title = stringResource(R.string.settings_console),
+                icon = ClawdIcons.Thinking,
+                defaultExpanded = false
+            ) {
+                ConsoleSettings(prefsStore = prefsStore, streamingClient = streamingClient)
+            }
+
+            AccordionSection(
                 title = stringResource(R.string.settings_about),
                 icon = ClawdIcons.Activity,
                 defaultExpanded = false

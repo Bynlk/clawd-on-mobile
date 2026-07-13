@@ -24,7 +24,7 @@ const TLS_KEY = process.env.TLS_KEY || null;
 
 // 限制参数
 const MAX_MSG_SIZE = 64 * 1024;           // 64KB 单条消息上限
-const RATE_LIMIT_MSGS = 120;               // 每 token 每分钟消息数
+const RATE_LIMIT_MSGS = 120;               // 每 token 每分钟连接尝试数
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;    // 1 分钟窗口
 const REST_RATE_LIMIT = 10;                // REST API 每 IP 每分钟认证尝试
 const REST_LOCKOUT_THRESHOLD = 5;          // 连续失败锁定阈值
@@ -33,7 +33,7 @@ const HEARTBEAT_INTERVAL_MS = 30 * 1000;   // 心跳间隔
 
 // --- 状态 ---
 const pairs = new RelayPairRegistry(); // token → one PC + multiple phones; payloads are never retained
-const rateLimits = new Map();      // token → { count, resetTime }
+const rateLimits = new Map();      // token → connection attempts { count, resetTime }
 const restAttempts = new Map();    // ip → { fails, lockoutUntil }
 let running = true;
 let startTime = Date.now();
@@ -44,7 +44,7 @@ function log(event, data = {}) {
 }
 
 // --- 速率限制 ---
-function checkRateLimit(token) {
+function checkConnectionRateLimit(token) {
   const now = Date.now();
   let rl = rateLimits.get(token);
   if (!rl || now > rl.resetTime) {
@@ -250,6 +250,12 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
+  if (!checkConnectionRateLimit(token)) {
+    ws.close(4008, "连接过于频繁");
+    log("connection_rate_limited", { role, token: token.slice(0, 8), ip });
+    return;
+  }
+
   // 消息大小限制
   ws._maxPayload = MAX_MSG_SIZE;
 
@@ -278,25 +284,23 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    // 速率限制
-    if (!checkRateLimit(token)) {
-      log("rate_limited", { role, token: token.slice(0, 8) });
-      return;
-    }
-
-    pairs.forward(token, role, data);
+    pairs.forward(token, role, data, ws);
   });
 
   // 断开清理
   ws.on("close", () => {
+    const relayClientId = role === "phone" ? pairs.clientIdFor(ws) : null;
     pairs.remove(token, role, ws);
     log("connection_closed", { role, token: token.slice(0, 8), pc: !!pair.pc, phones: pair.phones.size });
 
     for (const peerWsOnClose of pairs.peers(token, role)) {
+      if (relayClientId) {
+        peerWsOnClose.send(JSON.stringify({
+          type: "relay_client_disconnected",
+          sourceClientId: relayClientId,
+        }));
+      }
       peerWsOnClose.send(JSON.stringify({ type: "peer_disconnected", role }));
-    }
-    if (!pairs.get(token)) {
-      rateLimits.delete(token);
     }
   });
 

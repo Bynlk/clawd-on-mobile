@@ -44,7 +44,10 @@ class FakeRuntime extends EventEmitter {
       hasMore: false,
     };
   }
-  write(sessionId, data, options) { this.writes.push({ sessionId, data, options }); }
+  write(sessionId, data, options) {
+    this.writes.push({ sessionId, data, options });
+    return { sessionId, sequence: 42, kind: "user_input", text: data };
+  }
   interrupt(sessionId) { this.interrupts.push(sessionId); }
   resize(sessionId, cols, rows) { this.resizes.push({ sessionId, cols, rows }); }
 }
@@ -84,6 +87,18 @@ describe("ManagedSessionMobileBridge", () => {
     ]);
   });
 
+  it("keeps content subscriptions independent for each phone", () => {
+    const { mobile, runtime, one, two } = setup();
+    mobile.receive(one, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-a" });
+    mobile.receive(two, { type: "managed_content_sync_set", enabled: false, deviceId: "phone-b" });
+    mobile.sent.length = 0;
+
+    runtime.emit("delta", { sessionId: "s1", sequence: 1, kind: "terminal_delta", text: "private" });
+
+    assert.ok(payloadsFor(mobile, one).some((message) => message.type === "managed_session_delta"));
+    assert.ok(!payloadsFor(mobile, two).some((message) => message.type === "managed_session_delta"));
+  });
+
   it("creates sessions and broadcasts runtime deltas only while enabled", () => {
     const { mobile, runtime, one } = setup();
     runtime.emit("delta", { sessionId: "s1", sequence: 1, kind: "terminal_delta", text: "hidden" });
@@ -92,7 +107,7 @@ describe("ManagedSessionMobileBridge", () => {
     mobile.receive(one, { type: "managed_session_create", requestId: "new", agentId: "codex", cwd: "/repo" });
     assert.equal(payloadsFor(mobile, one).at(-1).type, "managed_session_created");
     runtime.emit("delta", { sessionId: "s1", sequence: 2, kind: "terminal_delta", text: "shown" });
-    assert.equal(mobile.broadcasts.at(-1).type, "managed_session_delta");
+    assert.equal(payloadsFor(mobile, one).at(-1).type, "managed_session_delta");
   });
 
   it("chunks history below the configured frame limit", () => {
@@ -106,26 +121,98 @@ describe("ManagedSessionMobileBridge", () => {
     assert.deepEqual(chunks.flatMap((chunk) => chunk.records.map((record) => record.sequence)), [1, 2]);
   });
 
+  it("marks only the first history chunk as requiring reset", () => {
+    const { mobile, runtime, one } = setup({ maxFrameBytes: 48 * 1024 });
+    const originalHistoryAfter = runtime.historyAfter.bind(runtime);
+    runtime.historyAfter = (...args) => ({
+      ...originalHistoryAfter(...args),
+      resetRequired: true,
+    });
+    mobile.receive(one, { type: "managed_content_sync_set", enabled: true });
+    mobile.sent.length = 0;
+
+    mobile.receive(one, {
+      type: "managed_session_history_request",
+      sessionId: "s1",
+      afterSequence: 0,
+    });
+
+    const chunks = payloadsFor(mobile, one);
+    assert.equal(chunks.length, 2);
+    assert.deepEqual(chunks.map((chunk) => chunk.resetRequired), [true, false]);
+  });
+
   it("enforces one input lease across devices", () => {
     const { mobile, runtime, one, two } = setup();
     mobile.receive(one, { type: "managed_content_sync_set", enabled: true });
+    mobile.receive(two, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-b" });
     mobile.receive(one, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-a" });
     mobile.receive(two, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-b" });
     assert.equal(payloadsFor(mobile, two).at(-1).granted, false);
 
     mobile.receive(two, { type: "managed_session_input", sessionId: "s1", deviceId: "phone-b", data: "bad" });
     assert.equal(payloadsFor(mobile, two).at(-1).code, "input_lease_required");
-    mobile.receive(one, { type: "managed_session_input", sessionId: "s1", deviceId: "phone-a", data: "hello" });
+    mobile.receive(one, {
+      type: "managed_session_input",
+      sessionId: "s1",
+      deviceId: "phone-a",
+      requestId: "input-1",
+      data: "hello",
+    });
     assert.equal(runtime.writes[0].data, "hello");
+    assert.deepEqual(payloadsFor(mobile, one).at(-1), {
+      type: "managed_session_command_result",
+      command: "input",
+      sessionId: "s1",
+      sequence: 42,
+      requestId: "input-1",
+      timestamp: 1000,
+    });
   });
 
   it("releases leases when the owning transport disconnects", () => {
     const { mobile, one, two } = setup();
     mobile.receive(one, { type: "managed_content_sync_set", enabled: true });
+    mobile.receive(two, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-b" });
     mobile.receive(one, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-a" });
     mobile.emit("client-disconnected", { clientId: "transport-1" });
     mobile.receive(two, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-b" });
     assert.equal(payloadsFor(mobile, two).at(-1).granted, true);
+  });
+
+  it("does not release a lease when another transport with the same device id disconnects", () => {
+    const { mobile, one, two } = setup();
+    mobile.receive(one, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-a" });
+    mobile.receive(one, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-a" });
+    mobile.receive(two, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-a" });
+
+    mobile.emit("client-disconnected", { clientId: "transport-2" });
+    mobile.receive(two, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-b" });
+    mobile.receive(two, {
+      type: "managed_session_input_lease_acquire",
+      sessionId: "s1",
+      deviceId: "phone-b",
+    });
+
+    assert.equal(payloadsFor(mobile, two).at(-1).granted, false);
+  });
+
+  it("disabling content sync releases leases only to remaining subscribers", () => {
+    const { mobile, one, two } = setup();
+    mobile.receive(one, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-a" });
+    mobile.receive(two, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-b" });
+    mobile.receive(one, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-a" });
+    mobile.sent.length = 0;
+
+    mobile.receive(one, { type: "managed_content_sync_set", enabled: false, deviceId: "phone-a" });
+
+    assert.ok(payloadsFor(mobile, two).some((message) =>
+      message.type === "managed_session_input_lease_changed" &&
+      message.sessionId === "s1" && message.owner === null
+    ));
+    assert.ok(!payloadsFor(mobile, one).some((message) =>
+      message.type === "managed_session_input_lease_changed" && message.owner === null
+    ));
   });
 
   it("forwards resize, interrupt, and acknowledgements for the lease owner", () => {

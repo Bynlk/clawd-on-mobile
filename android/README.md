@@ -516,6 +516,19 @@ KEY_PASSWORD=xxx \
 - `RelaySettings` UI：配置 Relay 地址、Token、状态检查
 - Relay 客户端网络切换即时重连
 
+### 💬 Agent 控制台
+
+- 在“设置 → Agent 控制台”阅读隐私提示并手动开启；默认关闭
+- 仅控制由 Clawd 创建和管理的会话，电脑外部启动的 Agent 仍只显示状态
+- 新建会话只能选择电脑端已安装/启用的 Agent 与电脑端提供的允许目录，不能执行任意 shell 命令或输入任意主机路径
+- 支持多会话切换、完整运行期历史、普通消息、原始方向键/Tab/Ctrl+C、中断和权限审批
+- 对话、可见 Thinking、工具调用/结果、Diff、代码和终端回退以聊天卡片显示；不声称展示模型隐藏推理
+- 多台手机可以同时查看，但同一会话只有一台手机持有输入控制权
+- 自建 Relay 只转发帧、不保存控制台内容；公网部署必须使用 WSS/TLS 与配对 Token
+- Clawd 重启后历史和受管会话列表清空；Android/Relay 断线不会终止电脑端 Agent
+
+详细说明见 [`docs/project/android-agent-console.md`](../docs/project/android-agent-console.md)。
+
 ### 🌍 应用内语言切换
 
 - 支持中/英文实时切换，无需重启 App

@@ -6,6 +6,7 @@ import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.data.SessionData
 import com.clawd.mobile.notification.NotificationHelper
 import com.clawd.mobile.ws.ConnectionState
+import com.clawd.mobile.ws.ApprovalResultData
 import com.clawd.mobile.ws.StreamingClient
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,8 @@ class ApprovalViewModelTest {
     private lateinit var prefsStore: PrefsStore
     private lateinit var streamingClient: StreamingClient
     private lateinit var permissionRequestsFlow: MutableSharedFlow<PermissionRequestData>
+    private lateinit var permissionResolvedFlow: MutableSharedFlow<String>
+    private lateinit var approvalResultsFlow: MutableSharedFlow<ApprovalResultData>
     private lateinit var sessionsFlow: MutableStateFlow<Map<String, SessionData>>
     private lateinit var connectionStateFlow: MutableStateFlow<ConnectionState>
 
@@ -55,15 +58,65 @@ class ApprovalViewModelTest {
         every { NotificationHelper.showElicitationNotification(any(), any(), any()) } just Runs
 
         permissionRequestsFlow = MutableSharedFlow(extraBufferCapacity = 16)
+        permissionResolvedFlow = MutableSharedFlow(extraBufferCapacity = 16)
+        approvalResultsFlow = MutableSharedFlow(extraBufferCapacity = 16)
         sessionsFlow = MutableStateFlow(emptyMap())
         connectionStateFlow = MutableStateFlow(ConnectionState.CONNECTED)
 
         streamingClient = mockk(relaxed = true)
         every { streamingClient.permissionRequests } returns permissionRequestsFlow
+        every { streamingClient.permissionResolved } returns permissionResolvedFlow
+        every { streamingClient.approvalResults } returns approvalResultsFlow
         every { streamingClient.sessions } returns sessionsFlow
         every { streamingClient.connectionState } returns connectionStateFlow
         every { streamingClient.sendPermissionResponse(any(), any(), any()) } returns true
         every { streamingClient.sendElicitationResponse(any(), any(), any()) } returns true
+    }
+
+    @Test
+    fun `resolution from desktop or another phone removes the pending request`() = runTest {
+        val vm = createViewModel()
+        permissionRequestsFlow.emit(makeRequest(requestId = "resolved-elsewhere"))
+        assertEquals(1, vm.pendingRequests.value.size)
+
+        permissionResolvedFlow.emit("resolved-elsewhere")
+
+        assertTrue(vm.pendingRequests.value.isEmpty())
+    }
+
+    @Test
+    fun `resolution tombstone suppresses a late request frame`() = runTest {
+        val vm = createViewModel()
+
+        permissionResolvedFlow.emit("resolved-first")
+        permissionRequestsFlow.emit(makeRequest(requestId = "resolved-first"))
+
+        assertTrue(vm.pendingRequests.value.isEmpty())
+    }
+
+    @Test
+    fun `updating transport collects and responds through the new client`() = runTest {
+        val vm = createViewModel()
+        permissionRequestsFlow.emit(makeRequest(requestId = "migrated"))
+        val newRequests = MutableSharedFlow<PermissionRequestData>(extraBufferCapacity = 4)
+        val newResolved = MutableSharedFlow<String>(extraBufferCapacity = 4)
+        val newApprovalResults = MutableSharedFlow<ApprovalResultData>(extraBufferCapacity = 4)
+        val newClient = mockk<StreamingClient>(relaxed = true)
+        every { newClient.permissionRequests } returns newRequests
+        every { newClient.permissionResolved } returns newResolved
+        every { newClient.approvalResults } returns newApprovalResults
+        every { newClient.sessions } returns MutableStateFlow(emptyMap())
+        every { newClient.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        every { newClient.sendPermissionResponse(any(), any(), any()) } returns true
+
+        vm.updateClient(newClient)
+        assertTrue(vm.pendingRequests.value.any { it.requestId == "migrated" })
+        vm.approve("migrated")
+        newRequests.emit(makeRequest(requestId = "new-client"))
+        vm.approve("new-client")
+
+        verify { newClient.sendPermissionResponse("migrated", "allow", null) }
+        verify { newClient.sendPermissionResponse("new-client", "allow", null) }
     }
 
     @After
@@ -133,13 +186,15 @@ class ApprovalViewModelTest {
 
         assertNotNull(vm.countdowns.value["cd2"])
         vm.approve("cd2")
+        assertNotNull(vm.countdowns.value["cd2"])
+        permissionResolvedFlow.emit("cd2")
         assertNull(vm.countdowns.value["cd2"])
     }
 
     // ── 3. Approve / Deny ────────────────────────────────────────────
 
     @Test
-    fun `approve sends allow and removes request`() = runTest {
+    fun `approve keeps request until desktop confirms resolution`() = runTest {
         val vm = createViewModel()
         permissionRequestsFlow.emit(makeRequest(requestId = "app1"))
         assertEquals(1, vm.pendingRequests.value.size)
@@ -147,17 +202,23 @@ class ApprovalViewModelTest {
         vm.approve("app1")
 
         verify { streamingClient.sendPermissionResponse("app1", "allow", null) }
+        assertEquals(1, vm.pendingRequests.value.size)
+
+        permissionResolvedFlow.emit("app1")
+
         assertTrue(vm.pendingRequests.value.isEmpty())
     }
 
     @Test
-    fun `deny sends deny and removes request`() = runTest {
+    fun `deny keeps request until desktop confirms resolution`() = runTest {
         val vm = createViewModel()
         permissionRequestsFlow.emit(makeRequest(requestId = "den1"))
 
         vm.deny("den1")
 
         verify { streamingClient.sendPermissionResponse("den1", "deny", null) }
+        assertEquals(1, vm.pendingRequests.value.size)
+        permissionResolvedFlow.emit("den1")
         assertTrue(vm.pendingRequests.value.isEmpty())
     }
 
@@ -169,7 +230,38 @@ class ApprovalViewModelTest {
         vm.approveWithSuggestion("sug1", 2)
 
         verify { streamingClient.sendPermissionResponse("sug1", "allow", 2) }
+        assertEquals(1, vm.pendingRequests.value.size)
+        permissionResolvedFlow.emit("sug1")
         assertTrue(vm.pendingRequests.value.isEmpty())
+    }
+
+    @Test
+    fun `desktop rejection keeps approval pending and allows retry`() = runTest {
+        val vm = createViewModel()
+        permissionRequestsFlow.emit(makeRequest(requestId = "expired"))
+
+        vm.approve("expired")
+        approvalResultsFlow.emit(ApprovalResultData("expired", false, "request not found or expired"))
+        vm.approve("expired")
+
+        assertEquals(1, vm.pendingRequests.value.size)
+        verify(exactly = 2) { streamingClient.sendPermissionResponse("expired", "allow", null) }
+    }
+
+    @Test
+    fun `disconnect while awaiting desktop confirmation allows retry after reconnect`() = runTest {
+        val vm = createViewModel()
+        permissionRequestsFlow.emit(makeRequest(requestId = "lost-confirmation"))
+
+        vm.approve("lost-confirmation")
+        connectionStateFlow.value = ConnectionState.DISCONNECTED
+        connectionStateFlow.value = ConnectionState.CONNECTED
+        vm.approve("lost-confirmation")
+
+        assertEquals(1, vm.pendingRequests.value.size)
+        verify(exactly = 2) {
+            streamingClient.sendPermissionResponse("lost-confirmation", "allow", null)
+        }
     }
 
     @Test
@@ -178,6 +270,7 @@ class ApprovalViewModelTest {
         permissionRequestsFlow.emit(makeRequest(requestId = "no-restore"))
 
         vm.approve("no-restore")
+        approvalResultsFlow.emit(ApprovalResultData("no-restore", true))
 
         // Should NOT be restorable via notification
         vm.setNotificationRequestId("no-restore")
@@ -245,6 +338,7 @@ class ApprovalViewModelTest {
             if (vm.pendingRequests.value.size > beforeSize) restoredCount++
             // Clean up so next iteration starts fresh
             vm.approve("evict$i")
+            permissionResolvedFlow.emit("evict$i")
         }
         assertTrue("At most 20 should be restorable, but $restoredCount were", restoredCount <= 20)
         assertTrue("At least some should be restorable", restoredCount > 0)
@@ -334,6 +428,8 @@ class ApprovalViewModelTest {
 
         vm.approve("multi2")
 
+        assertEquals(3, vm.pendingRequests.value.size)
+        permissionResolvedFlow.emit("multi2")
         assertEquals(2, vm.pendingRequests.value.size)
         assertTrue(vm.pendingRequests.value.any { it.requestId == "multi1" })
         assertTrue(vm.pendingRequests.value.any { it.requestId == "multi3" })

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
+import com.clawd.mobile.console.ConsoleServerMessage
 
 /**
  * Shared message handling logic for [StreamingClient] transport implementations.
@@ -25,12 +26,15 @@ class MessageHandler(
     private val displayState: MutableStateFlow<String>,
     private val syncing: MutableStateFlow<Boolean>,
     private val permissionRequests: MutableSharedFlow<PermissionRequestData>,
+    private val permissionResolved: MutableSharedFlow<String>? = null,
+    private val approvalResults: MutableSharedFlow<ApprovalResultData>? = null,
     private val reactions: MutableSharedFlow<String>,
     private val scope: CoroutineScope,
     private val messageParser: MessageParser,
     private val sendPong: (String) -> Unit,
     private val onPeerConnected: ((String) -> Unit)? = null,
     private val onPeerDisconnected: ((String) -> Unit)? = null,
+    private val onConsoleMessage: (ConsoleServerMessage) -> Unit = {},
 ) {
     /**
      * Parse and dispatch a raw message string.
@@ -100,6 +104,14 @@ class MessageHandler(
                 }
             }
 
+            is ParsedMessage.PermissionResolved -> {
+                permissionResolved?.tryEmit(parsed.requestId)
+            }
+
+            is ParsedMessage.ApprovalResult -> {
+                approvalResults?.tryEmit(parsed.result)
+            }
+
             is ParsedMessage.Reaction -> {
                 val svg = parsed.svg
                 if (svg != null) {
@@ -122,6 +134,10 @@ class MessageHandler(
             is ParsedMessage.PeerDisconnected -> {
                 Log.d(tag, "peer_disconnected role=${parsed.role}")
                 onPeerDisconnected?.invoke(parsed.role)
+            }
+
+            is ParsedMessage.Console -> {
+                onConsoleMessage(parsed.message)
             }
 
             is ParsedMessage.Unknown -> { /* ignore unknown types */ }

@@ -646,6 +646,39 @@ describe("MobileWSServer", () => {
       assert.ok(events[0].clientId);
       s.close();
     });
+
+    it("closes clients that send payloads above the managed protocol limit", () => {
+      const s = makeServer();
+      const handlers = {};
+      const ws = makeFakeWS();
+      ws.on = (event, handler) => { handlers[event] = handler; };
+      s._handleConnection(ws, makeFakeReq("/?token=test-token"));
+
+      handlers.message(Buffer.alloc(64 * 1024 + 1));
+
+      assert.equal(ws.closed, true);
+      assert.equal(ws.closeCode, 1009);
+      s.close();
+    });
+
+    it("does not count acknowledgements against the interactive command rate limit", () => {
+      const s = makeServer();
+      const handlers = {};
+      const ws = makeFakeWS();
+      ws.on = (event, handler) => { handlers[event] = handler; };
+      s._handleConnection(ws, makeFakeReq("/?token=test-token"));
+
+      for (let sequence = 1; sequence <= 100; sequence++) {
+        handlers.message(JSON.stringify({
+          type: "managed_session_ack",
+          sessionId: "s1",
+          sequence,
+        }));
+      }
+
+      assert.equal(ws.closed, false);
+      s.close();
+    });
   });
 
   describe("buildMobileFields (via snapshot)", () => {

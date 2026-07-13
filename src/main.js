@@ -1323,6 +1323,7 @@ const {
   isCodexPermissionInterceptEnabled: _isCodexPermissionInterceptEnabled,
   shouldSyncAgentIntegration: _shouldSyncAgentIntegration,
 } = require("./agent-gate");
+let _runtimeEvents = null;
 const _permCtx = {
   get win() { return win; },
   get lang() { return lang; },
@@ -1374,6 +1375,9 @@ const _permCtx = {
       : [];
   },
   onPermissionResolved: (permEntry, options = {}) => {
+    if (_runtimeEvents && typeof _runtimeEvents.emitReference === "function") {
+      _runtimeEvents.emitReference("permission-resolved", { entry: permEntry, outcome: options });
+    }
     if (!_state || typeof _state.clearPermissionNotification !== "function") return;
     _state.clearPermissionNotification(permEntry && permEntry.sessionId, options);
   },
@@ -1899,7 +1903,7 @@ agentRuntime = createAgentRuntimeMain({
 });
 
 // ── HTTP server — delegated to src/server.js ──
-const _runtimeEvents = new RuntimeEvents();
+_runtimeEvents = new RuntimeEvents();
 const _serverCtx = {
   get manageClaudeHooksAutomatically() { return manageClaudeHooksAutomatically; },
   get autoStartWithClaude() { return autoStartWithClaude; },

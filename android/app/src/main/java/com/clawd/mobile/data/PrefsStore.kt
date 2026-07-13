@@ -7,6 +7,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.UUID
 
 class PrefsStore private constructor(context: Context) {
 
@@ -30,6 +31,8 @@ class PrefsStore private constructor(context: Context) {
         private const val PREFS_ENCRYPTED = "clawd_prefs_encrypted"
         private const val PREFS_LEGACY = "clawd_prefs"
         private const val KEY_MIGRATED = "_migrated_v1"
+        private const val KEY_CONSOLE_SYNC_ENABLED = "console_sync_enabled"
+        private const val KEY_CONSOLE_DEVICE_ID = "console_device_id"
 
         @Volatile
         private var instance: PrefsStore? = null
@@ -204,6 +207,19 @@ class PrefsStore private constructor(context: Context) {
 
     fun getRelayToken(): String = prefs.getString("relay_token", "") ?: ""
     fun setRelayToken(v: String) { prefs.edit().putString("relay_token", v).apply() }
+
+    // Managed Agent Console — content sync is intentionally opt-in.
+    fun isConsoleSyncEnabled(): Boolean = prefs.getBoolean(KEY_CONSOLE_SYNC_ENABLED, false)
+    fun setConsoleSyncEnabled(v: Boolean) {
+        prefs.edit().putBoolean(KEY_CONSOLE_SYNC_ENABLED, v).apply()
+    }
+
+    fun getOrCreateConsoleDeviceId(): String {
+        prefs.getString(KEY_CONSOLE_DEVICE_ID, null)?.takeIf { it.isNotBlank() }?.let { return it }
+        val generated = "android-${UUID.randomUUID()}"
+        prefs.edit().putString(KEY_CONSOLE_DEVICE_ID, generated).apply()
+        return generated
+    }
 
     // Language / i18n
     /** Returns language tag: "zh" (default) or "en". */

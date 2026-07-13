@@ -83,7 +83,7 @@ class ManagedSessionStore {
     return {
       sessionId,
       records,
-      resetRequired: afterSequence > 0 && afterSequence < oldestSequence,
+      resetRequired: oldestSequence > 1 && afterSequence < oldestSequence,
       oldestSequence,
       latestSequence: session.nextSequence - 1,
       nextSequence: records.length ? records[records.length - 1].sequence : afterSequence,

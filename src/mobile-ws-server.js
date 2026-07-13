@@ -9,6 +9,7 @@ const DEFAULT_MAX_CLIENTS = 10;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
 const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX_MESSAGES = 60;
+const MAX_CLIENT_MESSAGE_BYTES = 64 * 1024;
 const MAX_HISTORY = 50;
 const SESSION_CACHE_MAX_SIZE = 200;
 const SESSION_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -94,6 +95,7 @@ class MobileWSServer extends EventEmitter {
     this.clients = new Set();
     this.sessionCache = new Map();
     this.clientMeta = new Map();
+    this.relayClientsByTransport = new Map();
     this._heartbeatTimer = null;
     this._messageHandlers = new Set();
     this.connectionHistory = [];
@@ -140,6 +142,7 @@ class MobileWSServer extends EventEmitter {
       clientId: clientId,
       ip: clientIp,
       connectedAt: now,
+      relayTransport: url.searchParams.get("role") === "pc",
     });
 
     // Track connection history
@@ -176,30 +179,74 @@ class MobileWSServer extends EventEmitter {
       ws.isAlive = true; // any message from client = still alive
       const meta = this.clientMeta.get(ws);
       if (!meta) return;
-      const now = Date.now();
-      if (now - meta.windowStart > RATE_LIMIT_WINDOW_MS) {
-        meta.messageCount = 0;
-        meta.windowStart = now;
+      const messageBytes = Buffer.isBuffer(data)
+        ? data.length
+        : Buffer.byteLength(String(data), "utf8");
+      if (messageBytes > MAX_CLIENT_MESSAGE_BYTES) {
+        ws.close(1009, "Message too large");
+        return;
       }
-      meta.messageCount++;
-      if (meta.messageCount > RATE_LIMIT_MAX_MESSAGES) {
-        ws.close(1008, "Rate limit exceeded");
-        console.log("[mobile-ws] Connection closed: rate limit exceeded");
+      // Parse client messages and dispatch to handlers
+      let msg;
+      try {
+        msg = JSON.parse(data);
+      } catch (e) {
+        console.warn("[mobile-ws] invalid message:", e.message);
         return;
       }
 
-      // Parse client messages and dispatch to handlers
-      try {
-        const msg = JSON.parse(data);
-        for (const handler of this._messageHandlers) {
-          try { handler(ws, msg); } catch (e) { console.warn("[mobile-ws] message handler error:", e.message); }
+      let dispatchWs = ws;
+      if (meta.relayTransport && msg.type === "relay_client_disconnected" &&
+          typeof msg.sourceClientId === "string") {
+        this._removeRelayClient(ws, msg.sourceClientId);
+        return;
+      }
+      if (meta.relayTransport && msg.type === "relay_forward" &&
+          typeof msg.sourceClientId === "string" && typeof msg.payload === "string") {
+        try {
+          dispatchWs = this._relayClient(ws, msg.sourceClientId);
+          msg = JSON.parse(msg.payload);
+        } catch (e) {
+          console.warn("[mobile-ws] invalid relay payload:", e.message);
+          return;
         }
-      } catch (e) { console.warn("[mobile-ws] invalid message:", e.message); }
+      }
+
+      const rateMeta = this.clientMeta.get(dispatchWs) || meta;
+      const isFlowControl = msg.type === "managed_session_ack" || msg.type === "pong";
+      if (!isFlowControl) {
+        const now = Date.now();
+        if (now - rateMeta.windowStart > RATE_LIMIT_WINDOW_MS) {
+          rateMeta.messageCount = 0;
+          rateMeta.windowStart = now;
+        }
+        rateMeta.messageCount++;
+        if (rateMeta.messageCount > RATE_LIMIT_MAX_MESSAGES) {
+          if (dispatchWs !== ws) {
+            this.send(dispatchWs, {
+              type: "managed_session_error",
+              code: "rate_limit_exceeded",
+              requestId: typeof msg.requestId === "string" ? msg.requestId : null,
+              sessionId: typeof msg.sessionId === "string" ? msg.sessionId : null,
+              timestamp: now,
+            });
+          } else {
+            ws.close(1008, "Rate limit exceeded");
+            console.log("[mobile-ws] Connection closed: rate limit exceeded");
+          }
+          return;
+        }
+      }
+
+      for (const handler of this._messageHandlers) {
+        try { handler(dispatchWs, msg); } catch (e) { console.warn("[mobile-ws] message handler error:", e.message); }
+      }
     });
 
     ws.on("close", () => {
       const meta = this.clientMeta.get(ws);
       this.clients.delete(ws);
+      this._removeRelayClients(ws);
       this.clientMeta.delete(ws);
       console.log("[mobile-ws] Client disconnected (total: " + this.clients.size + ")");
       this.emit("client-disconnected", { clientId: meta && meta.clientId });
@@ -367,6 +414,21 @@ class MobileWSServer extends EventEmitter {
   }
 
   send(ws, data) {
+    const relayMeta = this.clientMeta.get(ws);
+    if (relayMeta && relayMeta.relayParent) {
+      const parent = relayMeta.relayParent;
+      if (!this.clients.has(parent) || parent.readyState !== WebSocket.OPEN) return false;
+      try {
+        parent.send(JSON.stringify({
+          type: "relay_forward",
+          targetClientId: relayMeta.relayClientId,
+          payload: JSON.stringify(data),
+        }));
+        return true;
+      } catch {
+        return false;
+      }
+    }
     if (!this.clients.has(ws) || !ws || ws.readyState !== WebSocket.OPEN) return false;
     try {
       ws.send(JSON.stringify(data));
@@ -374,6 +436,51 @@ class MobileWSServer extends EventEmitter {
     } catch {
       return false;
     }
+  }
+
+  _relayClient(parent, relayClientId) {
+    let clients = this.relayClientsByTransport.get(parent);
+    if (!clients) {
+      clients = new Map();
+      this.relayClientsByTransport.set(parent, clients);
+    }
+    let client = clients.get(relayClientId);
+    if (!client) {
+      client = {};
+      clients.set(relayClientId, client);
+      const parentMeta = this.clientMeta.get(parent);
+      this.clientMeta.set(client, {
+        clientId: `${parentMeta.clientId}:relay:${relayClientId}`,
+        relayClientId,
+        relayParent: parent,
+        messageCount: 0,
+        windowStart: Date.now(),
+      });
+    }
+    return client;
+  }
+
+  _removeRelayClients(parent) {
+    const clients = this.relayClientsByTransport.get(parent);
+    if (!clients) return;
+    for (const client of clients.values()) {
+      const meta = this.clientMeta.get(client);
+      this.clientMeta.delete(client);
+      this.emit("client-disconnected", { clientId: meta && meta.clientId });
+    }
+    this.relayClientsByTransport.delete(parent);
+  }
+
+  _removeRelayClient(parent, relayClientId) {
+    const clients = this.relayClientsByTransport.get(parent);
+    if (!clients) return;
+    const client = clients.get(relayClientId);
+    if (!client) return;
+    const meta = this.clientMeta.get(client);
+    clients.delete(relayClientId);
+    this.clientMeta.delete(client);
+    if (clients.size === 0) this.relayClientsByTransport.delete(parent);
+    this.emit("client-disconnected", { clientId: meta && meta.clientId });
   }
 
   broadcast(data) {
@@ -521,6 +628,7 @@ class MobileWSServer extends EventEmitter {
     for (const client of this.clients) { client.close(1001, "Server shutting down"); }
     this.clients.clear();
     this.clientMeta.clear();
+    this.relayClientsByTransport.clear();
     for (const [, ext] of this.externalClients) { if (ext.res) { try { ext.res.end(); } catch {} } }
     this.externalClients.clear();
     if (this.wss) this.wss.close();

@@ -35,6 +35,18 @@ class MessageParserTest {
     }
 
     @Test
+    fun `parse approval result preserves desktop acceptance state`() {
+        val result = parser.parse(
+            """{"type":"approval_result","id":"req-1","ok":false,"error":"request not found or expired","timestamp":42}"""
+        ) as ParsedMessage.ApprovalResult
+
+        assertEquals("req-1", result.result.requestId)
+        assertFalse(result.result.ok)
+        assertEquals("request not found or expired", result.result.error)
+        assertEquals(42L, result.timestamp)
+    }
+
+    @Test
     fun `parse malformed JSON returns null`() {
         assertNull(parser.parse("not json"))
         assertNull(parser.parse(""))
@@ -217,5 +229,53 @@ class MessageParserTest {
         val json = """{"type": "ping"}"""
         val result = parser.parse(json) as ParsedMessage.Ping
         assertEquals(0L, result.timestamp)
+    }
+
+    @Test
+    fun `parse managed capabilities`() {
+        val result = parser.parse(
+            """{"type":"managed_capabilities","agents":[{"id":"codex","name":"Codex","command":"codex"}],"directories":["/repo"]}"""
+        ) as ParsedMessage.Console
+        val message = result.message as com.clawd.mobile.console.ConsoleServerMessage.Capabilities
+        assertEquals("codex", message.agents.single().id)
+        assertEquals(listOf("/repo"), message.directories)
+    }
+
+    @Test
+    fun `parse managed history and delta`() {
+        val history = parser.parse(
+            """{"type":"managed_session_history_chunk","sessionId":"s1","records":[{"sessionId":"s1","sequence":1,"kind":"thinking","text":"checking"}],"resetRequired":true,"hasMore":false}"""
+        ) as ParsedMessage.Console
+        val chunk = history.message as com.clawd.mobile.console.ConsoleServerMessage.HistoryChunk
+        assertTrue(chunk.resetRequired)
+        assertEquals("thinking", chunk.records.single().kind)
+
+        val delta = parser.parse(
+            """{"type":"managed_session_delta","record":{"sessionId":"s1","sequence":2,"kind":"diff","text":"+new","additions":1}}"""
+        ) as ParsedMessage.Console
+        assertEquals(2L, (delta.message as com.clawd.mobile.console.ConsoleServerMessage.Delta).record.sequence)
+    }
+
+    @Test
+    fun `parse permission resolved`() {
+        val result = parser.parse(
+            """{"type":"permission_resolved","id":"approval-1","decision":"allow","timestamp":7}"""
+        ) as ParsedMessage.PermissionResolved
+
+        assertEquals("approval-1", result.requestId)
+        assertEquals(7L, result.timestamp)
+    }
+
+    @Test
+    fun `parse managed command result`() {
+        val result = parser.parse(
+            """{"type":"managed_session_command_result","requestId":"input-1","sessionId":"s1","command":"input","sequence":42}"""
+        ) as ParsedMessage.Console
+        val message = result.message as com.clawd.mobile.console.ConsoleServerMessage.CommandResult
+
+        assertEquals("input-1", message.requestId)
+        assertEquals("s1", message.sessionId)
+        assertEquals("input", message.command)
+        assertEquals(42L, message.sequence)
     }
 }

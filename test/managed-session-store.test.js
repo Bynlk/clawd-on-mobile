@@ -48,6 +48,8 @@ describe("ManagedSessionStore", () => {
 
     const history = store.historyAfter("s1", 0);
     assert.equal(history.records.length, 1);
+    assert.equal(history.resetRequired, true);
+    assert.equal(history.oldestSequence, 2);
     assert.match(history.records[0].text, /^b+$/);
   });
 

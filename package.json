@@ -15,6 +15,7 @@
     "fetch:sidecars": "node scripts/fetch-sidecar-binaries.js",
     "fetch:wg": "node scripts/fetch-wg-binaries.js",
     "verify:sidecars": "node scripts/verify-sidecar-binaries.js",
+    "rebuild:native": "electron-builder install-app-deps",
     "prebuild": "node scripts/verify-sidecar-binaries.js",
     "prebuild:win:x64": "node scripts/verify-sidecar-binaries.js",
     "prebuild:win:arm64": "node scripts/verify-sidecar-binaries.js",
@@ -150,6 +151,7 @@
       "pwa/**/*"
     ],
     "asarUnpack": [
+      "node_modules/node-pty/**/*",
       "assets/svg/**/*",
       "hooks/**/*",
       "extensions/**/*",
@@ -180,6 +182,8 @@
         "repo": "clawd-on-mobile"
       }
     ],
+    "npmRebuild": true,
+    "nativeRebuilder": "sequential",
     "compression": "store"
   },
   "devDependencies": {

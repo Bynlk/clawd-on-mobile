@@ -358,6 +358,43 @@ describe("broadcastHookEvent", () => {
 // ── ctx.onPermissionAdded (hook behavior) ──
 
 describe("ctx.onPermissionAdded (hook behavior)", () => {
+  it("adds pending and resolved permission records to a uniquely linked managed session", () => {
+    const calls = [];
+    const runtime = {
+      linkHookSession: (...args) => calls.push(["link", ...args]),
+      appendHookEvent: (...args) => calls.push(["append", ...args]),
+    };
+    const ctx = { getDataDir: () => "/tmp" };
+    const integration = initMobileServer(ctx, {
+      createHttpServer: () => ({ listen: () => {}, on: () => {} }),
+      managedSessionRuntime: runtime,
+    });
+    integration.setupPermissionHooks(ctx, () => {});
+    const entry = {
+      res: true,
+      sessionId: "hook-s1",
+      toolName: "Bash",
+      agentId: "codex",
+      cwd: "/repo",
+      toolInput: { command: "npm test" },
+      suggestions: [],
+    };
+
+    ctx.onPermissionAdded(entry, "approval-managed");
+    const pending = integration.getPendingMobileApprovals().get("approval-managed");
+    pending.resolve("allow");
+
+    assert.ok(calls.some(([type, id, event]) =>
+      type === "append" && id === "hook-s1" && event.kind === "permission" &&
+      event.permissionId === "approval-managed" && event.permissionState === "pending"
+    ));
+    assert.ok(calls.some(([type, id, event]) =>
+      type === "append" && id === "hook-s1" && event.kind === "permission" &&
+      event.permissionState === "allow"
+    ));
+    clearTimeout(pending.timer);
+  });
+
   it("broadcasts permission_request and adds to pending approvals", () => {
     const ctx = { getDataDir: () => "/tmp" };
     const integration = initMobileServer(ctx, {
@@ -455,6 +492,37 @@ describe("ctx.onPermissionAdded (hook behavior)", () => {
 // ── ctx.onPermissionRemoved (hook behavior) ──
 
 describe("ctx.onPermissionRemoved (hook behavior)", () => {
+  it("broadcasts permission resolution so losing phones clear actionable UI", () => {
+    const ctx = { getDataDir: () => "/tmp" };
+    const integration = initMobileServer(ctx, {
+      createHttpServer: () => ({ listen: () => {}, on: () => {} }),
+    });
+    integration.setupPermissionHooks(ctx, () => {});
+    integration.startMobileServer({}, { skipHttpServer: true });
+    const mobileWS = integration.getMobileWS();
+    const sent = [];
+    const client = { readyState: 1, send: (data) => sent.push(JSON.parse(data)) };
+    mobileWS.clients.add(client);
+    const entry = {
+      res: true,
+      sessionId: "s1",
+      toolName: "Bash",
+      agentId: "codex",
+      suggestions: [],
+      _mobileApprovalId: "approval-resolved",
+    };
+
+    ctx.onPermissionAdded(entry, "approval-resolved");
+    ctx.onPermissionResolved(entry, { decision: "allow" });
+
+    assert.ok(sent.some((message) =>
+      message.type === "permission_resolved" && message.id === "approval-resolved"
+    ));
+    assert.ok(!integration.getPendingMobileApprovals().has("approval-resolved"));
+    mobileWS.clients.delete(client);
+    integration.stopMobileServer();
+  });
+
   it("clears timer and removes pending approval", () => {
     const ctx = { getDataDir: () => "/tmp" };
     const integration = initMobileServer(ctx, {
@@ -508,6 +576,31 @@ describe("ctx.onPermissionRemoved (hook behavior)", () => {
 // ── ctx.onMobileStateChange (hook behavior) ──
 
 describe("ctx.onMobileStateChange (hook behavior)", () => {
+  it("appends correlated status events to managed session history", () => {
+    const calls = [];
+    const runtime = {
+      linkHookSession: (...args) => calls.push(["link", ...args]),
+      appendHookEvent: (...args) => calls.push(["append", ...args]),
+    };
+    const ctx = { getDataDir: () => "/tmp" };
+    const integration = initMobileServer(ctx, {
+      createHttpServer: () => ({ listen: () => {}, on: () => {} }),
+      managedSessionRuntime: runtime,
+    });
+    integration.setupStateChangeHooks(ctx);
+
+    ctx.onMobileStateChange("hook-s1", "state", {
+      event: "Stop",
+      state: "idle",
+      agentId: "codex",
+      cwd: "/repo",
+    });
+
+    assert.ok(calls.some(([type, id, event]) =>
+      type === "append" && id === "hook-s1" && event.kind === "status" && event.event === "Stop"
+    ));
+  });
+
   it("calls broadcastState on mobileWS and broadcastHookEvent", () => {
     const ctx = { getDataDir: () => "/tmp" };
     const integration = initMobileServer(ctx, {
@@ -548,6 +641,30 @@ describe("ctx.onMobileStateChange (hook behavior)", () => {
 // ── ctx.onMobileToolOutput (hook behavior) ──
 
 describe("ctx.onMobileToolOutput (hook behavior)", () => {
+  it("classifies unified diff hook output as a diff record", () => {
+    const calls = [];
+    const runtime = {
+      appendHookEvent: (...args) => calls.push(args),
+    };
+    const ctx = { getDataDir: () => "/tmp" };
+    const integration = initMobileServer(ctx, {
+      createHttpServer: () => ({ listen: () => {}, on: () => {} }),
+      managedSessionRuntime: runtime,
+    });
+    integration.setupStateChangeHooks(ctx);
+
+    ctx.onMobileToolOutput("hook-s1", {
+      toolName: "Edit",
+      output: "diff --git a/a.js b/a.js\n--- a/a.js\n+++ b/a.js\n@@ -1 +1 @@\n-old\n+new",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][1].kind, "diff");
+    assert.equal(calls[0][1].file, "a.js");
+    assert.equal(calls[0][1].additions, 1);
+    assert.equal(calls[0][1].deletions, 1);
+  });
+
   it("calls broadcastToolOutput on mobileWS and broadcastHookEvent", () => {
     const ctx = { getDataDir: () => "/tmp" };
     const integration = initMobileServer(ctx, {

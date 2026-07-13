@@ -11,6 +11,7 @@ const path = require("path");
 const os = require("os");
 const { MobileWSServer } = require("./mobile-ws-server");
 const { ManagedSessionMobileBridge } = require("./managed-session-mobile-bridge");
+const { parseDiff } = require("./managed-terminal-normalizer");
 
 /**
  * Initialize mobile companion server state.
@@ -64,6 +65,45 @@ function initMobileServer(ctx, options = {}) {
   if (!savedState.token) saveMobileState({ token: MOBILE_TOKEN });
 
   const pendingMobileApprovals = new Map();
+  const resolvedManagedPermissions = new Set();
+  const notifiedPermissionResolutions = new Set();
+
+  function appendManagedPermission(permEntry, id, state) {
+    if (!managedSessionRuntime || !permEntry || !permEntry.sessionId) return;
+    managedSessionRuntime.linkHookSession(permEntry.sessionId, permEntry);
+    let input = "";
+    try {
+      input = permEntry.toolInput == null ? "" : `\n${JSON.stringify(permEntry.toolInput, null, 2)}`;
+    } catch {}
+    managedSessionRuntime.appendHookEvent(permEntry.sessionId, {
+      ...permEntry,
+      kind: "permission",
+      toolName: permEntry.toolName,
+      text: `${permEntry.toolName || "Permission request"}${input}`,
+      permissionId: id,
+      permissionState: state,
+    });
+    if (state !== "pending") resolvedManagedPermissions.add(id);
+  }
+
+  function notifyPermissionResolved(permEntry, id, state = "resolved") {
+    if (!id || notifiedPermissionResolutions.has(id)) return;
+    notifiedPermissionResolutions.add(id);
+    if (notifiedPermissionResolutions.size > 1000) {
+      notifiedPermissionResolutions.delete(notifiedPermissionResolutions.values().next().value);
+    }
+    const pending = pendingMobileApprovals.get(id);
+    if (pending) clearTimeout(pending.timer);
+    pendingMobileApprovals.delete(id);
+    if (!resolvedManagedPermissions.has(id)) appendManagedPermission(permEntry, id, state);
+    broadcastHookEvent({
+      type: "permission_resolved",
+      id,
+      sessionId: permEntry && permEntry.sessionId,
+      decision: state,
+      timestamp: Date.now(),
+    });
+  }
   let mobileWS = null;
   let mobileHttpServer = null;
   let mobileServerPort = null;
@@ -92,6 +132,7 @@ function initMobileServer(ctx, options = {}) {
     if (decision === "allow" && data.updatedInput && pending.entry) {
       pending.entry.resolvedUpdatedInput = data.updatedInput;
     }
+    notifyPermissionResolved(pending.entry, id, resolvedDecision);
     try { pending.resolve(resolvedDecision); } catch (e) { console.warn("[mobile] approval resolve error:", e.message); }
     return { ok: true };
   }
@@ -131,12 +172,12 @@ function initMobileServer(ctx, options = {}) {
         if (msg.type === "permission_response" || msg.type === "elicitation_response") {
           const result = resolveMobileApproval(msg.id || msg.requestId, msg);
           try {
-            ws.send(JSON.stringify({
+            mobileWS.send(ws, {
               type: "approval_result",
               id: msg.id || msg.requestId,
               ...result,
               timestamp: Date.now(),
-            }));
+            });
           } catch (e) { console.warn("[mobile-ws] send approval_result error:", e.message); }
         }
       });
@@ -209,7 +250,12 @@ function initMobileServer(ctx, options = {}) {
 
     // WebSocket: single server, manual upgrade for /mobile/ws (Android) and /ws (PWA)
     const WebSocket = require("ws");
-    const wss = new WebSocket.Server({ noServer: true, perMessageDeflate: false, autoPong: false });
+    const wss = new WebSocket.Server({
+      noServer: true,
+      perMessageDeflate: false,
+      autoPong: false,
+      maxPayload: 64 * 1024,
+    });
     mobileHttpServer.on("upgrade", (req, socket, head) => {
       const urlPath = (require("url").parse(req.url || "").pathname || "");
       if (urlPath === "/mobile/ws" || urlPath === "/ws") {
@@ -225,9 +271,10 @@ function initMobileServer(ctx, options = {}) {
 
     const mobileBindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
     mobileHttpServer.listen(MOBILE_PORT, mobileBindHost, () => {
-      mobileServerPort = MOBILE_PORT;
-      if (mobileWS) mobileWS.setPort(MOBILE_PORT);
-      console.log(`[mobile-ws] Listening on ${mobileBindHost}:${MOBILE_PORT}`);
+      const address = mobileHttpServer.address();
+      mobileServerPort = address && typeof address === "object" ? address.port : MOBILE_PORT;
+      if (mobileWS) mobileWS.setPort(mobileServerPort);
+      console.log(`[mobile-ws] Listening on ${mobileBindHost}:${mobileServerPort}`);
     });
   }
 
@@ -239,6 +286,8 @@ function initMobileServer(ctx, options = {}) {
       try { clearTimeout(pending.timer); } catch {}
     }
     pendingMobileApprovals.clear();
+    resolvedManagedPermissions.clear();
+    notifiedPermissionResolutions.clear();
     if (managedSessionBridge) {
       managedSessionBridge.dispose();
       managedSessionBridge = null;
@@ -259,6 +308,8 @@ function initMobileServer(ctx, options = {}) {
   function setupPermissionHooks(ctx, resolvePermissionEntry) {
     ctx.onPermissionAdded = function(permEntry, id) {
       if (permEntry && permEntry.res && permEntry.agentId !== "opencode") {
+        notifiedPermissionResolutions.delete(id);
+        resolvedManagedPermissions.delete(id);
         console.log(`[mobile-bridge] broadcasting permission_request id=${id}`);
         // Generate labels for mobile clients (desktop bubble-renderer does this client-side)
         const mobileSuggestions = (permEntry.suggestions || []).map((s) => {
@@ -290,15 +341,18 @@ function initMobileServer(ctx, options = {}) {
           suggestions: mobileSuggestions,
           timestamp: Date.now(),
         });
+        appendManagedPermission(permEntry, id, "pending");
         const timer = setTimeout(() => {
           if (!pendingMobileApprovals.has(id)) return;
           pendingMobileApprovals.delete(id);
+          appendManagedPermission(permEntry, id, "timed_out");
           try { resolvePermissionEntry(permEntry, "deny", "Mobile approval timed out"); } catch {}
         }, 60000);
         pendingMobileApprovals.set(id, {
           entry: permEntry,
           timer,
           resolve: (decision) => {
+            if (!resolvedManagedPermissions.has(id)) appendManagedPermission(permEntry, id, decision);
             try { resolvePermissionEntry(permEntry, decision, "Mobile approval"); } catch {}
           },
         });
@@ -307,12 +361,19 @@ function initMobileServer(ctx, options = {}) {
 
     ctx.onPermissionRemoved = function(permEntry) {
       if (permEntry && permEntry._mobileApprovalId) {
+        notifyPermissionResolved(permEntry, permEntry._mobileApprovalId, "resolved");
+        resolvedManagedPermissions.delete(permEntry._mobileApprovalId);
         const pending = pendingMobileApprovals.get(permEntry._mobileApprovalId);
         if (pending) {
           clearTimeout(pending.timer);
           pendingMobileApprovals.delete(permEntry._mobileApprovalId);
         }
       }
+    };
+
+    ctx.onPermissionResolved = function(permEntry, outcome = {}) {
+      const id = permEntry && permEntry._mobileApprovalId;
+      notifyPermissionResolved(permEntry, id, outcome.decision || "resolved");
     };
   }
 
@@ -324,6 +385,22 @@ function initMobileServer(ctx, options = {}) {
    */
   function setupStateChangeHooks(ctx) {
     ctx.onMobileStateChange = function(sessionId, changeType, data) {
+      if (managedSessionRuntime) {
+        managedSessionRuntime.linkHookSession(sessionId, data);
+        if (data && data.event === "PreToolUse" && data.toolName) {
+          managedSessionRuntime.appendHookEvent(sessionId, {
+            ...data,
+            kind: "tool_call",
+            text: data.toolName,
+          });
+        } else if (data && data.event) {
+          managedSessionRuntime.appendHookEvent(sessionId, {
+            ...data,
+            kind: "status",
+            text: data.event,
+          });
+        }
+      }
       if (mobileWS) {
         mobileWS.broadcastState(sessionId, data);
       }
@@ -336,6 +413,19 @@ function initMobileServer(ctx, options = {}) {
     };
 
     ctx.onMobileToolOutput = function(sessionId, data) {
+      if (managedSessionRuntime) {
+        const output = data && typeof data.output === "string" ? data.output : "";
+        const diff = parseDiff(output);
+        managedSessionRuntime.appendHookEvent(sessionId, diff ? {
+          ...data,
+          ...diff,
+          toolName: data && data.toolName,
+        } : {
+          ...data,
+          kind: "tool_result",
+          text: output,
+        });
+      }
       if (mobileWS) {
         mobileWS.broadcastToolOutput(sessionId, data);
       }
@@ -381,6 +471,7 @@ function initMobileServer(ctx, options = {}) {
     setupStateChangeHooks,
     getMobileWS: () => mobileWS,
     getMobileToken: () => MOBILE_TOKEN,
+    getMobileServerPort: () => mobileServerPort,
     getPendingMobileApprovals: () => pendingMobileApprovals,
     getManagedSessionBridge: () => managedSessionBridge,
   };

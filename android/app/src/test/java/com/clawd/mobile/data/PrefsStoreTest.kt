@@ -117,6 +117,23 @@ class PrefsStoreTest {
         return PrefsStore.getInstance(context)
     }
 
+    @Test
+    fun `console content sync defaults off and persists opt in`() {
+        val store = createPrefsStore()
+        assertFalse(store.isConsoleSyncEnabled())
+        store.setConsoleSyncEnabled(true)
+        assertTrue(store.isConsoleSyncEnabled())
+    }
+
+    @Test
+    fun `console device id is stable`() {
+        val store = createPrefsStore()
+        val first = store.getOrCreateConsoleDeviceId()
+        val second = store.getOrCreateConsoleDeviceId()
+        assertTrue(first.isNotBlank())
+        assertEquals(first, second)
+    }
+
     // ── 1. saveConfig + loadConfig round-trip ───────────────────────────
 
     @Test

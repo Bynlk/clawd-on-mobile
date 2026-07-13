@@ -7,9 +7,23 @@ const { RelayPairRegistry } = require("./relay/pair-registry");
 
 const PORT = process.env.PORT || 7891;
 const FIXED_TOKEN = process.env.TOKEN || null;
+const RATE_LIMIT_CONNECTIONS = 120;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 const wss = new WebSocketServer({ port: PORT });
 const pairs = new RelayPairRegistry(); // token → one PC + multiple phones; no payload history
+const connectionLimits = new Map();
+
+function checkConnectionRateLimit(token) {
+  const now = Date.now();
+  let limit = connectionLimits.get(token);
+  if (!limit || now > limit.resetTime) {
+    limit = { count: 0, resetTime: now + RATE_LIMIT_WINDOW_MS };
+    connectionLimits.set(token, limit);
+  }
+  limit.count++;
+  return limit.count <= RATE_LIMIT_CONNECTIONS;
+}
 
 console.log(`[relay] 中继服务器启动在端口 ${PORT}`);
 if (FIXED_TOKEN) console.log(`[relay] 固定 token: ${FIXED_TOKEN.slice(0, 4)}…`);
@@ -45,6 +59,11 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
+  if (!checkConnectionRateLimit(token)) {
+    ws.close(4008, "连接过于频繁");
+    return;
+  }
+
   pairs.add(token, role, ws);
   const pair = pairs.get(token);
   console.log(`[relay] ${role} 已连接 (token: ${token.slice(0, 8)}...)`);
@@ -58,16 +77,23 @@ wss.on("connection", (ws, req) => {
   // 转发消息
   ws.on("message", (data) => {
     ws.isAlive = true; // 任何消息 = 客户端存活
-    pairs.forward(token, role, data);
+    pairs.forward(token, role, data, ws);
   });
 
   // 断开清理
   ws.on("close", () => {
+    const relayClientId = role === "phone" ? pairs.clientIdFor(ws) : null;
     pairs.remove(token, role, ws);
     console.log(`[relay] ${role} 已断开 (token: ${token.slice(0, 8)}...)`);
     console.log(`[relay] 当前状态: PC=${pair.pc ? "✅" : "❌"} Phones=${pair.phones.size}`);
 
     for (const peerWsOnClose of pairs.peers(token, role)) {
+      if (relayClientId) {
+        peerWsOnClose.send(JSON.stringify({
+          type: "relay_client_disconnected",
+          sourceClientId: relayClientId,
+        }));
+      }
       peerWsOnClose.send(JSON.stringify({ type: "peer_disconnected", role }));
     }
   });

@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.ComponentActivity
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -21,6 +22,8 @@ import com.clawd.mobile.ui.sessions.SessionsScreen
 import com.clawd.mobile.ui.scan.ScanScreen
 import com.clawd.mobile.ui.manual.ManualScreen
 import com.clawd.mobile.ui.settings.SettingsScreen
+import com.clawd.mobile.ui.console.ConsoleScreen
+import com.clawd.mobile.ui.console.ConsoleViewModel
 
 @Composable
 fun ClawdNavGraph() {
@@ -62,6 +65,18 @@ fun ClawdNavGraph() {
         }
         return
     }
+    val activeClient = if (prefsStore.loadConfig()?.useRelay == true) {
+        com.clawd.mobile.service.WsConnectionService.getClientByTag(
+            com.clawd.mobile.ws.ConnectionTag.RELAY
+        ) ?: ws
+    } else ws
+
+    val approvalViewModel: ApprovalViewModel = viewModel(
+        viewModelStoreOwner = context as ComponentActivity,
+        key = "approval",
+        factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, activeClient),
+    )
+    LaunchedEffect(activeClient) { approvalViewModel.updateClient(activeClient) }
 
     // TOFU certificate dialog
     val pendingCert by serviceManager.pendingCert.collectAsState()
@@ -100,11 +115,6 @@ fun ClawdNavGraph() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("sessions") {
-                val approvalViewModel: ApprovalViewModel = viewModel(
-                    key = "approval_$refreshKey",
-                    factory = ApprovalViewModel.Factory(context.applicationContext as android.app.Application, ws)
-                )
-
                 // Collect error events and show Snackbar
                 LaunchedEffect(approvalViewModel) {
                     approvalViewModel.errorEvents.collect { message ->
@@ -123,7 +133,7 @@ fun ClawdNavGraph() {
 
                 SessionsScreen(
                     navController = navController,
-                    streamingClient = ws,
+                    streamingClient = activeClient,
                     approvalViewModel = approvalViewModel,
                     prefsStore = prefsStore,
                     sessionMerger = com.clawd.mobile.service.WsConnectionService.getSessionMerger()
@@ -157,9 +167,20 @@ fun ClawdNavGraph() {
             composable("settings") {
                 SettingsScreen(
                     navController = navController,
-                    streamingClient = ws,
+                    streamingClient = activeClient,
                     prefsStore = prefsStore,
                     snackbarHostState = snackbarHostState
+                )
+            }
+            composable("console") {
+                val consoleViewModel: ConsoleViewModel = viewModel(
+                    key = "console",
+                    factory = ConsoleViewModel.Factory(activeClient, prefsStore),
+                )
+                ConsoleScreen(
+                    navController = navController,
+                    viewModel = consoleViewModel,
+                    approvalViewModel = approvalViewModel,
                 )
             }
         }

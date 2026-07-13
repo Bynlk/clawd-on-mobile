@@ -372,7 +372,10 @@ module.exports = function initServer(ctx) {
     try {
       const { initRelayBridge } = require("./relay-bridge-integration");
       const prefsModule = require("./prefs");
-      initRelayBridge(prefsModule);
+      initRelayBridge(prefsModule, {
+        localToken: getMobileToken(),
+        getLocalPort: () => mobileIntegration.getMobileServerPort() || 23334,
+      });
     } catch (e) {
       console.warn("[server] relay bridge 初始化失败:", e.message);
     }

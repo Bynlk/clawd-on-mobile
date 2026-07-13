@@ -94,4 +94,79 @@ describe("ManagedSessionRuntime", () => {
     pty.processes[0].emitExit({ exitCode: 0, signal: 0 });
     assert.throws(() => runtime.write("s1", "x"), /session_not_running/);
   });
+
+  it("does not leave a stale managed session when PTY spawn fails", () => {
+    const catalog = {
+      resolveCreateRequest: ({ agentId, cwd }) => ({ agentId, cwd, command: "codex", args: [] }),
+      listAgents: () => [],
+      listDirectories: () => ["/repo"],
+    };
+    const runtime = new ManagedSessionRuntime({
+      catalog,
+      ptyProvider: { spawn() { throw new Error("spawn_failed"); } },
+      createId: () => "failed-session",
+      now: () => 100,
+    });
+
+    assert.throws(() => runtime.create({ agentId: "codex", cwd: "/repo" }), /spawn_failed/);
+    assert.deepEqual(runtime.listSessions(), []);
+  });
+
+  it("correlates hook sessions by agent and cwd and appends structured tool events", () => {
+    const { runtime } = createRuntime();
+    runtime.create({ agentId: "codex", cwd: "/repo" });
+    assert.equal(runtime.linkHookSession("agent-session", { agentId: "codex", cwd: "/repo" }), "s1");
+    runtime.appendHookEvent("agent-session", {
+      kind: "tool_call",
+      toolName: "Bash",
+      text: "npm test",
+    });
+    runtime.appendHookEvent("agent-session", {
+      kind: "tool_result",
+      toolName: "Bash",
+      text: "all green",
+    });
+
+    const structured = runtime.historyAfter("s1", 0).records.filter((record) => record.kind.startsWith("tool_"));
+    assert.deepEqual(structured.map((record) => record.kind), ["tool_call", "tool_result"]);
+    assert.equal(structured[1].toolName, "Bash");
+  });
+
+  it("does not guess hook correlation when multiple managed sessions match", () => {
+    const { runtime } = createRuntime();
+    runtime.create({ agentId: "codex", cwd: "/repo" });
+    runtime.create({ agentId: "codex", cwd: "/repo" });
+
+    assert.equal(runtime.linkHookSession("ambiguous", { agentId: "codex", cwd: "/repo" }), null);
+    assert.equal(runtime.appendHookEvent("ambiguous", {
+      agentId: "codex",
+      cwd: "/repo",
+      kind: "tool_call",
+      text: "must not leak",
+    }), null);
+  });
+
+  it("clears hook links when a managed session exits", () => {
+    const { runtime, pty } = createRuntime();
+    runtime.create({ agentId: "codex", cwd: "/repo" });
+    assert.equal(runtime.linkHookSession("agent-session", { agentId: "codex", cwd: "/repo" }), "s1");
+
+    pty.processes[0].emitExit({ exitCode: 0, signal: 0 });
+
+    assert.equal(runtime.appendHookEvent("agent-session", { kind: "tool_result", text: "late" }), null);
+  });
+
+  it("splits oversized PTY output into relay-safe sequenced records without losing text", () => {
+    const { runtime, pty } = createRuntime();
+    runtime.create({ agentId: "codex", cwd: "/repo" });
+    const output = "界".repeat(40_000);
+
+    pty.processes[0].emitData(output);
+
+    const records = runtime.historyAfter("s1", 0, 100).records;
+    assert.ok(records.length > 1);
+    assert.equal(records.map((record) => record.text).join(""), output);
+    assert.equal(records.map((record) => record.raw).join(""), output);
+    assert.ok(records.every((record) => Buffer.byteLength(JSON.stringify(record), "utf8") < 48 * 1024));
+  });
 });

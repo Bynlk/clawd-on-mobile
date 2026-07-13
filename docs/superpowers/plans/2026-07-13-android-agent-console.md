@@ -20,7 +20,7 @@
 - Create: `src/managed-session-store.js`
 - Create: `test/managed-session-store.test.js`
 
-- [ ] **Step 1: Write failing store tests**
+- [x] **Step 1: Write failing store tests**
 
 Test a per-session monotonic sequence, byte/record eviction, history pagination after a sequence, reset signaling when the requested sequence was evicted, and process-lifetime-only state:
 
@@ -31,10 +31,10 @@ assert.equal(store.append("s1", { kind: "assistant_text", text: "one" }).sequenc
 assert.deepStrictEqual(store.historyAfter("s1", 0).records.map((r) => r.sequence), [1]);
 ```
 
-- [ ] **Step 2: Run `node --test test/managed-session-store.test.js` and verify missing-module failure**
-- [ ] **Step 3: Implement `ManagedSessionStore` with `createSession`, `listSessions`, `append`, `historyAfter`, `updateSession`, `removeSession`, and `clear`**
-- [ ] **Step 4: Re-run the focused test and `git diff --check`**
-- [ ] **Step 5: Commit and push to `origin codex/android-agent-console`**
+- [x] **Step 2: Run `node --test test/managed-session-store.test.js` and verify missing-module failure**
+- [x] **Step 3: Implement `ManagedSessionStore` with `createSession`, `listSessions`, `append`, `historyAfter`, `updateSession`, `removeSession`, and `clear`**
+- [x] **Step 4: Re-run the focused test and `git diff --check`**
+- [x] **Step 5: Commit and push to `origin codex/android-agent-console`**
 
 ### Task 2: PTY managed-session runtime and agent catalog
 
@@ -49,7 +49,7 @@ assert.deepStrictEqual(store.historyAfter("s1", 0).records.map((r) => r.sequence
 - Modify: `package-lock.json`
 - Modify: `agents/registry.js`
 
-- [ ] **Step 1: Write failing catalog tests**
+- [x] **Step 1: Write failing catalog tests**
 
 Require only enabled agents with an executable launch command and only normalized, existing directories from `process.cwd()`, the user home, and current session CWDs:
 
@@ -58,15 +58,15 @@ assert.deepStrictEqual(catalog.listAgents().map((a) => a.id), ["codex"]);
 assert.throws(() => catalog.resolveCreateRequest({ agentId: "missing", cwd: "/tmp" }), /agent_not_available/);
 ```
 
-- [ ] **Step 2: Write failing runtime tests with an injected fake PTY provider**
+- [x] **Step 2: Write failing runtime tests with an injected fake PTY provider**
 
 Cover spawn, output sequencing, input, resize, interrupt, exit, invalid session, and cleanup without invoking a real shell.
 
-- [ ] **Step 3: Write failing normalizer tests**
+- [x] **Step 3: Write failing normalizer tests**
 
 Cover ANSI stripping for semantic text, carriage-return progress replacement, fenced code, unified diff classification, visible `Thinking` classification, and `terminal_delta` fallback.
 
-- [ ] **Step 4: Implement catalog, normalizer, and runtime against injected dependencies**
+- [x] **Step 4: Implement catalog, normalizer, and runtime against injected dependencies**
 
 The runtime API is:
 
@@ -80,9 +80,9 @@ runtime.historyAfter(sessionId, sequence, limit);
 runtime.dispose();
 ```
 
-- [ ] **Step 5: Add `node-pty` as a runtime dependency and lazy-load it only when the production provider is used**
-- [ ] **Step 6: Run all three focused test files**
-- [ ] **Step 7: Commit and push**
+- [x] **Step 5: Add `node-pty` as a runtime dependency and lazy-load it only when the production provider is used**
+- [x] **Step 6: Run all three focused test files**
+- [x] **Step 7: Commit and push**
 
 ### Task 3: Mobile protocol, content-sync gate, and single-writer lease
 
@@ -95,15 +95,15 @@ runtime.dispose();
 - Modify: `src/main.js`
 - Modify: `test/mobile-ws-server.test.js`
 
-- [ ] **Step 1: Write failing bridge tests**
+- [x] **Step 1: Write failing bridge tests**
 
 Cover default-disabled sync, capability snapshot, session creation, history chunks below 48 KiB, live deltas, ACK tracking, lease acquisition/release, first-writer-wins, stale lease release on disconnect, input rejection without a lease, interrupt, resize, and explicit error frames.
 
-- [ ] **Step 2: Write failing WebSocket client-identity tests**
+- [x] **Step 2: Write failing WebSocket client-identity tests**
 
 Require `MobileWSServer` to expose stable `clientId` metadata to message handlers and a `send(ws, payload)` helper while preserving current broadcast behavior.
 
-- [ ] **Step 3: Implement `ManagedSessionMobileBridge` and WebSocket server helpers**
+- [x] **Step 3: Implement `ManagedSessionMobileBridge` and WebSocket server helpers**
 
 Handle these protocol types exactly:
 
@@ -124,9 +124,9 @@ managed_session_delta
 managed_session_error
 ```
 
-- [ ] **Step 4: Wire the runtime into `main.js` → `server.js` → `mobile-server-integration.js` and dispose it on shutdown**
-- [ ] **Step 5: Run focused desktop protocol tests**
-- [ ] **Step 6: Commit and push**
+- [x] **Step 4: Wire the runtime into `main.js` → `server.js` → `mobile-server-integration.js` and dispose it on shutdown**
+- [x] **Step 5: Run focused desktop protocol tests**
+- [x] **Step 6: Commit and push**
 
 ### Task 4: Relay multiple-phone forwarding without persistence
 
@@ -135,14 +135,14 @@ managed_session_error
 - Modify: `relay-server.js`
 - Create: `test/relay-managed-session-forwarding.test.js`
 
-- [ ] **Step 1: Write failing relay tests**
+- [x] **Step 1: Write failing relay tests**
 
 Connect one PC and two phones under one token, verify PC frames reach both phones, each phone frame reaches the PC, disconnecting one phone leaves the other connected, and no message payload is retained in pair state or status output.
 
-- [ ] **Step 2: Replace the single `phone` slot with a bounded phone set while retaining one PC per token**
-- [ ] **Step 3: Keep root and deployable Relay implementations behaviorally identical**
-- [ ] **Step 4: Run relay tests and existing relay bind tests**
-- [ ] **Step 5: Commit and push**
+- [x] **Step 2: Replace the single `phone` slot with a bounded phone set while retaining one PC per token**
+- [x] **Step 3: Keep root and deployable Relay implementations behaviorally identical**
+- [x] **Step 4: Run relay tests and existing relay bind tests**
+- [x] **Step 5: Commit and push**
 
 ### Task 5: Android protocol models and ordered repository
 
@@ -156,15 +156,15 @@ Connect one PC and two phones under one token, verify PC frames reach both phone
 - Modify: `android/app/src/main/java/com/clawd/mobile/ws/StreamingClient.kt`
 - Modify: `android/app/src/main/java/com/clawd/mobile/ws/AbstractStreamingClient.kt`
 
-- [ ] **Step 1: Write failing parser/repository tests**
+- [x] **Step 1: Write failing parser/repository tests**
 
 Cover every managed protocol response, deduplication by sequence, ordered merge of history and live deltas, history reset, session switching state, capability updates, lease state, command errors, and ACK generation.
 
-- [ ] **Step 2: Add serializable console models and typed parsed messages**
-- [ ] **Step 3: Implement `ConsoleRepository` using `StateFlow` and the existing `StreamingClient.sendMessage` path**
-- [ ] **Step 4: Integrate parsed messages through a dedicated console event flow without coupling them to pet session state**
-- [ ] **Step 5: Run Android focused tests when JDK 17 is available; otherwise perform Kotlin compile checks in CI and record the local limitation**
-- [ ] **Step 6: Commit and push**
+- [x] **Step 2: Add serializable console models and typed parsed messages**
+- [x] **Step 3: Implement `ConsoleRepository` using `StateFlow` and the existing `StreamingClient.sendMessage` path**
+- [x] **Step 4: Integrate parsed messages through a dedicated console event flow without coupling them to pet session state**
+- [x] **Step 5: Run Android focused tests when JDK 17 is available; otherwise perform Kotlin compile checks in CI and record the local limitation**
+- [x] **Step 6: Commit and push**
 
 ### Task 6: Android ChatGPT-style rich console UI
 
@@ -182,13 +182,13 @@ Cover every managed protocol response, deduplication by sequence, ordered merge 
 - Modify: `android/app/src/main/res/values/strings.xml`
 - Modify: `android/app/src/main/res/values-zh/strings.xml`
 
-- [ ] **Step 1: Write failing pure formatting tests for Markdown spans, code blocks, diff lines/counts, and terminal fallback**
-- [ ] **Step 2: Implement virtualized session switcher and timeline**
-- [ ] **Step 3: Implement user/assistant/thinking/tool/diff/code/error/raw-terminal cards with copy and expansion**
-- [ ] **Step 4: Implement composer, raw-control sheet, interrupt, approval handoff, lease indicator, and create-session sheet**
-- [ ] **Step 5: Add a Console navigation item and preserve existing Sessions/Devices/Settings behavior**
-- [ ] **Step 6: Run focused tests/compile and inspect Compose previews or screenshots where available**
-- [ ] **Step 7: Commit and push**
+- [x] **Step 1: Write failing pure formatting tests for Markdown spans, code blocks, diff lines/counts, and terminal fallback**
+- [x] **Step 2: Implement virtualized session switcher and timeline**
+- [x] **Step 3: Implement user/assistant/thinking/tool/diff/code/error/raw-terminal cards with copy and expansion**
+- [x] **Step 4: Implement composer, raw-control sheet, interrupt, approval handoff, lease indicator, and create-session sheet**
+- [x] **Step 5: Add a Console navigation item and preserve existing Sessions/Devices/Settings behavior**
+- [x] **Step 6: Run focused tests/compile and inspect Compose previews or screenshots where available**
+- [x] **Step 7: Commit and push**
 
 ### Task 7: Default-off sync preference and background behavior
 
@@ -200,11 +200,11 @@ Cover every managed protocol response, deduplication by sequence, ordered merge 
 - Create: `android/app/src/test/java/com/clawd/mobile/console/ConsoleSyncPreferenceTest.kt`
 - Modify: Android localized string resources
 
-- [ ] **Step 1: Write failing tests proving sync defaults false and enabling it sends an explicit gate message**
-- [ ] **Step 2: Add the warning-backed setting and persist it in encrypted preferences**
-- [ ] **Step 3: Request capabilities/sessions/history after connection only when enabled**
-- [ ] **Step 4: Keep socket/notifications active in background while deferring rendering and requesting missing history on return**
-- [ ] **Step 5: Run focused tests and commit/push**
+- [x] **Step 1: Write failing tests proving sync defaults false and enabling it sends an explicit gate message**
+- [x] **Step 2: Add the warning-backed setting and persist it in encrypted preferences**
+- [x] **Step 3: Request capabilities/sessions/history after connection only when enabled**
+- [x] **Step 4: Keep socket/notifications active in background while deferring rendering and requesting missing history on return**
+- [x] **Step 5: Run focused tests and commit/push**
 
 ### Task 8: Packaging, documentation, and completion audit
 
@@ -215,9 +215,17 @@ Cover every managed protocol response, deduplication by sequence, ordered merge 
 - Modify: `android/README.md`
 - Create: `docs/project/android-agent-console.md`
 
-- [ ] **Step 1: Ensure Electron Builder packages the PTY native module for supported targets and add an explicit native-module rebuild script**
-- [ ] **Step 2: Ensure Android CI runs unit tests, lint, and debug assembly with JDK 17**
-- [ ] **Step 3: Document managed-session boundaries, default-off privacy warning, WSS requirement, multi-device lease behavior, and Relay non-persistence**
-- [ ] **Step 4: Run all new desktop tests, relevant existing mobile/relay tests, `git diff --check`, Android tests/lint/build in CI-capable environment, and a requirement-by-requirement audit against the design acceptance criteria**
-- [ ] **Step 5: Commit and push final documentation/CI changes**
-- [ ] **Step 6: Verify `git status` clean and `git ls-remote origin codex/android-agent-console` matches local HEAD; never push upstream**
+- [x] **Step 1: Ensure Electron Builder packages the PTY native module for supported targets and add an explicit native-module rebuild script**
+- [x] **Step 2: Ensure Android CI runs unit tests, lint, and debug assembly with JDK 17**
+- [x] **Step 3: Document managed-session boundaries, default-off privacy warning, WSS requirement, multi-device lease behavior, and Relay non-persistence**
+- [x] **Step 4: Run all new desktop tests, relevant existing mobile/relay tests, `git diff --check`, Android tests/lint/build in CI-capable environment, and a requirement-by-requirement audit against the design acceptance criteria**
+- [x] **Step 5: Commit and push final documentation/CI changes**
+- [x] **Step 6: Verify `git status` clean and `git ls-remote origin codex/android-agent-console` matches local HEAD; never push upstream**
+
+## Completion audit (2026-07-13)
+
+- Desktop focused suite covers managed history, PTY runtime, normalization, protocol, per-device Relay routing, logical-phone disconnects, leases, approval results, frame bounds, native packaging, and lifecycle wiring.
+- Android verification uses JDK 17 and runs unit tests, `lintDebug`, and `assembleDebug`; repository state is bounded and the UI uses lazy rendering.
+- Native `node-pty` rebuild succeeds for the local Electron target; CI rebuilds it for Windows, macOS, and Linux packaging.
+- Content sync remains default-off, Relay payloads are not persisted, and public Relay deployments still require WSS/TLS plus pairing tokens.
+- Final delivery is restricted to `origin` (`Bynlk/clawd-on-mobile`) on `codex/android-agent-console`; `upstream` is never pushed.

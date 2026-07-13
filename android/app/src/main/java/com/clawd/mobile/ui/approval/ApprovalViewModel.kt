@@ -10,6 +10,7 @@ import com.clawd.mobile.data.PermissionRequestData
 import com.clawd.mobile.data.PrefsStore
 import com.clawd.mobile.notification.NotificationHelper
 import com.clawd.mobile.ws.StreamingClient
+import com.clawd.mobile.ws.ApprovalResultData
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -22,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ApprovalViewModel(
     application: Application,
-    private val streamingClient: StreamingClient
+    private var streamingClient: StreamingClient
 ) : AndroidViewModel(application) {
 
     class Factory(
@@ -86,18 +87,84 @@ class ApprovalViewModel(
     // Save recently dismissed requests so notification tap can restore them
     private companion object {
         const val MAX_DISMISSED = 20
+        const val APPROVAL_CONFIRMATION_TIMEOUT_MS = 10_000L
     }
     private val recentlyDismissed = ConcurrentHashMap<String, PermissionRequestData>()
 
     private val activeRequestIds = ConcurrentHashMap.newKeySet<String>()
     private val respondedRequestIds = ConcurrentHashMap.newKeySet<String>()
     private val countdownJobs = ConcurrentHashMap<String, Job>()
+    private val approvalConfirmationJobs = ConcurrentHashMap<String, Job>()
+    private var permissionCollectorJob: Job? = null
+    private var permissionResolvedCollectorJob: Job? = null
+    private var approvalResultCollectorJob: Job? = null
+    private var connectionCollectorJob: Job? = null
 
     init {
-        viewModelScope.launch {
+        bindClientCollectors()
+    }
+
+    private fun bindClientCollectors() {
+        permissionCollectorJob = viewModelScope.launch {
             streamingClient.permissionRequests.collect { request ->
                 handleNewRequest(request)
             }
+        }
+        permissionResolvedCollectorJob = viewModelScope.launch {
+            streamingClient.permissionResolved.collect(::removeRequest)
+        }
+        approvalResultCollectorJob = viewModelScope.launch {
+            streamingClient.approvalResults.collect(::handleApprovalResult)
+        }
+        connectionCollectorJob = viewModelScope.launch {
+            streamingClient.connectionState.collect { state ->
+                if (!state.isConnected) releaseUnconfirmedResponses()
+            }
+        }
+    }
+
+    fun updateClient(client: StreamingClient) {
+        if (streamingClient === client) return
+        permissionCollectorJob?.cancel()
+        permissionResolvedCollectorJob?.cancel()
+        approvalResultCollectorJob?.cancel()
+        connectionCollectorJob?.cancel()
+        releaseUnconfirmedResponses()
+        streamingClient = client
+        bindClientCollectors()
+    }
+
+    private fun handleApprovalResult(result: ApprovalResultData) {
+        approvalConfirmationJobs.remove(result.requestId)?.cancel()
+        if (result.ok) {
+            removeRequest(result.requestId)
+            return
+        }
+        respondedRequestIds.remove(result.requestId)
+        _errorEvents.tryEmit(getApplication<Application>().getString(
+            com.clawd.mobile.R.string.error_send_failed
+        ))
+    }
+
+    private fun beginApprovalConfirmation(requestId: String) {
+        approvalConfirmationJobs.remove(requestId)?.cancel()
+        approvalConfirmationJobs[requestId] = viewModelScope.launch {
+            delay(APPROVAL_CONFIRMATION_TIMEOUT_MS)
+            approvalConfirmationJobs.remove(requestId)
+            if (_pendingRequests.value.any { it.requestId == requestId }) {
+                respondedRequestIds.remove(requestId)
+                _errorEvents.tryEmit(getApplication<Application>().getString(
+                    com.clawd.mobile.R.string.error_send_failed
+                ))
+            }
+        }
+    }
+
+    private fun releaseUnconfirmedResponses() {
+        val requestIds = approvalConfirmationJobs.keys.toList()
+        requestIds.forEach { requestId ->
+            approvalConfirmationJobs.remove(requestId)?.cancel()
+            respondedRequestIds.remove(requestId)
         }
     }
 
@@ -106,6 +173,10 @@ class ApprovalViewModel(
 
     private fun handleNewRequest(request: PermissionRequestData) {
         val requestId = request.requestId ?: return
+        if (respondedRequestIds.contains(requestId)) {
+            Log.d("ApprovalViewModel", "Resolved request ignored: $requestId")
+            return
+        }
         Log.d("ApprovalViewModel", "handleNewRequest id=$requestId tool=${request.toolName} currentPending=${_pendingRequests.value.size}")
         // Atomic dedup: WebSocket reconnect may re-deliver the same request
         if (!activeRequestIds.add(requestId)) {
@@ -130,19 +201,21 @@ class ApprovalViewModel(
     private fun startCountdown(request: PermissionRequestData) {
         val requestId = request.requestId ?: return
         val timeoutMs = request.timeout.coerceIn(10_000, 300_000) // 10s to 5min
-        val deadline = System.currentTimeMillis() + timeoutMs
 
         // Single job: countdown ticker + auto-dismiss combined
         countdownJobs[requestId]?.cancel()
         val job = viewModelScope.launch {
-            while (true) {
-                val remainingMs = deadline - System.currentTimeMillis()
-                if (remainingMs <= 0) break
-                val remainingSec = (remainingMs / 1000).toInt()
+            var remainingMs = timeoutMs.toLong()
+            var lastWallTime = System.currentTimeMillis()
+            while (remainingMs > 0) {
+                val remainingSec = ((remainingMs + 999L) / 1000L).toInt()
                 _countdowns.update { it + (requestId to remainingSec) }
-                // Sleep until next second boundary (drift-free)
-                val nextTickMs = remainingMs % 1000
-                delay(if (nextTickMs > 0) nextTickMs else 1000)
+                val tickMs = minOf(remainingMs, 1000L)
+                delay(tickMs)
+                val now = System.currentTimeMillis()
+                val wallElapsed = (now - lastWallTime).coerceAtLeast(0L)
+                remainingMs -= maxOf(tickMs, wallElapsed)
+                lastWallTime = now
             }
             _countdowns.update { it - requestId }
             removeRequest(requestId, saveForRestore = true)
@@ -162,7 +235,8 @@ class ApprovalViewModel(
         _pendingRequests.update { it.filter { it.requestId != requestId } }
         _countdowns.update { it - requestId }
         activeRequestIds.remove(requestId)
-        respondedRequestIds.add(requestId)
+        approvalConfirmationJobs.remove(requestId)?.cancel()
+        rememberResponded(requestId)
         countdownJobs.remove(requestId)?.cancel()
         // Cancel the system notification so it doesn't linger in the tray
         runCatching {
@@ -172,14 +246,21 @@ class ApprovalViewModel(
         }
     }
 
+    private fun rememberResponded(requestId: String) {
+        respondedRequestIds.add(requestId)
+        while (respondedRequestIds.size > 1000) {
+            respondedRequestIds.firstOrNull()?.let(respondedRequestIds::remove) ?: break
+        }
+    }
+
     fun approve(requestId: String) {
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
+        beginApprovalConfirmation(requestId)
         viewModelScope.launch {
             val ok = runCatching { streamingClient.sendPermissionResponse(requestId, "allow") }.getOrDefault(false)
-            if (ok) {
-                removeRequest(requestId, saveForRestore = false)
-            } else {
+            if (!ok) {
+                approvalConfirmationJobs.remove(requestId)?.cancel()
                 respondedRequestIds.remove(requestId)
                 _errorEvents.tryEmit(getApplication<Application>().getString(
                     com.clawd.mobile.R.string.error_send_failed
@@ -191,11 +272,11 @@ class ApprovalViewModel(
     fun deny(requestId: String) {
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
+        beginApprovalConfirmation(requestId)
         viewModelScope.launch {
             val ok = runCatching { streamingClient.sendPermissionResponse(requestId, "deny") }.getOrDefault(false)
-            if (ok) {
-                removeRequest(requestId, saveForRestore = false)
-            } else {
+            if (!ok) {
+                approvalConfirmationJobs.remove(requestId)?.cancel()
                 respondedRequestIds.remove(requestId)
                 _errorEvents.tryEmit(getApplication<Application>().getString(
                     com.clawd.mobile.R.string.error_send_failed
@@ -207,11 +288,11 @@ class ApprovalViewModel(
     fun approveWithSuggestion(requestId: String, suggestionIndex: Int) {
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
+        beginApprovalConfirmation(requestId)
         viewModelScope.launch {
             val ok = runCatching { streamingClient.sendPermissionResponse(requestId, "allow", suggestionIndex) }.getOrDefault(false)
-            if (ok) {
-                removeRequest(requestId, saveForRestore = false)
-            } else {
+            if (!ok) {
+                approvalConfirmationJobs.remove(requestId)?.cancel()
                 respondedRequestIds.remove(requestId)
                 _errorEvents.tryEmit(getApplication<Application>().getString(
                     com.clawd.mobile.R.string.error_send_failed
@@ -223,12 +304,12 @@ class ApprovalViewModel(
     fun submitElicitation(requestId: String, answers: Map<String, String>) {
         if (!ensureConnected()) return
         if (!respondedRequestIds.add(requestId)) return
+        beginApprovalConfirmation(requestId)
         viewModelScope.launch {
             val request = _pendingRequests.value.find { it.requestId == requestId }
             val ok = runCatching { streamingClient.sendElicitationResponse(requestId, request?.toolInputRaw, answers) }.getOrDefault(false)
-            if (ok) {
-                removeRequest(requestId, saveForRestore = false)
-            } else {
+            if (!ok) {
+                approvalConfirmationJobs.remove(requestId)?.cancel()
                 respondedRequestIds.remove(requestId)
                 _errorEvents.tryEmit(getApplication<Application>().getString(
                     com.clawd.mobile.R.string.error_send_failed
@@ -255,5 +336,10 @@ class ApprovalViewModel(
     override fun onCleared() {
         super.onCleared()
         countdownJobs.values.forEach { it.cancel() }
+        permissionCollectorJob?.cancel()
+        permissionResolvedCollectorJob?.cancel()
+        approvalResultCollectorJob?.cancel()
+        connectionCollectorJob?.cancel()
+        approvalConfirmationJobs.values.forEach { it.cancel() }
     }
 }

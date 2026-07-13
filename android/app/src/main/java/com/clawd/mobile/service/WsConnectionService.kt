@@ -28,6 +28,7 @@ import com.clawd.mobile.ws.RelayConnectionStrategy
 import com.clawd.mobile.ws.SessionMerger
 import com.clawd.mobile.ws.TaggedSession
 import com.clawd.mobile.util.SafeExecutor
+import com.clawd.mobile.console.bootstrapConsoleConnection
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
@@ -219,6 +220,21 @@ class WsConnectionService : Service() {
         stateCollectorJob?.cancel()
         var previousState: ConnectionState? = null
         stateCollectorJob = scope.launch {
+            fun CoroutineScope.watchConsoleConnection(client: StreamingClient) = launch {
+                client.connectionState
+                    .filter { it == ConnectionState.CONNECTED }
+                    .collect {
+                        bootstrapConsoleConnection(
+                            client = client,
+                            enabled = prefsStore.isConsoleSyncEnabled(),
+                            deviceId = prefsStore.getOrCreateConsoleDeviceId(),
+                        )
+                    }
+            }
+
+            streamingClient?.let { watchConsoleConnection(it) }
+            relayClient?.let { watchConsoleConnection(it) }
+
             // WakeLock management: hold during active states, release when idle.
             // This saves battery when the pet is idle (no tasks running).
             launch {

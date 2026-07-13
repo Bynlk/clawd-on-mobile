@@ -18,6 +18,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.ConcurrentHashMap
+import com.clawd.mobile.console.ConsoleServerMessage
 
 /**
  * Unit tests for [MessageHandler].
@@ -40,6 +41,7 @@ class MessageHandlerTest {
     private var onPeerDisconnected: ((String) -> Unit)? = null
     private lateinit var messageParser: MessageParser
     private lateinit var scope: CoroutineScope
+    private val consoleMessages = mutableListOf<ConsoleServerMessage>()
 
     private lateinit var handler: MessageHandler
 
@@ -76,7 +78,17 @@ class MessageHandlerTest {
             sendPong = sendPong,
             onPeerConnected = onPeerConnected,
             onPeerDisconnected = onPeerDisconnected,
+            onConsoleMessage = { consoleMessages += it },
         )
+    }
+
+    @Test
+    fun `Console message is delivered to the reliable console queue callback`() {
+        val message = ConsoleServerMessage.SyncState(true)
+        every { messageParser.parse(any()) } returns ParsedMessage.Console(message, 1L)
+
+        assertTrue(handler.handleMessage("{}", isPendingCert = false))
+        assertEquals(listOf(message), consoleMessages)
     }
 
     @After

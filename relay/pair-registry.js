@@ -7,6 +7,8 @@ function isOpen(ws) {
 class RelayPairRegistry {
   constructor() {
     this.pairs = new Map();
+    this.clientIds = new WeakMap();
+    this.nextClientId = 1;
   }
 
   get(token) {
@@ -19,6 +21,7 @@ class RelayPairRegistry {
       pair = { pc: null, phones: new Set() };
       this.pairs.set(token, pair);
     }
+    if (!this.clientIds.has(ws)) this.clientIds.set(ws, `relay-${this.nextClientId++}`);
     if (role === "pc") {
       const replaced = isOpen(pair.pc) && pair.pc !== ws ? pair.pc : null;
       if (replaced) replaced.close(4001, "被新连接替换");
@@ -48,7 +51,43 @@ class RelayPairRegistry {
     return isOpen(pair.pc) ? [pair.pc] : [];
   }
 
-  forward(token, role, data) {
+  clientIdFor(ws) {
+    return ws ? this.clientIds.get(ws) || null : null;
+  }
+
+  forward(token, role, data, sender = null) {
+    if (role === "phone" && sender) {
+      const peer = this.peers(token, role)[0];
+      if (!peer) return 0;
+      const envelope = JSON.stringify({
+        type: "relay_forward",
+        sourceClientId: this.clientIdFor(sender),
+        payload: Buffer.isBuffer(data) ? data.toString("utf8") : String(data),
+      });
+      try {
+        peer.send(envelope);
+        return 1;
+      } catch {
+        return 0;
+      }
+    }
+
+    if (role === "pc") {
+      try {
+        const envelope = JSON.parse(Buffer.isBuffer(data) ? data.toString("utf8") : String(data));
+        if (envelope.type === "relay_forward" && typeof envelope.targetClientId === "string" &&
+            typeof envelope.payload === "string") {
+          const pair = this.pairs.get(token);
+          const target = pair && [...pair.phones].find((phone) =>
+            isOpen(phone) && this.clientIdFor(phone) === envelope.targetClientId
+          );
+          if (!target) return 0;
+          target.send(envelope.payload);
+          return 1;
+        }
+      } catch {}
+    }
+
     let delivered = 0;
     for (const peer of this.peers(token, role)) {
       try {
