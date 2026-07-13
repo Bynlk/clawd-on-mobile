@@ -65,3 +65,41 @@ test("cleanup drops all secrets, statuses, and listeners", () => {
   rt.setStatus("wg-1", { status: "connected" }); // listener removed → no fire
   assert.equal(fired, 1);
 });
+
+test("one-click connection states carry a monotonic attempt generation", () => {
+  const rt = createWgRelayRuntime();
+  const states = [
+    "idle", "starting_tunnel", "verifying_relay", "connecting_relay",
+    "connected", "disconnecting", "failed",
+  ];
+  let attempt = 1;
+  for (const status of states) {
+    const current = rt.setStatus("wg-1", { status, attempt });
+    assert.equal(current.status, status);
+    assert.equal(current.attempt, attempt);
+    attempt++;
+  }
+});
+
+test("stale attempts cannot overwrite newer public state", () => {
+  const rt = createWgRelayRuntime();
+  rt.setStatus("wg-1", { status: "connected", attempt: 4 });
+  rt.setStatus("wg-1", { status: "failed", attempt: 3, errorCode: "late_failure" });
+  assert.equal(rt.getProfileStatus("wg-1").status, "connected");
+  assert.equal(rt.getProfileStatus("wg-1").attempt, 4);
+});
+
+test("public runtime state keeps only stable error codes and excludes secrets", () => {
+  const rt = createWgRelayRuntime();
+  const state = rt.setStatus("wg-1", {
+    status: "failed",
+    attempt: 1,
+    errorCode: "bad code containing TOKEN-SECRET",
+    token: "TOKEN-SECRET",
+    privateKey: "PRIVATE-SECRET",
+  });
+  assert.equal(state.errorCode, "unknown_failure");
+  assert.equal(Object.hasOwn(state, "token"), false);
+  assert.equal(Object.hasOwn(state, "privateKey"), false);
+  assert.doesNotMatch(JSON.stringify(state), /SECRET/);
+});

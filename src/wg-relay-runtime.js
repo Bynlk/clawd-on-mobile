@@ -24,6 +24,11 @@
 
 const { EventEmitter } = require("events");
 
+const PUBLIC_STATUS_FIELDS = new Set([
+  "status", "message", "hint", "ifName", "address", "errorCode", "attempt",
+]);
+const ERROR_CODE_RE = /^[a-z][a-z0-9_]{0,63}$/;
+
 function createWgRelayRuntime(options = {}) {
   const emitter = new EventEmitter();
   const log = options.log || (() => {});
@@ -46,7 +51,25 @@ function createWgRelayRuntime(options = {}) {
   // the renderer's runtimeStatuses Map keys line up.
   function setStatus(profileId, patch) {
     const prev = statuses.get(profileId) || { profileId, status: "idle" };
-    const next = { ...prev, ...patch, profileId, updatedAt: Date.now() };
+    if (Number.isInteger(prev.attempt)
+        && Number.isInteger(patch && patch.attempt)
+        && patch.attempt < prev.attempt) {
+      return prev;
+    }
+    const clean = {};
+    for (const [key, value] of Object.entries(patch || {})) {
+      if (PUBLIC_STATUS_FIELDS.has(key)) clean[key] = value;
+    }
+    if (Object.hasOwn(clean, "attempt")
+        && (!Number.isInteger(clean.attempt) || clean.attempt < 1)) {
+      delete clean.attempt;
+    }
+    if (Object.hasOwn(clean, "errorCode")
+        && clean.errorCode !== null
+        && (typeof clean.errorCode !== "string" || !ERROR_CODE_RE.test(clean.errorCode))) {
+      clean.errorCode = "unknown_failure";
+    }
+    const next = { ...prev, ...clean, profileId, updatedAt: Date.now() };
     statuses.set(profileId, next);
     emitter.emit("status-changed", next);
     return next;

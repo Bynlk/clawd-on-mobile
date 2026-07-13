@@ -1,278 +1,327 @@
-// src/relay-bridge-integration.js — Relay bridge 集成到 Electron 主进程
-// 将 relay-bridge.js 的功能封装为可管理的模块
-
 "use strict";
 
 const WebSocket = require("ws");
-const { EventEmitter } = require("events");
+const { EventEmitter } = require("node:events");
 
-const TAG = "[relay-bridge]";
-
-// 重连参数
 const RECONNECT_INITIAL_MS = 5000;
-const RECONNECT_MAX_MS = 60000;
+const RECONNECT_MAX_MS = 60_000;
 const RECONNECT_BACKOFF_MULTIPLIER = 2;
 const MSG_BUFFER_MAX = 50;
+
+function codedError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function normalizeConfig(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new TypeError("Relay bridge config is required");
+  }
+  let parsed;
+  try { parsed = new URL(input.url); } catch (_) { throw new TypeError("Relay bridge url is invalid"); }
+  if (!['ws:', 'wss:'].includes(parsed.protocol)
+      || parsed.username || parsed.password
+      || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+    throw new TypeError("Relay bridge url must be a ws/wss origin");
+  }
+  if (typeof input.token !== "string" || input.token.length === 0 || input.token.length > 4096) {
+    throw new TypeError("Relay bridge token is required");
+  }
+  return { url: input.url.replace(/\/$/, ""), token: input.token };
+}
 
 class RelayBridge extends EventEmitter {
   constructor(options = {}) {
     super();
     this.WebSocketImpl = options.WebSocketImpl || WebSocket;
     this.localToken = typeof options.localToken === "string" ? options.localToken : "";
-    this.getLocalPort = typeof options.getLocalPort === "function"
-      ? options.getLocalPort
-      : () => 23334;
-    this.relayWs = null;
-    this.localWs = null;
+    this.getLocalPort = typeof options.getLocalPort === "function" ? options.getLocalPort : () => 23334;
+    this.log = typeof options.log === "function" ? options.log : () => {};
     this.config = null;
     this.running = false;
+    this.relayWs = null;
+    this.localWs = null;
     this.msgBuffer = [];
     this.relayReconnectTimer = null;
     this.localReconnectTimer = null;
-    this._status = "disconnected"; // disconnected | connecting | connected
+    this._status = "disconnected";
     this._peerOnline = false;
+    this._generation = 0;
+    this._relayOpen = false;
+    this._localOpen = false;
+    this._reconnectAttempt = 0;
+    this._lastFailure = null;
+    this._stopPromise = null;
+    this._prefsDisposers = [];
   }
 
-  /** 当前连接状态 */
   get status() { return this._status; }
-
-  /** 对端是否在线 */
   get peerOnline() { return this._peerOnline; }
 
-  /**
-   * 初始化并启动 relay bridge
-   * @param {object} prefs — prefs 模块实例，读取 relay 配置
-   */
+  configure(input) {
+    const config = normalizeConfig(input);
+    if (this.running) {
+      if (this.config && this.config.url === config.url && this.config.token === config.token) return this;
+      throw new Error("Relay bridge is running");
+    }
+    this.config = config;
+    this._lastFailure = null;
+    return this;
+  }
+
   init(prefs) {
-    this.config = {
-      enabled: prefs.get("relayEnabled") || false,
+    this._clearPrefsListeners();
+    const enabled = Boolean(prefs.get("relayEnabled"));
+    const current = {
       url: prefs.get("relayUrl") || "",
       token: prefs.get("relayToken") || "",
     };
+    if (enabled && current.url && current.token) this.configure(current).start();
 
-    if (!this.config.enabled || !this.config.url || !this.config.token) {
-      console.log(TAG, "未启用或未配置，跳过");
-      return;
+    if (prefs && typeof prefs.on === "function") {
+      const listen = (name, handler) => {
+        prefs.on(name, handler);
+        this._prefsDisposers.push(() => {
+          if (typeof prefs.off === "function") prefs.off(name, handler);
+        });
+      };
+      listen("relayEnabled", (value) => {
+        if (!value) { void this.stop(); return; }
+        if (!this.running && current.url && current.token) this.configure(current).start();
+      });
+      listen("relayUrl", (value) => {
+        current.url = value || "";
+        if (this.running) void this.stop().then(() => {
+          if (current.url && current.token) this.configure(current).start();
+        });
+      });
+      listen("relayToken", (value) => {
+        current.token = value || "";
+        if (this.running) void this.stop().then(() => {
+          if (current.url && current.token) this.configure(current).start();
+        });
+      });
     }
-
-    this.start();
-
-    // 监听 prefs 变更
-    if (prefs.on) {
-      prefs.on("relayEnabled", (val) => {
-        this.config.enabled = val;
-        if (val) this.start(); else this.stop();
-      });
-      prefs.on("relayUrl", (val) => {
-        this.config.url = val;
-        if (this.config.enabled) { this.stop(); this.start(); }
-      });
-      prefs.on("relayToken", (val) => {
-        this.config.token = val;
-        if (this.config.enabled) { this.stop(); this.start(); }
-      });
-    }
+    return this;
   }
 
   start() {
-    if (this.running) return;
+    if (this.running) return this;
+    if (!this.config) throw new Error("Relay bridge is not configured");
     this.running = true;
-    this._status = "connecting";
-    this.emit("status", this._status);
-    console.log(TAG, "启动 relay bridge...");
-    this.connectToRelay();
+    this._generation += 1;
+    this._relayOpen = false;
+    this._localOpen = false;
+    this._lastFailure = null;
+    this._setStatus("connecting");
+    this.connectToRelay(this._generation);
+    return this;
+  }
+
+  waitUntilConnected(timeoutMs = 15_000) {
+    if (this._status === "connected") return Promise.resolve();
+    if (this._lastFailure) return Promise.reject(codedError(this._lastFailure));
+    if (!this.running) return Promise.reject(codedError("relay_not_running"));
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.off("status", onStatus);
+        this.off("failure", onFailure);
+      };
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error); else resolve();
+      };
+      const onStatus = (status) => { if (status === "connected") finish(); };
+      const onFailure = (failure) => finish(codedError(failure.errorCode));
+      const timer = setTimeout(() => finish(codedError("relay_connect_timeout")), timeoutMs);
+      this.on("status", onStatus);
+      this.on("failure", onFailure);
+    });
   }
 
   stop() {
+    if (this._stopPromise) return this._stopPromise;
     this.running = false;
-    this._status = "disconnected";
+    this._generation += 1;
+    this._relayOpen = false;
+    this._localOpen = false;
     this._peerOnline = false;
-    this.emit("status", this._status);
-    this.emit("peer", false);
     this.clearTimers();
-    this.closeWs(this.relayWs, "bridge stopped");
-    this.closeWs(this.localWs, "bridge stopped");
+    const relay = this.relayWs;
+    const local = this.localWs;
     this.relayWs = null;
     this.localWs = null;
     this.msgBuffer = [];
-    console.log(TAG, "已停止");
+    this._setStatus("disconnected");
+    this.emit("peer", false);
+    this.closeWs(relay, "bridge stopped");
+    this.closeWs(local, "bridge stopped");
+    const stopping = Promise.resolve();
+    const wrapped = stopping.finally(() => {
+      if (this._stopPromise === wrapped) this._stopPromise = null;
+    });
+    this._stopPromise = wrapped;
+    return wrapped;
   }
 
   destroy() {
-    this.stop();
+    void this.stop();
+    this._clearPrefsListeners();
     this.removeAllListeners();
   }
 
-  // --- Relay 连接 ---
-
-  connectToRelay() {
-    if (!this.running) return;
-    const { url, token } = this.config;
-    const relayUrl = `${url}/mobile/ws?role=pc`;
-
-    console.log(TAG, `连接 relay: ${url}`);
-    const ws = new this.WebSocketImpl(relayUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  connectToRelay(generation = this._generation) {
+    if (!this._active(generation)) return;
+    const relayUrl = `${this.config.url}/mobile/ws?role=pc`;
+    let ws;
+    try {
+      ws = new this.WebSocketImpl(relayUrl, {
+        headers: { Authorization: `Bearer ${this.config.token}` },
+      });
+    } catch (_) {
+      this._reportFailure("relay_connect_failed", generation);
+      return;
+    }
+    this.relayWs = ws;
 
     ws.on("open", () => {
-      console.log(TAG, "已连接到 relay");
-      this.relayWs = ws;
-      this._status = "connected";
+      if (!this._activeSocket(generation, "relayWs", ws)) return;
+      this._relayOpen = true;
       this._reconnectAttempt = 0;
-      this.emit("status", this._status);
       this.clearRelayReconnect();
-      // 连接本地 hook server
-      this.connectToLocal();
+      this.connectToLocal(generation);
+      this._markConnected(generation);
     });
-
+    ws.on("unexpected-response", (_request, response) => {
+      if (!this._activeSocket(generation, "relayWs", ws)) return;
+      const code = response && [401, 403].includes(response.statusCode)
+        ? "relay_auth_failed" : "relay_connect_failed";
+      this._reportFailure(code, generation);
+    });
     ws.on("message", (data) => {
+      if (!this._activeSocket(generation, "relayWs", ws)) return;
       try {
-        const msg = JSON.parse(data.toString());
-        // 过滤 relay 控制消息
-        if (msg.type === "peer_connected") {
+        const message = JSON.parse(data.toString());
+        if (message.type === "peer_connected") {
           this._peerOnline = true;
           this.emit("peer", true);
-          console.log(TAG, `对端 (${msg.role}) 已连接`);
           return;
         }
-        if (msg.type === "peer_disconnected") {
+        if (message.type === "peer_disconnected") {
           this._peerOnline = false;
           this.emit("peer", false);
-          console.log(TAG, `对端 (${msg.role}) 已断开`);
           return;
         }
-        if (msg.type === "ping") {
-          // 回复 pong
-          try { ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() })); } catch {}
+        if (message.type === "ping") {
+          try { ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() })); } catch (_) {}
           return;
         }
-      } catch {}
-      // 转发到本地
+      } catch (_) {}
       this.forwardToLocal(data);
     });
-
-    ws.on("close", (code, reason) => {
-      console.log(TAG, `relay 连接断开: ${code} ${reason}`);
+    ws.on("close", () => {
+      if (!this._activeSocket(generation, "relayWs", ws)) return;
       this.relayWs = null;
+      this._relayOpen = false;
       this._peerOnline = false;
       this.emit("peer", false);
-      if (this.running) this.scheduleRelayReconnect();
+      this._reportFailure("relay_connect_failed", generation);
+      if (this._active(generation)) this.scheduleRelayReconnect(generation);
     });
-
-    ws.on("error", (err) => {
-      console.error(TAG, "relay 连接错误:", err.message);
+    ws.on("error", () => {
+      if (!this._activeSocket(generation, "relayWs", ws)) return;
+      this._reportFailure("relay_connect_failed", generation);
     });
   }
 
-  // --- Local 连接 ---
-
-  connectToLocal() {
-    if (!this.running) return;
-    // 连接到本地 mobile WS server（端口 23334，路径 /mobile/ws）
+  connectToLocal(generation = this._generation) {
+    if (!this._active(generation)) return;
     const localUrl = `ws://127.0.0.1:${this.getLocalPort()}/mobile/ws?role=pc`;
-    console.log(TAG, `连接本地: ${localUrl}`);
-
-    const ws = new this.WebSocketImpl(localUrl, {
-      headers: { Authorization: `Bearer ${this.localToken}` },
-    });
-
+    let ws;
+    try {
+      ws = new this.WebSocketImpl(localUrl, {
+        headers: { Authorization: `Bearer ${this.localToken}` },
+      });
+    } catch (_) {
+      this._reportFailure("local_connect_failed", generation);
+      return;
+    }
+    this.localWs = ws;
     ws.on("open", () => {
-      console.log(TAG, "已连接到本地 hook server");
-      this.localWs = ws;
+      if (!this._activeSocket(generation, "localWs", ws)) return;
+      this._localOpen = true;
       this.clearLocalReconnect();
-      // 发送缓冲消息
       this.flushBuffer();
+      this._markConnected(generation);
     });
-
     ws.on("message", (data) => {
-      // 转发到 relay
-      this.forwardToRelay(data);
+      if (this._activeSocket(generation, "localWs", ws)) this.forwardToRelay(data);
     });
-
-    ws.on("close", (code) => {
-      console.log(TAG, `本地连接断开: ${code}`);
+    ws.on("close", () => {
+      if (!this._activeSocket(generation, "localWs", ws)) return;
       this.localWs = null;
-      if (this.running) this.scheduleLocalReconnect();
+      this._localOpen = false;
+      this._setStatus("connecting");
+      if (this._active(generation)) this.scheduleLocalReconnect(generation);
     });
-
-    ws.on("error", (err) => {
-      console.error(TAG, "本地连接错误:", err.message);
+    ws.on("error", () => {
+      if (this._activeSocket(generation, "localWs", ws)) {
+        this._reportFailure("local_connect_failed", generation);
+      }
     });
   }
-
-  // --- 消息转发 ---
 
   forwardToLocal(data) {
-    if (this.localWs && this.localWs.readyState === this.WebSocketImpl.OPEN) {
-      this.localWs.send(data);
-    } else {
-      this.bufferMsg(data);
-    }
+    if (this.localWs && this.localWs.readyState === this.WebSocketImpl.OPEN) this.localWs.send(data);
+    else this.bufferMsg(data);
   }
 
   forwardToRelay(data) {
-    if (this.relayWs && this.relayWs.readyState === this.WebSocketImpl.OPEN) {
-      this.relayWs.send(data);
-    }
+    if (this.relayWs && this.relayWs.readyState === this.WebSocketImpl.OPEN) this.relayWs.send(data);
   }
 
   bufferMsg(data) {
-    if (this.msgBuffer.length >= MSG_BUFFER_MAX) {
-      this.msgBuffer.shift(); // 丢弃最旧的
-    }
+    if (this.msgBuffer.length >= MSG_BUFFER_MAX) this.msgBuffer.shift();
     this.msgBuffer.push(data);
   }
 
   flushBuffer() {
-    while (this.msgBuffer.length > 0) {
-      const msg = this.msgBuffer.shift();
-      if (this.localWs && this.localWs.readyState === this.WebSocketImpl.OPEN) {
-        this.localWs.send(msg);
-      }
+    while (this.msgBuffer.length && this.localWs && this.localWs.readyState === this.WebSocketImpl.OPEN) {
+      this.localWs.send(this.msgBuffer.shift());
     }
   }
 
-  // --- 重连逻辑 ---
-
-  scheduleRelayReconnect() {
+  scheduleRelayReconnect(generation = this._generation) {
     this.clearRelayReconnect();
     const delay = this.getReconnectDelay();
-    console.log(TAG, `${delay / 1000}s 后重连 relay...`);
-    this._status = "connecting";
-    this.emit("status", this._status);
-    this.relayReconnectTimer = setTimeout(() => this.connectToRelay(), delay);
+    this._setStatus("connecting");
+    this.relayReconnectTimer = setTimeout(() => this.connectToRelay(generation), delay);
   }
 
-  scheduleLocalReconnect() {
+  scheduleLocalReconnect(generation = this._generation) {
     this.clearLocalReconnect();
-    const delay = Math.min(RECONNECT_INITIAL_MS, RECONNECT_MAX_MS);
-    console.log(TAG, `${delay / 1000}s 后重连本地...`);
-    this.localReconnectTimer = setTimeout(() => this.connectToLocal(), delay);
+    this.localReconnectTimer = setTimeout(() => this.connectToLocal(generation), RECONNECT_INITIAL_MS);
   }
 
   getReconnectDelay() {
-    // 指数退避 + jitter
-    if (!this._reconnectAttempt) this._reconnectAttempt = 0;
-    this._reconnectAttempt++;
-    const base = RECONNECT_INITIAL_MS * Math.pow(RECONNECT_BACKOFF_MULTIPLIER, this._reconnectAttempt - 1);
-    const jitter = Math.random() * base * 0.3;
-    const delay = Math.min(base + jitter, RECONNECT_MAX_MS);
-    return delay;
+    this._reconnectAttempt += 1;
+    const base = RECONNECT_INITIAL_MS * (RECONNECT_BACKOFF_MULTIPLIER ** (this._reconnectAttempt - 1));
+    return Math.min(base + Math.random() * base * 0.3, RECONNECT_MAX_MS);
   }
 
   clearRelayReconnect() {
-    if (this.relayReconnectTimer) {
-      clearTimeout(this.relayReconnectTimer);
-      this.relayReconnectTimer = null;
-    }
+    if (this.relayReconnectTimer) clearTimeout(this.relayReconnectTimer);
+    this.relayReconnectTimer = null;
   }
 
   clearLocalReconnect() {
-    if (this.localReconnectTimer) {
-      clearTimeout(this.localReconnectTimer);
-      this.localReconnectTimer = null;
-    }
+    if (this.localReconnectTimer) clearTimeout(this.localReconnectTimer);
+    this.localReconnectTimer = null;
   }
 
   clearTimers() {
@@ -281,19 +330,50 @@ class RelayBridge extends EventEmitter {
   }
 
   closeWs(ws, reason) {
-    if (ws && ws.readyState === this.WebSocketImpl.OPEN) {
-      try { ws.close(1000, reason); } catch {}
+    if (!ws) return;
+    try {
+      if (ws.readyState === this.WebSocketImpl.OPEN && typeof ws.close === "function") ws.close(1000, reason);
+      else if (typeof ws.terminate === "function") ws.terminate();
+      else if (typeof ws.close === "function") ws.close(1000, reason);
+    } catch (_) {}
+  }
+
+  _active(generation) {
+    return this.running && generation === this._generation;
+  }
+
+  _activeSocket(generation, field, socket) {
+    return this._active(generation) && this[field] === socket;
+  }
+
+  _markConnected(generation) {
+    if (this._active(generation) && this._relayOpen && this._localOpen) {
+      this._lastFailure = null;
+      this._setStatus("connected");
+    }
+  }
+
+  _reportFailure(errorCode, generation) {
+    if (!this._active(generation)) return;
+    this._lastFailure = errorCode;
+    this.emit("failure", { errorCode, generation });
+  }
+
+  _setStatus(status) {
+    if (this._status === status) return;
+    this._status = status;
+    this.emit("status", status);
+  }
+
+  _clearPrefsListeners() {
+    while (this._prefsDisposers.length) {
+      try { this._prefsDisposers.pop()(); } catch (_) {}
     }
   }
 }
 
-// 单例
 let instance = null;
 
-/**
- * 初始化 relay bridge（从 prefs 读取配置）
- * @param {object} prefs — prefs 模块实例
- */
 function initRelayBridge(prefs, options = {}) {
   if (instance) instance.destroy();
   instance = new RelayBridge(options);
@@ -301,11 +381,6 @@ function initRelayBridge(prefs, options = {}) {
   return instance;
 }
 
-/**
- * 获取当前 relay bridge 实例
- */
-function getRelayBridge() {
-  return instance;
-}
+function getRelayBridge() { return instance; }
 
 module.exports = { initRelayBridge, getRelayBridge, RelayBridge };
