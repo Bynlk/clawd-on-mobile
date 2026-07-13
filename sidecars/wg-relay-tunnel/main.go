@@ -38,14 +38,6 @@ type statusRecord struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 }
 
-type inputEvent int
-
-const (
-	inputEOF inputEvent = iota
-	inputTrailingData
-	inputReadFailure
-)
-
 func main() {
 	os.Exit(realMain())
 }
@@ -57,7 +49,7 @@ func realMain() int {
 }
 
 func run(parent context.Context, stdin io.Reader, stdout io.Writer, dependencies runDependencies) int {
-	config, remainingInput, err := readConfigStream(parent, stdin)
+	config, err := readConfigStream(parent, stdin)
 	if err != nil {
 		if parent.Err() != nil {
 			return 0
@@ -82,8 +74,6 @@ func run(parent context.Context, stdin io.Reader, stdout io.Writer, dependencies
 	runtimeContext, cancelRuntime := context.WithCancel(parent)
 	defer cancelRuntime()
 
-	inputEvents := make(chan inputEvent, 1)
-	go watchInput(remainingInput, inputEvents)
 	if closer, ok := stdin.(io.Closer); ok {
 		defer closer.Close()
 	}
@@ -127,16 +117,6 @@ func run(parent context.Context, stdin io.Reader, stdout io.Writer, dependencies
 		}
 		_ = emitError(stdout, "device_stopped")
 		return 1
-	case event := <-inputEvents:
-		if event == inputEOF {
-			return 0
-		}
-		code := "stdin_failed"
-		if event == inputTrailingData {
-			code = "trailing_data"
-		}
-		_ = emitError(stdout, code)
-		return 1
 	case waitErr := <-forwarderDone:
 		if parent.Err() != nil || runtimeContext.Err() != nil {
 			return 0
@@ -150,78 +130,39 @@ func run(parent context.Context, stdin io.Reader, stdout io.Writer, dependencies
 	}
 }
 
-func readConfigStream(ctx context.Context, input io.Reader) (Config, io.Reader, error) {
+func readConfigStream(ctx context.Context, input io.Reader) (Config, error) {
 	type readResult struct {
-		config    Config
-		remaining io.Reader
-		err       error
+		config Config
+		err    error
 	}
 	result := make(chan readResult)
 	go func() {
-		config, remaining, err := readConfigStreamUninterruptible(input)
+		config, err := readConfigStreamUninterruptible(input)
 		select {
-		case result <- readResult{config: config, remaining: remaining, err: err}:
+		case result <- readResult{config: config, err: err}:
 		case <-ctx.Done():
 		}
 	}()
 	select {
 	case completed := <-result:
-		return completed.config, completed.remaining, completed.err
+		return completed.config, completed.err
 	case <-ctx.Done():
 		if closer, ok := input.(io.Closer); ok {
 			_ = closer.Close()
 		}
-		return Config{}, nil, ctx.Err()
+		return Config{}, ctx.Err()
 	}
 }
 
-func readConfigStreamUninterruptible(input io.Reader) (Config, io.Reader, error) {
-	limited := &io.LimitedReader{R: input, N: maxConfigBytes + 1}
-	decoder := json.NewDecoder(limited)
-	config, err := decodeConfig(decoder)
+func readConfigStreamUninterruptible(input io.Reader) (Config, error) {
+	payload, err := io.ReadAll(io.LimitReader(input, maxConfigBytes+1))
 	if err != nil {
-		return Config{}, nil, err
+		return Config{}, &configError{code: "stdin_failed"}
 	}
-	if limited.N == 0 {
-		return Config{}, nil, &configError{code: "invalid_json"}
+	if len(payload) > maxConfigBytes {
+		return Config{}, &configError{code: "invalid_json"}
 	}
-	buffered, err := io.ReadAll(decoder.Buffered())
-	if err != nil {
-		return Config{}, nil, &configError{code: "stdin_failed"}
-	}
-	if hasNonJSONWhitespace(buffered) {
-		return Config{}, nil, &configError{code: "trailing_data"}
-	}
-	remaining := io.MultiReader(bytes.NewReader(buffered), limited, input)
-	return config, remaining, nil
-}
-
-func watchInput(reader io.Reader, events chan<- inputEvent) {
-	buffer := make([]byte, 4096)
-	for {
-		count, err := reader.Read(buffer)
-		if count > 0 && hasNonJSONWhitespace(buffer[:count]) {
-			events <- inputTrailingData
-			return
-		}
-		if errors.Is(err, io.EOF) {
-			events <- inputEOF
-			return
-		}
-		if err != nil {
-			events <- inputReadFailure
-			return
-		}
-	}
-}
-
-func hasNonJSONWhitespace(value []byte) bool {
-	for _, character := range value {
-		if character != ' ' && character != '\t' && character != '\r' && character != '\n' {
-			return true
-		}
-	}
-	return false
+	return ParseConfig(bytes.NewReader(payload))
 }
 
 func emitError(output io.Writer, code string) error {

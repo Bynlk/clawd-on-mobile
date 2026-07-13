@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -111,6 +112,19 @@ func TestProcessSignalsInterruptOpenConfigInput(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNodeManagerContractHelper(t *testing.T) {
+	if os.Getenv("WG_RELAY_NODE_CONTRACT_HELPER") != "1" {
+		return
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.Signal(15))
+	defer stop()
+	tunnel := newProtocolTunnel()
+	forwarder := newProtocolForwarder()
+	if code := run(ctx, os.Stdin, os.Stdout, protocolDependencies(tunnel, forwarder)); code != 0 {
+		t.Fatalf("run() = %d", code)
 	}
 }
 
@@ -794,39 +808,60 @@ func protocolDependencies(tunnel *protocolTunnel, forwarder *protocolForwarder) 
 	}
 }
 
-func TestRunEmitsReadyAndCleansUpOnStdinEOF(t *testing.T) {
+func TestRunWaitsForEOFThenEmitsReadyAndRunsUntilContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
 	stdinReader, stdinWriter := io.Pipe()
 	tunnel := newProtocolTunnel()
 	forwarder := newProtocolForwarder()
 	statuses := newStatusRecorder()
+	started := make(chan struct{})
+	dependencies := protocolDependencies(tunnel, forwarder)
+	dependencies.startTunnel = func(Config) (tunnelRuntime, error) {
+		close(started)
+		return tunnel, nil
+	}
 	runDone := make(chan int, 1)
 	go func() {
-		runDone <- run(context.Background(), stdinReader, statuses, protocolDependencies(tunnel, forwarder))
+		runDone <- run(ctx, stdinReader, statuses, dependencies)
 	}()
 	if _, err := io.WriteString(stdinWriter, validConfigJSON(t, nil)+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+		t.Fatal("run() started the tunnel before configuration EOF")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := stdinWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
 	ready := statuses.waitForType(t, "ready")
 	if got := ready["listen"]; got != "127.0.0.1:43127" {
 		t.Fatalf("ready listen = %v", got)
 	}
-	if err := stdinWriter.Close(); err != nil {
-		t.Fatal(err)
+	select {
+	case code := <-runDone:
+		t.Fatalf("run() exited after configuration EOF with code %d", code)
+	case <-time.After(100 * time.Millisecond):
 	}
+	if forwarder.closed.Load() || tunnel.closed.Load() {
+		t.Fatal("configuration EOF closed the runtime")
+	}
+	cancel()
 	select {
 	case code := <-runDone:
 		if code != 0 {
 			t.Fatalf("run() = %d, want 0", code)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("run() did not exit after stdin EOF")
+		t.Fatal("run() did not exit after context cancellation")
 	}
 	if !forwarder.closed.Load() || !tunnel.closed.Load() {
-		t.Fatal("run() did not clean up forwarder and tunnel")
+		t.Fatal("context cancellation did not clean up forwarder and tunnel")
 	}
 }
 
-func TestRunAcceptsMultilineJSONAndExitsOnEOF(t *testing.T) {
+func TestRunAcceptsMultilineJSONAfterEOFAndRunsUntilCancel(t *testing.T) {
 	var compact map[string]any
 	if err := json.Unmarshal([]byte(validConfigJSON(t, nil)), &compact); err != nil {
 		t.Fatal(err)
@@ -839,46 +874,52 @@ func TestRunAcceptsMultilineJSONAndExitsOnEOF(t *testing.T) {
 	tunnel := newProtocolTunnel()
 	forwarder := newProtocolForwarder()
 	statuses := newStatusRecorder()
+	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan int, 1)
 	go func() {
-		runDone <- run(context.Background(), stdinReader, statuses, protocolDependencies(tunnel, forwarder))
+		runDone <- run(ctx, stdinReader, statuses, protocolDependencies(tunnel, forwarder))
 	}()
 	if _, err := stdinWriter.Write(append([]byte(" \n\t"), multiline...)); err != nil {
 		t.Fatal(err)
 	}
-	statuses.waitForType(t, "ready")
 	if err := stdinWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
+	statuses.waitForType(t, "ready")
+	cancel()
 	select {
 	case code := <-runDone:
 		if code != 0 {
 			t.Fatalf("run() = %d, want 0", code)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("run() did not exit after multiline JSON EOF")
+		t.Fatal("run() did not exit after cancellation")
 	}
 }
 
-func TestRunEOFWithoutTrailingNewlineIsBounded(t *testing.T) {
+func TestRunEOFWithoutTrailingNewlineStartsAndRunsUntilCancel(t *testing.T) {
 	tunnel := newProtocolTunnel()
 	forwarder := newProtocolForwarder()
 	statuses := newStatusRecorder()
+	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan int, 1)
 	go func() {
-		runDone <- run(context.Background(), strings.NewReader(validConfigJSON(t, nil)), statuses, protocolDependencies(tunnel, forwarder))
+		runDone <- run(ctx, strings.NewReader(validConfigJSON(t, nil)), statuses, protocolDependencies(tunnel, forwarder))
 	}()
 	statuses.waitForType(t, "ready")
 	select {
 	case code := <-runDone:
+		t.Fatalf("run() exited after unframed JSON EOF with code %d", code)
+	case <-time.After(100 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case code := <-runDone:
 		if code != 0 {
 			t.Fatalf("run() = %d, want 0", code)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("run() ignored EOF after an unframed JSON document")
-	}
-	if !forwarder.closed.Load() || !tunnel.closed.Load() {
-		t.Fatal("run() did not clean up after EOF")
+		t.Fatal("run() did not exit after cancellation")
 	}
 }
 
@@ -894,6 +935,9 @@ func TestRunContextCancellationCleansUp(t *testing.T) {
 		runDone <- run(ctx, stdinReader, statuses, protocolDependencies(tunnel, forwarder))
 	}()
 	if _, err := io.WriteString(stdinWriter, validConfigJSON(t, nil)+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := stdinWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
 	statuses.waitForType(t, "ready")
@@ -977,20 +1021,32 @@ func TestRunRejectsSecondJSONWithoutStartingRuntime(t *testing.T) {
 	statuses.waitForType(t, "error")
 }
 
-func TestRunRejectsDelayedSecondJSONAndCleansUp(t *testing.T) {
+func TestRunRejectsDelayedSecondJSONBeforeStartingRuntime(t *testing.T) {
 	stdinReader, stdinWriter := io.Pipe()
-	tunnel := newProtocolTunnel()
-	forwarder := newProtocolForwarder()
 	statuses := newStatusRecorder()
+	started := atomic.Bool{}
+	dependencies := runDependencies{
+		startTunnel: func(Config) (tunnelRuntime, error) {
+			started.Store(true)
+			return nil, errors.New("must not start")
+		},
+	}
 	runDone := make(chan int, 1)
 	go func() {
-		runDone <- run(context.Background(), stdinReader, statuses, protocolDependencies(tunnel, forwarder))
+		runDone <- run(context.Background(), stdinReader, statuses, dependencies)
 	}()
 	if _, err := io.WriteString(stdinWriter, validConfigJSON(t, nil)+"\n"); err != nil {
 		t.Fatal(err)
 	}
-	statuses.waitForType(t, "ready")
+	select {
+	case code := <-runDone:
+		t.Fatalf("run() exited before configuration EOF with code %d", code)
+	case <-time.After(100 * time.Millisecond):
+	}
 	if _, err := io.WriteString(stdinWriter, `{"Token":"must-not-appear"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := stdinWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -999,13 +1055,34 @@ func TestRunRejectsDelayedSecondJSONAndCleansUp(t *testing.T) {
 			t.Fatal("run() accepted delayed trailing JSON")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("run() did not exit after delayed trailing JSON")
+		t.Fatal("run() did not reject delayed trailing JSON after EOF")
 	}
-	if !forwarder.closed.Load() || !tunnel.closed.Load() {
-		t.Fatal("run() did not clean up after delayed trailing JSON")
+	if started.Load() {
+		t.Fatal("run() started the runtime before rejecting delayed trailing JSON")
 	}
 	if strings.Contains(statuses.String(), "must-not-appear") {
 		t.Fatal("run() exposed delayed trailing input")
+	}
+}
+
+func TestRunRejectsPartialConfigAtEOFWithoutStartingRuntime(t *testing.T) {
+	const partialSecret = "partial-secret-must-not-appear"
+	statuses := newStatusRecorder()
+	started := atomic.Bool{}
+	dependencies := runDependencies{
+		startTunnel: func(Config) (tunnelRuntime, error) {
+			started.Store(true)
+			return nil, errors.New("must not start")
+		},
+	}
+	if code := run(context.Background(), strings.NewReader(`{"PrivateKey":"`+partialSecret), statuses, dependencies); code == 0 {
+		t.Fatal("run() accepted a partial configuration at EOF")
+	}
+	if started.Load() {
+		t.Fatal("run() started the runtime for a partial configuration")
+	}
+	if strings.Contains(statuses.String(), partialSecret) {
+		t.Fatal("run() exposed partial configuration input")
 	}
 }
 
@@ -1020,6 +1097,9 @@ func TestRunDeviceFailureIsBoundedAndRedacted(t *testing.T) {
 		runDone <- run(context.Background(), stdinReader, statuses, protocolDependencies(tunnel, forwarder))
 	}()
 	if _, err := io.WriteString(stdinWriter, validConfigJSON(t, nil)+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := stdinWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
 	statuses.waitForType(t, "ready")

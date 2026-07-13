@@ -1,7 +1,10 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFileSync, spawn: nodeSpawn } = require("node:child_process");
 const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
@@ -167,6 +170,80 @@ test("start writes one JSON document to stdin, closes it, and keeps secrets out 
     logs: fx.logs,
   });
   assert.doesNotMatch(publicLaunch, /PRIVATE-SECRET|PUBLIC-SECRET|relay\.example\.com/);
+});
+
+test("stdin finish is transport-only and the ready child remains active until stop", async () => {
+  const fx = fixture({
+    killProcess(child, force) {
+      child.kill(force ? "SIGKILL" : "SIGTERM");
+      queueMicrotask(() => child.emit("exit", 0, null));
+    },
+  });
+  const started = fx.sidecar.start(config);
+  emitReady(fx.children[0]);
+  await started;
+  fx.children[0].stdin.emit("finish");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fx.sidecar.status, "ready");
+  assert.deepEqual(fx.children[0].kills, []);
+  await fx.sidecar.stop();
+  assert.deepEqual(fx.children[0].kills, ["SIGTERM"]);
+});
+
+test("Node manager and the real Go protocol keep running after stdin EOF until stop", {
+  timeout: 30_000,
+  skip: process.platform === "win32" ? "POSIX signal smoke runs in Task 11 CI" : false,
+}, async (t) => {
+  const projectRoot = path.join(__dirname, "..");
+  const goRoot = path.join(projectRoot, "sidecars", "wg-relay-tunnel");
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-contract-"));
+  const binary = path.join(tempDir, "wg-relay-contract.test");
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  execFileSync("go", ["test", "-c", "-o", binary, "."], { cwd: goRoot, stdio: "pipe" });
+
+  let child = null;
+  let failure = null;
+  const sidecar = new WgRelaySidecar({
+    platform: process.platform,
+    arch: process.arch,
+    appRoot: projectRoot,
+    isPackaged: false,
+    startupTimeoutMs: 5_000,
+    stopTimeoutMs: 2_000,
+    forceKillTimeoutMs: 1_000,
+    spawn(_file, _args, options) {
+      child = nodeSpawn(binary, ["-test.run=^TestNodeManagerContractHelper$"], {
+        ...options,
+        cwd: goRoot,
+        env: { WG_RELAY_NODE_CONTRACT_HELPER: "1" },
+      });
+      return child;
+    },
+  });
+  sidecar.on("failure", (event) => { failure = event; });
+  t.after(async () => { await sidecar.dispose(); });
+
+  const privateKey = Buffer.alloc(32);
+  privateKey[0] = 8;
+  privateKey[31] = 64;
+  await sidecar.start({
+    PrivateKey: privateKey.toString("base64"),
+    Address: "10.8.0.2/32",
+    ServerPublicKey: Buffer.alloc(32, 2).toString("base64"),
+    Endpoint: "relay.example.com:51820",
+    AllowedIP: "10.8.0.0/24",
+    ForwardAddress: "10.8.0.1:7891",
+    KeepaliveSeconds: 25,
+  });
+  assert.equal(child.stdin.writableEnded, true);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(failure, null);
+  assert.equal(sidecar.status, "ready");
+  assert.equal(child.exitCode, null);
+
+  await sidecar.stop();
+  assert.equal(sidecar.status, "idle");
+  assert.notEqual(child.exitCode, null);
 });
 
 test("start rejects malformed output and enforces stdout byte and line limits", async (t) => {
