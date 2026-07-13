@@ -60,6 +60,22 @@ const TRANSPORT_ERROR_MAP = {
 };
 
 const JSON_RE = /<<<CLAWD_JSON>>>([\s\S]*?)<<<END_CLAWD_JSON>>>/;
+const MAX_RAW_READBACK_BYTES = 48 * 1024;
+
+function extractRawReadback(stdout) {
+  const match = JSON_RE.exec(stdout || "");
+  if (!match) return null;
+  const serialized = match[1].trim();
+  if (Buffer.byteLength(serialized, "utf8") > MAX_RAW_READBACK_BYTES) return null;
+  try {
+    const value = JSON.parse(serialized);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 function resolveScriptPath(deps = {}) {
   if (deps.scriptPath) return deps.scriptPath;
@@ -282,15 +298,7 @@ function invalidReadback(field) {
   return { ok: false, message: `Invalid readback: ${field} (EX-12)` };
 }
 
-function parseReadback(stdout, context = {}) {
-  const m = JSON_RE.exec(stdout || "");
-  if (!m) return { ok: false, message: "No CLAWD_JSON marker found in output (EX-12)" };
-  let obj;
-  try {
-    obj = JSON.parse(m[1].trim());
-  } catch {
-    return { ok: false, message: "Malformed readback JSON (EX-12)" };
-  }
+function validateReadback(obj, context = {}) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return invalidReadback("payload");
   const requiredFields = [
     "schemaVersion", "endpoint", "subnet", "relayUrl", "pcConfig",
@@ -336,6 +344,18 @@ function parseReadback(stdout, context = {}) {
     return invalidReadback("managementToken");
   }
   return { ok: true, readback: { ...obj } };
+}
+
+function parseReadback(stdout, context = {}) {
+  const m = JSON_RE.exec(stdout || "");
+  if (!m) return { ok: false, message: "No CLAWD_JSON marker found in output (EX-12)" };
+  let obj;
+  try {
+    obj = JSON.parse(m[1].trim());
+  } catch {
+    return { ok: false, message: "Malformed readback JSON (EX-12)" };
+  }
+  return validateReadback(obj, context);
 }
 
 // Emit the standard progress-step sequence based on remote log lines. The
@@ -531,7 +551,15 @@ async function deployInternal({ profile, password, runtime = {}, deps = {} }) {
   const parsed = parseReadback(result.stdout, { profile, runtime });
   if (!parsed.ok) {
     progress("validate", "fail", parsed.message);
-    return { ok: false, step: "validate", message: parsed.message };
+    const rawReadback = extractRawReadback(result.stdout);
+    return {
+      ok: false,
+      remoteCommitted: true,
+      step: "validate",
+      message: parsed.message,
+      ...(rawReadback ? { rawReadback } : {}),
+      ...(result.acceptedFingerprint ? { acceptedFingerprint: result.acceptedFingerprint } : {}),
+    };
   }
   if (!passwordAuth) tracker.finishOk();
   progress("validate", "ok");
@@ -557,6 +585,7 @@ module.exports = {
   STEPS,
   EXIT_CODE_MAP,
   parseReadback,
+  validateReadback,
   buildRemoteScript,
   buildEnvPreamble,
   buildInstallEnv,

@@ -3,7 +3,9 @@
 const path = require("node:path");
 
 const STORE_FILE = "wg-relay-secrets.json";
-const STORE_VERSION = 1;
+const STORE_VERSION = 2;
+const LEGACY_STORE_VERSION = 1;
+const MAX_RECOVERY_BYTES = 64 * 1024;
 const PROFILE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 function isPlainObject(value) {
@@ -14,10 +16,10 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-function createProfileMap(entries = []) {
-  const profiles = Object.create(null);
-  for (const [profileId, blob] of entries) profiles[profileId] = blob;
-  return profiles;
+function createBlobMap(entries = []) {
+  const values = Object.create(null);
+  for (const [profileId, blob] of entries) values[profileId] = blob;
+  return values;
 }
 
 function isCanonicalBase64(value) {
@@ -31,7 +33,7 @@ function isCanonicalBase64(value) {
 }
 
 function createEmptyStore() {
-  return { version: STORE_VERSION, profiles: createProfileMap() };
+  return { version: STORE_VERSION, profiles: createBlobMap(), recovery: createBlobMap() };
 }
 
 function createWgRelaySecretStore(options = {}) {
@@ -93,6 +95,34 @@ function createWgRelaySecretStore(options = {}) {
     }
   }
 
+  function serializeRecovery(recovery) {
+    if (!isPlainObject(recovery)) {
+      throw new TypeError("recovery must be a plain object");
+    }
+    try {
+      const serialized = JSON.stringify(recovery);
+      const roundTrip = JSON.parse(serialized);
+      if (!isPlainObject(roundTrip)
+          || Buffer.byteLength(serialized, "utf8") > MAX_RECOVERY_BYTES) {
+        throw new Error("invalid");
+      }
+      return serialized;
+    } catch (_) {
+      throw new TypeError("recovery must be a bounded plain object");
+    }
+  }
+
+  function validateBlobEntries(value) {
+    if (!isPlainObject(value)) throw new Error("Corrupt secret store");
+    const entries = Object.entries(value);
+    for (const [profileId, blob] of entries) {
+      if (!PROFILE_ID_RE.test(profileId) || !isCanonicalBase64(blob)) {
+        throw new Error("Corrupt secret store");
+      }
+    }
+    return entries;
+  }
+
   function parseStore(serialized) {
     let parsed;
     try {
@@ -101,18 +131,19 @@ function createWgRelaySecretStore(options = {}) {
       throw new Error("Corrupt secret store");
     }
     if (!isPlainObject(parsed)
-        || parsed.version !== STORE_VERSION
-        || !isPlainObject(parsed.profiles)) {
+        || ![LEGACY_STORE_VERSION, STORE_VERSION].includes(parsed.version)) {
       throw new Error("Corrupt secret store");
     }
-    const entries = Object.entries(parsed.profiles);
-    for (const [profileId, blob] of entries) {
-      if (!PROFILE_ID_RE.test(profileId)
-          || !isCanonicalBase64(blob)) {
-        throw new Error("Corrupt secret store");
-      }
+    const profiles = validateBlobEntries(parsed.profiles);
+    if (parsed.version === LEGACY_STORE_VERSION) {
+      return { version: STORE_VERSION, profiles: createBlobMap(profiles), recovery: createBlobMap() };
     }
-    return { version: STORE_VERSION, profiles: createProfileMap(entries) };
+    const recovery = validateBlobEntries(parsed.recovery);
+    return {
+      version: STORE_VERSION,
+      profiles: createBlobMap(profiles),
+      recovery: createBlobMap(recovery),
+    };
   }
 
   function loadStore() {
@@ -134,6 +165,22 @@ function createWgRelaySecretStore(options = {}) {
     }
   }
 
+  function fsyncParentDirectory() {
+    if (platform === "win32" || typeof fileSystem.fsyncSync !== "function") return;
+    let directoryFd;
+    try {
+      directoryFd = fileSystem.openSync(userDataPath, "r");
+      fileSystem.fsyncSync(directoryFd);
+      fileSystem.closeSync(directoryFd);
+      directoryFd = undefined;
+    } catch (error) {
+      if (directoryFd !== undefined) {
+        try { fileSystem.closeSync(directoryFd); } catch (_) { /* best effort */ }
+      }
+      if (!error || !["ENOSYS", "EINVAL", "ENOTSUP"].includes(error.code)) throw error;
+    }
+  }
+
   function persistStore(store) {
     const serialized = JSON.stringify(store);
     let fd;
@@ -152,6 +199,7 @@ function createWgRelaySecretStore(options = {}) {
       fileSystem.closeSync(fd);
       fd = undefined;
       fileSystem.renameSync(tempPath, filePath);
+      fsyncParentDirectory();
     } catch (_) {
       if (fd !== undefined) {
         try { fileSystem.closeSync(fd); } catch (_) { /* best effort */ }
@@ -176,6 +224,24 @@ function createWgRelaySecretStore(options = {}) {
     }
     const store = loadStore();
     store.profiles[profileId] = Buffer.from(encrypted).toString("base64");
+    persistStore(store);
+  }
+
+  function writeRecovery(profileId, recovery) {
+    assertProfileId(profileId);
+    assertAvailable();
+    const serialized = serializeRecovery(recovery);
+    let encrypted;
+    try {
+      encrypted = safeStorage.encryptString(serialized);
+      if (!Buffer.isBuffer(encrypted) && !(encrypted instanceof Uint8Array)) {
+        throw new Error("invalid encrypted value");
+      }
+    } catch (_) {
+      throw new Error("Unable to encrypt WireGuard relay recovery");
+    }
+    const store = loadStore();
+    store.recovery[profileId] = Buffer.from(encrypted).toString("base64");
     persistStore(store);
   }
 
@@ -211,11 +277,41 @@ function createWgRelaySecretStore(options = {}) {
     }
   }
 
+  function readRecovery(profileId) {
+    assertProfileId(profileId);
+    assertAvailable();
+    const store = loadStore();
+    if (!Object.hasOwn(store.recovery, profileId)) return null;
+    const blob = store.recovery[profileId];
+    try {
+      const plaintext = safeStorage.decryptString(Buffer.from(blob, "base64"));
+      if (Buffer.byteLength(plaintext, "utf8") > MAX_RECOVERY_BYTES) throw new Error("invalid recovery");
+      const recovery = JSON.parse(plaintext);
+      if (!isPlainObject(recovery)) throw new Error("invalid recovery");
+      return recovery;
+    } catch (_) {
+      throw new Error("Unable to decrypt WireGuard relay recovery");
+    }
+  }
+
+  function listRecoveryIds() {
+    return Object.keys(loadStore().recovery).sort();
+  }
+
   function remove(profileId) {
     assertProfileId(profileId);
     const store = loadStore();
     if (!Object.hasOwn(store.profiles, profileId)) return false;
     delete store.profiles[profileId];
+    persistStore(store);
+    return true;
+  }
+
+  function removeRecovery(profileId) {
+    assertProfileId(profileId);
+    const store = loadStore();
+    if (!Object.hasOwn(store.recovery, profileId)) return false;
+    delete store.recovery[profileId];
     persistStore(store);
     return true;
   }
@@ -229,10 +325,22 @@ function createWgRelaySecretStore(options = {}) {
     }
   }
 
-  return { isAvailable, preflight, write, read, remove, clear };
+  return {
+    isAvailable,
+    preflight,
+    write,
+    read,
+    remove,
+    writeRecovery,
+    readRecovery,
+    removeRecovery,
+    listRecoveryIds,
+    clear,
+  };
 }
 
 module.exports = {
   createWgRelaySecretStore,
+  MAX_RECOVERY_BYTES,
   STORE_FILE,
 };

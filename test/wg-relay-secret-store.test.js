@@ -53,6 +53,89 @@ test("write/read/remove stores only encrypted profile blobs", (t) => {
   assert.equal(store.read("wg-1"), null);
 });
 
+test("v1 stores remain readable and atomically migrate to v2 on the first recovery write", (t) => {
+  const userDataPath = makeTempDir(t);
+  const profileSecrets = { relayToken: "legacy-secret" };
+  fs.writeFileSync(path.join(userDataPath, FILE_NAME), JSON.stringify({
+    version: 1,
+    profiles: {
+      "wg-1": xor(JSON.stringify(profileSecrets)).toString("base64"),
+    },
+  }), { mode: 0o600 });
+  const store = createWgRelaySecretStore({
+    safeStorage: makeSafeStorage(), userDataPath, fs, platform: "darwin",
+  });
+
+  assert.deepEqual(store.read("wg-1"), profileSecrets);
+  assert.deepEqual(store.listRecoveryIds(), []);
+  store.writeRecovery("wg-1", { version: 1, phase: "prepared", operation: "deploy" });
+
+  const disk = JSON.parse(fs.readFileSync(path.join(userDataPath, FILE_NAME), "utf8"));
+  assert.equal(disk.version, 2);
+  assert.deepEqual(Object.keys(disk.profiles), ["wg-1"]);
+  assert.deepEqual(Object.keys(disk.recovery), ["wg-1"]);
+  assert.deepEqual(store.read("wg-1"), profileSecrets);
+});
+
+test("encrypted recovery records survive a new store instance and remove independently", (t) => {
+  const userDataPath = makeTempDir(t);
+  const options = {
+    safeStorage: makeSafeStorage(), userDataPath, fs, platform: "darwin",
+  };
+  const first = createWgRelaySecretStore(options);
+  const prepared = { version: 1, phase: "prepared", operation: "rotate" };
+  const committed = {
+    version: 1,
+    phase: "remote_committed",
+    operation: "rotate",
+    candidate: { phoneConfig: "PrivateKey = RECOVERY_PRIVATE_KEY", relayToken: "RECOVERY_TOKEN" },
+  };
+
+  first.write("wg-1", { relayToken: "ACTIVE_TOKEN" });
+  first.writeRecovery("wg-1", prepared);
+  first.writeRecovery("wg-2", committed);
+
+  const disk = fs.readFileSync(path.join(userDataPath, FILE_NAME), "utf8");
+  for (const plaintext of ["ACTIVE_TOKEN", "RECOVERY_PRIVATE_KEY", "RECOVERY_TOKEN", "remote_committed"]) {
+    assert.doesNotMatch(disk, new RegExp(plaintext));
+  }
+  const second = createWgRelaySecretStore(options);
+  assert.deepEqual(second.listRecoveryIds(), ["wg-1", "wg-2"]);
+  assert.deepEqual(second.readRecovery("wg-1"), prepared);
+  assert.deepEqual(second.readRecovery("wg-2"), committed);
+  assert.equal(second.removeRecovery("wg-1"), true);
+  assert.equal(second.removeRecovery("wg-1"), false);
+  assert.equal(second.readRecovery("wg-1"), null);
+  assert.deepEqual(second.read("wg-1"), { relayToken: "ACTIVE_TOKEN" });
+});
+
+test("malformed or undecryptable recovery entries fail closed without exposing plaintext", (t) => {
+  const userDataPath = makeTempDir(t);
+  fs.writeFileSync(path.join(userDataPath, FILE_NAME), JSON.stringify({
+    version: 2,
+    profiles: {},
+    recovery: { "wg-1": "a" },
+  }), { mode: 0o600 });
+  const malformed = createWgRelaySecretStore({
+    safeStorage: makeSafeStorage(), userDataPath, fs, platform: "darwin",
+  });
+  assert.throws(() => malformed.listRecoveryIds(), /corrupt secret store/i);
+  assert.throws(() => malformed.readRecovery("wg-1"), /corrupt secret store/i);
+
+  fs.writeFileSync(path.join(userDataPath, FILE_NAME), JSON.stringify({
+    version: 2,
+    profiles: {},
+    recovery: { "wg-1": xor('"RECOVERY_PLAINTEXT"').toString("base64") },
+  }), { mode: 0o600 });
+  const invalidRecord = createWgRelaySecretStore({
+    safeStorage: makeSafeStorage(), userDataPath, fs, platform: "darwin",
+  });
+  assert.throws(
+    () => invalidRecord.readRecovery("wg-1"),
+    (error) => error.message === "Unable to decrypt WireGuard relay recovery",
+  );
+});
+
 test("preflight verifies safeStorage roundtrip and the atomic store path without adding a profile", (t) => {
   const userDataPath = makeTempDir(t);
   const calls = [];
@@ -116,7 +199,7 @@ test("missing Object prototype name IDs return null and false", (t) => {
   }
 });
 
-test("writes through a chmodded, fsynced temp file and renames atomically", (t) => {
+test("writes through a chmodded, fsynced temp file then fsyncs the renamed parent directory", (t) => {
   const userDataPath = makeTempDir(t);
   const calls = [];
   const trackedFs = {
@@ -150,7 +233,7 @@ test("writes through a chmodded, fsynced temp file and renames atomically", (t) 
     safeStorage: makeSafeStorage(),
     userDataPath,
     fs: trackedFs,
-    platform: "win32",
+    platform: "darwin",
   });
 
   store.write("wg-1", { relayToken: "classified" });
@@ -158,11 +241,12 @@ test("writes through a chmodded, fsynced temp file and renames atomically", (t) 
   const target = path.join(userDataPath, FILE_NAME);
   const temp = `${target}.tmp`;
   assert.deepEqual(calls.map(([name]) => name), [
-    "open", "write", "chmod", "fsync", "close", "rename",
+    "open", "write", "chmod", "fsync", "close", "rename", "open", "fsync", "close",
   ]);
   assert.deepEqual(calls[0].slice(1), [temp, "w", 0o600]);
   assert.deepEqual(calls[2].slice(1), [temp, 0o600]);
   assert.deepEqual(calls[5].slice(1), [temp, target]);
+  assert.deepEqual(calls[6].slice(1), [userDataPath, "r", undefined]);
   assert.equal(fs.statSync(target).mode & 0o777, 0o600);
   assert.equal(fs.existsSync(temp), false);
 });

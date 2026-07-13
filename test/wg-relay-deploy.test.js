@@ -394,6 +394,29 @@ test("deploy key path returns readback on exit 0", async () => {
   assert.ok(emitter.events.some((e) => e.step === "connect" && e.status === "ok"));
 });
 
+test("deploy preserves a bounded raw candidate when exit 0 readback fails strict validation", async () => {
+  const invalidPhoneConfig = wgConfig("10.8.0.4/32");
+  const deps = {
+    scriptBody: "echo body",
+    spawn: () => {},
+    runtimeModule: { buildSshArgs: () => ["-T", "root@8.8.8.8"] },
+    deployModule: {
+      spawnAndWait: async () => ({
+        code: 0,
+        stdout: makeReadbackStdout({ phoneConfig: invalidPhoneConfig }),
+        stderr: "",
+      }),
+    },
+  };
+
+  const result = await deploy({ profile: keyProfile(), deps });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.remoteCommitted, true);
+  assert.equal(result.rawReadback.phoneConfig, invalidPhoneConfig);
+  assert.equal(result.message, "Invalid readback: phoneConfig (EX-12)");
+});
+
 test("deploy key path normalizes canonical SSH fields and preserves legacy host fields", async () => {
   const buildInputs = [];
   const deps = {

@@ -2,7 +2,10 @@
 
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
 const http = require("node:http");
+const os = require("node:os");
+const path = require("node:path");
 const { test } = require("node:test");
 
 const {
@@ -10,17 +13,18 @@ const {
   requestPhoneRotation,
 } = require("../src/wg-relay-ipc");
 const { createWgRelayRuntime } = require("../src/wg-relay-runtime");
+const { createWgRelaySecretStore } = require("../src/wg-relay-secret-store");
 
 const PROFILE = {
   id: "wg-1",
   label: "My VPS",
-  host: "203.0.113.10",
+  host: "8.8.8.8",
   sshUsername: "deploy",
   sshPort: 2222,
   authMethod: "password",
   wgPort: 51820,
   wgSubnet: "10.8.0.0/24",
-  endpoint: "203.0.113.10:51820",
+  endpoint: "8.8.8.8:51820",
   relayAddr: "ws://10.8.0.1:7891",
 };
 const FINGERPRINT = `SHA256:${Buffer.alloc(32, 9).toString("base64")}`;
@@ -30,7 +34,7 @@ const SERVER_KEY = Buffer.alloc(32, 3).toString("base64");
 const RELAY_TOKEN = "11".repeat(32);
 const MANAGEMENT_TOKEN = "22".repeat(32);
 
-function config(address, privateKey, endpoint = "203.0.113.10:51820") {
+function config(address, privateKey, endpoint = "8.8.8.8:51820") {
   return [
     "[Interface]",
     `PrivateKey = ${privateKey}`,
@@ -48,7 +52,7 @@ function config(address, privateKey, endpoint = "203.0.113.10:51820") {
 function readback(overrides = {}) {
   return {
     schemaVersion: 1,
-    endpoint: "203.0.113.10:51820",
+    endpoint: "8.8.8.8:51820",
     subnet: "10.8.0.0/24",
     relayUrl: "ws://10.8.0.1:7891",
     pcConfig: config("10.8.0.2/32", PC_KEY),
@@ -75,6 +79,41 @@ function deferred() {
   let reject;
   const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
   return { promise, reject, resolve };
+}
+
+function xor(value) {
+  return Buffer.from(value).map((byte) => byte ^ 0xaa);
+}
+
+function realSecretStore(userDataPath) {
+  return createWgRelaySecretStore({
+    safeStorage: {
+      isEncryptionAvailable: () => true,
+      encryptString: (plaintext) => xor(plaintext),
+      decryptString: (ciphertext) => xor(ciphertext).toString("utf8"),
+      getSelectedStorageBackend: () => "keyring",
+    },
+    userDataPath,
+    fs,
+    platform: "darwin",
+  });
+}
+
+function sharedSettings(initialProfiles) {
+  let profiles = structuredClone(initialProfiles);
+  return {
+    getSnapshot: () => ({ wgRelay: { profiles: structuredClone(profiles) } }),
+    async applyCommand(action, payload) {
+      if (action === "wgRelay.add") profiles.push(structuredClone(payload));
+      if (action === "wgRelay.update") {
+        const index = profiles.findIndex((profile) => profile.id === payload.id);
+        if (index === -1) return { status: "error" };
+        profiles[index] = structuredClone(payload);
+      }
+      if (action === "wgRelay.remove") profiles = profiles.filter((profile) => profile.id !== payload.id);
+      return { status: "ok" };
+    },
+  };
 }
 
 function fakeIpcMain() {
@@ -109,7 +148,7 @@ function fixture(options = {}) {
   const runtime = createWgRelayRuntime();
   let profiles = structuredClone(options.profiles || []);
   const publicWrites = [];
-  const settingsController = {
+  const defaultSettingsController = {
     getSnapshot: () => ({ wgRelay: { profiles: structuredClone(profiles) } }),
     async applyCommand(action, payload) {
       publicWrites.push({ action, payload: structuredClone(payload) });
@@ -130,9 +169,11 @@ function fixture(options = {}) {
       return { status: "ok" };
     },
   };
+  const settingsController = options.settingsController || defaultSettingsController;
   const stored = new Map(Object.entries(options.secrets || {}).map(([id, value]) => [id, structuredClone(value)]));
+  const recovery = new Map(Object.entries(options.recovery || {}).map(([id, value]) => [id, structuredClone(value)]));
   const secretCalls = [];
-  const secretStore = {
+  const fakeSecretStore = {
     isAvailable: () => options.secretAvailable !== false,
     preflight() {
       secretCalls.push(["preflight"]);
@@ -155,7 +196,28 @@ function fixture(options = {}) {
       if (options.secretRemove) return options.secretRemove(id, stored);
       return stored.delete(id);
     },
+    writeRecovery(id, value) {
+      secretCalls.push(["writeRecovery", id, structuredClone(value)]);
+      if (options.recoveryWrite) return options.recoveryWrite(id, value, recovery);
+      recovery.set(id, structuredClone(value));
+    },
+    readRecovery(id) {
+      secretCalls.push(["readRecovery", id]);
+      if (options.recoveryRead) return options.recoveryRead(id, recovery);
+      return recovery.has(id) ? structuredClone(recovery.get(id)) : null;
+    },
+    removeRecovery(id) {
+      secretCalls.push(["removeRecovery", id]);
+      if (options.recoveryRemove) return options.recoveryRemove(id, recovery);
+      return recovery.delete(id);
+    },
+    listRecoveryIds() {
+      secretCalls.push(["listRecoveryIds"]);
+      if (options.recoveryList) return options.recoveryList(recovery);
+      return Array.from(recovery.keys()).sort();
+    },
   };
+  const secretStore = options.secretStore || fakeSecretStore;
   const connectionCalls = [];
   const states = new Map(Object.entries(options.states || {}));
   const setState = (id, status) => {
@@ -219,7 +281,7 @@ function fixture(options = {}) {
   });
   return {
     connection, connectionCalls, deployCalls, dialogCalls, ipc, ipcMain, logs,
-    profiles: () => structuredClone(profiles), publicWrites, qrCalls, runtime,
+    profiles: () => structuredClone(profiles), publicWrites, qrCalls, recovery, runtime,
     secretCalls, secretStore, sent, states, stored,
   };
 }
@@ -256,6 +318,11 @@ test("deploy sanitizes profile, confirms TOFU, persists/reads secrets before pub
   };
   fx = fixture({
     secretPreflight() { order.push("secret-preflight"); },
+    recoveryWrite(_id, value, journal) {
+      order.push(`recovery-${value.phase}`);
+      journal.set("wg-1", structuredClone(value));
+    },
+    recoveryRemove(_id, journal) { order.push("recovery-remove"); return journal.delete("wg-1"); },
     secretWrite(id, value, stored) { order.push("secret-write"); stored.set(id, structuredClone(value)); },
     secretRead(id, stored) { order.push("secret-read"); return structuredClone(stored.get(id)); },
     publicWrite() { order.push("public-write"); },
@@ -276,8 +343,9 @@ test("deploy sanitizes profile, confirms TOFU, persists/reads secrets before pub
   const result = await fx.ipcMain.invoke("wgRelay:deploy", request);
 
   assert.deepEqual(order, [
-    "secret-read", "secret-preflight", "ssh-deploy", "secret-write", "secret-read",
-    "public-write", "secret-read", "connect", "qr",
+    "secret-read", "secret-preflight", "recovery-prepared", "ssh-deploy",
+    "recovery-remote_committed", "secret-write", "secret-read", "public-write",
+    "recovery-remove", "secret-read", "connect", "qr",
   ]);
   assert.equal(fx.dialogCalls.length, 1);
   assert.match(fx.dialogCalls[0].detail, new RegExp(FINGERPRINT.replace("+", "\\+")));
@@ -329,6 +397,7 @@ test("deploy failures allowlist structured codes instead of copying secret-like 
   const fx = fixture({
     deployFn: async () => ({
       ok: false,
+      remoteCommitted: false,
       step: RELAY_TOKEN,
       reason: sshPassword,
       hint: RELAY_TOKEN,
@@ -339,14 +408,157 @@ test("deploy failures allowlist structured codes instead of copying secret-like 
   const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: sshPassword });
 
   assert.deepEqual(result, { status: "error", errorCode: "deploy_failed" });
+  assert.equal(fx.recovery.has("wg-1"), false);
+  assert.deepEqual(
+    fx.secretCalls.filter(([name]) => name === "writeRecovery" || name === "removeRecovery").map(([name]) => name),
+    ["writeRecovery", "removeRecovery"],
+  );
   assertNoSecrets({ result, events: fx.sent, logs: fx.logs }, [sshPassword]);
+});
+
+test("deploy journals a remote-committed raw candidate before rejecting its topology", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const invalidPhoneConfig = config("10.8.0.4/32", Buffer.alloc(32, 4).toString("base64"));
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    async deployFn() {
+      return {
+        ok: false,
+        remoteCommitted: true,
+        rawReadback: readback({ phoneConfig: invalidPhoneConfig }),
+        acceptedFingerprint: FINGERPRINT,
+        step: "validate",
+      };
+    },
+  });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
+  const journal = fx.recovery.get("wg-1");
+  assert.equal(journal.phase, "remote_committed_invalid_response");
+  assert.equal(journal.candidate.readback.phoneConfig, invalidPhoneConfig);
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+});
+
+test("deploy keeps prepared recovery after an ambiguous transport failure", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    async deployFn() {
+      return { ok: false, step: "install", message: "connection lost after remote execution" };
+    },
+  });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
+  assert.equal(fx.recovery.get("wg-1").phase, "prepared");
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.deepEqual(fx.connectionCalls, []);
+});
+
+test("deploy journals then rejects a success readback with invalid non-pairing secrets", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const invalidReadback = readback({
+    pcConfig: "[Interface]\nPrivateKey = invalid",
+    managementToken: "not-a-management-token",
+  });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    async deployFn() { return { ok: true, readback: invalidReadback }; },
+  });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
+  assert.equal(fx.recovery.get("wg-1").phase, "remote_committed_invalid_response");
+  assert.equal(fx.recovery.get("wg-1").candidate.readback.managementToken, "not-a-management-token");
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.deepEqual(fx.publicWrites, []);
+  assert.deepEqual(fx.connectionCalls, []);
+});
+
+test("restart does not forward an incomplete deploy candidate from the encrypted journal", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    recovery: {
+      "wg-1": {
+        version: 1,
+        phase: "remote_committed",
+        operation: "deploy",
+        profile: PROFILE,
+        candidate: {
+          acceptedFingerprint: null,
+          readback: readback({ managementToken: "invalid" }),
+        },
+      },
+    },
+    connect() { throw new Error("old credentials must remain blocked"); },
+  });
+
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.deepEqual(fx.connectionCalls, []);
+  assert.equal(fx.recovery.get("wg-1").phase, "remote_committed");
+});
+
+test("deploy ok without a usable readback keeps a durable invalid-response candidate", async () => {
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": secretValue({ relayToken: "33".repeat(32) }) },
+    async deployFn() { return { ok: true, acceptedFingerprint: FINGERPRINT }; },
+  });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
+  assert.equal(fx.recovery.get("wg-1").phase, "remote_committed_invalid_response");
+  assert.equal(Object.hasOwn(fx.recovery.get("wg-1").candidate, "readback"), false);
+});
+
+test("oversized committed deploy candidate disconnects stale credentials and clears old QR", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async deployFn() {
+      return { ok: true, readback: { oversized: "x".repeat(49 * 1024) } };
+    },
+  });
+  const oldQr = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+  assert.equal(oldQr.status, "ok");
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
+  assert.equal(fx.recovery.get("wg-1").phase, "prepared");
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
 });
 
 test("deploy commitPoint keeps new secrets/public state and clears old QR when QR generation fails", async () => {
   const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
   const oldProfile = {
     ...PROFILE, sshHostFingerprint: FINGERPRINT,
-    endpoint: "203.0.113.10:51820", relayAddr: "ws://10.8.0.1:7891",
+    endpoint: "8.8.8.8:51820", relayAddr: "ws://10.8.0.1:7891",
     lastDeployedAt: 100, deployVersion: 1,
   };
   const fx = fixture({
@@ -398,7 +610,7 @@ test("duplicate deploys for one profile coalesce", async () => {
 test("queued rotate uses the committed public profile instead of its pre-queue snapshot", async () => {
   const gate = deferred();
   const newEndpoint = "relay.example.com:51820";
-  const newProfile = { ...PROFILE, label: "New VPS" };
+  const newProfile = { ...PROFILE, label: "New VPS", host: "relay.example.com" };
   const newReadback = readback({
     endpoint: newEndpoint,
     pcConfig: config("10.8.0.2/32", PC_KEY, newEndpoint),
@@ -459,6 +671,239 @@ test("deploy commitPoint keeps a failed durable bundle in recovery and retries l
   assert.deepEqual(fx.stored.get("wg-1"), secretValue());
   assert.equal(fx.connection.status("wg-1").status, "connected");
   assertNoSecrets(retried);
+});
+
+test("a new IPC instance forwards a durable deploy candidate before any old credential attempt", async (t) => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-ipc-recovery-"));
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const diskStoreA = realSecretStore(userDataPath);
+  diskStoreA.write("wg-1", oldSecrets);
+  const failingStoreA = {
+    ...diskStoreA,
+    write() { throw new Error("simulated post-commit disk failure"); },
+  };
+  const settingsController = sharedSettings([PROFILE]);
+  const instanceA = fixture({
+    profiles: [PROFILE],
+    settingsController,
+    secretStore: failingStoreA,
+  });
+
+  const committed = await instanceA.ipcMain.invoke("wgRelay:deploy", {
+    profile: PROFILE,
+    password: "secret",
+  });
+  assert.equal(committed.errorCode, "local_storage_retry_required");
+  assert.equal(diskStoreA.readRecovery("wg-1").phase, "remote_committed");
+
+  const diskStoreB = realSecretStore(userDataPath);
+  let oldCredentialAttempted = false;
+  const instanceB = fixture({
+    profiles: [PROFILE],
+    settingsController,
+    secretStore: diskStoreB,
+    connect(id, { setState }) {
+      if (diskStoreB.read(id).relayToken === oldSecrets.relayToken) oldCredentialAttempted = true;
+      return setState(id, "connected");
+    },
+  });
+
+  const connected = await instanceB.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" });
+
+  assert.equal(connected.status, "ok");
+  assert.equal(oldCredentialAttempted, false);
+  assert.equal(diskStoreB.read("wg-1").relayToken, RELAY_TOKEN);
+  assert.equal(diskStoreB.readRecovery("wg-1"), null);
+});
+
+test("a prepared durable tombstone blocks old credentials after restart", async (t) => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-ipc-prepared-"));
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const diskStore = realSecretStore(userDataPath);
+  diskStore.write("wg-1", secretValue({ relayToken: "33".repeat(32) }));
+  diskStore.writeRecovery("wg-1", {
+    version: 1,
+    phase: "prepared",
+    operation: "deploy",
+    profile: PROFILE,
+  });
+  let oldCredentialAttempted = false;
+  const instance = fixture({
+    profiles: [PROFILE],
+    settingsController: sharedSettings([PROFILE]),
+    secretStore: realSecretStore(userDataPath),
+    connect() { oldCredentialAttempted = true; throw new Error("must not connect"); },
+  });
+
+  assert.deepEqual(await instance.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.deepEqual(await instance.ipcMain.invoke("wgRelay:status", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.equal(oldCredentialAttempted, false);
+});
+
+test("delete-local in a second IPC instance invalidates another instance's stale recovery cache", async (t) => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-ipc-delete-race-"));
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const store = realSecretStore(userDataPath);
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  store.write("wg-1", oldSecrets);
+  store.writeRecovery("wg-1", {
+    version: 1,
+    phase: "remote_committed",
+    operation: "deploy",
+    profile: PROFILE,
+    candidate: { acceptedFingerprint: null, readback: readback() },
+  });
+  const settingsController = sharedSettings([PROFILE]);
+  let staleCredentialAttempted = false;
+  const instanceA = fixture({
+    profiles: [PROFILE],
+    settingsController,
+    secretStore: realSecretStore(userDataPath),
+    connect() { staleCredentialAttempted = true; throw new Error("must not connect"); },
+  });
+  const instanceB = fixture({
+    profiles: [PROFILE],
+    settingsController,
+    secretStore: realSecretStore(userDataPath),
+  });
+
+  assert.equal((await instanceB.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" })).status, "ok");
+  assert.deepEqual(await instanceA.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "profile_not_found",
+  });
+  assert.equal(staleCredentialAttempted, false);
+  assert.equal(store.read("wg-1"), null);
+  assert.equal(store.readRecovery("wg-1"), null);
+  assert.deepEqual(settingsController.getSnapshot().wgRelay.profiles, []);
+});
+
+test("connect pairing and status resync a journal created after IPC registration", async () => {
+  const fx = fixture({ profiles: [] });
+  fx.recovery.set("wg-1", {
+    version: 1,
+    phase: "prepared",
+    operation: "deploy",
+    profile: PROFILE,
+  });
+
+  for (const channel of ["wgRelay:connect", "wgRelay:pairing-qr", "wgRelay:status"]) {
+    assert.deepEqual(await fx.ipcMain.invoke(channel, { profileId: "wg-1" }), {
+      status: "error", errorCode: "remote_commit_recovery_required",
+    });
+  }
+  assert.equal(fx.connectionCalls.length, 0);
+});
+
+test("one profile recovery read failure does not block an unrelated profile", async () => {
+  const goodProfile = {
+    ...PROFILE,
+    id: "wg-2",
+    label: "Good VPS",
+    wgSubnet: "10.9.0.0/24",
+  };
+  const fx = fixture({
+    profiles: [PROFILE, goodProfile],
+    secrets: { "wg-1": secretValue(), "wg-2": secretValue() },
+    recovery: {
+      "wg-1": { version: 1, phase: "prepared", operation: "deploy", profile: PROFILE },
+    },
+    recoveryRead(id, recovery) {
+      if (id === "wg-1") throw new Error("corrupt recovery blob");
+      return recovery.has(id) ? structuredClone(recovery.get(id)) : null;
+    },
+  });
+
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.equal((await fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-2" })).status, "ok");
+  assert.deepEqual(fx.connectionCalls, [["connect", "wg-2"]]);
+});
+
+test("an invalid committed candidate remains blocked across IPC instances", async (t) => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-ipc-invalid-"));
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const diskStoreA = realSecretStore(userDataPath);
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  diskStoreA.write("wg-1", oldSecrets);
+  const settingsController = sharedSettings([PROFILE]);
+  const instanceA = fixture({
+    profiles: [PROFILE],
+    settingsController,
+    secretStore: diskStoreA,
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async rotatePhoneFn() {
+      return {
+        version: 1,
+        phoneConfig: config("10.8.0.4/32", Buffer.alloc(32, 4).toString("base64")),
+        relayToken: "44".repeat(32),
+      };
+    },
+  });
+  const invalid = await instanceA.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+  assert.equal(invalid.status, "partial_success");
+  assert.equal(diskStoreA.readRecovery("wg-1").phase, "remote_committed_invalid_response");
+
+  let oldCredentialAttempted = false;
+  const instanceB = fixture({
+    profiles: [PROFILE],
+    settingsController,
+    secretStore: realSecretStore(userDataPath),
+    connect() { oldCredentialAttempted = true; throw new Error("must not connect"); },
+  });
+  assert.deepEqual(await instanceB.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.deepEqual(await instanceB.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.equal(oldCredentialAttempted, false);
+  assert.deepEqual(realSecretStore(userDataPath).read("wg-1"), oldSecrets);
+});
+
+test("candidate journal failure leaves the prepared tombstone durable across restart", async (t) => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-ipc-candidate-fail-"));
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const baseStore = realSecretStore(userDataPath);
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  baseStore.write("wg-1", oldSecrets);
+  let journalWrites = 0;
+  const failingStore = {
+    ...baseStore,
+    write() { throw new Error("main secret write failed"); },
+    writeRecovery(id, record) {
+      journalWrites += 1;
+      if (journalWrites > 1) throw new Error("candidate journal write failed");
+      return baseStore.writeRecovery(id, record);
+    },
+  };
+  const settingsController = sharedSettings([PROFILE]);
+  const instanceA = fixture({
+    profiles: [PROFILE], settingsController, secretStore: failingStore,
+  });
+
+  const result = await instanceA.ipcMain.invoke("wgRelay:deploy", {
+    profile: PROFILE, password: "secret",
+  });
+  assert.equal(result.errorCode, "local_storage_retry_required");
+  assert.equal(baseStore.readRecovery("wg-1").phase, "prepared");
+
+  let oldCredentialAttempted = false;
+  const instanceB = fixture({
+    profiles: [PROFILE],
+    settingsController,
+    secretStore: realSecretStore(userDataPath),
+    connect() { oldCredentialAttempted = true; throw new Error("must not connect"); },
+  });
+  assert.deepEqual(await instanceB.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.equal(oldCredentialAttempted, false);
 });
 
 test("deploy commitPoint never removes new secrets when public persistence reports failure", async () => {
@@ -546,11 +991,11 @@ test("deploy commitPoint blocks old local credentials when successful readback h
   const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
 
   assert.equal(result.status, "partial_success");
-  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
   assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
   assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
   assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
-    status: "error", errorCode: "remote_committed_invalid_response",
+    status: "error", errorCode: "remote_commit_recovery_required",
   });
   assertNoSecrets({ result, events: fx.sent, logs: fx.logs });
 });
@@ -574,10 +1019,10 @@ test("deploy commitPoint blocks old local credentials when readback cannot form 
   const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
 
   assert.equal(result.status, "partial_success");
-  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
   assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
   assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
-    status: "error", errorCode: "remote_committed_invalid_response",
+    status: "error", errorCode: "remote_commit_recovery_required",
   });
 });
 
@@ -600,10 +1045,10 @@ test("deploy commitPoint tombstones old credentials when canonical public profil
   const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
 
   assert.equal(result.status, "partial_success");
-  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
   assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
   assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
-    status: "error", errorCode: "remote_committed_invalid_response",
+    status: "error", errorCode: "remote_commit_recovery_required",
   });
 });
 
@@ -691,7 +1136,7 @@ test("progress boundary preserves every fixed production deploy stage", () => {
   assertNoSecrets(fx.sent);
 });
 
-test("requestPhoneRotation sends a bounded loopback-only bearer request and validates strict response schema", async (t) => {
+test("requestPhoneRotation returns bounded raw JSON so the handler can journal before strict validation", async (t) => {
   const received = [];
   const sockets = new Set();
   const server = http.createServer((req, res) => {
@@ -701,7 +1146,7 @@ test("requestPhoneRotation sends a bounded loopback-only bearer request and vali
       received.push({ headers: req.headers, method: req.method, url: req.url, body: Buffer.concat(chunks).toString("utf8") });
       if (req.url === "/redirect") { res.statusCode = 302; res.setHeader("location", "http://example.com/"); res.end(); return; }
       if (req.url === "/large") { res.setHeader("content-type", "application/json"); res.end("x".repeat(1024)); return; }
-      if (req.url === "/invalid") { res.end(JSON.stringify({ version: 1, phoneConfig: "x", relayToken: RELAY_TOKEN, extra: true })); return; }
+      if (req.url === "/invalid") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ version: 1, phoneConfig: "x", relayToken: RELAY_TOKEN, extra: true })); return; }
       if (req.url === "/stall") { res.setHeader("content-type", "application/json"); res.flushHeaders(); return; }
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ version: 1, phoneConfig: config("10.8.0.3/32", PHONE_KEY), relayToken: RELAY_TOKEN }));
@@ -737,9 +1182,9 @@ test("requestPhoneRotation sends a bounded loopback-only bearer request and vali
     requestPhoneRotation({ listen, managementToken: MANAGEMENT_TOKEN, path: "/large", maxBytes: 64, timeoutMs: 100 }),
     (error) => error.code === "management_response_too_large",
   );
-  await assert.rejects(
-    requestPhoneRotation({ listen, managementToken: MANAGEMENT_TOKEN, path: "/invalid", timeoutMs: 100 }),
-    (error) => error.code === "management_invalid_response" && error.remoteCommitted === true,
+  assert.deepEqual(
+    await requestPhoneRotation({ listen, managementToken: MANAGEMENT_TOKEN, path: "/invalid", timeoutMs: 100 }),
+    { version: 1, phoneConfig: "x", relayToken: RELAY_TOKEN, extra: true },
   );
   await assert.rejects(
     requestPhoneRotation({ listen, managementToken: MANAGEMENT_TOKEN, path: "/stall", timeoutMs: 10 }),
@@ -896,6 +1341,59 @@ test("rotate preflight failure preserves old secret, connection, and QR without 
   assert.equal(cached.qr.dataUrl, oldQr.qr.dataUrl);
 });
 
+test("rotate writes prepared before POST and removes it after a proven pre-commit failure", async () => {
+  const order = [];
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": secretValue() },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    recoveryWrite(_id, value, recovery) {
+      order.push(`journal-${value.phase}`);
+      recovery.set("wg-1", structuredClone(value));
+    },
+    recoveryRemove(_id, recovery) {
+      order.push("journal-remove");
+      return recovery.delete("wg-1");
+    },
+    async rotatePhoneFn() {
+      order.push("management-post");
+      throw Object.assign(new Error("connection refused"), {
+        code: "management_request_failed",
+        remoteCommitted: false,
+      });
+    },
+  });
+
+  const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+
+  assert.deepEqual(result, { status: "error", errorCode: "rotate_failed" });
+  assert.deepEqual(order, ["journal-prepared", "management-post", "journal-remove"]);
+  assert.equal(fx.recovery.has("wg-1"), false);
+});
+
+test("rotate keeps prepared recovery when a sent request has an ambiguous transport failure", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async rotatePhoneFn() {
+      throw Object.assign(new Error("response lost"), { code: "management_timeout" });
+    },
+  });
+
+  const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
+  assert.equal(fx.recovery.get("wg-1").phase, "prepared");
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+});
+
 test("rotate commitPoint blocks old local credentials when response phone topology is invalid", async () => {
   const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
   const newToken = "44".repeat(32);
@@ -916,12 +1414,16 @@ test("rotate commitPoint blocks old local credentials when response phone topolo
   const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
 
   assert.equal(result.status, "partial_success");
-  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
   assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
   assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
   assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
-    status: "error", errorCode: "remote_committed_invalid_response",
+    status: "error", errorCode: "remote_commit_recovery_required",
   });
+  const durable = fx.recovery.get("wg-1");
+  assert.equal(durable.phase, "remote_committed_invalid_response");
+  assert.equal(durable.operation, "rotate");
+  assert.equal(durable.candidate.phoneConfig, config("10.8.0.4/32", Buffer.alloc(32, 4).toString("base64")));
   assertNoSecrets({ result, events: fx.sent, logs: fx.logs }, [newToken]);
 });
 
@@ -943,10 +1445,10 @@ test("rotate treats a rejected invalid response after HTTP success as a committe
   const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
 
   assert.equal(result.status, "partial_success");
-  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.equal(result.errorCode, "remote_commit_recovery_required");
   assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
   assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
-    status: "error", errorCode: "remote_committed_invalid_response",
+    status: "error", errorCode: "remote_commit_recovery_required",
   });
 });
 
@@ -990,6 +1492,23 @@ test("dispose makes one final recovery flush before releasing IPC state", async 
   assert.equal(fx.ipcMain.handlers.size, 0);
 });
 
+test("dispose succeeds with a durable prepared tombstone because quit flush is supplementary", async () => {
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": secretValue({ relayToken: "33".repeat(32) }) },
+    recovery: {
+      "wg-1": { version: 1, phase: "prepared", operation: "deploy", profile: PROFILE },
+    },
+    connect() { throw new Error("old credentials must not be used"); },
+  });
+
+  await fx.ipc.dispose();
+
+  assert.equal(fx.ipcMain.handlers.size, 0);
+  assert.equal(fx.recovery.get("wg-1").phase, "prepared");
+  assert.deepEqual(fx.connectionCalls, []);
+});
+
 test("delete-local disconnects first, removes local layers idempotently, and reports partial failures stably", async () => {
   const fx = fixture({ profiles: [PROFILE], secrets: { "wg-1": secretValue() } });
   await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
@@ -1007,12 +1526,14 @@ test("delete-local disconnects first, removes local layers idempotently, and rep
 
   const partial = fixture({
     profiles: [PROFILE], secrets: { "wg-1": secretValue() },
+    recovery: { "wg-1": { version: 1, phase: "prepared", operation: "deploy", profile: PROFILE } },
     secretRemove: () => { throw new Error(RELAY_TOKEN); },
   });
   const partialResult = await partial.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" });
   assert.deepEqual(partialResult, {
     status: "partial", removed: { publicProfile: true, secrets: false }, errors: ["secret_remove_failed"],
   });
+  assert.equal(partial.recovery.has("wg-1"), false);
   assertNoSecrets({ partialResult, logs: partial.logs, events: partial.sent });
 });
 

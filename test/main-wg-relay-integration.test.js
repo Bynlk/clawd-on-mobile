@@ -154,6 +154,46 @@ test("main integration creates secure storage and the packaged sidecar lazily wi
   assert.equal(fx.ipc.handlers.size, 0);
 });
 
+test("main startup recognizes a durable prepared journal without auto-connecting old credentials", async (t) => {
+  let recovery = {
+    version: 1,
+    phase: "prepared",
+    operation: "deploy",
+    profile: settingsController().getSnapshot().wgRelay.profiles[0],
+  };
+  let connectCalls = 0;
+  const secretStore = {
+    isAvailable: () => true,
+    preflight: () => true,
+    write() {},
+    read: () => ({ pcConfig: PC_CONFIG, relayToken: "OLD_TOKEN" }),
+    remove: () => true,
+    writeRecovery(_id, value) { recovery = structuredClone(value); },
+    readRecovery: () => recovery && structuredClone(recovery),
+    removeRecovery() { const existed = Boolean(recovery); recovery = null; return existed; },
+    listRecoveryIds: () => recovery ? ["wg-1"] : [],
+  };
+  const fx = makeIntegration(t, {
+    secretStoreFactory: () => secretStore,
+    connectionFactory({ runtime }) {
+      return {
+        async connect(id) { connectCalls += 1; return runtime.setStatus(id, { status: "connected", generation: 1 }); },
+        async disconnect(id) { return runtime.setStatus(id, { status: "idle", generation: 2 }); },
+        status: (id) => runtime.getProfileStatus(id),
+        async dispose() {},
+      };
+    },
+  });
+
+  assert.equal(connectCalls, 0);
+  assert.deepEqual(await fx.ipc.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.equal(connectCalls, 0);
+  await fx.ipc.invoke("wgRelay:delete-local", { profileId: "wg-1" });
+  await fx.integration.dispose();
+});
+
 test("main integration uses real RelayBridge with current Mobile token and actual dynamic port", async (t) => {
   const relayToken = "11".repeat(32);
   const staleMobileToken = "MOBILE-TOKEN-STALE";
@@ -369,7 +409,7 @@ test("dispose starts connection cancellation immediately while an IPC deploy is 
     },
     deployFn: async () => {
       await deployGate;
-      return { ok: false, reason: "cancelled" };
+      return { ok: false, reason: "cancelled", remoteCommitted: false };
     },
   });
   const deploying = fx.ipc.invoke("wgRelay:deploy", {

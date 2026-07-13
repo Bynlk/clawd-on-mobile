@@ -4,7 +4,7 @@ const childProcess = require("node:child_process");
 const http = require("node:http");
 const { isDeepStrictEqual } = require("node:util");
 
-const { deploy: defaultDeploy } = require("./wg-relay-deploy");
+const { deploy: defaultDeploy, validateReadback: validateDeployReadback } = require("./wg-relay-deploy");
 const { createWgRelayConnection } = require("./wg-relay-connection");
 const { normalizeConnectionErrorCode } = require("./wg-relay-error-codes");
 const { createPairingQr, validatePairingSecrets } = require("./wg-relay-pairing-qr");
@@ -37,6 +37,8 @@ const DEPLOY_FAILURE_HINTS = new Set([
   "wgErrHostKeyUnconfirmed", "wgErrKernel", "wgErrNoPkgManager", "wgErrNoSudo",
   "wgErrOutputLimit", "wgErrPasswordDisabled", "wgErrPortInUse",
 ]);
+const RECOVERY_RECORD_VERSION = 1;
+const MAX_RECOVERY_CANDIDATE_BYTES = 48 * 1024;
 
 function requireDependency(value, name) {
   if (!value) throw new Error(`registerWgRelayIpc requires ${name}`);
@@ -49,9 +51,35 @@ function codedError(code) {
   return error;
 }
 
+function isPlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || Buffer.isBuffer(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function boundedCandidate(value) {
+  if (!isPlainObject(value)) return null;
+  try {
+    const serialized = JSON.stringify(value);
+    if (Buffer.byteLength(serialized, "utf8") > MAX_RECOVERY_CANDIDATE_BYTES) return null;
+    const parsed = JSON.parse(serialized);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function committedError(code) {
   const error = codedError(code);
   error.remoteCommitted = true;
+  return error;
+}
+
+function preCommitError(code) {
+  const error = codedError(code);
+  error.remoteCommitted = false;
   return error;
 }
 
@@ -117,6 +145,14 @@ function stableDeployFailure(result) {
   return response;
 }
 
+function isProvenDeployPreCommit(result) {
+  return Boolean(result && (result.remoteCommitted === false
+    || [
+      "host_key", "host_key_changed", "host_key_confirmation_failed",
+      "host_key_unconfirmed", "password_disabled",
+    ].includes(result.reason)));
+}
+
 function normalizeQr(value) {
   const dataUrl = typeof value === "string" ? value : value && value.dataUrl;
   if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/png;base64,")
@@ -155,9 +191,9 @@ function loopbackManagementUrl(listen, pathName) {
 function requestPhoneRotation(options = {}) {
   let url;
   try { url = loopbackManagementUrl(options.listen, options.path || "/api/manage/phone/rotate"); }
-  catch (error) { return Promise.reject(error); }
+  catch (error) { return Promise.reject(preCommitError(error && error.code || "management_non_loopback")); }
   if (!TOKEN_RE.test(options.managementToken || "")) {
-    return Promise.reject(codedError("management_auth_invalid"));
+    return Promise.reject(preCommitError("management_auth_invalid"));
   }
   const body = Buffer.from(JSON.stringify({ version: 1 }), "utf8");
   const timeoutMs = options.timeoutMs || 10_000;
@@ -195,12 +231,12 @@ function requestPhoneRotation(options = {}) {
         const statusCode = Number(response.statusCode);
         if (statusCode >= 300 && statusCode < 400) {
           response.resume();
-          finish(codedError("management_redirect_rejected"));
+          finish(preCommitError("management_redirect_rejected"));
           return;
         }
         if (statusCode < 200 || statusCode >= 300) {
           response.resume();
-          finish(codedError("management_http_status"));
+          finish(preCommitError("management_http_status"));
           return;
         }
         remoteCommitted = true;
@@ -229,8 +265,11 @@ function requestPhoneRotation(options = {}) {
           let parsed;
           try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
           catch (_) { finish(committedError("management_invalid_response")); return; }
-          try { finish(null, validateRotationResult(parsed)); }
-          catch (_) { finish(committedError("management_invalid_response")); }
+          if (!isPlainObject(parsed)) {
+            finish(committedError("management_invalid_response"));
+            return;
+          }
+          finish(null, parsed);
         });
         response.on("error", () => finish(committedError("management_request_failed")));
         response.on("aborted", () => finish(committedError("management_request_failed")));
@@ -240,7 +279,7 @@ function requestPhoneRotation(options = {}) {
         : codedError("management_request_failed")));
       request.end(body);
     } catch (_) {
-      finish(codedError("management_request_failed"));
+      finish(preCommitError("management_request_failed"));
     }
   });
 }
@@ -274,6 +313,7 @@ function registerWgRelayIpc(options = {}) {
   const releaseRequiredProfiles = new Set();
   const activeDeployProfiles = new Set();
   const deletedProfiles = new Set();
+  let recoveryIndexLoadFailed = false;
   let disposed = false;
   let disposePromise = null;
 
@@ -329,12 +369,194 @@ function registerWgRelayIpc(options = {}) {
     if (!isDeepStrictEqual(verified, secrets)) throw codedError("secret_store_verification_failed");
   }
 
+  function recoveryRecord(profile, operation, phase, candidate) {
+    const record = {
+      version: RECOVERY_RECORD_VERSION,
+      phase,
+      operation,
+      profile,
+    };
+    if (candidate) record.candidate = candidate;
+    return record;
+  }
+
+  function persistRecovery(profileId, record) {
+    try {
+      secretStore.writeRecovery(profileId, record);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function removeDurableRecovery(profileId) {
+    try {
+      secretStore.removeRecovery(profileId);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function markInvalidRecovery(profileId, profile, operation, candidate) {
+    const record = recoveryRecord(
+      profile,
+      operation,
+      "remote_committed_invalid_response",
+      candidate,
+    );
+    persistRecovery(profileId, record);
+    recoveryBundles.set(profileId, {
+      blocked: true,
+      errorCode: "remote_commit_recovery_required",
+      profile,
+      journalRecord: record,
+    });
+  }
+
   async function writePublicProfile(previousProfile, profile) {
     const result = await settingsController.applyCommand(
       previousProfile ? "wgRelay.update" : "wgRelay.add",
       profile,
     );
     if (!result || result.status !== "ok") throw codedError("public_profile_write_failed");
+  }
+
+  function parseRecoveryRecord(profileId, value) {
+    if (!isPlainObject(value)
+        || value.version !== RECOVERY_RECORD_VERSION
+        || !["deploy", "rotate"].includes(value.operation)
+        || !["prepared", "remote_committed", "remote_committed_invalid_response"].includes(value.phase)) {
+      return null;
+    }
+    const profile = sanitizeProfile(value.profile);
+    if (!profile || profile.id !== profileId) return null;
+    const expectedKeys = value.phase === "prepared"
+      ? ["operation", "phase", "profile", "version"]
+      : ["candidate", "operation", "phase", "profile", "version"];
+    if (Object.keys(value).sort().join(",") !== expectedKeys.sort().join(",")) return null;
+    if (value.phase === "prepared") return { ...value, profile };
+    const candidate = boundedCandidate(value.candidate);
+    return candidate ? { ...value, profile, candidate } : null;
+  }
+
+  function deployBundleFromRecord(record) {
+    const candidate = record.candidate;
+    if (!isPlainObject(candidate)
+        || Object.keys(candidate).sort().join(",") !== "acceptedFingerprint,readback"
+        || (candidate.acceptedFingerprint !== null
+          && typeof candidate.acceptedFingerprint !== "string")
+        || !isPlainObject(candidate.readback)) {
+      throw codedError("remote_commit_recovery_required");
+    }
+    const validated = validateDeployReadback(candidate.readback, { profile: record.profile });
+    if (!validated.ok) throw codedError("remote_commit_recovery_required");
+    const readback = validated.readback;
+    const secrets = {
+      pcConfig: readback.pcConfig,
+      phoneConfig: readback.phoneConfig,
+      relayToken: readback.relayToken,
+      managementToken: readback.managementToken,
+      relayUrl: readback.relayUrl,
+    };
+    const profile = sanitizeProfile({
+      ...record.profile,
+      ...(candidate.acceptedFingerprint
+        ? { sshHostFingerprint: candidate.acceptedFingerprint }
+        : {}),
+      endpoint: readback.endpoint,
+      relayAddr: readback.relayUrl,
+      lastDeployedAt: now(),
+      deployVersion: readback.schemaVersion,
+    });
+    if (!profile) throw codedError("remote_commit_recovery_required");
+    validatePairingSecrets(profile, secrets);
+    return {
+      profile,
+      secrets,
+      writePublicProfile: true,
+      journalRecord: record,
+      candidatePersisted: true,
+    };
+  }
+
+  function rotateBundleFromRecord(profileId, record) {
+    const rotated = validateRotationResult(record.candidate);
+    const oldSecrets = secretStore.read(profileId);
+    if (!oldSecrets) throw codedError("remote_commit_recovery_required");
+    const secrets = {
+      ...oldSecrets,
+      phoneConfig: rotated.phoneConfig,
+      relayToken: rotated.relayToken,
+    };
+    validatePairingSecrets(record.profile, secrets);
+    return {
+      profile: record.profile,
+      secrets,
+      writePublicProfile: false,
+      journalRecord: record,
+      candidatePersisted: true,
+    };
+  }
+
+  function recoveryFromDurable(profileId, raw) {
+    const record = parseRecoveryRecord(profileId, raw);
+    if (!record || record.phase !== "remote_committed") {
+      return {
+        blocked: true,
+        errorCode: "remote_commit_recovery_required",
+        profile: record ? record.profile : findProfile(settingsController, profileId),
+        journalRecord: record || null,
+      };
+    }
+    try {
+      return record.operation === "deploy"
+        ? deployBundleFromRecord(record)
+        : rotateBundleFromRecord(profileId, record);
+    } catch (_) {
+      return {
+        blocked: true,
+        errorCode: "remote_commit_recovery_required",
+        profile: record.profile,
+        journalRecord: record,
+      };
+    }
+  }
+
+  function syncDurableRecovery(profileId) {
+    const current = recoveryBundles.get(profileId);
+    const keepUnjournaledCandidate = Boolean(
+      current && current.secrets && current.candidatePersisted === false,
+    );
+    if (recoveryIndexLoadFailed) {
+      const blocked = {
+        blocked: true,
+        errorCode: "remote_commit_recovery_required",
+        profile: (current && current.profile) || findProfile(settingsController, profileId),
+      };
+      recoveryBundles.set(profileId, blocked);
+      return blocked;
+    }
+    let raw;
+    try { raw = secretStore.readRecovery(profileId); }
+    catch (_) {
+      if (keepUnjournaledCandidate) return current;
+      const blocked = {
+        blocked: true,
+        errorCode: "remote_commit_recovery_required",
+        profile: (current && current.profile) || findProfile(settingsController, profileId),
+      };
+      recoveryBundles.set(profileId, blocked);
+      return blocked;
+    }
+    if (!raw) {
+      recoveryBundles.delete(profileId);
+      return null;
+    }
+    if (keepUnjournaledCandidate) return current;
+    const recovered = recoveryFromDurable(profileId, raw);
+    recoveryBundles.set(profileId, recovered);
+    return recovered;
   }
 
   async function encodeQr(profile, secrets) {
@@ -359,7 +581,10 @@ function registerWgRelayIpc(options = {}) {
   }
 
   async function flushRecovery(profileId) {
-    const recovery = recoveryBundles.get(profileId);
+    const recovery = syncDurableRecovery(profileId) || recoveryBundles.get(profileId);
+    if (recoveryIndexLoadFailed && !recovery) {
+      return { ok: false, errorCode: "remote_commit_recovery_required", profile: null };
+    }
     if (!recovery) return { ok: true, profile: findProfile(settingsController, profileId) };
     if (recovery.blocked) {
       return { ok: false, errorCode: recovery.errorCode, profile: recovery.profile };
@@ -375,9 +600,18 @@ function registerWgRelayIpc(options = {}) {
         return { ok: false, errorCode: "public_profile_retry_required", profile: recovery.profile };
       }
     }
+    if (!removeDurableRecovery(profileId)) {
+      return { ok: false, errorCode: "remote_commit_recovery_required", profile: recovery.profile };
+    }
     recoveryBundles.delete(profileId);
     deletedProfiles.delete(profileId);
     return { ok: true, profile: recovery.profile, secrets: recovery.secrets };
+  }
+
+  try {
+    for (const profileId of secretStore.listRecoveryIds()) syncDurableRecovery(profileId);
+  } catch (_) {
+    recoveryIndexLoadFailed = true;
   }
 
   async function releaseCommittedConnection(profileId) {
@@ -446,13 +680,23 @@ function registerWgRelayIpc(options = {}) {
     wgRelayRuntime.off("progress", onProgress);
   });
 
-  handle("wgRelay:status", (_event, payload) => {
+  handle("wgRelay:status", async (_event, payload) => {
     const profileId = profileIdFrom(payload);
     if (!profileId) return { status: "error", errorCode: "invalid_profile_id" };
-    if (deletedProfiles.has(profileId) || !findProfile(settingsController, profileId)) {
+    const durableRecovery = syncDurableRecovery(profileId);
+    if (deletedProfiles.has(profileId)
+        || (!profileWithRecovery(profileId) && !durableRecovery)) {
       return { status: "error", errorCode: "profile_not_found" };
     }
-    return { status: "ok", state: redactState(connection.status(profileId), profileId) };
+    try {
+      return await enqueue(profileId, async () => {
+        const recovered = await flushRecovery(profileId);
+        if (!recovered.ok) return { status: "error", errorCode: recovered.errorCode };
+        return { status: "ok", state: redactState(connection.status(profileId), profileId) };
+      });
+    } catch (_) {
+      return { status: "error", errorCode: "remote_commit_recovery_required" };
+    }
   });
 
   handle("wgRelay:list-statuses", () => {
@@ -469,12 +713,14 @@ function registerWgRelayIpc(options = {}) {
 
   handle("wgRelay:connect", async (_event, payload) => {
     const profileId = profileIdFrom(payload);
-    if (!profileId || !profileWithRecovery(profileId)) {
+    const durableRecovery = profileId ? syncDurableRecovery(profileId) : null;
+    if (!profileId || (!profileWithRecovery(profileId) && !durableRecovery)) {
       return { status: "error", errorCode: "profile_not_found" };
     }
     try {
       return await enqueue(profileId, async () => {
-        if (deletedProfiles.has(profileId) || !profileWithRecovery(profileId)) {
+        if (deletedProfiles.has(profileId)
+            || (!profileWithRecovery(profileId) && !recoveryBundles.has(profileId))) {
           return { status: "error", errorCode: "profile_not_found" };
         }
         const recovered = await flushRecovery(profileId);
@@ -511,6 +757,10 @@ function registerWgRelayIpc(options = {}) {
     catch (_) { return { status: "error", errorCode: "secret_store_read_failed" }; }
     try { preflightSecretStore(); }
     catch (error) { return { status: "error", errorCode: error.code }; }
+    const prepared = recoveryRecord(profile, "deploy", "prepared");
+    if (!persistRecovery(profile.id, prepared)) {
+      return { status: "error", errorCode: "remote_commit_recovery_required" };
+    }
     const previousState = redactState(connection.status(profile.id), profile.id);
     const wasConnected = previousState.status === "connected";
     let result;
@@ -522,14 +772,84 @@ function registerWgRelayIpc(options = {}) {
         runtime: { forcePhoneKey: false },
         deps: { spawn, runtime: wgRelayRuntime, confirmHostKey },
       });
-    } catch (_) {
-      return { status: "error", errorCode: "deploy_failed" };
+    } catch (error) {
+      if (error && error.remoteCommitted === false) {
+        if (!removeDurableRecovery(profile.id)) {
+          return { status: "error", errorCode: "remote_commit_recovery_required" };
+        }
+        return { status: "error", errorCode: "deploy_failed" };
+      }
+      recoveryBundles.set(profile.id, {
+        blocked: true,
+        errorCode: "remote_commit_recovery_required",
+        profile,
+      });
+      qrCache.delete(profile.id);
+      if (wasConnected) {
+        try { await connection.disconnect(profile.id); } catch (_) {}
+      }
+      return partialSuccess("remote_commit_recovery_required", profile);
     } finally {
       activeDeployProfiles.delete(profile.id);
     }
-    if (!result || !result.ok || !result.readback) return stableDeployFailure(result);
+    if (!result || !result.ok) {
+      if (isProvenDeployPreCommit(result)) {
+        if (!removeDurableRecovery(profile.id)) {
+          return { status: "error", errorCode: "remote_commit_recovery_required" };
+        }
+        return stableDeployFailure(result);
+      }
+      if (!result || result.remoteCommitted !== true || !isPlainObject(result.rawReadback)) {
+        recoveryBundles.set(profile.id, {
+          blocked: true,
+          errorCode: "remote_commit_recovery_required",
+          profile,
+        });
+        qrCache.delete(profile.id);
+        if (wasConnected) {
+          try { await connection.disconnect(profile.id); } catch (_) {}
+        }
+        return partialSuccess("remote_commit_recovery_required", profile);
+      }
+    }
 
-    const readback = result.readback;
+    let readback = result.ok ? result.readback : result.rawReadback;
+    const candidate = boundedCandidate({
+      acceptedFingerprint: result.acceptedFingerprint || null,
+      readback,
+    });
+    if (!candidate) {
+      recoveryBundles.set(profile.id, {
+        blocked: true,
+        errorCode: "remote_commit_recovery_required",
+        profile,
+      });
+      qrCache.delete(profile.id);
+      if (wasConnected) {
+        try { await connection.disconnect(profile.id); } catch (_) {}
+      }
+      return partialSuccess("remote_commit_recovery_required", profile);
+    }
+    const committedRecord = recoveryRecord(profile, "deploy", "remote_committed", candidate);
+    const candidatePersisted = persistRecovery(profile.id, committedRecord);
+    if (!isPlainObject(readback)) {
+      qrCache.delete(profile.id);
+      markInvalidRecovery(profile.id, profile, "deploy", candidate);
+      if (wasConnected) {
+        try { await connection.disconnect(profile.id); } catch (_) {}
+      }
+      return partialSuccess("remote_commit_recovery_required", profile);
+    }
+    const validatedReadback = validateDeployReadback(readback, { profile });
+    if (!validatedReadback.ok) {
+      qrCache.delete(profile.id);
+      markInvalidRecovery(profile.id, profile, "deploy", candidate);
+      if (wasConnected) {
+        try { await connection.disconnect(profile.id); } catch (_) {}
+      }
+      return partialSuccess("remote_commit_recovery_required", profile);
+    }
+    readback = validatedReadback.readback;
     const secrets = {
       pcConfig: readback.pcConfig,
       phoneConfig: readback.phoneConfig,
@@ -547,34 +867,28 @@ function registerWgRelayIpc(options = {}) {
     });
     if (!publicProfile) {
       qrCache.delete(profile.id);
-      recoveryBundles.set(profile.id, {
-        blocked: true,
-        errorCode: "remote_committed_invalid_response",
-        profile,
-      });
+      markInvalidRecovery(profile.id, profile, "deploy", candidate);
       if (wasConnected) {
         try { await connection.disconnect(profile.id); } catch (_) {}
       }
-      return partialSuccess("remote_committed_invalid_response", profile);
+      return partialSuccess("remote_commit_recovery_required", profile);
     }
 
     qrCache.delete(profile.id);
     try { validatePairingSecrets(publicProfile, secrets); }
     catch (_) {
-      recoveryBundles.set(profile.id, {
-        blocked: true,
-        errorCode: "remote_committed_invalid_response",
-        profile: publicProfile,
-      });
+      markInvalidRecovery(profile.id, publicProfile, "deploy", candidate);
       if (wasConnected) {
         try { await connection.disconnect(profile.id); } catch (_) {}
       }
-      return partialSuccess("remote_committed_invalid_response", publicProfile);
+      return partialSuccess("remote_commit_recovery_required", publicProfile);
     }
     recoveryBundles.set(profile.id, {
       profile: publicProfile,
       secrets,
       writePublicProfile: true,
+      journalRecord: committedRecord,
+      candidatePersisted,
     });
     if (wasConnected) releaseRequiredProfiles.add(profile.id);
     const persisted = await flushRecovery(profile.id);
@@ -620,8 +934,9 @@ function registerWgRelayIpc(options = {}) {
 
   handle("wgRelay:pairing-qr", async (_event, payload) => {
     const profileId = profileIdFrom(payload);
+    const durableRecovery = profileId ? syncDurableRecovery(profileId) : null;
     const profile = profileId ? profileWithRecovery(profileId) : null;
-    if (!profile) return { status: "error", errorCode: "profile_not_found" };
+    if (!profile && !durableRecovery) return { status: "error", errorCode: "profile_not_found" };
     try {
       return await enqueue(profileId, async () => {
         if (deletedProfiles.has(profileId)) {
@@ -680,6 +995,13 @@ function registerWgRelayIpc(options = {}) {
             }
             return { status: "error", errorCode: error.code };
           }
+          const prepared = recoveryRecord(profile, "rotate", "prepared");
+          if (!persistRecovery(profileId, prepared)) {
+            if (ensuredConnection) {
+              try { await connection.disconnect(profileId); } catch (_) {}
+            }
+            return { status: "error", errorCode: "remote_commit_recovery_required" };
+          }
           let rawRotation;
           try {
             rawRotation = await rotatePhoneFn({
@@ -688,32 +1010,44 @@ function registerWgRelayIpc(options = {}) {
               profileId,
             });
           } catch (error) {
-            if (error && error.remoteCommitted === true) {
+            if (!error || error.remoteCommitted !== false) {
               qrCache.delete(profileId);
               recoveryBundles.set(profileId, {
                 blocked: true,
-                errorCode: "remote_committed_invalid_response",
+                errorCode: "remote_commit_recovery_required",
                 profile,
               });
               try { await connection.disconnect(profileId); } catch (_) {}
-              return partialSuccess("remote_committed_invalid_response", profile);
+              return partialSuccess("remote_commit_recovery_required", profile);
+            }
+            if (!removeDurableRecovery(profileId)) {
+              return { status: "error", errorCode: "remote_commit_recovery_required" };
             }
             if (ensuredConnection) {
               try { await connection.disconnect(profileId); } catch (_) {}
             }
             return { status: "error", errorCode: "rotate_failed" };
           }
+          const candidate = boundedCandidate(rawRotation);
+          if (!candidate) {
+            qrCache.delete(profileId);
+            recoveryBundles.set(profileId, {
+              blocked: true,
+              errorCode: "remote_commit_recovery_required",
+              profile,
+            });
+            try { await connection.disconnect(profileId); } catch (_) {}
+            return partialSuccess("remote_commit_recovery_required", profile);
+          }
+          const committedRecord = recoveryRecord(profile, "rotate", "remote_committed", candidate);
+          const candidatePersisted = persistRecovery(profileId, committedRecord);
           let rotated;
           try { rotated = validateRotationResult(rawRotation); }
           catch (_) {
             qrCache.delete(profileId);
-            recoveryBundles.set(profileId, {
-              blocked: true,
-              errorCode: "remote_committed_invalid_response",
-              profile,
-            });
+            markInvalidRecovery(profileId, profile, "rotate", candidate);
             try { await connection.disconnect(profileId); } catch (_) {}
-            return partialSuccess("remote_committed_invalid_response", profile);
+            return partialSuccess("remote_commit_recovery_required", profile);
           }
           const newSecrets = {
             ...oldSecrets,
@@ -723,18 +1057,16 @@ function registerWgRelayIpc(options = {}) {
           qrCache.delete(profileId);
           try { validatePairingSecrets(profile, newSecrets); }
           catch (_) {
-            recoveryBundles.set(profileId, {
-              blocked: true,
-              errorCode: "remote_committed_invalid_response",
-              profile,
-            });
+            markInvalidRecovery(profileId, profile, "rotate", candidate);
             try { await connection.disconnect(profileId); } catch (_) {}
-            return partialSuccess("remote_committed_invalid_response", profile);
+            return partialSuccess("remote_commit_recovery_required", profile);
           }
           recoveryBundles.set(profileId, {
             profile,
             secrets: newSecrets,
             writePublicProfile: false,
+            journalRecord: committedRecord,
+            candidatePersisted,
           });
           releaseRequiredProfiles.add(profileId);
           const persisted = await flushRecovery(profileId);
@@ -780,10 +1112,8 @@ function registerWgRelayIpc(options = {}) {
         try { await connection.disconnect(profileId); }
         catch (_) { errors.push("disconnect_failed"); }
         let secretsRemoved = false;
-        let secretCleanupSucceeded = false;
         try {
           secretsRemoved = secretStore.remove(profileId) === true;
-          secretCleanupSucceeded = true;
         }
         catch (_) { errors.push("secret_remove_failed"); }
         let publicProfileRemoved = false;
@@ -795,7 +1125,8 @@ function registerWgRelayIpc(options = {}) {
           } catch (_) { errors.push("public_profile_remove_failed"); }
         }
         qrCache.delete(profileId);
-        if (secretCleanupSucceeded) recoveryBundles.delete(profileId);
+        recoveryBundles.delete(profileId);
+        if (!removeDurableRecovery(profileId)) errors.push("recovery_remove_failed");
         releaseRequiredProfiles.delete(profileId);
         deletedProfiles.add(profileId);
         if (typeof wgRelayRuntime.removeStatus === "function") wgRelayRuntime.removeStatus(profileId);
@@ -853,8 +1184,8 @@ function registerWgRelayIpc(options = {}) {
     const pending = Array.from(new Set(operationTails.values()));
     const attempt = Promise.allSettled(pending).then(async () => {
       for (const profileId of Array.from(recoveryBundles.keys())) {
-        const recovered = await flushRecovery(profileId);
-        if (!recovered.ok) throw codedError("recovery_persistence_required");
+        try { await flushRecovery(profileId); }
+        catch (_) { /* Durable prepared/committed journal remains authoritative. */ }
       }
       while (disposers.length) {
         const disposer = disposers.pop();
