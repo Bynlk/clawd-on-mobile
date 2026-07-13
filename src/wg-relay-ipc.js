@@ -380,6 +380,14 @@ function registerWgRelayIpc(options = {}) {
     return record;
   }
 
+  function deletePendingRecord() {
+    return {
+      version: RECOVERY_RECORD_VERSION,
+      phase: "delete_pending",
+      operation: "delete",
+    };
+  }
+
   function persistRecovery(profileId, record) {
     try {
       secretStore.writeRecovery(profileId, record);
@@ -424,8 +432,15 @@ function registerWgRelayIpc(options = {}) {
 
   function parseRecoveryRecord(profileId, value) {
     if (!isPlainObject(value)
-        || value.version !== RECOVERY_RECORD_VERSION
-        || !["deploy", "rotate"].includes(value.operation)
+        || value.version !== RECOVERY_RECORD_VERSION) {
+      return null;
+    }
+    if (value.operation === "delete" && value.phase === "delete_pending") {
+      return Object.keys(value).sort().join(",") === "operation,phase,version"
+        ? { ...value }
+        : null;
+    }
+    if (!["deploy", "rotate"].includes(value.operation)
         || !["prepared", "remote_committed", "remote_committed_invalid_response"].includes(value.phase)) {
       return null;
     }
@@ -501,6 +516,9 @@ function registerWgRelayIpc(options = {}) {
 
   function recoveryFromDurable(profileId, raw) {
     const record = parseRecoveryRecord(profileId, raw);
+    if (record && record.phase === "delete_pending") {
+      return { deletePending: true, journalRecord: record };
+    }
     if (!record || record.phase !== "remote_committed") {
       return {
         blocked: true,
@@ -555,6 +573,7 @@ function registerWgRelayIpc(options = {}) {
     }
     if (keepUnjournaledCandidate) return current;
     const recovered = recoveryFromDurable(profileId, raw);
+    if (recovered.deletePending) deletedProfiles.add(profileId);
     recoveryBundles.set(profileId, recovered);
     return recovered;
   }
@@ -580,12 +599,65 @@ function registerWgRelayIpc(options = {}) {
     };
   }
 
+  async function continuePendingDelete(profileId) {
+    const previousProfile = findProfile(settingsController, profileId);
+    const errors = [];
+    deletedProfiles.add(profileId);
+    recoveryBundles.set(profileId, {
+      deletePending: true,
+      journalRecord: deletePendingRecord(),
+    });
+
+    try { await connection.disconnect(profileId); }
+    catch (_) { errors.push("disconnect_failed"); }
+
+    let secretsRemoved = false;
+    try { secretsRemoved = secretStore.remove(profileId) === true; }
+    catch (_) { errors.push("secret_remove_failed"); }
+
+    let publicProfileRemoved = false;
+    if (previousProfile) {
+      try {
+        const result = await settingsController.applyCommand("wgRelay.remove", { id: profileId });
+        if (!result || result.status !== "ok") errors.push("public_profile_remove_failed");
+        else publicProfileRemoved = true;
+      } catch (_) { errors.push("public_profile_remove_failed"); }
+    }
+
+    qrCache.delete(profileId);
+    releaseRequiredProfiles.delete(profileId);
+    try {
+      if (typeof wgRelayRuntime.removeStatus === "function") wgRelayRuntime.removeStatus(profileId);
+      else if (typeof wgRelayRuntime.forgetPcConf === "function") wgRelayRuntime.forgetPcConf(profileId);
+    } catch (_) { errors.push("runtime_remove_failed"); }
+
+    if (errors.length === 0) {
+      if (!removeDurableRecovery(profileId)) errors.push("recovery_remove_failed");
+      else recoveryBundles.delete(profileId);
+    }
+
+    const removed = { publicProfile: publicProfileRemoved, secrets: secretsRemoved };
+    return errors.length
+      ? { status: "partial", removed, errors }
+      : { status: "ok", removed };
+  }
+
   async function flushRecovery(profileId) {
     const recovery = syncDurableRecovery(profileId) || recoveryBundles.get(profileId);
     if (recoveryIndexLoadFailed && !recovery) {
       return { ok: false, errorCode: "remote_commit_recovery_required", profile: null };
     }
     if (!recovery) return { ok: true, profile: findProfile(settingsController, profileId) };
+    if (recovery.deletePending) {
+      const deletion = await continuePendingDelete(profileId);
+      return {
+        ok: false,
+        deleted: true,
+        errorCode: "profile_not_found",
+        deletion,
+        profile: null,
+      };
+    }
     if (recovery.blocked) {
       return { ok: false, errorCode: recovery.errorCode, profile: recovery.profile };
     }
@@ -608,10 +680,17 @@ function registerWgRelayIpc(options = {}) {
     return { ok: true, profile: recovery.profile, secrets: recovery.secrets };
   }
 
+  const startupDeleteIds = [];
   try {
-    for (const profileId of secretStore.listRecoveryIds()) syncDurableRecovery(profileId);
+    for (const profileId of secretStore.listRecoveryIds()) {
+      const recovery = syncDurableRecovery(profileId);
+      if (recovery && recovery.deletePending) startupDeleteIds.push(profileId);
+    }
   } catch (_) {
     recoveryIndexLoadFailed = true;
+  }
+  for (const profileId of startupDeleteIds) {
+    enqueue(profileId, () => continuePendingDelete(profileId)).catch(() => {});
   }
 
   async function releaseCommittedConnection(profileId) {
@@ -684,8 +763,7 @@ function registerWgRelayIpc(options = {}) {
     const profileId = profileIdFrom(payload);
     if (!profileId) return { status: "error", errorCode: "invalid_profile_id" };
     const durableRecovery = syncDurableRecovery(profileId);
-    if (deletedProfiles.has(profileId)
-        || (!profileWithRecovery(profileId) && !durableRecovery)) {
+    if (!profileWithRecovery(profileId) && !durableRecovery) {
       return { status: "error", errorCode: "profile_not_found" };
     }
     try {
@@ -719,12 +797,12 @@ function registerWgRelayIpc(options = {}) {
     }
     try {
       return await enqueue(profileId, async () => {
+        const recovered = await flushRecovery(profileId);
+        if (!recovered.ok) return { status: "error", errorCode: recovered.errorCode };
         if (deletedProfiles.has(profileId)
             || (!profileWithRecovery(profileId) && !recoveryBundles.has(profileId))) {
           return { status: "error", errorCode: "profile_not_found" };
         }
-        const recovered = await flushRecovery(profileId);
-        if (!recovered.ok) return { status: "error", errorCode: recovered.errorCode };
         if (!await releaseCommittedConnection(profileId)) {
           return { status: "error", errorCode: "connection_retry_required" };
         }
@@ -939,9 +1017,6 @@ function registerWgRelayIpc(options = {}) {
     if (!profile && !durableRecovery) return { status: "error", errorCode: "profile_not_found" };
     try {
       return await enqueue(profileId, async () => {
-        if (deletedProfiles.has(profileId)) {
-          return { status: "error", errorCode: "profile_not_found" };
-        }
         const recovered = await flushRecovery(profileId);
         if (!recovered.ok) return { status: "error", errorCode: recovered.errorCode };
         const currentProfile = recovered.profile || findProfile(settingsController, profileId);
@@ -963,16 +1038,16 @@ function registerWgRelayIpc(options = {}) {
 
   handle("wgRelay:rotate-phone", async (_event, payload) => {
     const profileId = profileIdFrom(payload);
+    const durableRecovery = profileId ? syncDurableRecovery(profileId) : null;
     const requestedProfile = profileId ? findProfile(settingsController, profileId) : null;
-    if (!requestedProfile) return { status: "error", errorCode: "profile_not_found" };
+    if (!requestedProfile && !durableRecovery) {
+      return { status: "error", errorCode: "profile_not_found" };
+    }
     try {
       return await enqueue(profileId, async () => {
-        if (deletedProfiles.has(profileId)) {
-          return { status: "error", errorCode: "profile_not_found" };
-        }
-        if (!secretStoreAvailable()) return { status: "error", errorCode: "secure_storage_unavailable" };
         const pending = await flushRecovery(profileId);
         if (!pending.ok) return { status: "error", errorCode: pending.errorCode };
+        if (!secretStoreAvailable()) return { status: "error", errorCode: "secure_storage_unavailable" };
         const profile = pending.profile || findProfile(settingsController, profileId);
         if (!profile || deletedProfiles.has(profileId)) {
           return { status: "error", errorCode: "profile_not_found" };
@@ -1107,34 +1182,19 @@ function registerWgRelayIpc(options = {}) {
     if (!profileId) return { status: "error", errorCode: "invalid_profile_id" };
     try {
       return await enqueue(profileId, async () => {
-        const previousProfile = findProfile(settingsController, profileId);
-        const errors = [];
-        try { await connection.disconnect(profileId); }
-        catch (_) { errors.push("disconnect_failed"); }
-        let secretsRemoved = false;
-        try {
-          secretsRemoved = secretStore.remove(profileId) === true;
+        const recovery = syncDurableRecovery(profileId);
+        if (!recovery || !recovery.deletePending) {
+          const record = deletePendingRecord();
+          if (!persistRecovery(profileId, record)) {
+            return { status: "error", errorCode: "delete_prepare_failed" };
+          }
+          recoveryBundles.set(profileId, {
+            deletePending: true,
+            journalRecord: record,
+          });
+          deletedProfiles.add(profileId);
         }
-        catch (_) { errors.push("secret_remove_failed"); }
-        let publicProfileRemoved = false;
-        if (previousProfile) {
-          try {
-            const result = await settingsController.applyCommand("wgRelay.remove", { id: profileId });
-            if (!result || result.status !== "ok") errors.push("public_profile_remove_failed");
-            else publicProfileRemoved = true;
-          } catch (_) { errors.push("public_profile_remove_failed"); }
-        }
-        qrCache.delete(profileId);
-        recoveryBundles.delete(profileId);
-        if (!removeDurableRecovery(profileId)) errors.push("recovery_remove_failed");
-        releaseRequiredProfiles.delete(profileId);
-        deletedProfiles.add(profileId);
-        if (typeof wgRelayRuntime.removeStatus === "function") wgRelayRuntime.removeStatus(profileId);
-        else if (typeof wgRelayRuntime.forgetPcConf === "function") wgRelayRuntime.forgetPcConf(profileId);
-        const removed = { publicProfile: publicProfileRemoved, secrets: secretsRemoved };
-        return errors.length
-          ? { status: "partial", removed, errors }
-          : { status: "ok", removed };
+        return continuePendingDelete(profileId);
       });
     } catch (_) {
       return { status: "error", errorCode: "delete_failed" };

@@ -1533,8 +1533,130 @@ test("delete-local disconnects first, removes local layers idempotently, and rep
   assert.deepEqual(partialResult, {
     status: "partial", removed: { publicProfile: true, secrets: false }, errors: ["secret_remove_failed"],
   });
-  assert.equal(partial.recovery.has("wg-1"), false);
+  assert.equal(partial.recovery.get("wg-1").phase, "delete_pending");
   assertNoSecrets({ partialResult, logs: partial.logs, events: partial.sent });
+});
+
+test("delete-local aborts without any destructive side effect when delete_pending cannot persist", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    recoveryWrite() { throw new Error("disk unavailable"); },
+  });
+  const runtimeBefore = fx.runtime.getProfileStatus("wg-1");
+
+  const result = await fx.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" });
+
+  assert.deepEqual(result, { status: "error", errorCode: "delete_prepare_failed" });
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.deepEqual(fx.profiles(), [PROFILE]);
+  assert.deepEqual(fx.connectionCalls, []);
+  assert.deepEqual(fx.publicWrites, []);
+  assert.deepEqual(fx.runtime.getProfileStatus("wg-1"), runtimeBefore);
+});
+
+test("delete_pending survives final journal removal failure and a new instance finishes without resurrection", async (t) => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-ipc-delete-pending-"));
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const baseStore = realSecretStore(userDataPath);
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  baseStore.write("wg-1", oldSecrets);
+  baseStore.writeRecovery("wg-1", {
+    version: 1,
+    phase: "remote_committed",
+    operation: "deploy",
+    profile: PROFILE,
+    candidate: { acceptedFingerprint: null, readback: readback() },
+  });
+  const settingsController = sharedSettings([PROFILE]);
+  const failingFinalRemoveStore = {
+    ...baseStore,
+    removeRecovery() { throw new Error("final journal removal failed"); },
+  };
+  const instanceA = fixture({
+    profiles: [PROFILE], settingsController, secretStore: failingFinalRemoveStore,
+  });
+
+  const deleted = await instanceA.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" });
+
+  assert.equal(deleted.status, "partial");
+  assert.deepEqual(deleted.errors, ["recovery_remove_failed"]);
+  const survived = baseStore.readRecovery("wg-1");
+  assert.equal(survived.phase, "delete_pending");
+  assert.deepEqual(Object.keys(survived).sort(), ["operation", "phase", "version"]);
+  assert.equal(baseStore.read("wg-1"), null);
+  assert.deepEqual(settingsController.getSnapshot().wgRelay.profiles, []);
+
+  const instanceB = fixture({
+    profiles: [], settingsController, secretStore: realSecretStore(userDataPath),
+    connect() { throw new Error("deleted profile must not reconnect"); },
+  });
+  for (let attempt = 0; attempt < 20 && baseStore.readRecovery("wg-1"); attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  assert.equal(baseStore.readRecovery("wg-1"), null);
+  assert.equal(baseStore.read("wg-1"), null);
+  assert.deepEqual(settingsController.getSnapshot().wgRelay.profiles, []);
+  assert.deepEqual(await instanceB.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" }), {
+    status: "error", errorCode: "profile_not_found",
+  });
+  assert.equal(instanceB.connectionCalls.some(([operation]) => operation === "connect"), false);
+});
+
+test("repeated delete-local remains idempotent through a retained delete_pending journal", async () => {
+  let failSecretRemove = true;
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": secretValue() },
+    secretRemove(id, stored) {
+      if (failSecretRemove) throw new Error("temporary delete failure");
+      return stored.delete(id);
+    },
+  });
+
+  const first = await fx.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" });
+  assert.equal(first.status, "partial");
+  assert.equal(fx.recovery.get("wg-1").phase, "delete_pending");
+  failSecretRemove = false;
+  const second = await fx.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" });
+  const third = await fx.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" });
+
+  assert.deepEqual(second, { status: "ok", removed: { publicProfile: false, secrets: true } });
+  assert.deepEqual(third, { status: "ok", removed: { publicProfile: false, secrets: false } });
+  assert.equal(fx.stored.has("wg-1"), false);
+  assert.equal(fx.recovery.has("wg-1"), false);
+  assert.deepEqual(fx.profiles(), []);
+});
+
+test("delete_pending is durable before disconnect and wins queued connect plus quit", async () => {
+  const gate = deferred();
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": secretValue() },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async disconnect(id, { setState }) {
+      await gate.promise;
+      return setState(id, "idle");
+    },
+  });
+
+  const deleting = fx.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fx.recovery.get("wg-1").phase, "delete_pending");
+  assert.deepEqual(Object.keys(fx.recovery.get("wg-1")).sort(), ["operation", "phase", "version"]);
+  const connecting = fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" });
+  const disposing = fx.ipc.dispose();
+  gate.resolve();
+
+  assert.equal((await deleting).status, "ok");
+  assert.equal((await connecting).status, "error");
+  await disposing;
+  assert.equal(fx.connectionCalls.some(([operation]) => operation === "connect"), false);
+  assert.equal(fx.recovery.has("wg-1"), false);
+  assert.equal(fx.ipcMain.handlers.size, 0);
 });
 
 test("delete-local clears runtime and suppresses statuses even when public profile removal fails", async () => {
@@ -1587,5 +1709,8 @@ test("operations queued behind partial delete recheck the tombstone and never re
   assert.equal((await deleting).status, "partial");
   assert.deepEqual(await pairing, { status: "error", errorCode: "profile_not_found" });
   assert.deepEqual(await connecting, { status: "error", errorCode: "profile_not_found" });
-  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
+  assert.equal(fx.connectionCalls.length, 3);
+  assert.equal(fx.connectionCalls.every(([operation, id]) => (
+    operation === "disconnect" && id === "wg-1"
+  )), true);
 });
