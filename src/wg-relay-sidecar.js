@@ -3,14 +3,16 @@
 const { spawn: defaultSpawn } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 const path = require("node:path");
+const { normalizeSidecarErrorCode } = require("./wg-relay-error-codes");
 
 const SUPPORTED_PLATFORMS = new Set(["win32", "darwin", "linux"]);
 const SUPPORTED_ARCHITECTURES = new Set(["x64", "arm64"]);
 const DEFAULT_MAX_STATUS_LINE_BYTES = 4096;
 
 function codedError(code) {
-  const error = new Error(code);
-  error.code = code;
+  const stable = normalizeSidecarErrorCode(code);
+  const error = new Error(stable);
+  error.code = stable;
   return error;
 }
 
@@ -90,11 +92,14 @@ function parseStatusLine(line, options = {}) {
   if (value.type === "error") {
     if (Object.keys(value).length !== 3
         || value.status !== "failed"
-        || typeof value.errorCode !== "string"
-        || !/^[a-z][a-z0-9_]{0,63}$/.test(value.errorCode)) {
+        || typeof value.errorCode !== "string") {
       throw codedError("sidecar_protocol_error");
     }
-    return { type: "error", status: "failed", errorCode: value.errorCode };
+    return {
+      type: "error",
+      status: "failed",
+      errorCode: normalizeSidecarErrorCode(value.errorCode),
+    };
   }
   throw codedError("sidecar_protocol_error");
 }
@@ -317,7 +322,10 @@ class WgRelaySidecar extends EventEmitter {
         this._fail(attempt, "sidecar_output_limit");
         return;
       }
-      if (line.length === 0) continue;
+      if (line.length === 0) {
+        this._fail(attempt, "sidecar_protocol_error");
+        return;
+      }
       let status;
       try {
         status = parseStatusLine(line.toString("utf8"), { maxBytes: this.maxStatusLineBytes });
@@ -384,11 +392,16 @@ class WgRelaySidecar extends EventEmitter {
     }
     if (!this._isCurrent(attempt)) return;
     if (attempt.expectedStop || attempt.failed) return;
+    if (attempt.stdoutBuffer.length > 0) {
+      this._fail(attempt, "sidecar_protocol_error", { terminate: false });
+      return;
+    }
     this._fail(attempt, "sidecar_unexpected_exit", { terminate: false });
   }
 
   _fail(attempt, code, options = {}) {
     if (!this._isCurrent(attempt) || attempt.expectedStop || attempt.failed) return;
+    const stableCode = normalizeSidecarErrorCode(code);
     attempt.failed = true;
     this.clearTimeout(attempt.startupTimer);
     attempt.startupTimer = null;
@@ -396,10 +409,10 @@ class WgRelaySidecar extends EventEmitter {
     const wasReady = attempt.readySeen;
     if (!attempt.startSettled) {
       attempt.startSettled = true;
-      attempt.rejectStart(codedError(code));
+      attempt.rejectStart(codedError(stableCode));
     }
     if (wasReady) {
-      this.emit("failure", { errorCode: code, generation: attempt.generation });
+      this.emit("failure", { errorCode: stableCode, generation: attempt.generation });
     }
     if (this._attempt === attempt) this._startPromise = null;
     if (options.terminate === false) {

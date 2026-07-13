@@ -134,13 +134,31 @@ test("parseStatusLine accepts strict ready and redacted error records", () => {
   });
 });
 
+test("parseStatusLine preserves every Go sidecar error code and genericizes unknown values", () => {
+  const goCodes = [
+    "invalid_config", "invalid_json", "trailing_data", "stdin_failed",
+    "invalid_private_key", "invalid_server_public_key", "invalid_allowed_ip",
+    "invalid_address", "invalid_endpoint", "invalid_forward_address", "invalid_keepalive",
+    "device_create_failed", "device_config_failed", "device_start_failed",
+    "endpoint_resolution_failed", "endpoint_resolution_canceled", "endpoint_resolution_timeout",
+    "listen_failed", "listener_failed", "device_stopped", "listener_stopped",
+  ];
+  for (const errorCode of goCodes) {
+    assert.equal(parseStatusLine(JSON.stringify({ type: "error", status: "failed", errorCode })).errorCode, errorCode);
+  }
+  for (const errorCode of ["bad code", "valid_but_unknown_code", "a".repeat(64), "secret_token_must_not_escape", "x".repeat(200)]) {
+    const parsed = parseStatusLine(JSON.stringify({ type: "error", status: "failed", errorCode }));
+    assert.equal(parsed.errorCode, "sidecar_failed");
+    assert.doesNotMatch(JSON.stringify(parsed), new RegExp(errorCode));
+  }
+});
+
 test("parseStatusLine rejects non-loopback, malformed, extra, duplicate, and oversized records", () => {
   for (const line of [
     '{"type":"ready","listen":"0.0.0.0:43127"}',
     '{"type":"ready","listen":"127.0.0.1:0"}',
     '{"type":"ready","listen":"127.0.0.1:43127","token":"secret"}',
     '{"type":"ready","type":"ready","listen":"127.0.0.1:43127"}',
-    '{"type":"error","status":"failed","errorCode":"bad code"}',
     "not-json",
   ]) {
     assert.throws(() => parseStatusLine(line), (error) => error.code === "sidecar_protocol_error");
@@ -260,11 +278,51 @@ test("start rejects malformed output and enforces stdout byte and line limits", 
     await assert.rejects(started, (error) => error.code === "sidecar_output_limit");
   });
   await t.test("lines", async () => {
-    const fx = fixture({ maxStatusLines: 2 });
+    const fx = fixture({ maxStatusLines: 1 });
+    const failures = [];
+    fx.sidecar.on("failure", (failure) => failures.push(failure));
     const started = fx.sidecar.start(config);
-    fx.children[0].stdout.push("\n\n\n");
-    await assert.rejects(started, (error) => error.code === "sidecar_output_limit");
+    emitReady(fx.children[0]);
+    await started;
+    emitReady(fx.children[0]);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(failures[0] && failures[0].errorCode, "sidecar_output_limit");
   });
+});
+
+test("stdout rejects leading, trailing, and cross-chunk blank status lines", async (t) => {
+  for (const [name, chunks] of [
+    ["leading", ["\n", '{"type":"ready","listen":"127.0.0.1:43127"}\n']],
+    ["trailing", ['{"type":"ready","listen":"127.0.0.1:43127"}\n\n']],
+    ["cross-chunk", ['{"type":"ready","listen":"127.0.0.1:43127"}\n', "\n"]],
+  ]) {
+    await t.test(name, async () => {
+      const fx = fixture();
+      const failures = [];
+      fx.sidecar.on("failure", (failure) => failures.push(failure));
+      const started = fx.sidecar.start(config);
+      for (const chunk of chunks) fx.children[0].stdout.push(chunk);
+      if (name === "leading") {
+        await assert.rejects(started, (error) => error.code === "sidecar_protocol_error");
+      } else {
+        await started;
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(failures[0] && failures[0].errorCode, "sidecar_protocol_error");
+      }
+    });
+  }
+});
+
+test("stdout residual whitespace or partial JSON fails closed on process exit", async (t) => {
+  for (const residual of [" ", "{"]) {
+    await t.test(JSON.stringify(residual), async () => {
+      const fx = fixture();
+      const started = fx.sidecar.start(config);
+      fx.children[0].stdout.push(residual);
+      fx.children[0].emit("exit", 1, null);
+      await assert.rejects(started, (error) => error.code === "sidecar_protocol_error");
+    });
+  }
 });
 
 test("a duplicate ready record fails the active process", async () => {

@@ -3,11 +3,10 @@
 const http = require("node:http");
 const { WgRelaySidecar } = require("./wg-relay-sidecar");
 const { RelayBridge } = require("./relay-bridge-integration");
-
-const STABLE_CODE_RE = /^[a-z][a-z0-9_]{0,63}$/;
+const { normalizeConnectionErrorCode } = require("./wg-relay-error-codes");
 
 function codedError(code) {
-  const stable = typeof code === "string" && STABLE_CODE_RE.test(code) ? code : "connection_failed";
+  const stable = normalizeConnectionErrorCode(code);
   const error = new Error(stable);
   error.code = stable;
   return error;
@@ -87,6 +86,8 @@ function probeRelayHealth(options = {}) {
   const timeoutMs = options.timeoutMs || 5_000;
   const maxBytes = options.maxBytes || 16 * 1024;
   const requestImpl = options.request || http.request;
+  const signal = options.signal;
+  if (signal && signal.aborted) return Promise.reject(codedError("connection_cancelled"));
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -95,12 +96,18 @@ function probeRelayHealth(options = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
       if (error) reject(error); else resolve(value);
+    };
+    const onAbort = () => {
+      finish(codedError("connection_cancelled"));
+      if (request && typeof request.destroy === "function") request.destroy();
     };
     const timer = setTimeout(() => {
       finish(codedError("health_timeout"));
       if (request && typeof request.destroy === "function") request.destroy();
     }, timeoutMs);
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
     try {
       request = requestImpl(url, {
         method: "GET",
@@ -175,7 +182,11 @@ function createWgRelayConnection(options = {}) {
   }
 
   function isCurrent(record) {
-    return active.get(record.profileId) === record && !record.cancelled;
+    return active.get(record.profileId) === record && !record.invalidated;
+  }
+
+  function ownsRecord(record) {
+    return active.get(record.profileId) === record;
   }
 
   function assertCurrent(record) {
@@ -186,7 +197,7 @@ function createWgRelayConnection(options = {}) {
     if (!isCurrent(record)) return runtime.getProfileStatus(record.profileId);
     return runtime.setStatus(record.profileId, {
       status,
-      attempt: record.generation,
+      generation: record.generation,
       errorCode: errorCode || null,
       message: null,
       hint: null,
@@ -199,19 +210,59 @@ function createWgRelayConnection(options = {}) {
   }
 
   async function rollback(record) {
+    if (record.rollbackPromise) return record.rollbackPromise;
     detach(record);
-    try { await record.bridge.stop(); } catch (_) {}
-    try { await record.sidecar.stop(); } catch (_) {}
+    record.rollbackPromise = (async () => {
+      try { await record.bridge.stop(); } catch (_) {}
+      try { await record.sidecar.stop(); } catch (_) {}
+    })();
+    return record.rollbackPromise;
   }
 
-  async function unexpectedFailure(record, failure, fallback) {
-    if (!isCurrent(record) || record.failureInProgress) return;
-    record.failureInProgress = true;
-    const code = failure && STABLE_CODE_RE.test(failure.errorCode || "")
-      ? failure.errorCode : fallback;
-    await rollback(record);
-    if (isCurrent(record)) setState(record, "failed", code);
-    log("wg-relay connection failed", record.profileId, code);
+  function invalidate(record, rawCode) {
+    if (record.invalidated) return record.terminalCode;
+    const code = normalizeConnectionErrorCode(rawCode);
+    record.invalidated = true;
+    record.terminalCode = code;
+    record.resolveInvalidation(code);
+    if (!record.abortController.signal.aborted) record.abortController.abort();
+    return code;
+  }
+
+  function waitForStage(record, operation) {
+    return Promise.race([
+      Promise.resolve(operation),
+      record.invalidation.then((code) => { throw codedError(code); }),
+    ]);
+  }
+
+  function finalizeFailure(record, rawCode) {
+    const code = record.invalidated ? record.terminalCode : invalidate(record, rawCode);
+    if (record.finalizePromise) return record.finalizePromise;
+    record.finalizePromise = (async () => {
+      await rollback(record);
+      if (ownsRecord(record) && code !== "connection_cancelled") {
+        runtime.setStatus(record.profileId, {
+          status: "failed",
+          generation: record.generation,
+          errorCode: code,
+          message: null,
+          hint: null,
+        });
+        record.connectPromise = null;
+        log("wg-relay connection failed", record.profileId, code);
+      }
+    })();
+    return record.finalizePromise;
+  }
+
+  function unexpectedFailure(record, failure, fallback) {
+    if (!isCurrent(record)) return;
+    const code = normalizeConnectionErrorCode(failure && failure.errorCode !== undefined
+      ? failure.errorCode
+      : fallback);
+    invalidate(record, code);
+    void finalizeFailure(record, code);
   }
 
   function connect(profileId) {
@@ -227,25 +278,32 @@ function createWgRelayConnection(options = {}) {
     const bridge = bridgeFactory(profileId);
     allSidecars.add(sidecar);
     allBridges.add(bridge);
+    let resolveInvalidation;
+    const invalidation = new Promise((resolve) => { resolveInvalidation = resolve; });
     const record = {
       profileId, generation, sidecar, bridge,
-      cancelled: false,
-      failureInProgress: false,
+      invalidated: false,
+      terminalCode: null,
       connectPromise: null,
       sidecarGeneration: null,
       onSidecarFailure: null,
       onBridgeFailure: null,
+      rollbackPromise: null,
+      finalizePromise: null,
+      abortController: new AbortController(),
+      invalidation,
+      resolveInvalidation,
     };
     active.set(profileId, record);
     record.onSidecarFailure = (failure) => {
       if (record.sidecarGeneration !== null
           && failure && failure.generation !== undefined
           && failure.generation !== record.sidecarGeneration) return;
-      void unexpectedFailure(record, failure, "sidecar_unexpected_exit");
+      unexpectedFailure(record, failure, "sidecar_unexpected_exit");
     };
     record.onBridgeFailure = (failure) => {
       if (runtime.getProfileStatus(profileId).status === "connected") {
-        void unexpectedFailure(record, failure, "relay_connect_failed");
+        unexpectedFailure(record, failure, "relay_connect_failed");
       }
     };
     sidecar.on("failure", record.onSidecarFailure);
@@ -253,37 +311,34 @@ function createWgRelayConnection(options = {}) {
 
     const operation = (async () => {
       try {
-        const stored = await secretStore.read(profileId);
+        const stored = await waitForStage(record, secretStore.read(profileId));
         assertCurrent(record);
         const sidecarConfig = sidecarConfigFromSecrets(stored);
         setState(record, "starting_tunnel");
-        const ready = await sidecar.start(sidecarConfig);
+        const ready = await waitForStage(record, sidecar.start(sidecarConfig));
         record.sidecarGeneration = ready.generation;
         assertCurrent(record);
         setState(record, "verifying_relay");
-        await healthProbe({
+        await waitForStage(record, healthProbe({
           profileId,
           listen: ready.listen,
           path: "/health",
           timeoutMs: healthTimeoutMs,
           maxBytes: healthMaxBytes,
-        });
+          signal: record.abortController.signal,
+        }));
         assertCurrent(record);
         setState(record, "connecting_relay");
         bridge.configure({ url: `ws://${ready.listen}`, token: stored.relayToken });
         bridge.start();
-        await bridge.waitUntilConnected(bridgeTimeoutMs);
+        await waitForStage(record, bridge.waitUntilConnected(bridgeTimeoutMs));
         assertCurrent(record);
         return setState(record, "connected");
       } catch (error) {
-        const code = error && STABLE_CODE_RE.test(error.code || "") ? error.code : "connection_failed";
-        if (isCurrent(record)) {
-          await rollback(record);
-          setState(record, "failed", code);
-          record.connectPromise = null;
-          log("wg-relay connect failed", profileId, code);
-        }
-        throw codedError(isCurrent(record) ? code : "connection_cancelled");
+        const code = record.terminalCode || normalizeConnectionErrorCode(error && error.code);
+        if (ownsRecord(record)) await finalizeFailure(record, code);
+        else await rollback(record);
+        throw codedError(code);
       }
     })();
     record.connectPromise = operation;
@@ -295,16 +350,16 @@ function createWgRelayConnection(options = {}) {
     const generation = nextGeneration(profileId);
     if (!record) {
       return Promise.resolve(runtime.setStatus(profileId, {
-        status: "idle", attempt: generation, errorCode: null, message: null, hint: null,
+        status: "idle", generation, errorCode: null, message: null, hint: null,
       }));
     }
-    record.cancelled = true;
+    invalidate(record, "connection_cancelled");
     active.delete(profileId);
     runtime.setStatus(profileId, {
-      status: "disconnecting", attempt: generation, errorCode: null, message: null, hint: null,
+      status: "disconnecting", generation, errorCode: null, message: null, hint: null,
     });
     return rollback(record).then(() => runtime.setStatus(profileId, {
-      status: "idle", attempt: generation, errorCode: null, message: null, hint: null,
+      status: "idle", generation, errorCode: null, message: null, hint: null,
     }));
   }
 

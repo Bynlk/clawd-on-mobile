@@ -13,8 +13,9 @@
 //   "status-changed"  { profileId, status, message?, ... }
 //   "progress"        { profileId, step, status, message?, hint? }
 //
-// Status values match the renderer's statusLabel keys (wgRelayStatus_*):
-//   idle | deploying | connecting | reconnecting | connected | failed
+// Public one-click status values:
+//   idle | starting_tunnel | verifying_relay | connecting_relay |
+//   connected | disconnecting | failed
 //
 // SECURITY (SEC-3): the deploy readback carries the pc/phone confs (which hold
 // private keys). We cache ONLY the pcConf here, in memory, so tunnelUp can
@@ -23,11 +24,20 @@
 // renderer and never reaches this module.
 
 const { EventEmitter } = require("events");
+const { normalizeConnectionErrorCode } = require("./wg-relay-error-codes");
 
 const PUBLIC_STATUS_FIELDS = new Set([
-  "status", "message", "hint", "ifName", "address", "errorCode", "attempt",
+  "status", "message", "hint", "ifName", "address", "errorCode", "generation",
 ]);
-const ERROR_CODE_RE = /^[a-z][a-z0-9_]{0,63}$/;
+const PUBLIC_STATUSES = new Set([
+  "idle",
+  "starting_tunnel",
+  "verifying_relay",
+  "connecting_relay",
+  "connected",
+  "disconnecting",
+  "failed",
+]);
 
 function createWgRelayRuntime(options = {}) {
   const emitter = new EventEmitter();
@@ -40,7 +50,7 @@ function createWgRelayRuntime(options = {}) {
   const pcConfs = new Map();
 
   function getProfileStatus(profileId) {
-    return statuses.get(profileId) || { profileId, status: "idle" };
+    return statuses.get(profileId) || { profileId, status: "idle", generation: 0 };
   }
 
   function listStatuses() {
@@ -50,24 +60,21 @@ function createWgRelayRuntime(options = {}) {
   // Merge-and-emit a status snapshot. Always stamps profileId + updatedAt so
   // the renderer's runtimeStatuses Map keys line up.
   function setStatus(profileId, patch) {
-    const prev = statuses.get(profileId) || { profileId, status: "idle" };
-    if (Number.isInteger(prev.attempt)
-        && Number.isInteger(patch && patch.attempt)
-        && patch.attempt < prev.attempt) {
+    const prev = statuses.get(profileId) || { profileId, status: "idle", generation: 0 };
+    const candidate = patch && typeof patch === "object" ? patch : {};
+    if ((Object.hasOwn(candidate, "status") && !PUBLIC_STATUSES.has(candidate.status))
+        || (Object.hasOwn(candidate, "generation")
+          && (!Number.isSafeInteger(candidate.generation) || candidate.generation < 0))
+        || (Object.hasOwn(candidate, "generation") && candidate.generation < prev.generation)) {
       return prev;
     }
     const clean = {};
-    for (const [key, value] of Object.entries(patch || {})) {
+    for (const [key, value] of Object.entries(candidate)) {
       if (PUBLIC_STATUS_FIELDS.has(key)) clean[key] = value;
     }
-    if (Object.hasOwn(clean, "attempt")
-        && (!Number.isInteger(clean.attempt) || clean.attempt < 1)) {
-      delete clean.attempt;
-    }
     if (Object.hasOwn(clean, "errorCode")
-        && clean.errorCode !== null
-        && (typeof clean.errorCode !== "string" || !ERROR_CODE_RE.test(clean.errorCode))) {
-      clean.errorCode = "unknown_failure";
+        && clean.errorCode !== null) {
+      clean.errorCode = normalizeConnectionErrorCode(clean.errorCode);
     }
     const next = { ...prev, ...clean, profileId, updatedAt: Date.now() };
     statuses.set(profileId, next);

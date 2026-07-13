@@ -171,7 +171,84 @@ test("connect follows secret → sidecar → health → bridge configure/start/w
     url: "ws://127.0.0.1:43127",
     token: "RELAY-TOKEN-SECRET",
   });
-  assert.equal(fx.connection.status("alpha").attempt, 1);
+  assert.equal(fx.connection.status("alpha").generation, 1);
+  assert.equal(Object.hasOwn(fx.connection.status("alpha"), "attempt"), false);
+});
+
+test("sidecar failure while health is pending aborts and rejects without starting bridge", async () => {
+  const healthGate = deferred();
+  let healthSignal = null;
+  const fx = fixture({
+    healthProbe: ({ signal }) => {
+      healthSignal = signal;
+      return healthGate.promise;
+    },
+  });
+  const connecting = fx.connection.connect("alpha");
+  const rejected = assert.rejects(connecting, (error) => error.code === "device_stopped");
+  while (!fx.events.includes("alpha:health")) await new Promise((resolve) => setImmediate(resolve));
+  fx.sidecars.get("alpha").emit("failure", { errorCode: "device_stopped", generation: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  healthGate.resolve({ version: 1, status: "ok", uptimeSeconds: 1 });
+
+  await rejected;
+  assert.equal(healthSignal && healthSignal.aborted, true);
+  assert.equal(fx.events.includes("alpha:bridge-configure"), false);
+  assert.equal(fx.events.filter((event) => event === "alpha:bridge-stop").length, 1);
+  assert.equal(fx.events.filter((event) => event === "alpha:sidecar-stop").length, 1);
+  assert.equal(fx.connection.status("alpha").status, "failed");
+  assert.equal(fx.connection.status("alpha").errorCode, "device_stopped");
+});
+
+test("sidecar failure while bridge wait is pending rejects and ignores late bridge success", async () => {
+  const bridgeGate = deferred();
+  const fx = fixture({
+    bridgeFactory: (id, events) => new FakeBridge(id, events, bridgeGate.promise),
+  });
+  const connecting = fx.connection.connect("alpha");
+  const rejected = assert.rejects(connecting, (error) => error.code === "listener_failed");
+  while (!fx.events.includes("alpha:bridge-wait")) await new Promise((resolve) => setImmediate(resolve));
+  fx.sidecars.get("alpha").emit("failure", { errorCode: "listener_failed", generation: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  bridgeGate.resolve();
+
+  await rejected;
+  assert.equal(fx.events.filter((event) => event === "alpha:bridge-stop").length, 1);
+  assert.equal(fx.events.filter((event) => event === "alpha:sidecar-stop").length, 1);
+  assert.equal(fx.connection.status("alpha").status, "failed");
+});
+
+test("sidecar failure racing disconnect rolls back once and disconnect wins public state", async () => {
+  const healthGate = deferred();
+  const fx = fixture({ healthProbe: () => healthGate.promise });
+  const connecting = fx.connection.connect("alpha");
+  while (!fx.events.includes("alpha:health")) await new Promise((resolve) => setImmediate(resolve));
+  fx.sidecars.get("alpha").emit("failure", { errorCode: "device_stopped", generation: 1 });
+  const disconnecting = fx.connection.disconnect("alpha");
+  healthGate.resolve({ version: 1, status: "ok", uptimeSeconds: 1 });
+
+  await assert.rejects(connecting, (error) => error.code === "device_stopped");
+  await disconnecting;
+  assert.equal(fx.events.filter((event) => event === "alpha:bridge-stop").length, 1);
+  assert.equal(fx.events.filter((event) => event === "alpha:sidecar-stop").length, 1);
+  assert.equal(fx.connection.status("alpha").status, "idle");
+});
+
+test("sidecar failure racing dispose rolls back once and never reconnects", async () => {
+  const bridgeGate = deferred();
+  const fx = fixture({ bridgeFactory: (id, events) => new FakeBridge(id, events, bridgeGate.promise) });
+  const connecting = fx.connection.connect("alpha");
+  while (!fx.events.includes("alpha:bridge-wait")) await new Promise((resolve) => setImmediate(resolve));
+  fx.sidecars.get("alpha").emit("failure", { errorCode: "listener_failed", generation: 1 });
+  const disposing = fx.connection.dispose();
+  bridgeGate.resolve();
+
+  await assert.rejects(connecting, (error) => error.code === "listener_failed");
+  await disposing;
+  assert.equal(fx.events.filter((event) => event === "alpha:bridge-stop").length, 1);
+  assert.equal(fx.events.filter((event) => event === "alpha:sidecar-stop").length, 1);
+  assert.equal(fx.events.includes("alpha:bridge-start"), true);
+  assert.equal(fx.connection.status("alpha").status, "idle");
 });
 
 test("failure paths rollback bridge before sidecar and expose only stable codes", async (t) => {
@@ -199,6 +276,40 @@ test("failure paths rollback bridge before sidecar and expose only stable codes"
     await assert.rejects(fx.connection.connect("alpha"), (failure) => failure.code === "relay_auth_failed");
     assert.deepEqual(fx.events.slice(-2), ["alpha:bridge-stop", "alpha:sidecar-stop"]);
   });
+});
+
+test("connection preserves every known Go sidecar code and rejects unknown code-shaped data", async (t) => {
+  const goCodes = [
+    "invalid_config", "invalid_json", "trailing_data", "stdin_failed",
+    "invalid_private_key", "invalid_server_public_key", "invalid_allowed_ip",
+    "invalid_address", "invalid_endpoint", "invalid_forward_address", "invalid_keepalive",
+    "device_create_failed", "device_config_failed", "device_start_failed",
+    "endpoint_resolution_failed", "endpoint_resolution_canceled", "endpoint_resolution_timeout",
+    "listen_failed", "listener_failed", "device_stopped", "listener_stopped",
+  ];
+  for (const code of goCodes) {
+    await t.test(code, async () => {
+      const error = Object.assign(new Error("redacted"), { code });
+      const fx = fixture({ sidecarFactory: (id, events) => new FakeSidecar(id, events, Promise.reject(error)) });
+      await assert.rejects(fx.connection.connect("alpha"), (failure) => failure.code === code);
+    });
+  }
+
+  for (const malicious of [
+    "valid_but_unknown_code",
+    "a".repeat(64),
+    "secret_token_must_not_escape",
+  ]) {
+    await t.test(`unknown:${malicious.length}`, async () => {
+      const error = Object.assign(new Error(`message:${malicious}`), { code: malicious });
+      const fx = fixture({ sidecarFactory: (id, events) => new FakeSidecar(id, events, Promise.reject(error)) });
+      await assert.rejects(fx.connection.connect("alpha"), (failure) => (
+        failure.code === "connection_failed" && !failure.message.includes(malicious)
+      ));
+      const publicData = JSON.stringify({ status: fx.connection.status("alpha"), logs: fx.logs });
+      assert.doesNotMatch(publicData, new RegExp(malicious));
+    });
+  }
 });
 
 test("probeRelayHealth maps loopback forward endpoints to /health and validates responses", async (t) => {
@@ -302,7 +413,7 @@ test("a newer connect attempt is immune to late events from the old attempt", as
   oldSidecar.emit("failure", { errorCode: "late_failure", generation: 1 });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(fx.connection.status("alpha").status, "connected");
-  assert.equal(fx.connection.status("alpha").attempt, 3);
+  assert.equal(fx.connection.status("alpha").generation, 3);
 });
 
 test("unexpected active sidecar exit fails the profile and stops bridge before sidecar", async () => {
@@ -327,8 +438,8 @@ test("profiles are isolated and createWgRelayConnection never auto-starts", asyn
   await fx.connection.disconnect("alpha");
   assert.equal(fx.connection.status("alpha").status, "idle");
   assert.equal(fx.connection.status("beta").status, "connected");
-  assert.equal(fx.connection.status("alpha").attempt, 2);
-  assert.equal(fx.connection.status("beta").attempt, 1);
+  assert.equal(fx.connection.status("alpha").generation, 2);
+  assert.equal(fx.connection.status("beta").generation, 1);
 });
 
 test("secrets never enter public status, errors, or logs", async () => {

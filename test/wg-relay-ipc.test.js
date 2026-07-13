@@ -122,11 +122,11 @@ test("dispose() removes handlers and stops broadcasting", () => {
 
 test("wgRelay:list-statuses returns runtime statuses", async () => {
   const { ipcMain, wgRelayRuntime, ipc } = setup();
-  wgRelayRuntime.setStatus("wg-1", { status: "deploying" });
+  wgRelayRuntime.setStatus("wg-1", { status: "starting_tunnel", generation: 1 });
   const r = await ipcMain.invoke("wgRelay:list-statuses");
   assert.equal(r.status, "ok");
   assert.equal(r.statuses.length, 1);
-  assert.equal(r.statuses[0].status, "deploying");
+  assert.equal(r.statuses[0].status, "starting_tunnel");
   ipc.dispose();
 });
 
@@ -206,7 +206,7 @@ test("wgRelay:deploy on unknown profile returns error", async () => {
   ipc.dispose();
 });
 
-test("wgRelay:deploy sets status deploying then idle on success", async () => {
+test("wgRelay:deploy sets status starting_tunnel then idle on success", async () => {
   const { ipcMain, sentMessages, ipc } = setup({
     overrides: { deployFn: async () => ({ ok: true, readback: { ...okReadback } }) },
   });
@@ -214,7 +214,7 @@ test("wgRelay:deploy sets status deploying then idle on success", async () => {
   const statuses = sentMessages
     .filter((m) => m.channel === "wgRelay:status-changed")
     .map((m) => m.payload.status);
-  assert.ok(statuses.includes("deploying"));
+  assert.ok(statuses.includes("starting_tunnel"));
   assert.equal(statuses[statuses.length - 1], "idle");
   ipc.dispose();
 });
