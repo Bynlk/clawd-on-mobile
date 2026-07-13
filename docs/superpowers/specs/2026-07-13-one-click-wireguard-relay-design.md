@@ -132,7 +132,9 @@ SSH 密码只作为本次部署调用中的短生命周期引用，无论成功�
 固定目录：
 
 ```text
-/opt/clawd-relay/app/                 Relay 程序和 Node 依赖
+/opt/clawd-relay/releases/release-*/  同一 release 内的 app/ 与 node/
+/opt/clawd-relay/current              原子指向当前完整 release 的符号链接
+/opt/clawd-relay/app、node            仅路径不存在时创建的便利链接；legacy 实目录保留
 /etc/clawd-relay/relay.env            Relay/管理 Token，权限 0600
 /etc/wireguard/clawd.conf             WireGuard 配置，权限 0600
 /etc/wireguard/clawd/*.key            服务端、PC、手机密钥，权限 0600
@@ -146,7 +148,7 @@ SSH 密码只作为本次部署调用中的短生命周期引用，无论成功�
 
 防火墙只新增 `51820/udp`。安装器不打开 `7891/tcp`。云厂商安全组不受 VPS 内脚本控制；若握手超时，UI 明确提示用户在云控制台放行所选 UDP 端口。
 
-配置文件先写同目录临时文件、验证后原子替换。Relay app 和缺失/过旧时安装的 Node runtime 写入版本化 release 目录，再原子切换 `/opt/clawd-relay/app`、`/opt/clawd-relay/node` canonical symlink。安装器在任何变更前记录两个服务各自的 enabled/active 状态和现有防火墙规则；失败或信号中断时恢复旧文件、release 指针和服务状态，只删除本轮新增的防火墙规则，并清理本轮临时目录。
+配置文件先写同目录临时文件、验证后原子替换。Relay app 与验证过的 Node runtime 必须先共同写入一个完整版本化 release，再用同文件系统 rename 原子切换 `/opt/clawd-relay/current.new → /opt/clawd-relay/current`；systemd 只从 `current/node/bin/node` 启动 `current/app/relay-server.js`。已有 `/opt/clawd-relay/app`、`node` 实目录视为 legacy，只报告并保留；若 `current` 是意外实目录则关闭失败。安装器在任何变更前记录两个服务各自的 enabled/active 状态和现有防火墙规则；失败或信号中断时恢复旧文件、旧 `current` 和服务状态，只删除本轮新增的防火墙规则，并清理本轮临时目录。firewalld 的 permanent add 一成功就记录本轮所有权，即使首次 reload 失败，rollback 仍 remove 并再次 reload；已有规则不删除。
 
 ### 4.4 部署回传
 
@@ -166,6 +168,7 @@ SSH 密码只作为本次部署调用中的短生命周期引用，无论成功�
 ```
 
 stdout/stderr 日志不能包含任何私钥或 Token。PC 解析后先安全保存，再清空原始回传缓冲区。
+公网 endpoint 为全局 IPv6 时，回传和两份 WireGuard 配置统一使用 `[IPv6]:port`；IPv4 与域名继续使用 `host:port`。
 
 ## 5. 配置与密钥存储
 
@@ -448,7 +451,7 @@ POST /api/manage/phone/rotate
 - 管理事务实现：`relay-token-store.js` 验证两个不同的 64-hex token，保留原始大小写用于 Bearer 精确比较，以 `0600` 临时文件、`fsync` 和同目录 rename 更新 `relay.env`，并保留管理 token 和全部运行环境字段。`wg-management.js` 按“生成候选 → 原子持久 WG/key 文件 → 更新 live peer → 持久 Relay token → 关闭旧 pair”提交；文件、live peer 或 token 阶段失败会恢复旧文件、旧 peer 和旧 token，响应只返回版本 1 的完整 phone config 与新 Relay token。
 - 管理 API GREEN：只接受精确 `10.8.0.2` 或其规范 IPv4-mapped 地址，管理 token 使用 timing-safe 比较；`GET /api/manage/status` 和 `POST /api/manage/phone/rotate` 共用 Relay 私网端口，POST 仅接受小型版本 1 JSON，旧 `/api/start`、`/api/stop` 返回 404。管理与 token 测试 21/21 通过。
 - Installer RED：`node --test test/install-wg-relay-script.test.js` 退出码 1；9 项中 7 项按预期失败，证明旧脚本会静默跳过 systemd/Relay、没有 Node 校验安装、未安装完整 bundle、未写严格 env 和未验证服务。自审再以 3/3 预期失败锁定可执行位、OpenSSL 依赖和 readback 构造前过早提交。
-- Installer 实现：systemd、上传 app、bundled `node_modules/ws`、WireGuard 和 Node >=18 均为硬前置；Node 缺失或过旧时下载固定 Node 22 archive 并以官方 SHA-256 清单校验。Relay app 安装到 `/opt/clawd-relay/app`，env、WG 配置和 key 文件均为 `0600`；unit 使用 `/etc/clawd-relay/relay.env` 并提供 PC/phone IP、WG/密钥路径和 endpoint。只开放 WireGuard UDP，两个服务均执行 enable/restart/is-enabled/is-active 硬验证，失败恢复旧 app/config/unit/service 状态。
+- Installer 实现：systemd、上传 app、bundled `node_modules/ws`、WireGuard 和 Node >=18 均为硬前置；Node 缺失或过旧时下载固定 Node 22 archive 并以官方 SHA-256 清单校验。Relay app 与 Node 共同安装到 `/opt/clawd-relay/releases/release-*` 并由 `current` 原子选中，env、WG 配置和 key 文件均为 `0600`；unit 使用 `/etc/clawd-relay/relay.env` 并提供 PC/phone IP、WG/密钥路径和 endpoint。只开放 WireGuard UDP，两个服务均执行 enable/restart/is-enabled/is-active 硬验证，失败恢复旧 current/config/unit/service 状态。
 - Installer 初版 GREEN 的准确证据仅为 12/12 项 source contract（静态源码契约）通过，不能作为幂等、回滚或真实 shell 执行证明；固定 Node archive URL 的 HTTP 200 也只证明该归档当时存在。
 - mixed-case Token 回归 RED/GREEN：Task 2 明确保留 mixed-case hex token；新增 token-store 用例先观察 lowercasing 失败，再改为保留原 token 字节、仅在“两个 token 是否同值”判断时忽略 hex 大小写，筛选测试 2/2 通过。
 - 事务串行化 RED：两个可控 deferred 并发用例运行 2 项、失败 2 项，证明第二次轮换会在第一次事务尚未结束时进入生成/应用阶段。GREEN 后 2/2 通过：第二次快照包含第一次已提交手机公钥，按顺序关闭旧 Token 与第一次新 Token；第一次失败后第二次仍可成功。
@@ -456,5 +459,11 @@ POST /api/manage/phone/rotate
 - Installer 可执行夹具 RED：加入实际执行上传脚本、隔离文件系统 root 和命令 shim 后，15 项中 12 项静态 source contract 通过、3 项可执行用例按预期失败，失败点均为旧脚本不识别测试隔离入口；未触碰生产绝对路径。
 - Installer 可执行夹具 GREEN：17/17 项通过，其中 13 项是 source contract，4 项是真实 shell fixture。可执行证据覆盖首次安装、默认重跑复用全部密钥/Token、`FORCE_RESET_ALL=1` 与旧 `FORCE_PHONE_KEY=1` 全量重置、10 个 mutation checkpoint 逐阶段失败恢复、已有防火墙规则保留、本轮新增规则撤销、enabled/active 独立恢复、版本化 app/node symlink 及无临时/失败 release 残留；静态契约不再被称为幂等或回滚证明。
 - 非 root 部署权限 RED/GREEN：新增 executable fixture 断言先以 1/1 失败证明 `umask 077` 会把代码/runtime release 根目录留为 `0700`；修复后 `/opt/clawd-relay` 与 Node release 为 `0755`，秘密目录和文件仍为 `0700`/`0600`，筛选用例 1/1 通过。
-- 当前聚焦验证：`bash -n relay/install-wg-relay.sh` 退出码 0；指定四个 Task 3 测试文件退出码 0，Relay 三文件 44/44、Installer 17/17。Task 2 邻接 bundle/SSH/deploy 128/128，排除既有越界 i18n 基线后的 11 个 Relay/mobile 邻近文件 242/242；`git diff --check` 退出码 0。
+- 上一轮聚焦验证：`bash -n relay/install-wg-relay.sh` 退出码 0；指定四个 Task 3 测试文件退出码 0，Relay 三文件 44/44、Installer 17/17。Task 2 邻接 bundle/SSH/deploy 128/128，排除既有越界 i18n 基线后的 11 个 Relay/mobile 邻近文件 242/242；`git diff --check` 退出码 0。
 - 扩大邻近范围时，`test/settings-tab-wg-relay.test.js` 仍有 2 个既有失败：外部 `settings-i18n.js` 的 `sidebarWgRelay` 为 0/5。该文件不在 Task 3 授权范围，本次不以越界修改掩盖基线失败；聚焦 Task 3 为 0 失败。
+- firewalld 边缘 RED/GREEN：两个 executable fixture 中 1 项按预期失败，证明 permanent add 成功而首次 reload 失败时规则残留；把本轮规则所有权记录移动到 add 成功之后、reload 之前，随后 2/2 通过，失败路径执行 remove+第二次 reload，预存规则路径不执行 remove。
+- 完整 release 原子升级 RED/GREEN：4 个 executable fixture 初次 4/4 失败，分别证明旧实现没有统一 `current`、会尝试删除 legacy app/node 实目录、无法恢复旧 `current`、会接受 unexpected real `current`。改为同一 release 内的 app+node 与 `current.new` rename 后 4/4 通过；命令 shim 在任何 legacy 删除尝试发生时立即失败，systemd 只引用 `current`，post-switch 失败恢复旧 link。
+- IPv6 readback RED/GREEN：mocked endpoint discovery 返回 `2606:4700:4700::1111` 时，真实 installer stdout 首先被 Task 2 `parseReadback` 以 endpoint 无效拒绝；改为 `[2606:4700:4700::1111]:51820` 后，readback 与 PC/phone 配置通过同一严格 parser，筛选用例 1/1 通过。
+- 完整 release 的系统 Node symlink RED/GREEN：相对 `node → node-real` fixture 先以 1/1 失败证明保留 symlink 会把不完整 runtime 放入 release；改为 `cp -L` 并保持 executable mode 后筛选用例 1/1 通过。
+- Installer 当前完整证据：`bash -n relay/install-wg-relay.sh` 退出码 0；13 项 source contract 与 11 项 executable fixture 合计 24/24 通过。source contract 仍只作为静态契约，幂等、rollback、legacy 保留、原子 `current`、firewalld、系统 Node symlink 与 IPv6 均由实际 shell fixture 证明。
+- 本轮最终聚焦与邻近验证：用户指定的 `bash -n` 加四个 Task 3 测试文件命令退出码 0，68/68 通过；Task 2 bundle/SSH/deploy 邻接链 128/128，通过；11 个 Relay/mobile 邻近文件 242/242 通过。

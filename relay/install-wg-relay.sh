@@ -24,6 +24,7 @@ WG_CONF="/etc/wireguard/clawd.conf"
 RELAY_ROOT="/opt/clawd-relay"
 APP_DIR="/opt/clawd-relay/app"
 NODE_RUNTIME_DIR="/opt/clawd-relay/node"
+CURRENT="/opt/clawd-relay/current"
 RELAY_ETC="/etc/clawd-relay"
 RELAY_ENV="/etc/clawd-relay/relay.env"
 UNIT="/etc/systemd/system/clawd-relay.service"
@@ -44,6 +45,7 @@ WG_CONF_FS="$(install_path "${WG_CONF}")"
 RELAY_ROOT_FS="$(install_path "${RELAY_ROOT}")"
 APP_DIR_FS="$(install_path "${APP_DIR}")"
 NODE_RUNTIME_DIR_FS="$(install_path "${NODE_RUNTIME_DIR}")"
+CURRENT_FS="$(install_path "${CURRENT}")"
 RELAY_ETC_FS="$(install_path "${RELAY_ETC}")"
 RELAY_ENV_FS="$(install_path "${RELAY_ENV}")"
 UNIT_FS="$(install_path "${UNIT}")"
@@ -90,12 +92,23 @@ fi
 $SUDO mkdir -p "${RELAY_ROOT_FS}" "${RELAY_ETC_FS}" "${WG_DIR_FS}" "${RELEASES_FS}" "${VAR_TMP_FS}" "$(dirname "${UNIT_FS}")"
 $SUDO chmod 755 "${RELAY_ROOT_FS}" "${RELEASES_FS}"
 $SUDO chmod 700 "${RELAY_ETC_FS}" "${WG_DIR_FS}"
+if $SUDO test -e "${CURRENT_FS}" || $SUDO test -L "${CURRENT_FS}"; then
+  $SUDO test -L "${CURRENT_FS}" || die 16 "${CURRENT} must be a symlink"
+  CURRENT_WAS_PRESENT=1
+  CURRENT_OLD_TARGET="$($SUDO readlink "${CURRENT_FS}")"
+else
+  CURRENT_WAS_PRESENT=0
+  CURRENT_OLD_TARGET=""
+fi
 BACKUP_DIR="$($SUDO mktemp -d "${VAR_TMP_FS}/clawd-relay-backup.XXXXXX")"
 $SUDO chmod 700 "${BACKUP_DIR}"
 COMMITTED=0
 ROLLING_BACK=0
 SERVICE_SNAPSHOT_DONE=0
 FIREWALL_ADDED=""
+CURRENT_SWITCHED=0
+APP_LINK_CREATED=0
+NODE_LINK_CREATED=0
 TEMP_ITEMS=()
 NEW_RELEASES=()
 OLD_RELEASES=()
@@ -119,8 +132,6 @@ restore_item() {
   fi
 }
 
-backup_item "${APP_DIR_FS}" app
-backup_item "${NODE_RUNTIME_DIR_FS}" node
 backup_item "${WG_KEY_DIR_FS}" keys
 backup_item "${WG_CONF_FS}" wg-conf
 backup_item "${RELAY_ENV_FS}" relay-env
@@ -170,8 +181,15 @@ rollback() {
   set +e
   log "restoring previous Relay installation"
   undo_firewall
-  restore_item "${APP_DIR_FS}" app
-  restore_item "${NODE_RUNTIME_DIR_FS}" node
+  if [ "${CURRENT_SWITCHED}" = 1 ]; then
+    if [ "${CURRENT_WAS_PRESENT}" = 1 ]; then
+      atomic_link "${CURRENT_OLD_TARGET}" "${CURRENT_FS}"
+    else
+      $SUDO rm -f "${CURRENT_FS}"
+    fi
+  fi
+  if [ "${APP_LINK_CREATED}" = 1 ]; then $SUDO rm -f "${APP_DIR_FS}"; fi
+  if [ "${NODE_LINK_CREATED}" = 1 ]; then $SUDO rm -f "${NODE_RUNTIME_DIR_FS}"; fi
   restore_item "${WG_KEY_DIR_FS}" keys
   restore_item "${WG_CONF_FS}" wg-conf
   restore_item "${RELAY_ENV_FS}" relay-env
@@ -222,78 +240,19 @@ fi
 
 node_major() { "$1" --version 2>/dev/null | sed -n 's/^v\([0-9][0-9]*\).*/\1/p'; }
 atomic_link() {
-  local target="$1" canonical="$2" temporary="${2}.tmp.$$.$RANDOM"
+  local target="$1" canonical="$2" temporary="${2}.new"
+  if item_exists "${canonical}" && ! $SUDO test -L "${canonical}"; then
+    die 16 "${canonical} must be a symlink"
+  fi
+  $SUDO rm -f "${temporary}"
   $SUDO ln -s "${target}" "${temporary}"
   remember_temp "${temporary}"
   if [ "${TEST_MODE}" = 1 ]; then
-    $SUDO rm -rf "${canonical}"
-    $SUDO mv -f "${temporary}" "${canonical}"
+    "${CLAWD_INSTALL_TEST_NODE_SOURCE:?}" -e 'require("fs").renameSync(process.argv[1], process.argv[2])' "${temporary}" "${canonical}"
   else
-    if item_exists "${canonical}" && ! $SUDO test -L "${canonical}"; then $SUDO rm -rf "${canonical}"; fi
     $SUDO mv -Tf "${temporary}" "${canonical}"
   fi
 }
-old_release_target() {
-  local canonical="$1" target
-  if $SUDO test -L "${canonical}"; then
-    target="$($SUDO readlink "${canonical}")"
-    case "${target}" in "${RELEASES_FS}"/*) OLD_RELEASES+=("${target}") ;; esac
-  fi
-}
-
-NODE_BIN_FS=""
-NODE_BIN_UNIT=""
-SYSTEM_NODE=""
-if command -v node >/dev/null 2>&1; then
-  SYSTEM_NODE="$(command -v node)"
-  SYSTEM_NODE_MAJOR="$(node_major "${SYSTEM_NODE}")"
-  if [ -n "${SYSTEM_NODE_MAJOR}" ] && [ "${SYSTEM_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ] && [ "${CLAWD_INSTALL_FORCE_BUNDLED_NODE:-0}" != 1 ]; then
-    NODE_BIN_FS="${SYSTEM_NODE}"
-    NODE_BIN_UNIT="${SYSTEM_NODE}"
-  fi
-fi
-if [ -z "${NODE_BIN_FS}" ] && [ "${CLAWD_INSTALL_FORCE_BUNDLED_NODE:-0}" != 1 ] && [ -x "${NODE_RUNTIME_DIR_FS}/bin/node" ]; then
-  BUNDLED_NODE_MAJOR="$(node_major "${NODE_RUNTIME_DIR_FS}/bin/node")"
-  if [ -n "${BUNDLED_NODE_MAJOR}" ] && [ "${BUNDLED_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
-    NODE_BIN_FS="${NODE_RUNTIME_DIR_FS}/bin/node"
-    NODE_BIN_UNIT="${NODE_RUNTIME_DIR}/bin/node"
-  fi
-fi
-
-if [ -z "${NODE_BIN_FS}" ]; then
-  log "step: install-verified-node"
-  RELEASE_ID="$(date +%s).$$.$RANDOM"
-  NODE_RELEASE_FS="${RELEASES_FS}/node-${RELEASE_ID}"
-  remember_release "${NODE_RELEASE_FS}"
-  if [ "${TEST_MODE}" = 1 ] && [ -n "${CLAWD_INSTALL_TEST_NODE_SOURCE:-}" ]; then
-    $SUDO mkdir -p "${NODE_RELEASE_FS}/bin"
-    $SUDO ln -s "${CLAWD_INSTALL_TEST_NODE_SOURCE}" "${NODE_RELEASE_FS}/bin/node"
-  else
-    case "$(uname -m)" in
-      x86_64|amd64) NODE_ARCH="x64" ;;
-      aarch64|arm64) NODE_ARCH="arm64" ;;
-      *) die 10 "unsupported Node architecture" ;;
-    esac
-    NODE_ARCHIVE="node-${NODE_RELEASE}-linux-${NODE_ARCH}.tar.gz"
-    NODE_URL="https://nodejs.org/dist/${NODE_RELEASE}"
-    DOWNLOAD_DIR="$(mktemp -d)"; remember_temp "${DOWNLOAD_DIR}"
-    curl -fsSLo "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" "${NODE_URL}/${NODE_ARCHIVE}" || die 10 "Node download failed"
-    curl -fsSLo "${DOWNLOAD_DIR}/SHASUMS256.txt" "${NODE_URL}/SHASUMS256.txt" || die 10 "Node checksum download failed"
-    grep "  ${NODE_ARCHIVE}$" "${DOWNLOAD_DIR}/SHASUMS256.txt" > "${DOWNLOAD_DIR}/expected.sha256" || die 10 "Node checksum missing"
-    (cd "${DOWNLOAD_DIR}" && sha256sum -c expected.sha256 >/dev/null) || die 10 "Node checksum verification failed"
-    $SUDO mkdir -p "${NODE_RELEASE_FS}"
-    $SUDO tar -xzf "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" -C "${NODE_RELEASE_FS}" --strip-components=1
-  fi
-  $SUDO chmod 755 "${NODE_RELEASE_FS}"
-  CANDIDATE_NODE_MAJOR="$(node_major "${NODE_RELEASE_FS}/bin/node")"
-  [ -n "${CANDIDATE_NODE_MAJOR}" ] && [ "${CANDIDATE_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ] || die 10 "installed Node is too old"
-  old_release_target "${NODE_RUNTIME_DIR_FS}"
-  atomic_link "${NODE_RELEASE_FS}" "${NODE_RUNTIME_DIR_FS}"
-  checkpoint node-runtime-switch
-  NODE_BIN_FS="${NODE_RUNTIME_DIR_FS}/bin/node"
-  NODE_BIN_UNIT="${NODE_RUNTIME_DIR}/bin/node"
-fi
-[ "$(node_major "${NODE_BIN_FS}")" -ge "${NODE_MIN_MAJOR}" ] || die 10 "Node >=18 is required"
 
 log "step: install-relay-app"
 APP_SOURCE="${SCRIPT_DIR}/app"
@@ -304,17 +263,87 @@ if [ "${TEST_MODE}" = 1 ] && [ -n "${CLAWD_INSTALL_APP_SOURCE:-}" ]; then APP_SO
 [ -f "${APP_SOURCE}/wg-management.js" ] || die 16 "uploaded Relay app is incomplete"
 [ -f "${APP_SOURCE}/node_modules/ws/package.json" ] || die 16 "bundled node_modules/ws is missing"
 RELEASE_ID="$(date +%s).$$.$RANDOM"
-APP_RELEASE_FS="${RELEASES_FS}/app-${RELEASE_ID}"
-remember_release "${APP_RELEASE_FS}"
-$SUDO mkdir -p "${APP_RELEASE_FS}"
-$SUDO cp -a "${APP_SOURCE}/." "${APP_RELEASE_FS}/"
-$SUDO find "${APP_RELEASE_FS}" -type d -exec chmod 755 {} +
-$SUDO find "${APP_RELEASE_FS}" -type f -exec chmod 644 {} +
-"${NODE_BIN_FS}" --check "${APP_RELEASE_FS}/relay-server.js" >/dev/null
-NODE_PATH="${APP_RELEASE_FS}/node_modules" "${NODE_BIN_FS}" -e 'require(process.argv[1]); require("ws")' "${APP_RELEASE_FS}/relay-server.js" >/dev/null
-old_release_target "${APP_DIR_FS}"
-atomic_link "${APP_RELEASE_FS}" "${APP_DIR_FS}"
-checkpoint app-release-switch
+RELEASE_FS="${RELEASES_FS}/release-${RELEASE_ID}"
+RELEASE_APP_FS="${RELEASE_FS}/app"
+RELEASE_NODE_FS="${RELEASE_FS}/node"
+remember_release "${RELEASE_FS}"
+$SUDO mkdir -p "${RELEASE_APP_FS}" "${RELEASE_NODE_FS}"
+$SUDO cp -a "${APP_SOURCE}/." "${RELEASE_APP_FS}/"
+
+NODE_SOURCE=""
+if [ "${TEST_MODE}" = 1 ] && [ "${CLAWD_INSTALL_FORCE_BUNDLED_NODE:-0}" = 1 ] && [ -n "${CLAWD_INSTALL_TEST_NODE_SOURCE:-}" ]; then
+  $SUDO mkdir -p "${RELEASE_NODE_FS}/bin"
+  $SUDO ln -s "${CLAWD_INSTALL_TEST_NODE_SOURCE}" "${RELEASE_NODE_FS}/bin/node"
+  NODE_SOURCE=test
+elif command -v node >/dev/null 2>&1 && [ "${CLAWD_INSTALL_FORCE_BUNDLED_NODE:-0}" != 1 ]; then
+  SYSTEM_NODE="$(command -v node)"
+  SYSTEM_NODE_MAJOR="$(node_major "${SYSTEM_NODE}")"
+  if [ -n "${SYSTEM_NODE_MAJOR}" ] && [ "${SYSTEM_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
+    $SUDO mkdir -p "${RELEASE_NODE_FS}/bin"
+    $SUDO cp -L "${SYSTEM_NODE}" "${RELEASE_NODE_FS}/bin/node"
+    $SUDO chmod 755 "${RELEASE_NODE_FS}/bin/node"
+    NODE_SOURCE=system
+  fi
+fi
+if [ -z "${NODE_SOURCE}" ] && [ "${CURRENT_WAS_PRESENT}" = 1 ] && [ -x "${CURRENT_FS}/node/bin/node" ]; then
+  CURRENT_NODE_MAJOR="$(node_major "${CURRENT_FS}/node/bin/node")"
+  if [ -n "${CURRENT_NODE_MAJOR}" ] && [ "${CURRENT_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
+    $SUDO cp -a "${CURRENT_FS}/node/." "${RELEASE_NODE_FS}/"
+    NODE_SOURCE=current
+  fi
+fi
+if [ -z "${NODE_SOURCE}" ] && [ -x "${NODE_RUNTIME_DIR_FS}/bin/node" ]; then
+  LEGACY_NODE_MAJOR="$(node_major "${NODE_RUNTIME_DIR_FS}/bin/node")"
+  if [ -n "${LEGACY_NODE_MAJOR}" ] && [ "${LEGACY_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
+    $SUDO cp -a "${NODE_RUNTIME_DIR_FS}/." "${RELEASE_NODE_FS}/"
+    NODE_SOURCE=legacy
+  fi
+fi
+if [ -z "${NODE_SOURCE}" ]; then
+  log "step: install-verified-node"
+  case "$(uname -m)" in
+    x86_64|amd64) NODE_ARCH="x64" ;;
+    aarch64|arm64) NODE_ARCH="arm64" ;;
+    *) die 10 "unsupported Node architecture" ;;
+  esac
+  NODE_ARCHIVE="node-${NODE_RELEASE}-linux-${NODE_ARCH}.tar.gz"
+  NODE_URL="https://nodejs.org/dist/${NODE_RELEASE}"
+  DOWNLOAD_DIR="$(mktemp -d)"; remember_temp "${DOWNLOAD_DIR}"
+  curl -fsSLo "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" "${NODE_URL}/${NODE_ARCHIVE}" || die 10 "Node download failed"
+  curl -fsSLo "${DOWNLOAD_DIR}/SHASUMS256.txt" "${NODE_URL}/SHASUMS256.txt" || die 10 "Node checksum download failed"
+  grep "  ${NODE_ARCHIVE}$" "${DOWNLOAD_DIR}/SHASUMS256.txt" > "${DOWNLOAD_DIR}/expected.sha256" || die 10 "Node checksum missing"
+  (cd "${DOWNLOAD_DIR}" && sha256sum -c expected.sha256 >/dev/null) || die 10 "Node checksum verification failed"
+  $SUDO tar -xzf "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" -C "${RELEASE_NODE_FS}" --strip-components=1
+fi
+
+$SUDO chmod 755 "${RELEASE_FS}" "${RELEASE_NODE_FS}"
+$SUDO find "${RELEASE_NODE_FS}" -type d -exec chmod 755 {} +
+$SUDO find "${RELEASE_APP_FS}" -type d -exec chmod 755 {} +
+$SUDO find "${RELEASE_APP_FS}" -type f -exec chmod 644 {} +
+NODE_BIN_FS="${RELEASE_NODE_FS}/bin/node"
+[ "$(node_major "${NODE_BIN_FS}")" -ge "${NODE_MIN_MAJOR}" ] || die 10 "Node >=18 is required"
+"${NODE_BIN_FS}" --check "${RELEASE_APP_FS}/relay-server.js" >/dev/null
+NODE_PATH="${RELEASE_APP_FS}/node_modules" "${NODE_BIN_FS}" -e 'require(process.argv[1]); require("ws")' "${RELEASE_APP_FS}/relay-server.js" >/dev/null
+checkpoint release-staged
+
+case "${CURRENT_OLD_TARGET}" in "${RELEASES_FS}"/*) OLD_RELEASES+=("${CURRENT_OLD_TARGET}") ;; esac
+CURRENT_SWITCHED=1
+atomic_link "${RELEASE_FS}" "${CURRENT_FS}"
+checkpoint current-switch
+
+if ! item_exists "${APP_DIR_FS}"; then
+  APP_LINK_CREATED=1
+  $SUDO ln -s "${CURRENT_FS}/app" "${APP_DIR_FS}"
+elif $SUDO test -d "${APP_DIR_FS}" && ! $SUDO test -L "${APP_DIR_FS}"; then
+  log "legacy app directory preserved at ${APP_DIR}"
+fi
+if ! item_exists "${NODE_RUNTIME_DIR_FS}"; then
+  NODE_LINK_CREATED=1
+  $SUDO ln -s "${CURRENT_FS}/node" "${NODE_RUNTIME_DIR_FS}"
+elif $SUDO test -d "${NODE_RUNTIME_DIR_FS}" && ! $SUDO test -L "${NODE_RUNTIME_DIR_FS}"; then
+  log "legacy Node directory preserved at ${NODE_RUNTIME_DIR}"
+fi
+NODE_BIN_FS="${CURRENT_FS}/node/bin/node"
 
 log "step: discover-endpoint"
 ENDPOINT_HOST_VALUE="${ENDPOINT_HOST:-}"
@@ -322,7 +351,10 @@ if [ -z "${ENDPOINT_HOST_VALUE}" ]; then ENDPOINT_HOST_VALUE="$(curl -fsS --max-
 if [ -z "${ENDPOINT_HOST_VALUE}" ]; then ENDPOINT_HOST_VALUE="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"; fi
 [ -n "${ENDPOINT_HOST_VALUE}" ] || die 17 "public endpoint discovery failed"
 case "${ENDPOINT_HOST_VALUE}" in *[!A-Za-z0-9.:-]*) die 17 "public endpoint is invalid" ;; esac
-ENDPOINT="${ENDPOINT_HOST_VALUE}:${WG_PORT}"
+case "${ENDPOINT_HOST_VALUE}" in
+  *:*) ENDPOINT="[${ENDPOINT_HOST_VALUE}]:${WG_PORT}" ;;
+  *) ENDPOINT="${ENDPOINT_HOST_VALUE}:${WG_PORT}" ;;
+esac
 
 log "step: generate-wireguard-keys"
 $SUDO mkdir -p "${WG_KEY_DIR_FS}"
@@ -422,7 +454,7 @@ After=network-online.target wg-quick@${IFACE}.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/clawd-relay/relay.env
-ExecStart=${NODE_BIN_UNIT} ${APP_DIR}/relay-server.js
+ExecStart=/opt/clawd-relay/current/node/bin/node /opt/clawd-relay/current/app/relay-server.js
 Restart=always
 RestartSec=3
 UMask=0077
@@ -442,8 +474,8 @@ if command -v ufw >/dev/null 2>&1 && $SUDO ufw status >/dev/null 2>&1; then
 elif command -v firewall-cmd >/dev/null 2>&1 && $SUDO firewall-cmd --state >/dev/null 2>&1; then
   if ! $SUDO firewall-cmd --permanent --query-port="${WG_PORT}/udp" >/dev/null 2>&1; then
     $SUDO firewall-cmd --permanent --add-port="${WG_PORT}/udp" >/dev/null || die 14 "firewalld update failed"
-    $SUDO firewall-cmd --reload >/dev/null || die 14 "firewalld reload failed"
     FIREWALL_ADDED=firewalld
+    $SUDO firewall-cmd --reload >/dev/null || die 14 "firewalld reload failed"
   fi
 elif command -v iptables >/dev/null 2>&1; then
   if ! $SUDO iptables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null; then
@@ -503,6 +535,6 @@ printf '<<<END_CLAWD_JSON>>>\n'
 
 # Old successful releases are no longer needed after the readback transaction commits.
 for old_release in "${OLD_RELEASES[@]:-}"; do
-  [ -z "${old_release}" ] || [ "${old_release}" = "${APP_RELEASE_FS}" ] || $SUDO rm -rf "${old_release}"
+  [ -z "${old_release}" ] || [ "${old_release}" = "${RELEASE_FS}" ] || $SUDO rm -rf "${old_release}"
 done
 log "done"
