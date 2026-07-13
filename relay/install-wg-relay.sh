@@ -13,10 +13,6 @@ FORCE_PHONE_KEY="${FORCE_PHONE_KEY:-0}"
 NODE_MIN_MAJOR=18
 NODE_RELEASE="v22.17.0"
 
-# FORCE_PHONE_KEY was the deployer's old reinstall flag. Phone-only replacement is
-# now the management API, so retaining this flag as a full-reset alias is safest.
-if [ "${FORCE_PHONE_KEY}" = "1" ]; then FORCE_RESET_ALL=1; fi
-
 IFACE="clawd"
 WG_DIR="/etc/wireguard"
 WG_KEY_DIR="/etc/wireguard/clawd"
@@ -28,7 +24,44 @@ CURRENT="/opt/clawd-relay/current"
 RELAY_ETC="/etc/clawd-relay"
 RELAY_ENV="/etc/clawd-relay/relay.env"
 UNIT="/etc/systemd/system/clawd-relay.service"
+FIREWALL_UNIT="/etc/systemd/system/clawd-relay-firewall.service"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
+log() { printf '[wg-relay] %s\n' "$*" >&2; }
+die() { log "ERROR: $2"; exit "$1"; }
+
+validate_inputs() {
+  local name value
+  for name in WG_PORT RELAY_PORT WG_SUBNET FORCE_RESET_ALL FORCE_PHONE_KEY ENDPOINT_HOST; do
+    value="${!name:-}"
+    [[ "${value}" != *[[:cntrl:]]* ]] || die 64 "${name} contains control characters"
+  done
+  for name in WG_PORT RELAY_PORT; do
+    value="${!name}"
+    [[ "${value}" =~ ^[0-9]+$ ]] || die 64 "${name} must be an integer"
+    [ "$((10#${value}))" -ge 1 ] && [ "$((10#${value}))" -le 65535 ] ||
+      die 64 "${name} must be between 1 and 65535"
+  done
+  [[ "${FORCE_RESET_ALL}" = 0 || "${FORCE_RESET_ALL}" = 1 ]] ||
+    die 64 "FORCE_RESET_ALL must be 0 or 1"
+  [[ "${FORCE_PHONE_KEY}" = 0 || "${FORCE_PHONE_KEY}" = 1 ]] ||
+    die 64 "FORCE_PHONE_KEY must be 0 or 1"
+  local octet='(0|[1-9][0-9]?|1[0-9]{2}|2[0-4][0-9]|25[0-5])'
+  [[ "${WG_SUBNET}" =~ ^${octet}\.${octet}\.${octet}\.0/24$ ]] ||
+    die 64 "WG_SUBNET must be a canonical /24 network"
+  local a="${BASH_REMATCH[1]}" b="${BASH_REMATCH[2]}"
+  if ! { [ "${a}" -eq 10 ] ||
+    { [ "${a}" -eq 172 ] && [ "${b}" -ge 16 ] && [ "${b}" -le 31 ]; } ||
+    { [ "${a}" -eq 192 ] && [ "${b}" -eq 168 ]; }; }; then
+    die 64 "WG_SUBNET must be private"
+  fi
+}
+
+validate_inputs
+
+# FORCE_PHONE_KEY was the deployer's old reinstall flag. Phone-only replacement is
+# now the management API, so retaining this flag as a full-reset alias is safest.
+if [ "${FORCE_PHONE_KEY}" = "1" ]; then FORCE_RESET_ALL=1; fi
 
 TEST_MODE="${CLAWD_INSTALL_TEST_MODE:-0}"
 INSTALL_ROOT=""
@@ -49,20 +82,25 @@ CURRENT_FS="$(install_path "${CURRENT}")"
 RELAY_ETC_FS="$(install_path "${RELAY_ETC}")"
 RELAY_ENV_FS="$(install_path "${RELAY_ENV}")"
 UNIT_FS="$(install_path "${UNIT}")"
+FIREWALL_UNIT_FS="$(install_path "${FIREWALL_UNIT}")"
 SYSTEMD_RUN_FS="$(install_path "/run/systemd/system")"
 VAR_TMP_FS="$(install_path "/var/tmp")"
 RELEASES_FS="${RELAY_ROOT_FS}/releases"
+NODE_CACHE_DIR_FS="${RELAY_ROOT_FS}/runtime-cache"
+LOCK_DIR_FS="$(install_path "/run/lock/clawd-relay.lock")"
 
 SUBNET_BASE="${WG_SUBNET%.*/*}"
 SERVER_IP="${SUBNET_BASE}.1"
 PC_IP="${SUBNET_BASE}.2"
 PHONE_IP="${SUBNET_BASE}.3"
 
-log() { printf '[wg-relay] %s\n' "$*" >&2; }
-die() { log "ERROR: $2"; exit "$1"; }
 checkpoint() {
   if [ "${TEST_MODE}" = "1" ] && [ "${CLAWD_INSTALL_FAIL_STAGE:-}" = "$1" ]; then
     die 97 "injected failure at $1"
+  fi
+  if [ "${TEST_MODE}" = "1" ] && [ "${CLAWD_INSTALL_PAUSE_STAGE:-}" = "$1" ]; then
+    : > "${CLAWD_INSTALL_TEST_STATE:?}/pause-$1"
+    while :; do sleep 0.05; done
   fi
 }
 
@@ -74,6 +112,69 @@ if [ "${TEST_MODE}" != "1" ] && [ "$(id -u)" -ne 0 ]; then
     die 13 "need root or passwordless sudo"
   fi
 fi
+
+LOCK_HELD=0
+LOCK_OWNER="$$-${RANDOM}"
+BACKUP_DIR=""
+COMMITTED=0
+ROLLING_BACK=0
+FULL_ROLLBACK_READY=0
+TEMP_ITEMS=()
+NEW_RELEASES=()
+OLD_RELEASES=()
+EARLY_CREATED_DIRS=()
+NODE_CACHE_ARCHIVE_CREATED=0
+
+cleanup_created_directories() {
+  local index
+  for ((index=${#EARLY_CREATED_DIRS[@]}-1; index>=0; index--)); do
+    $SUDO rmdir "${EARLY_CREATED_DIRS[index]}" 2>/dev/null || true
+  done
+}
+
+release_lock() {
+  [ "${LOCK_HELD}" = 1 ] || return
+  local owner=""
+  $SUDO test ! -f "${LOCK_DIR_FS}/owner" || owner="$($SUDO cat "${LOCK_DIR_FS}/owner" 2>/dev/null || true)"
+  if [ "${owner}" = "${LOCK_OWNER}" ]; then
+    $SUDO rm -f "${LOCK_DIR_FS}/owner"
+    $SUDO rmdir "${LOCK_DIR_FS}" 2>/dev/null || true
+  fi
+  LOCK_HELD=0
+}
+
+early_exit() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  [ -z "${BACKUP_DIR}" ] || $SUDO rm -rf "${BACKUP_DIR}"
+  cleanup_created_directories
+  release_lock
+  exit "${status}"
+}
+on_signal() { exit "$1"; }
+trap early_exit EXIT
+trap 'on_signal 129' HUP
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+
+acquire_lock() {
+  local timeout_ms=5000
+  if [ "${TEST_MODE}" = 1 ] && [[ "${CLAWD_INSTALL_LOCK_TIMEOUT_MS:-}" =~ ^[0-9]+$ ]]; then
+    timeout_ms="${CLAWD_INSTALL_LOCK_TIMEOUT_MS}"
+  fi
+  local attempts=$((timeout_ms / 50 + 1))
+  while ! $SUDO mkdir -m 700 "${LOCK_DIR_FS}" 2>/dev/null; do
+    attempts=$((attempts - 1))
+    [ "${attempts}" -gt 0 ] || die 21 "installer lock timeout"
+    sleep 0.05
+  done
+  printf '%s\n' "${LOCK_OWNER}" | $SUDO tee "${LOCK_DIR_FS}/owner" >/dev/null
+  $SUDO chmod 600 "${LOCK_DIR_FS}/owner"
+  LOCK_HELD=1
+}
+
+acquire_lock
+checkpoint lock-acquired
 
 command -v systemctl >/dev/null 2>&1 || die 15 "systemd is required"
 [ -d "${SYSTEMD_RUN_FS}" ] || die 15 "systemd is not running (/run/systemd/system)"
@@ -89,9 +190,23 @@ else
   die 10 "supported package manager required (apt/dnf/yum)"
 fi
 
-$SUDO mkdir -p "${RELAY_ROOT_FS}" "${RELAY_ETC_FS}" "${WG_DIR_FS}" "${RELEASES_FS}" "${VAR_TMP_FS}" "$(dirname "${UNIT_FS}")"
-$SUDO chmod 755 "${RELAY_ROOT_FS}" "${RELEASES_FS}"
-$SUDO chmod 700 "${RELAY_ETC_FS}" "${WG_DIR_FS}"
+ensure_directory() {
+  local directory="$1" mode="$2"
+  if ! $SUDO test -d "${directory}"; then
+    local parent
+    parent="$(dirname "${directory}")"
+    if ! $SUDO test -d "${parent}"; then ensure_directory "${parent}" 755; fi
+    $SUDO mkdir "${directory}"
+    $SUDO chmod "${mode}" "${directory}"
+    EARLY_CREATED_DIRS+=("${directory}")
+  fi
+}
+ensure_directory "${RELAY_ROOT_FS}" 755
+ensure_directory "${RELAY_ETC_FS}" 700
+ensure_directory "${WG_DIR_FS}" 700
+ensure_directory "${RELEASES_FS}" 755
+ensure_directory "${VAR_TMP_FS}" 700
+ensure_directory "$(dirname "${UNIT_FS}")" 755
 if $SUDO test -e "${CURRENT_FS}" || $SUDO test -L "${CURRENT_FS}"; then
   $SUDO test -L "${CURRENT_FS}" || die 16 "${CURRENT} must be a symlink"
   CURRENT_WAS_PRESENT=1
@@ -102,16 +217,14 @@ else
 fi
 BACKUP_DIR="$($SUDO mktemp -d "${VAR_TMP_FS}/clawd-relay-backup.XXXXXX")"
 $SUDO chmod 700 "${BACKUP_DIR}"
-COMMITTED=0
-ROLLING_BACK=0
 SERVICE_SNAPSHOT_DONE=0
 FIREWALL_ADDED=""
+IPTABLES4_ADDED=0
+IPTABLES6_ADDED=0
 CURRENT_SWITCHED=0
 APP_LINK_CREATED=0
 NODE_LINK_CREATED=0
-TEMP_ITEMS=()
-NEW_RELEASES=()
-OLD_RELEASES=()
+FULL_ROLLBACK_READY=1
 
 remember_temp() { TEMP_ITEMS+=("$1"); }
 remember_release() { NEW_RELEASES+=("$1"); }
@@ -136,6 +249,7 @@ backup_item "${WG_KEY_DIR_FS}" keys
 backup_item "${WG_CONF_FS}" wg-conf
 backup_item "${RELAY_ENV_FS}" relay-env
 backup_item "${UNIT_FS}" relay-unit
+backup_item "${FIREWALL_UNIT_FS}" firewall-unit
 
 service_enabled() { $SUDO systemctl is-enabled --quiet "$1" >/dev/null 2>&1 && printf 1 || printf 0; }
 service_active() { $SUDO systemctl is-active --quiet "$1" >/dev/null 2>&1 && printf 1 || printf 0; }
@@ -143,6 +257,8 @@ WG_WAS_ENABLED="$(service_enabled "wg-quick@${IFACE}")"
 WG_WAS_ACTIVE="$(service_active "wg-quick@${IFACE}")"
 RELAY_WAS_ENABLED="$(service_enabled clawd-relay.service)"
 RELAY_WAS_ACTIVE="$(service_active clawd-relay.service)"
+FIREWALL_WAS_ENABLED="$(service_enabled clawd-relay-firewall.service)"
+FIREWALL_WAS_ACTIVE="$(service_active clawd-relay-firewall.service)"
 SERVICE_SNAPSHOT_DONE=1
 
 restore_service() {
@@ -166,7 +282,10 @@ undo_firewall() {
       $SUDO firewall-cmd --permanent --remove-port="${WG_PORT}/udp" >/dev/null 2>&1
       $SUDO firewall-cmd --reload >/dev/null 2>&1
       ;;
-    iptables) $SUDO iptables -D INPUT -p udp --dport "${WG_PORT}" -j ACCEPT >/dev/null 2>&1 ;;
+    iptables)
+      [ "${IPTABLES4_ADDED}" = 0 ] || $SUDO iptables -D INPUT -p udp --dport "${WG_PORT}" -j ACCEPT >/dev/null 2>&1
+      [ "${IPTABLES6_ADDED}" = 0 ] || $SUDO ip6tables -D INPUT -p udp --dport "${WG_PORT}" -j ACCEPT >/dev/null 2>&1
+      ;;
   esac
 }
 
@@ -194,21 +313,26 @@ rollback() {
   restore_item "${WG_CONF_FS}" wg-conf
   restore_item "${RELAY_ENV_FS}" relay-env
   restore_item "${UNIT_FS}" relay-unit
+  restore_item "${FIREWALL_UNIT_FS}" firewall-unit
+  if [ "${NODE_CACHE_ARCHIVE_CREATED}" = 1 ]; then $SUDO rm -f "${NODE_CACHE_ARCHIVE}"; fi
   local release
   for release in "${NEW_RELEASES[@]:-}"; do [ -z "${release}" ] || $SUDO rm -rf "${release}"; done
   if [ "${SERVICE_SNAPSHOT_DONE}" = 1 ]; then
     $SUDO systemctl daemon-reload >/dev/null 2>&1
     restore_service "wg-quick@${IFACE}" "${WG_WAS_ENABLED}" "${WG_WAS_ACTIVE}"
     restore_service clawd-relay.service "${RELAY_WAS_ENABLED}" "${RELAY_WAS_ACTIVE}"
+    restore_service clawd-relay-firewall.service "${FIREWALL_WAS_ENABLED}" "${FIREWALL_WAS_ACTIVE}"
   fi
 }
 
 on_exit() {
   local status=$?
   trap - EXIT HUP INT TERM
-  if [ "${status}" -ne 0 ] && [ "${COMMITTED}" -ne 1 ]; then rollback; fi
+  if [ "${status}" -ne 0 ] && [ "${COMMITTED}" -ne 1 ] && [ "${FULL_ROLLBACK_READY}" = 1 ]; then rollback; fi
   cleanup_temporaries
-  $SUDO rm -rf "${BACKUP_DIR}"
+  [ -z "${BACKUP_DIR}" ] || $SUDO rm -rf "${BACKUP_DIR}"
+  if [ "${status}" -ne 0 ]; then cleanup_created_directories; fi
+  release_lock
   exit "${status}"
 }
 on_signal() { exit "$1"; }
@@ -270,51 +394,58 @@ remember_release "${RELEASE_FS}"
 $SUDO mkdir -p "${RELEASE_APP_FS}" "${RELEASE_NODE_FS}"
 $SUDO cp -a "${APP_SOURCE}/." "${RELEASE_APP_FS}/"
 
-NODE_SOURCE=""
-if [ "${TEST_MODE}" = 1 ] && [ "${CLAWD_INSTALL_FORCE_BUNDLED_NODE:-0}" = 1 ] && [ -n "${CLAWD_INSTALL_TEST_NODE_SOURCE:-}" ]; then
-  $SUDO mkdir -p "${RELEASE_NODE_FS}/bin"
-  $SUDO ln -s "${CLAWD_INSTALL_TEST_NODE_SOURCE}" "${RELEASE_NODE_FS}/bin/node"
-  NODE_SOURCE=test
-elif command -v node >/dev/null 2>&1 && [ "${CLAWD_INSTALL_FORCE_BUNDLED_NODE:-0}" != 1 ]; then
-  SYSTEM_NODE="$(command -v node)"
-  SYSTEM_NODE_MAJOR="$(node_major "${SYSTEM_NODE}")"
-  if [ -n "${SYSTEM_NODE_MAJOR}" ] && [ "${SYSTEM_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
-    $SUDO mkdir -p "${RELEASE_NODE_FS}/bin"
-    $SUDO cp -L "${SYSTEM_NODE}" "${RELEASE_NODE_FS}/bin/node"
-    $SUDO chmod 755 "${RELEASE_NODE_FS}/bin/node"
-    NODE_SOURCE=system
-  fi
+log "step: install-verified-node"
+case "$(uname -m)" in
+  x86_64|amd64) NODE_ARCH="x64" ;;
+  aarch64|arm64) NODE_ARCH="arm64" ;;
+  *) die 10 "unsupported Node architecture" ;;
+esac
+NODE_ARCHIVE="node-${NODE_RELEASE}-linux-${NODE_ARCH}.tar.gz"
+NODE_URL="https://nodejs.org/dist/${NODE_RELEASE}"
+$SUDO test ! -L "${NODE_CACHE_DIR_FS}" || die 10 "Node cache directory is unsafe"
+ensure_directory "${NODE_CACHE_DIR_FS}" 755
+CACHE_EXPECTED_UID=0
+if [ "${TEST_MODE}" = 1 ]; then CACHE_EXPECTED_UID="$(id -u)"; fi
+NODE_CACHE_DIR_META="$($SUDO stat -c '%u:%a' "${NODE_CACHE_DIR_FS}")"
+case "${NODE_CACHE_DIR_META}" in
+  "${CACHE_EXPECTED_UID}:700"|"${CACHE_EXPECTED_UID}:755") ;;
+  *) die 10 "Node cache directory ownership or mode is unsafe" ;;
+esac
+NODE_DOWNLOAD_DIR="$(mktemp -d)"
+remember_temp "${NODE_DOWNLOAD_DIR}"
+NODE_MANIFEST_TMP="${NODE_DOWNLOAD_DIR}/SHASUMS256.txt"
+curl -fsSLo "${NODE_MANIFEST_TMP}" "${NODE_URL}/SHASUMS256.txt" || die 10 "Node checksum download failed"
+NODE_EXPECTED_SHA="$(sed -n "s/^\([0-9a-fA-F]\{64\}\)  ${NODE_ARCHIVE}$/\1/p" "${NODE_MANIFEST_TMP}")"
+[ "${#NODE_EXPECTED_SHA}" -eq 64 ] || die 10 "Node checksum missing"
+NODE_CACHE_ARCHIVE="${NODE_CACHE_DIR_FS}/${NODE_ARCHIVE}"
+if $SUDO test -e "${NODE_CACHE_ARCHIVE}" || $SUDO test -L "${NODE_CACHE_ARCHIVE}"; then
+  $SUDO test -f "${NODE_CACHE_ARCHIVE}" && $SUDO test ! -L "${NODE_CACHE_ARCHIVE}" ||
+    die 10 "Node cache archive is unsafe"
+  [ "$($SUDO stat -c '%u:%a' "${NODE_CACHE_ARCHIVE}")" = "${CACHE_EXPECTED_UID}:444" ] ||
+    die 10 "Node cache archive ownership or mode is unsafe"
 fi
-if [ -z "${NODE_SOURCE}" ] && [ "${CURRENT_WAS_PRESENT}" = 1 ] && [ -x "${CURRENT_FS}/node/bin/node" ]; then
-  CURRENT_NODE_MAJOR="$(node_major "${CURRENT_FS}/node/bin/node")"
-  if [ -n "${CURRENT_NODE_MAJOR}" ] && [ "${CURRENT_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
-    $SUDO cp -a "${CURRENT_FS}/node/." "${RELEASE_NODE_FS}/"
-    NODE_SOURCE=current
-  fi
+verify_node_archive() {
+  local archive="$1"
+  printf '%s  %s\n' "${NODE_EXPECTED_SHA}" "${archive}" | $SUDO sha256sum -c - >/dev/null 2>&1 ||
+    die 10 "Node checksum verification failed"
+}
+if $SUDO test -f "${NODE_CACHE_ARCHIVE}"; then
+  verify_node_archive "${NODE_CACHE_ARCHIVE}"
+else
+  NODE_DOWNLOADED_ARCHIVE="${NODE_DOWNLOAD_DIR}/${NODE_ARCHIVE}"
+  curl -fsSLo "${NODE_DOWNLOADED_ARCHIVE}" "${NODE_URL}/${NODE_ARCHIVE}" || die 10 "Node download failed"
+  verify_node_archive "${NODE_DOWNLOADED_ARCHIVE}"
+  NODE_CACHE_TMP="$($SUDO mktemp "${NODE_CACHE_DIR_FS}/.${NODE_ARCHIVE}.tmp.XXXXXX")"
+  remember_temp "${NODE_CACHE_TMP}"
+  $SUDO cp "${NODE_DOWNLOADED_ARCHIVE}" "${NODE_CACHE_TMP}"
+  $SUDO chmod 444 "${NODE_CACHE_TMP}"
+  $SUDO mv "${NODE_CACHE_TMP}" "${NODE_CACHE_ARCHIVE}"
+  NODE_CACHE_ARCHIVE_CREATED=1
 fi
-if [ -z "${NODE_SOURCE}" ] && [ -x "${NODE_RUNTIME_DIR_FS}/bin/node" ]; then
-  LEGACY_NODE_MAJOR="$(node_major "${NODE_RUNTIME_DIR_FS}/bin/node")"
-  if [ -n "${LEGACY_NODE_MAJOR}" ] && [ "${LEGACY_NODE_MAJOR}" -ge "${NODE_MIN_MAJOR}" ]; then
-    $SUDO cp -a "${NODE_RUNTIME_DIR_FS}/." "${RELEASE_NODE_FS}/"
-    NODE_SOURCE=legacy
-  fi
-fi
-if [ -z "${NODE_SOURCE}" ]; then
-  log "step: install-verified-node"
-  case "$(uname -m)" in
-    x86_64|amd64) NODE_ARCH="x64" ;;
-    aarch64|arm64) NODE_ARCH="arm64" ;;
-    *) die 10 "unsupported Node architecture" ;;
-  esac
-  NODE_ARCHIVE="node-${NODE_RELEASE}-linux-${NODE_ARCH}.tar.gz"
-  NODE_URL="https://nodejs.org/dist/${NODE_RELEASE}"
-  DOWNLOAD_DIR="$(mktemp -d)"; remember_temp "${DOWNLOAD_DIR}"
-  curl -fsSLo "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" "${NODE_URL}/${NODE_ARCHIVE}" || die 10 "Node download failed"
-  curl -fsSLo "${DOWNLOAD_DIR}/SHASUMS256.txt" "${NODE_URL}/SHASUMS256.txt" || die 10 "Node checksum download failed"
-  grep "  ${NODE_ARCHIVE}$" "${DOWNLOAD_DIR}/SHASUMS256.txt" > "${DOWNLOAD_DIR}/expected.sha256" || die 10 "Node checksum missing"
-  (cd "${DOWNLOAD_DIR}" && sha256sum -c expected.sha256 >/dev/null) || die 10 "Node checksum verification failed"
-  $SUDO tar -xzf "${DOWNLOAD_DIR}/${NODE_ARCHIVE}" -C "${RELEASE_NODE_FS}" --strip-components=1
-fi
+[ "$($SUDO stat -c '%u:%a' "${NODE_CACHE_ARCHIVE}")" = "${CACHE_EXPECTED_UID}:444" ] ||
+  die 10 "Node cache archive ownership or mode is unsafe"
+verify_node_archive "${NODE_CACHE_ARCHIVE}"
+$SUDO tar -xzf "${NODE_CACHE_ARCHIVE}" -C "${RELEASE_NODE_FS}" --strip-components=1
 
 $SUDO chmod 755 "${RELEASE_FS}" "${RELEASE_NODE_FS}"
 $SUDO find "${RELEASE_NODE_FS}" -type d -exec chmod 755 {} +
@@ -467,21 +598,71 @@ checkpoint systemd-unit
 
 log "step: firewall"
 if command -v ufw >/dev/null 2>&1 && $SUDO ufw status >/dev/null 2>&1; then
-  if ! $SUDO ufw status | grep -Fq "${WG_PORT}/udp"; then
+  UFW_STATUS="$($SUDO ufw status)"
+  UFW_V4=0
+  UFW_V6=0
+  printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "ALLOW" { found=1 } END { exit !found }' && UFW_V4=1
+  printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "(v6)" && $3 == "ALLOW" { found=1 } END { exit !found }' && UFW_V6=1
+  if [[ "${ENDPOINT_HOST_VALUE}" == *:* ]] && [ "${UFW_V4}" != "${UFW_V6}" ]; then
+    die 14 "ufw lacks exact IPv6 rule coverage"
+  fi
+  if [ "${UFW_V4}" = 0 ]; then
     $SUDO ufw allow "${WG_PORT}/udp" >/dev/null || die 14 "ufw update failed"
     FIREWALL_ADDED=ufw
+    UFW_STATUS="$($SUDO ufw status)"
+    printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "ALLOW" { found=1 } END { exit !found }' ||
+      die 14 "ufw IPv4 rule verification failed"
+    if [[ "${ENDPOINT_HOST_VALUE}" == *:* ]]; then
+      printf '%s\n' "${UFW_STATUS}" | awk -v rule="${WG_PORT}/udp" '$1 == rule && $2 == "(v6)" && $3 == "ALLOW" { found=1 } END { exit !found }' ||
+        die 14 "ufw IPv6 rule verification failed"
+    fi
   fi
 elif command -v firewall-cmd >/dev/null 2>&1 && $SUDO firewall-cmd --state >/dev/null 2>&1; then
   if ! $SUDO firewall-cmd --permanent --query-port="${WG_PORT}/udp" >/dev/null 2>&1; then
     $SUDO firewall-cmd --permanent --add-port="${WG_PORT}/udp" >/dev/null || die 14 "firewalld update failed"
     FIREWALL_ADDED=firewalld
     $SUDO firewall-cmd --reload >/dev/null || die 14 "firewalld reload failed"
+    $SUDO firewall-cmd --permanent --query-port="${WG_PORT}/udp" >/dev/null 2>&1 ||
+      die 14 "firewalld rule verification failed"
   fi
-elif command -v iptables >/dev/null 2>&1; then
+elif command -v iptables >/dev/null 2>&1 && command -v ip6tables >/dev/null 2>&1; then
+  IPTABLES_BIN="$(command -v iptables)"
+  IP6TABLES_BIN="$(command -v ip6tables)"
+  FIREWALL_ADDED=iptables
   if ! $SUDO iptables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null; then
     $SUDO iptables -A INPUT -p udp --dport "${WG_PORT}" -j ACCEPT || die 14 "iptables update failed"
-    FIREWALL_ADDED=iptables
+    IPTABLES4_ADDED=1
   fi
+  if ! $SUDO ip6tables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null; then
+    $SUDO ip6tables -A INPUT -p udp --dport "${WG_PORT}" -j ACCEPT || die 14 "ip6tables update failed"
+    IPTABLES6_ADDED=1
+  fi
+  $SUDO iptables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null ||
+    die 14 "iptables rule verification failed"
+  $SUDO ip6tables -C INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null ||
+    die 14 "ip6tables rule verification failed"
+  FIREWALL_UNIT_TMP="$($SUDO mktemp "$(dirname "${FIREWALL_UNIT_FS}")/.clawd-relay-firewall.service.tmp.XXXXXX")"
+  remember_temp "${FIREWALL_UNIT_TMP}"
+  printf '%s\n' "[Unit]
+Description=Persist Clawd WireGuard firewall rules
+Before=wg-quick@${IFACE}.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -ec '${IPTABLES_BIN} -C INPUT -p udp --dport ${WG_PORT} -j ACCEPT || ${IPTABLES_BIN} -A INPUT -p udp --dport ${WG_PORT} -j ACCEPT; ${IP6TABLES_BIN} -C INPUT -p udp --dport ${WG_PORT} -j ACCEPT || ${IP6TABLES_BIN} -A INPUT -p udp --dport ${WG_PORT} -j ACCEPT'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target" | $SUDO tee "${FIREWALL_UNIT_TMP}" >/dev/null
+  $SUDO chmod 644 "${FIREWALL_UNIT_TMP}"
+  $SUDO mv "${FIREWALL_UNIT_TMP}" "${FIREWALL_UNIT_FS}"
+  $SUDO systemctl daemon-reload || die 14 "firewall service reload failed"
+  $SUDO systemctl enable clawd-relay-firewall.service >/dev/null || die 14 "firewall service enable failed"
+  $SUDO systemctl restart clawd-relay-firewall.service || die 14 "firewall service start failed"
+  $SUDO systemctl is-enabled --quiet clawd-relay-firewall.service || die 14 "firewall service is not enabled"
+  $SUDO systemctl is-active --quiet clawd-relay-firewall.service || die 14 "firewall service is not active"
+else
+  die 14 "no supported firewall backend"
 fi
 checkpoint firewall-rule
 
