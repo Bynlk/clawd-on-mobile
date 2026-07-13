@@ -206,16 +206,27 @@ test("wgRelay:deploy on unknown profile returns error", async () => {
   ipc.dispose();
 });
 
-test("wgRelay:deploy sets status starting_tunnel then idle on success", async () => {
+test("wgRelay:deploy reports progress without impersonating a local tunnel state", async () => {
   const { ipcMain, sentMessages, ipc } = setup({
-    overrides: { deployFn: async () => ({ ok: true, readback: { ...okReadback } }) },
+    overrides: {
+      deployFn: async ({ deps, profile }) => {
+        deps.runtime.emitProgress({
+          profileId: profile.id,
+          step: "install-wg",
+          status: "start",
+        });
+        return { ok: true, readback: { ...okReadback } };
+      },
+    },
   });
   await ipcMain.invoke("wgRelay:deploy", { profileId: "wg-1", password: "x" });
   const statuses = sentMessages
     .filter((m) => m.channel === "wgRelay:status-changed")
     .map((m) => m.payload.status);
-  assert.ok(statuses.includes("starting_tunnel"));
+  assert.equal(statuses.includes("starting_tunnel"), false);
   assert.equal(statuses[statuses.length - 1], "idle");
+  const progress = sentMessages.find((m) => m.channel === "wgRelay:progress");
+  assert.equal(progress && progress.payload.step, "install-wg");
   ipc.dispose();
 });
 
@@ -231,9 +242,9 @@ test("wgRelay:tunnel-up fails cleanly when no pcConf is cached", async () => {
   ipc.dispose();
 });
 
-test("wgRelay:tunnel-up brings up the interface with the cached pcConf", async () => {
+test("wgRelay:tunnel-up maps the legacy connecting phase to starting_tunnel", async () => {
   let usedConf = null;
-  const { ipcMain, wgRelayRuntime, ipc } = setup({
+  const { ipcMain, sentMessages, wgRelayRuntime, ipc } = setup({
     overrides: {
       deployFn: async () => ({ ok: true, readback: { ...okReadback } }),
       bringUpFn: async ({ pcConf }) => {
@@ -248,6 +259,10 @@ test("wgRelay:tunnel-up brings up the interface with the cached pcConf", async (
   assert.equal(r.address, "10.8.0.2/32");
   assert.equal(usedConf, okReadback.pcConf);
   assert.equal(wgRelayRuntime.getProfileStatus("wg-1").status, "connected");
+  const statuses = sentMessages
+    .filter((m) => m.channel === "wgRelay:status-changed")
+    .map((m) => m.payload.status);
+  assert.ok(statuses.includes("starting_tunnel"));
   ipc.dispose();
 });
 

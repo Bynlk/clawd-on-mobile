@@ -130,7 +130,6 @@ function registerWgRelayIpc(options = {}) {
       : undefined;
     const regenPhoneOnly = !!(payload && typeof payload === "object" && payload.regenPhoneOnly);
 
-    wgRelayRuntime.setStatus(profile.id, { status: "starting_tunnel", message: null });
     try {
       const result = await deployFn({
         profile,
