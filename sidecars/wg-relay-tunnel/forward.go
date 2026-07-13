@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/netip"
+	"sort"
+	"strconv"
 	"sync"
+	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
@@ -22,7 +26,17 @@ type Tunnel struct {
 	closeOnce sync.Once
 }
 
-func StartTunnel(config Config) (*Tunnel, error) {
+const endpointResolutionTimeout = 10 * time.Second
+
+type endpointResolver interface {
+	LookupNetIP(context.Context, string, string) ([]netip.Addr, error)
+}
+
+type ipcSetter interface {
+	IpcSet(string) error
+}
+
+func StartTunnel(ctx context.Context, config Config) (*Tunnel, error) {
 	address, err := netip.ParsePrefix(config.Address)
 	if err != nil {
 		return nil, &tunnelError{code: "device_config_failed"}
@@ -37,20 +51,91 @@ func StartTunnel(config Config) (*Tunnel, error) {
 		device.NewLogger(device.LogLevelSilent, ""),
 	)
 	tunnel := &Tunnel{device: wireGuardDevice, network: network}
-	ipcConfig, err := buildIPCConfig(config)
-	if err != nil {
+	if err := configureDevice(ctx, wireGuardDevice, net.DefaultResolver, config); err != nil {
 		_ = tunnel.Close()
 		return nil, err
-	}
-	if err := wireGuardDevice.IpcSet(ipcConfig); err != nil {
-		_ = tunnel.Close()
-		return nil, &tunnelError{code: "device_config_failed"}
 	}
 	if err := wireGuardDevice.Up(); err != nil {
 		_ = tunnel.Close()
 		return nil, &tunnelError{code: "device_start_failed"}
 	}
 	return tunnel, nil
+}
+
+func configureDevice(ctx context.Context, device ipcSetter, resolver endpointResolver, config Config) error {
+	endpoint, err := resolveEndpointWithTimeout(ctx, resolver, config.Endpoint, endpointResolutionTimeout)
+	if err != nil {
+		return err
+	}
+	config.Endpoint = endpoint
+	ipcConfig, err := buildIPCConfig(config)
+	if err != nil {
+		return err
+	}
+	if err := device.IpcSet(ipcConfig); err != nil {
+		return &tunnelError{code: "device_config_failed"}
+	}
+	return nil
+}
+
+func resolveEndpointWithTimeout(ctx context.Context, resolver endpointResolver, endpoint string, timeout time.Duration) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", endpointResolutionError(ctx, err)
+	}
+	host, portText, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return "", &tunnelError{code: "endpoint_resolution_failed"}
+	}
+	portValue, err := strconv.ParseUint(portText, 10, 16)
+	if err != nil || portValue == 0 {
+		return "", &tunnelError{code: "endpoint_resolution_failed"}
+	}
+	port := uint16(portValue)
+	if address, parseErr := netip.ParseAddr(host); parseErr == nil {
+		return netip.AddrPortFrom(address.Unmap(), port).String(), nil
+	}
+
+	lookupContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	addresses, lookupErr := resolver.LookupNetIP(lookupContext, "ip", host)
+	if lookupErr != nil {
+		return "", endpointResolutionError(lookupContext, lookupErr)
+	}
+	if lookupErr = lookupContext.Err(); lookupErr != nil {
+		return "", endpointResolutionError(lookupContext, lookupErr)
+	}
+
+	unique := make(map[netip.Addr]struct{}, len(addresses))
+	for _, address := range addresses {
+		address = address.Unmap()
+		if address.IsValid() && address.Zone() == "" && (address.Is4() || address.Is6()) {
+			unique[address] = struct{}{}
+		}
+	}
+	addresses = addresses[:0]
+	for address := range unique {
+		addresses = append(addresses, address)
+	}
+	sort.Slice(addresses, func(left, right int) bool {
+		if addresses[left].Is4() != addresses[right].Is4() {
+			return addresses[left].Is4()
+		}
+		return addresses[left].Compare(addresses[right]) < 0
+	})
+	if len(addresses) == 0 {
+		return "", &tunnelError{code: "endpoint_resolution_failed"}
+	}
+	return netip.AddrPortFrom(addresses[0], port).String(), nil
+}
+
+func endpointResolutionError(ctx context.Context, err error) error {
+	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+		return &tunnelError{code: "endpoint_resolution_canceled"}
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+		return &tunnelError{code: "endpoint_resolution_timeout"}
+	}
+	return &tunnelError{code: "endpoint_resolution_failed"}
 }
 
 func buildIPCConfig(config Config) (string, error) {

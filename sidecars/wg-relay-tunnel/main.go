@@ -57,8 +57,11 @@ func realMain() int {
 }
 
 func run(parent context.Context, stdin io.Reader, stdout io.Writer, dependencies runDependencies) int {
-	config, remainingInput, err := readConfigStream(stdin)
+	config, remainingInput, err := readConfigStream(parent, stdin)
 	if err != nil {
+		if parent.Err() != nil {
+			return 0
+		}
 		_ = emitError(stdout, errorCode(err, "invalid_config"))
 		return 1
 	}
@@ -67,7 +70,7 @@ func run(parent context.Context, stdin io.Reader, stdout io.Writer, dependencies
 	}
 	if dependencies.startTunnel == nil {
 		dependencies.startTunnel = func(config Config) (tunnelRuntime, error) {
-			return StartTunnel(config)
+			return StartTunnel(parent, config)
 		}
 	}
 	if dependencies.startForwarder == nil {
@@ -87,6 +90,9 @@ func run(parent context.Context, stdin io.Reader, stdout io.Writer, dependencies
 
 	tunnel, err := dependencies.startTunnel(config)
 	if err != nil {
+		if parent.Err() != nil {
+			return 0
+		}
 		_ = emitError(stdout, errorCode(err, "device_start_failed"))
 		return 1
 	}
@@ -144,7 +150,32 @@ func run(parent context.Context, stdin io.Reader, stdout io.Writer, dependencies
 	}
 }
 
-func readConfigStream(input io.Reader) (Config, io.Reader, error) {
+func readConfigStream(ctx context.Context, input io.Reader) (Config, io.Reader, error) {
+	type readResult struct {
+		config    Config
+		remaining io.Reader
+		err       error
+	}
+	result := make(chan readResult)
+	go func() {
+		config, remaining, err := readConfigStreamUninterruptible(input)
+		select {
+		case result <- readResult{config: config, remaining: remaining, err: err}:
+		case <-ctx.Done():
+		}
+	}()
+	select {
+	case completed := <-result:
+		return completed.config, completed.remaining, completed.err
+	case <-ctx.Done():
+		if closer, ok := input.(io.Closer); ok {
+			_ = closer.Close()
+		}
+		return Config{}, nil, ctx.Err()
+	}
+}
+
+func readConfigStreamUninterruptible(input io.Reader) (Config, io.Reader, error) {
 	limited := &io.LimitedReader{R: input, N: maxConfigBytes + 1}
 	decoder := json.NewDecoder(limited)
 	config, err := decodeConfig(decoder)
