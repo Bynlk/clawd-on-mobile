@@ -8,6 +8,7 @@ const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
+const { spawn } = require("node:child_process");
 
 const RELAY_SERVER_PATH = path.join(__dirname, "..", "relay", "relay-server.js");
 const RELAY_SERVER_SOURCE = fs.readFileSync(RELAY_SERVER_PATH, "utf8");
@@ -51,15 +52,18 @@ async function startRelay(t, overrides = {}) {
     tokenStore: overrides.tokenStore || { current: () => RELAY_TOKEN },
     management: overrides.management || null,
     log() {},
+    now: overrides.now,
     remoteAddressOf: overrides.remoteAddressOf,
     heartbeatIntervalMs: overrides.heartbeatIntervalMs,
     requestDeadlineMs: overrides.requestDeadlineMs,
     closeDeadlineMs: overrides.closeDeadlineMs,
     rateLimitAttempts: overrides.rateLimitAttempts,
+    preAuthRateLimitAttempts: overrides.preAuthRateLimitAttempts,
+    preAuthRateLimitWindowMs: overrides.preAuthRateLimitWindowMs,
   });
   await relay.listen();
   t.after(() => Promise.race([
-    relay.close(),
+    relay.close().catch(() => {}),
     new Promise((resolve) => setTimeout(resolve, 500)),
   ]));
   return relay;
@@ -90,9 +94,73 @@ function request(relay, { method = "GET", pathname, headers = {}, body = "", sig
 }
 
 function loadManagementModules() {
-  const { createDirectoryLock, createRelayTokenStore } = require("../relay/relay-token-store");
+  const { createDirectoryLock, createFlockLock, createRelayTokenStore } = require("../relay/relay-token-store");
   const { createWgManagement } = require("../relay/wg-management");
-  return { createDirectoryLock, createRelayTokenStore, createWgManagement };
+  return { createDirectoryLock, createFlockLock, createRelayTokenStore, createWgManagement };
+}
+
+function createFlockShim(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-flock-shim-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const command = path.join(dir, "flock");
+  fs.writeFileSync(command, `#!/usr/bin/env python3
+import errno, fcntl, os, subprocess, sys, time
+args = sys.argv[1:]
+timeout = 0.0
+if args[:1] == ["-x"]: args = args[1:]
+if args[:1] == ["-w"]:
+    timeout = float(args[1]); args = args[2:]
+lock_path = args[0]
+command = args[1:]
+fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+deadline = time.monotonic() + timeout
+while True:
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        break
+    except OSError as error:
+        if error.errno not in (errno.EACCES, errno.EAGAIN) or time.monotonic() >= deadline:
+            sys.exit(1)
+        time.sleep(0.005)
+result = subprocess.run(command, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, close_fds=True)
+sys.exit(result.returncode)
+`, { mode: 0o755 });
+  return command;
+}
+
+function directoryFsyncFailingFs(directory, failures) {
+  const descriptors = new Map();
+  let remaining = failures;
+  return new Proxy(fs, {
+    get(target, property) {
+      if (property === "openSync") {
+        return (...args) => {
+          const descriptor = target.openSync(...args);
+          descriptors.set(descriptor, path.resolve(String(args[0])));
+          return descriptor;
+        };
+      }
+      if (property === "closeSync") {
+        return (descriptor) => {
+          descriptors.delete(descriptor);
+          return target.closeSync(descriptor);
+        };
+      }
+      if (property === "fsyncSync") {
+        return (descriptor) => {
+          if (descriptors.get(descriptor) === path.resolve(directory) && remaining > 0) {
+            remaining--;
+            const error = new Error("injected parent fsync failure");
+            error.code = "EIO";
+            throw error;
+          }
+          return target.fsyncSync(descriptor);
+        };
+      }
+      const value = target[property];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 function oldWgConfig() {
@@ -133,6 +201,7 @@ function createManagementFixture(t, options = {}) {
       calls.push("restore-token");
       activeToken = previous;
     },
+    reload() { return activeToken; },
   };
   const pairs = {
     closeToken(token, code) {
@@ -363,6 +432,32 @@ describe("Relay strict authentication and single-phone pairing", () => {
     assert.equal(await rejectedUpgrade(ws), 401);
   });
 
+  it("rate-limits repeated wrong Bearers per source before upgrade without consuming valid capacity", async (t) => {
+    let timestamp = 0;
+    const relay = await startRelay(t, {
+      now: () => timestamp,
+      preAuthRateLimitAttempts: 2,
+      preAuthRateLimitWindowMs: 1000,
+      remoteAddressOf: (req) => req.headers["x-test-source"] || "unknown",
+    });
+    const wrong = () => connect(relay, "phone", "22".repeat(32), {
+      headers: { "X-Test-Source": "attacker" },
+    });
+    assert.equal(await rejectedUpgrade(wrong()), 401);
+    assert.equal(await rejectedUpgrade(wrong()), 401);
+    assert.equal(await rejectedUpgrade(wrong()), 429);
+
+    const valid = connect(relay, "phone", RELAY_TOKEN, {
+      headers: { "X-Test-Source": "attacker" },
+    });
+    t.after(() => valid.close());
+    await opened(valid);
+    assert.equal(valid.readyState, WebSocket.OPEN);
+
+    timestamp = 1001;
+    assert.equal(await rejectedUpgrade(wrong()), 401);
+  });
+
   it("rejects path/role with 403 and rate-limits each source independently before upgrade", async (t) => {
     const relay = await startRelay(t, {
       rateLimitAttempts: 2,
@@ -438,6 +533,8 @@ describe("Relay strict authentication and single-phone pairing", () => {
     t.after(() => phone.close());
     await opened(phone);
     let heartbeats = 0;
+    let protocolPings = 0;
+    phone.on("ping", () => { protocolPings++; });
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("heartbeat timeout")), 500);
       phone.on("message", (data) => {
@@ -452,6 +549,7 @@ describe("Relay strict authentication and single-phone pairing", () => {
       });
     });
     assert.equal(phone.readyState, WebSocket.OPEN);
+    assert.equal(protocolPings, 0);
   });
 
   it("forwards payloads through the managed-session envelope without retaining them", async (t) => {
@@ -530,7 +628,12 @@ describe("Relay token store", () => {
       },
     });
 
-    const store = createRelayTokenStore({ envPath, fs: tracedFs });
+    const { createFlockLock } = loadManagementModules();
+    const lock = createFlockLock({
+      lockPath: path.join(dir, "clawd-relay.lock"),
+      flockCommand: createFlockShim(t),
+    });
+    const store = createRelayTokenStore({ envPath, fs: tracedFs, lock });
     await store.rotate(NEXT_RELAY_TOKEN, RELAY_TOKEN);
 
     assert.equal(store.current(), NEXT_RELAY_TOKEN);
@@ -543,6 +646,27 @@ describe("Relay token store", () => {
     assert.equal(fs.statSync(envPath).mode & 0o777, 0o600);
     assert.ok(operations.indexOf("fsyncSync") < operations.indexOf("renameSync"));
     assert.equal(fs.readdirSync(dir).some((name) => name.includes(".tmp")), false);
+  });
+
+  it("reconciles disk and memory after a post-rename parent fsync failure", async (t) => {
+    const { createRelayTokenStore } = loadManagementModules();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-token-uncertain-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const envPath = path.join(dir, "relay.env");
+    fs.writeFileSync(envPath, `RELAY_TOKEN=${RELAY_TOKEN}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\n`, { mode: 0o600 });
+    const store = createRelayTokenStore({
+      envPath,
+      fs: directoryFsyncFailingFs(dir, 1),
+      lock: { async runExclusive(operation) { return operation(); } },
+    });
+
+    await assert.rejects(store.rotate(NEXT_RELAY_TOKEN, RELAY_TOKEN), (error) => {
+      assert.equal(error.commitUncertain, true);
+      return true;
+    });
+    assert.equal(store.current(), NEXT_RELAY_TOKEN);
+    assert.match(fs.readFileSync(envPath, "utf8"), new RegExp(`^RELAY_TOKEN=${NEXT_RELAY_TOKEN}$`, "m"));
+    assert.equal(await store.reload({ lockHeld: true }), NEXT_RELAY_TOKEN);
   });
 
   it("rejects malformed or identical Relay and management tokens", (t) => {
@@ -564,7 +688,12 @@ describe("Relay token store", () => {
     fs.writeFileSync(envPath,
       `RELAY_TOKEN=${RELAY_TOKEN}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\nBIND_ADDR=10.8.0.1\n`,
       { mode: 0o600 });
-    const store = createRelayTokenStore({ envPath });
+    const { createFlockLock } = loadManagementModules();
+    const lock = createFlockLock({
+      lockPath: path.join(dir, "clawd-relay.lock"),
+      flockCommand: createFlockShim(t),
+    });
+    const store = createRelayTokenStore({ envPath, lock });
     fs.writeFileSync(envPath,
       `RELAY_TOKEN=${RELAY_TOKEN}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\nBIND_ADDR=10.8.0.9\nEXTERNAL_FIELD=preserve\n`,
       { mode: 0o600 });
@@ -595,22 +724,60 @@ describe("Relay token store", () => {
     assert.throws(() => createRelayTokenStore({ envPath, expectedUid: fs.statSync(envPath).uid + 1 }), /owner/i);
   });
 
-  it("uses a bounded mkdir lock that cannot be released by a competing owner", async (t) => {
-    const { createDirectoryLock } = loadManagementModules();
-    assert.equal(typeof createDirectoryLock, "function");
+  it("uses a bounded flock lock file and serializes competing owners", async (t) => {
+    const { createFlockLock } = loadManagementModules();
+    assert.equal(typeof createFlockLock, "function");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-lock-"));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     const lockPath = path.join(dir, "clawd-relay.lock");
-    const first = createDirectoryLock({ lockPath, timeoutMs: 25, retryMs: 2 });
-    const second = createDirectoryLock({ lockPath, timeoutMs: 25, retryMs: 2 });
+    const flockCommand = createFlockShim(t);
+    const first = createFlockLock({ lockPath, timeoutMs: 25, flockCommand });
+    const second = createFlockLock({ lockPath, timeoutMs: 25, flockCommand });
     const releaseFirst = await first.acquire();
     await assert.rejects(second.acquire(), (error) => error.code === "lock_timeout");
-    assert.equal(fs.existsSync(lockPath), true);
     await releaseFirst();
     const releaseSecond = await second.acquire();
-    assert.equal(fs.existsSync(lockPath), true);
     await releaseSecond();
-    assert.equal(fs.existsSync(lockPath), false);
+    assert.equal(fs.statSync(lockPath).isFile(), true);
+  });
+
+  it("reacquires the kernel lock after a holding Node child is SIGKILLed", async (t) => {
+    const { createFlockLock } = loadManagementModules();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-lock-kill-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const lockPath = path.join(dir, "clawd-relay.lock");
+    const flockCommand = createFlockShim(t);
+    const modulePath = path.join(__dirname, "..", "relay", "relay-token-store.js");
+    const child = spawn(process.execPath, ["-e", `
+      const { createFlockLock } = require(${JSON.stringify(modulePath)});
+      createFlockLock({
+        lockPath: ${JSON.stringify(lockPath)},
+        flockCommand: ${JSON.stringify(flockCommand)},
+        timeoutMs: 5000,
+      }).acquire().then(() => {
+        process.stdout.write("HELD\\n");
+        setInterval(() => {}, 1000);
+      });
+    `], { stdio: ["ignore", "pipe", "pipe"] });
+    t.after(() => { try { child.kill("SIGKILL"); } catch {} });
+    await new Promise((resolve, reject) => {
+      let output = "";
+      const timer = setTimeout(() => reject(new Error("child did not acquire flock")), 7000);
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+        if (output.includes("HELD\n")) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+      child.once("error", reject);
+    });
+    child.kill("SIGKILL");
+    await new Promise((resolve) => child.once("close", resolve));
+
+    const lock = createFlockLock({ lockPath, flockCommand, timeoutMs: 500 });
+    const release = await lock.acquire();
+    await release();
   });
 });
 
@@ -740,6 +907,36 @@ describe("WireGuard phone rotation transaction", () => {
     });
   }
 
+  for (const [label, fsyncFailures, expectedCode, expectedHealthy] of [
+    ["restores the old token after post-rename uncertainty", 1, "rotation_failed", true],
+    ["stays unhealthy when uncertain-token compensation fsync fails", 2, "rollback_failed", false],
+  ]) {
+    it(label, async (t) => {
+      const { createRelayTokenStore } = loadManagementModules();
+      const envDir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-token-compensation-"));
+      t.after(() => fs.rmSync(envDir, { recursive: true, force: true }));
+      const envPath = path.join(envDir, "relay.env");
+      fs.writeFileSync(envPath,
+        `RELAY_TOKEN=${RELAY_TOKEN}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\nBIND_ADDR=10.8.0.1\n`,
+        { mode: 0o600 });
+      const store = createRelayTokenStore({
+        envPath,
+        fs: directoryFsyncFailingFs(envDir, fsyncFailures),
+        lock: { async runExclusive(operation) { return operation(); } },
+      });
+      const fixture = createManagementFixture(t, { tokenStore: store });
+      await assert.rejects(fixture.management.rotatePhone({
+        remoteAddress: "10.8.0.2",
+        authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+        body: { version: 1 },
+      }), (error) => error.code === expectedCode);
+      assert.equal(store.current(), RELAY_TOKEN);
+      assert.match(fs.readFileSync(envPath, "utf8"), new RegExp(`^RELAY_TOKEN=${RELAY_TOKEN}$`, "m"));
+      assert.equal(fixture.management.isHealthy(), expectedHealthy);
+      assert.equal(fixture.calls.includes("close-old"), false);
+    });
+  }
+
   for (const scenario of ["live rollback failure", "file rollback failure", "verification mismatch"]) {
     it(`marks management unhealthy on ${scenario} and recovers only through status`, async (t) => {
       const fixture = createManagementFixture(t, {
@@ -800,17 +997,23 @@ describe("WireGuard phone rotation transaction", () => {
     assert.equal(fixture.calls.at(-1), "close-old");
   });
 
-  it("times out a hung key generation and unblocks the queued rotation", async (t) => {
+  it("aborts a timed-out key generation and unblocks the queued rotation", async (t) => {
     const { createWgManagement } = loadManagementModules();
     const base = createManagementFixture(t);
     let generations = 0;
     const management = createWgManagement({
       fs,
       command: async (_file, args) => ({ stdout: args.includes("peers") ? `${OLD_PHONE_PUBLIC}\n` : "" }),
-      commandTimeoutMs: 20,
-      generateKeyPair: async () => {
+      commandTimeoutMs: 200,
+      transactionTimeoutMs: 20,
+      generateKeyPair: async ({ signal } = {}) => {
         generations++;
-        if (generations === 1) return new Promise(() => {});
+        if (generations === 1) {
+          return new Promise((resolve, reject) => {
+            if (!signal) return;
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          });
+        }
         return { privateKey: NEW_PHONE_PRIVATE, publicKey: NEW_PHONE_PUBLIC };
       },
       generateRelayToken: () => NEXT_RELAY_TOKEN,
@@ -837,12 +1040,196 @@ describe("WireGuard phone rotation transaction", () => {
       new Promise((_, reject) => setTimeout(() => reject(new Error("test_watchdog_timeout")), 250)),
     ]), (error) => {
       assert.notEqual(error.message, "test_watchdog_timeout");
-      assert.match(error.message, /rotation_failed/);
+      assert.equal(error.code, "transaction_timeout");
       return true;
     });
     const result = await second;
     assert.equal(result.relayToken, NEXT_RELAY_TOKEN);
     assert.equal(generations, 2);
+  });
+
+  it("waits for compensation and verification before returning transaction_timeout", async (t) => {
+    const { createWgManagement } = loadManagementModules();
+    const base = createManagementFixture(t);
+    let commandCalls = 0;
+    let rollbackComplete = false;
+    const management = createWgManagement({
+      fs,
+      command: async (_file, _args, { signal } = {}) => {
+        commandCalls++;
+        if (commandCalls === 1) {
+          return new Promise((resolve, reject) => {
+            if (!signal) return;
+            signal.addEventListener("abort", () => {
+              setTimeout(() => reject(signal.reason), 20);
+            }, { once: true });
+          });
+        }
+        rollbackComplete = true;
+        return { stdout: "" };
+      },
+      commandTimeoutMs: 500,
+      transactionTimeoutMs: 20,
+      generateKeyPair: async () => ({ privateKey: NEW_PHONE_PRIVATE, publicKey: NEW_PHONE_PUBLIC }),
+      generateRelayToken: () => NEXT_RELAY_TOKEN,
+      tokenStore: base.tokenStore,
+      pairs: base.pairs,
+      lock: { async runExclusive(operation) { return operation(); } },
+      verifyLivePeer: async () => rollbackComplete,
+      paths: base.paths,
+      wgInterface: "clawd",
+      pcIp: "10.8.0.2",
+      phoneIp: "10.8.0.3",
+      subnet: "10.8.0.0/24",
+      endpoint: "203.0.113.10:51820",
+    });
+    const started = Date.now();
+    await assert.rejects(management.rotatePhone({
+      remoteAddress: "10.8.0.2",
+      authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      body: { version: 1 },
+    }), (error) => error.code === "transaction_timeout");
+    assert.ok(Date.now() - started >= 35);
+    assert.equal(rollbackComplete, true);
+    assert.equal(base.currentToken(), RELAY_TOKEN);
+    for (const [file, contents] of Object.entries(base.oldFiles)) {
+      assert.equal(fs.readFileSync(file, "utf8"), contents);
+    }
+  });
+
+  it("verifies one exact restored old peer with PHONE_IP/32 and no new peer", async (t) => {
+    const { createWgManagement } = loadManagementModules();
+    for (const [name, allowedIpsOutput, expectedCode] of [
+      ["exact", `${OLD_PHONE_PUBLIC}\t10.8.0.3/32\n`, "rotation_failed"],
+      ["wrong allowed IP", `${OLD_PHONE_PUBLIC}\t10.8.0.30/32\n`, "rollback_failed"],
+      ["new peer remains", `${OLD_PHONE_PUBLIC}\t10.8.0.3/32\n${NEW_PHONE_PUBLIC}\t10.8.0.3/32\n`, "rollback_failed"],
+      ["duplicate old peer", `${OLD_PHONE_PUBLIC}\t10.8.0.30/32\n${OLD_PHONE_PUBLIC}\t10.8.0.3/32\n`, "rollback_failed"],
+    ]) {
+      await t.test(name, async (t) => {
+        const base = createManagementFixture(t, { failAt: "token" });
+        let commandCalls = 0;
+        const management = createWgManagement({
+          fs,
+          command: async (_file, args) => {
+            commandCalls++;
+            if (commandCalls === 3) {
+              assert.deepEqual(args, ["show", "clawd", "allowed-ips"]);
+              return { stdout: allowedIpsOutput };
+            }
+            return { stdout: "" };
+          },
+          generateKeyPair: async () => ({ privateKey: NEW_PHONE_PRIVATE, publicKey: NEW_PHONE_PUBLIC }),
+          generateRelayToken: () => NEXT_RELAY_TOKEN,
+          tokenStore: base.tokenStore,
+          pairs: base.pairs,
+          lock: { async runExclusive(operation) { return operation(); } },
+          paths: base.paths,
+          wgInterface: "clawd",
+          pcIp: "10.8.0.2",
+          phoneIp: "10.8.0.3",
+          subnet: "10.8.0.0/24",
+          endpoint: "203.0.113.10:51820",
+        });
+        await assert.rejects(management.rotatePhone({
+          remoteAddress: "10.8.0.2",
+          authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+          body: { version: 1 },
+        }), (error) => error.code === expectedCode);
+        assert.equal(management.isHealthy(), expectedCode !== "rollback_failed");
+      });
+    }
+  });
+
+  it("shutdown aborts and drains an active rotation so no post-close commit occurs", async (t) => {
+    const { createWgManagement } = loadManagementModules();
+    const base = createManagementFixture(t);
+    const stageStarted = deferred();
+    const releaseStage = deferred();
+    const management = createWgManagement({
+      fs,
+      command: async () => ({ stdout: "" }),
+      commandTimeoutMs: 500,
+      transactionTimeoutMs: 1000,
+      generateKeyPair: async ({ signal } = {}) => {
+        stageStarted.resolve();
+        return new Promise((resolve, reject) => {
+          releaseStage.promise.then(() => resolve({
+            privateKey: NEW_PHONE_PRIVATE,
+            publicKey: NEW_PHONE_PUBLIC,
+          }));
+          if (signal) signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      },
+      generateRelayToken: () => NEXT_RELAY_TOKEN,
+      tokenStore: base.tokenStore,
+      pairs: base.pairs,
+      lock: { async runExclusive(operation) { return operation(); } },
+      verifyLivePeer: async () => true,
+      paths: base.paths,
+      wgInterface: "clawd",
+      pcIp: "10.8.0.2",
+      phoneIp: "10.8.0.3",
+      subnet: "10.8.0.0/24",
+      endpoint: "203.0.113.10:51820",
+    });
+    const relay = await startRelay(t, { management, closeDeadlineMs: 200, requestDeadlineMs: 1500 });
+    const active = management.rotatePhone({
+      remoteAddress: "10.8.0.2",
+      authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      body: { version: 1 },
+    });
+    await stageStarted.promise;
+    await relay.close();
+    releaseStage.resolve();
+    await assert.rejects(active, (error) => error.code === "shutdown_in_progress");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(base.currentToken(), RELAY_TOKEN);
+    assert.equal(base.calls.includes("close-old"), false);
+    await assert.rejects(management.rotatePhone({
+      remoteAddress: "10.8.0.2",
+      authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      body: { version: 1 },
+    }), (error) => error.code === "shutdown_in_progress");
+  });
+
+  it("rejects close with shutdown_failed when an injected stage ignores cancellation", async (t) => {
+    const { createWgManagement } = loadManagementModules();
+    const base = createManagementFixture(t);
+    const stageStarted = deferred();
+    const management = createWgManagement({
+      fs,
+      command: async () => ({ stdout: "" }),
+      commandTimeoutMs: 1000,
+      transactionTimeoutMs: 5000,
+      generateKeyPair: async () => {
+        stageStarted.resolve();
+        return new Promise(() => {});
+      },
+      generateRelayToken: () => NEXT_RELAY_TOKEN,
+      tokenStore: base.tokenStore,
+      pairs: base.pairs,
+      lock: { async runExclusive(operation) { return operation(); } },
+      verifyLivePeer: async () => true,
+      paths: base.paths,
+      wgInterface: "clawd",
+      pcIp: "10.8.0.2",
+      phoneIp: "10.8.0.3",
+      subnet: "10.8.0.0/24",
+      endpoint: "203.0.113.10:51820",
+    });
+    const relay = await startRelay(t, { management, closeDeadlineMs: 20, requestDeadlineMs: 6000 });
+    void management.rotatePhone({
+      remoteAddress: "10.8.0.2",
+      authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      body: { version: 1 },
+    }).catch(() => {});
+    await stageStarted.promise;
+    await assert.rejects(Promise.race([
+      relay.close(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("close_watchdog_timeout")), 250)),
+    ]), (error) => error.code === "shutdown_failed");
+    assert.equal(management.isHealthy(), false);
+    assert.equal(base.currentToken(), RELAY_TOKEN);
   });
 });
 
@@ -873,11 +1260,11 @@ describe("Relay management HTTP API", () => {
     assert.equal(status.body.error, "rollback_failed");
   });
 
-  it("times out a partial JSON body and a hung management handler", async (t) => {
+  it("times out a partial JSON body", async (t) => {
     const relay = await startRelay(t, {
       management: {
-        status: () => new Promise(() => {}),
-        rotatePhone: () => new Promise(() => {}),
+        status: async () => ({ version: 1, status: "ok" }),
+        rotatePhone: async () => ({ version: 1 }),
       },
       remoteAddressOf: () => "10.8.0.2",
       requestDeadlineMs: 20,
@@ -904,15 +1291,62 @@ describe("Relay management HTTP API", () => {
       partial,
       new Promise((_, reject) => setTimeout(() => reject(new Error("body_watchdog_timeout")), 250)),
     ]), 408);
-    const controller = new AbortController();
-    t.after(() => controller.abort());
-    const hung = await Promise.race([request(relay, {
-      pathname: "/api/manage/status",
-      headers: { Authorization: `Bearer ${MANAGEMENT_TOKEN}` },
-      signal: controller.signal,
-    }), new Promise((_, reject) => setTimeout(() => reject(new Error("request_watchdog_timeout")), 250))]);
-    assert.equal(hung.statusCode, 504);
-    assert.equal(hung.body.error, "request_timeout");
+  });
+
+  it("returns transaction_timeout only after delayed rollback and old-token verification", async (t) => {
+    const { createWgManagement } = loadManagementModules();
+    const base = createManagementFixture(t);
+    let commandCalls = 0;
+    let rollbackComplete = false;
+    const management = createWgManagement({
+      fs,
+      command: async (_file, _args, { signal } = {}) => {
+        commandCalls++;
+        if (commandCalls === 1) {
+          return new Promise((resolve, reject) => {
+            signal.addEventListener("abort", () => {
+              setTimeout(() => reject(signal.reason), 25);
+            }, { once: true });
+          });
+        }
+        rollbackComplete = true;
+        return { stdout: "" };
+      },
+      commandTimeoutMs: 500,
+      transactionTimeoutMs: 20,
+      generateKeyPair: async () => ({ privateKey: NEW_PHONE_PRIVATE, publicKey: NEW_PHONE_PUBLIC }),
+      generateRelayToken: () => NEXT_RELAY_TOKEN,
+      tokenStore: base.tokenStore,
+      pairs: base.pairs,
+      lock: { async runExclusive(operation) { return operation(); } },
+      verifyLivePeer: async () => rollbackComplete,
+      paths: base.paths,
+      wgInterface: "clawd",
+      pcIp: "10.8.0.2",
+      phoneIp: "10.8.0.3",
+      subnet: "10.8.0.0/24",
+      endpoint: "203.0.113.10:51820",
+    });
+    const relay = await startRelay(t, {
+      management,
+      remoteAddressOf: () => "10.8.0.2",
+      requestDeadlineMs: 200,
+    });
+    const started = Date.now();
+    const response = await request(relay, {
+      method: "POST",
+      pathname: "/api/manage/phone/rotate",
+      headers: {
+        Authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ version: 1 }),
+    });
+    assert.equal(response.statusCode, 504);
+    assert.equal(response.body.error, "transaction_timeout");
+    assert.ok(Date.now() - started >= 40);
+    assert.equal(rollbackComplete, true);
+    assert.equal(base.currentToken(), RELAY_TOKEN);
   });
 
   it("forces shutdown of lingering HTTP sockets within the close deadline", async (t) => {
@@ -922,12 +1356,18 @@ describe("Relay management HTTP API", () => {
       socket.once("connect", resolve);
       socket.once("error", reject);
     });
+    socket.resume();
+    socket.write(
+      "POST /api/manage/phone/rotate HTTP/1.1\r\n" +
+      "Host: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 20\r\n\r\n{"
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
     t.after(() => socket.destroy());
     const socketClosed = new Promise((resolve) => socket.once("close", resolve));
-    await Promise.race([
+    await assert.rejects(Promise.race([
       relay.close(),
       new Promise((_, reject) => setTimeout(() => reject(new Error("close_watchdog_timeout")), 250)),
-    ]);
+    ]), (error) => error.code === "shutdown_failed");
     await Promise.race([
       socketClosed,
       new Promise((_, reject) => setTimeout(() => reject(new Error("socket_close_timeout")), 250)),

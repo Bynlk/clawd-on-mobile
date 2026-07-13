@@ -7,6 +7,16 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { EventEmitter } = require("events");
+const http = require("node:http");
+const WebSocket = require("ws");
+
+function exactJsonBytes(size) {
+  const prefix = '{"type":"network_size_probe","padding":"';
+  const suffix = '"}';
+  const value = `${prefix}${"x".repeat(size - Buffer.byteLength(prefix) - Buffer.byteLength(suffix))}${suffix}`;
+  assert.equal(Buffer.byteLength(value, "utf8"), size);
+  return value;
+}
 
 // ── deriveMobileChipFields ──
 
@@ -74,6 +84,54 @@ describe("deriveMobileChipFields", () => {
 // ── initMobileServer ──
 
 describe("initMobileServer", () => {
+  it("accepts a 65536-byte inner payload through the real relay WSS and rejects 65537", async (t) => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "mobile-network-limit-"));
+    const integration = initMobileServer({ getDataDir: () => dataDir }, {
+      createHttpServer: http.createServer.bind(http),
+    });
+    integration.startMobileServer({}, { port: 0, bindHost: "127.0.0.1" });
+    t.after(() => {
+      try { integration.getMobileWS().close(); } catch {}
+      integration.stopMobileServer();
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    for (let attempt = 0; attempt < 100 && !integration.getMobileServerPort(); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const port = integration.getMobileServerPort();
+    assert.ok(port > 0);
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/mobile/ws?role=pc&token=${integration.getMobileToken()}`);
+    await new Promise((resolve, reject) => {
+      socket.once("open", resolve);
+      socket.once("error", reject);
+    });
+
+    const delivered = new Promise((resolve) => {
+      integration.getMobileWS().onClientMessage((_ws, message) => {
+        if (message.type === "network_size_probe") resolve(message);
+      });
+    });
+    socket.send(JSON.stringify({
+      type: "relay_forward",
+      sourceClientId: "network-phone",
+      payload: exactJsonBytes(65536),
+    }));
+    const message = await Promise.race([
+      delivered,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("65536-byte inner payload was not delivered")), 500)),
+    ]);
+    assert.equal(message.type, "network_size_probe");
+
+    const closed = new Promise((resolve) => socket.once("close", (code) => resolve(code)));
+    socket.send(JSON.stringify({
+      type: "relay_forward",
+      sourceClientId: "network-phone",
+      payload: exactJsonBytes(65537),
+    }));
+    assert.equal(await closed, 1009);
+  });
+
   it("returns expected function signatures", () => {
     const ctx = { getDataDir: () => "/tmp" };
     const result = initMobileServer(ctx, {

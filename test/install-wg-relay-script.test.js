@@ -62,7 +62,10 @@ describe("persistent WireGuard Relay installer source contracts", () => {
     assert.match(SOURCE, /65535/);
     assert.match(SOURCE, /FORCE_RESET_ALL[^\n]*0[^\n]*1/);
     assert.match(SOURCE, /clawd-relay\.lock/);
-    assert.match(SOURCE, /mkdir[^\n]*LOCK_DIR/);
+    assert.match(SOURCE, /command -v flock[^\n]*die/);
+    assert.match(SOURCE, /exec 9>[^\n]*LOCK_FILE/);
+    assert.match(SOURCE, /flock -x -w[^\n]*9/);
+    assert.doesNotMatch(SOURCE, /mkdir[^\n]*LOCK_(?:DIR|FILE)/);
     assert.ok(SOURCE.indexOf("\nacquire_lock\ncheckpoint lock-acquired") < SOURCE.indexOf("mktemp -d \"${VAR_TMP_FS}"));
   });
 
@@ -165,6 +168,24 @@ if [ "\${1:-}" = -c ] && [ "\${2:-}" = %u:%a ]; then
   exit 0
 fi
 exec /usr/bin/stat "$@"
+`);
+  writeExecutable(path.join(binDir, "flock"), `#!/usr/bin/env python3
+import errno, fcntl, sys, time
+args = sys.argv[1:]
+timeout = 0.0
+if args[:1] == ["-x"]: args = args[1:]
+if args[:1] == ["-w"]:
+    timeout = float(args[1]); args = args[2:]
+fd = int(args[0])
+deadline = time.monotonic() + timeout
+while True:
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        sys.exit(0)
+    except OSError as error:
+        if error.errno not in (errno.EACCES, errno.EAGAIN) or time.monotonic() >= deadline:
+            sys.exit(1)
+        time.sleep(0.005)
 `);
   writeExecutable(path.join(binDir, "mkdir"), `${prelude}
 set +e
@@ -469,7 +490,7 @@ export RELAY_ENV_PATH="$env_file" RELAY_LOCK_PATH="$CLAWD_INSTALL_ROOT/run/lock/
 export WG_CONFIG_PATH="$CLAWD_INSTALL_ROOT/etc/wireguard/clawd.conf"
 export WG_KEY_DIR="$CLAWD_INSTALL_ROOT/etc/wireguard/clawd"
 export PHONE_PRIVATE_KEY_PATH="$WG_KEY_DIR/phone.key" PHONE_PUBLIC_KEY_PATH="$WG_KEY_DIR/phone.pub" SERVER_PUBLIC_KEY_PATH="$WG_KEY_DIR/server.pub"
-"$unit_node" "$unit_app" >"$STATE_DIR/relay.log" 2>&1 &
+"$unit_node" "$unit_app" 9>&- >"$STATE_DIR/relay.log" 2>&1 &
 printf '%s' "$!" > "$pid_file"
 "$CLAWD_INSTALL_TEST_NODE_SOURCE" "${smokeJs}" "$port" "$RELAY_TOKEN" "$current/app/node_modules/ws"
 printf 'health+strict-bearer\n' > "$STATE_DIR/relay-smoke-ok"
@@ -830,23 +851,34 @@ exit 0
     }
   });
 
-  it("fails on shared-lock contention without stealing the owner or mutating installation state", (t) => {
+  it("fails on flock contention, then succeeds immediately after the holder is killed", async (t) => {
     const fixture = createExecutableFixture(t);
     const lock = path.join(fixture.root, "run", "lock", "clawd-relay.lock");
-    fs.mkdirSync(lock);
-    fs.writeFileSync(path.join(lock, "owner"), "external-owner\n", { mode: 0o600 });
+    const holder = childProcess.spawn("/bin/bash", ["-c", `exec 9>"$1"; flock -x -w 5 9; printf 'HELD\\n'; while :; do sleep 1; done`, "_", lock], {
+      env: fixture.environment,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    t.after(() => { try { holder.kill("SIGKILL"); } catch {} });
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("holder did not acquire flock")), 7000);
+      holder.stdout.once("data", () => { clearTimeout(timer); resolve(); });
+    });
     const result = fixture.run({ CLAWD_INSTALL_LOCK_TIMEOUT_MS: "50" });
     assert.notEqual(result.status, 0);
-    assert.equal(fs.readFileSync(path.join(lock, "owner"), "utf8"), "external-owner\n");
+    assert.equal(fs.statSync(lock).isFile(), true);
     assert.equal(fs.existsSync(path.join(fixture.root, "etc")), false);
     assert.equal(fs.existsSync(path.join(fixture.root, "opt")), false);
+    holder.kill("SIGKILL");
+    await new Promise((resolve) => holder.once("close", resolve));
+    const retried = fixture.run({ CLAWD_INSTALL_LOCK_TIMEOUT_MS: "500" });
+    assert.equal(retried.status, 0, retried.stderr);
   });
 
   it("cleans its shared lock and temporary state after an early injected failure", (t) => {
     const fixture = createExecutableFixture(t);
     const result = fixture.run({ CLAWD_INSTALL_FAIL_STAGE: "lock-acquired" });
     assert.notEqual(result.status, 0);
-    assert.equal(fs.existsSync(path.join(fixture.root, "run", "lock", "clawd-relay.lock")), false);
+    assert.equal(fs.statSync(path.join(fixture.root, "run", "lock", "clawd-relay.lock")).isFile(), true);
     assert.equal(fs.existsSync(path.join(fixture.root, "etc")), false);
     assert.equal(fs.existsSync(path.join(fixture.root, "opt")), false);
   });
@@ -866,7 +898,7 @@ exit 0
     child.kill("SIGTERM");
     const code = await new Promise((resolve) => child.once("close", resolve));
     assert.equal(code, 143);
-    assert.equal(fs.existsSync(path.join(fixture.root, "run", "lock", "clawd-relay.lock")), false);
+    assert.equal(fs.statSync(path.join(fixture.root, "run", "lock", "clawd-relay.lock")).isFile(), true);
     assert.equal(fs.existsSync(path.join(fixture.root, "etc")), false);
     assert.equal(fs.existsSync(path.join(fixture.root, "opt")), false);
   });

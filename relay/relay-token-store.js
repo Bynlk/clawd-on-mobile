@@ -2,6 +2,7 @@
 
 const nodeFs = require("node:fs");
 const path = require("node:path");
+const { spawn } = require("node:child_process");
 
 const TOKEN_PATTERN = /^[0-9a-fA-F]{64}$/;
 let temporarySequence = 0;
@@ -12,56 +13,89 @@ function codedError(code, message = code) {
   return error;
 }
 
-function createDirectoryLock({
+function createFlockLock({
   fs = nodeFs,
   lockPath = "/run/lock/clawd-relay.lock",
   timeoutMs = 5000,
-  retryMs = 25,
-  now = Date.now,
-  sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay)),
-  ownerId = `${process.pid}-${Math.random().toString(16).slice(2)}`,
+  flockCommand = "flock",
+  spawnProcess = spawn,
 } = {}) {
-  if (!Number.isFinite(timeoutMs) || timeoutMs < 0 || !Number.isFinite(retryMs) || retryMs <= 0) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0 || typeof flockCommand !== "string" || !flockCommand) {
     throw new Error("invalid lock timing");
   }
-  const ownerPath = path.join(lockPath, "owner");
+  const descriptor = fs.openSync(lockPath, "a", 0o600);
+  fs.closeSync(descriptor);
+  fs.chmodSync(lockPath, 0o600);
 
-  async function acquire() {
-    const deadline = now() + timeoutMs;
-    for (;;) {
-      try {
-        fs.mkdirSync(lockPath, { mode: 0o700 });
-        try {
-          fs.writeFileSync(ownerPath, `${ownerId}\n`, { mode: 0o600, flag: "wx" });
-        } catch (error) {
-          try { fs.rmSync(lockPath, { recursive: true, force: true }); } catch {}
-          throw error;
+  async function acquire({ signal } = {}) {
+    if (signal && signal.aborted) throw signal.reason || codedError("lock_aborted");
+    const seconds = Math.max(0, timeoutMs / 1000).toFixed(3);
+    const child = spawnProcess(flockCommand, [
+      "-x", "-w", seconds, lockPath,
+      "sh", "-c", 'printf "LOCKED\\n"; cat >/dev/null',
+    ], { stdio: ["pipe", "pipe", "pipe"] });
+    let acquired = false;
+    let settled = false;
+    let stdout = "";
+    let stderrBytes = 0;
+    let resolveClose;
+    const closed = new Promise((resolve) => { resolveClose = resolve; });
+
+    return new Promise((resolve, reject) => {
+      const onAbort = () => fail(signal.reason || codedError("lock_aborted"));
+      if (signal) signal.addEventListener("abort", onAbort, { once: true });
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        if (signal) signal.removeEventListener("abort", onAbort);
+        try { child.kill("SIGKILL"); } catch {}
+        reject(error);
+      };
+      child.once("error", () => fail(codedError("lock_unavailable")));
+      child.stderr.on("data", (chunk) => {
+        stderrBytes += chunk.length;
+        if (stderrBytes > 4096) fail(codedError("lock_failed"));
+      });
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        if (acquired || settled) return;
+        stdout += chunk;
+        if (Buffer.byteLength(stdout, "utf8") > 64) {
+          fail(codedError("lock_failed"));
+          return;
         }
+        if (!stdout.includes("\n")) return;
+        if (stdout !== "LOCKED\n") {
+          fail(codedError("lock_failed"));
+          return;
+        }
+        acquired = true;
+        settled = true;
+        if (signal) signal.removeEventListener("abort", onAbort);
         let released = false;
-        return async function release() {
-          if (released) return;
+        resolve(async function release() {
+          if (released) return closed;
           released = true;
-          let currentOwner;
-          try { currentOwner = fs.readFileSync(ownerPath, "utf8").trim(); } catch { return; }
-          if (currentOwner !== ownerId) return;
-          try { fs.unlinkSync(ownerPath); } catch { return; }
-          try { fs.rmdirSync(lockPath); } catch {}
-        };
-      } catch (error) {
-        if (!error || error.code !== "EEXIST") throw error;
-        if (now() >= deadline) throw codedError("lock_timeout");
-        await sleep(Math.min(retryMs, Math.max(0, deadline - now())));
-      }
-    }
+          try { child.stdin.end(); } catch {}
+          return closed;
+        });
+      });
+      child.once("close", (code) => {
+        resolveClose();
+        if (!acquired) fail(codedError(code === 1 ? "lock_timeout" : "lock_failed"));
+      });
+    });
   }
 
-  async function runExclusive(operation) {
-    const release = await acquire();
+  async function runExclusive(operation, { signal } = {}) {
+    const release = await acquire({ signal });
     try { return await operation(); } finally { await release(); }
   }
 
   return Object.freeze({ acquire, runExclusive, lockPath });
 }
+
+const createDirectoryLock = createFlockLock;
 
 function normalizeToken(name, value) {
   if (typeof value !== "string" || !TOKEN_PATTERN.test(value)) {
@@ -108,6 +142,7 @@ function atomicWrite(fs, destination, contents) {
     `.${path.basename(destination)}.tmp-${process.pid}-${temporarySequence++}`
   );
   let descriptor = null;
+  let renamed = false;
   try {
     descriptor = fs.openSync(temporary, "wx", 0o600);
     fs.writeFileSync(descriptor, contents, "utf8");
@@ -116,6 +151,7 @@ function atomicWrite(fs, destination, contents) {
     fs.closeSync(descriptor);
     descriptor = null;
     fs.renameSync(temporary, destination);
+    renamed = true;
     fs.chmodSync(destination, 0o600);
     if (typeof fs.fsyncSync === "function") {
       let directoryDescriptor = null;
@@ -127,6 +163,7 @@ function atomicWrite(fs, destination, contents) {
       }
     }
   } catch (error) {
+    if (renamed) error.commitUncertain = true;
     if (descriptor !== null) {
       try { fs.closeSync(descriptor); } catch {}
     }
@@ -173,7 +210,22 @@ function createRelayTokenStore({
   if (relayToken.toLowerCase() === managementToken.toLowerCase()) {
     throw new Error("Relay and management tokens must be distinct");
   }
-  const tokenLock = lock || createDirectoryLock({ fs, lockPath });
+  const tokenLock = lock || createFlockLock({ fs, lockPath });
+
+  function reconcileFromDisk() {
+    assertSecureEnvironmentFile(fs, envPath, expectedUid);
+    const freshContents = fs.readFileSync(envPath, "utf8");
+    const fresh = parseEnvironment(freshContents);
+    const diskRelayToken = normalizeToken("RELAY_TOKEN", fresh.values.RELAY_TOKEN);
+    const diskManagementToken = normalizeToken("MANAGEMENT_TOKEN", fresh.values.MANAGEMENT_TOKEN);
+    if (diskManagementToken !== managementToken) throw codedError("management_token_conflict");
+    if (diskRelayToken.toLowerCase() === diskManagementToken.toLowerCase()) {
+      throw new Error("Relay and management tokens must be distinct");
+    }
+    parsed = fresh;
+    relayToken = diskRelayToken;
+    return relayToken;
+  }
 
   async function rotate(nextToken, expectedRelayToken = relayToken, { lockHeld = false } = {}) {
     const normalized = normalizeToken("RELAY_TOKEN", nextToken);
@@ -188,7 +240,16 @@ function createRelayTokenStore({
       if (diskManagementToken !== managementToken) throw codedError("management_token_conflict");
       if (diskRelayToken !== expectedRelayToken) throw codedError("stale_token_conflict");
       const nextContents = renderEnvironment(fresh, normalized);
-      atomicWrite(fs, envPath, nextContents);
+      try {
+        atomicWrite(fs, envPath, nextContents);
+      } catch (error) {
+        if (error.commitUncertain) {
+          try { reconcileFromDisk(); } catch (reconciliationError) {
+            error.reconciliationError = reconciliationError;
+          }
+        }
+        throw error;
+      }
       parsed = parseEnvironment(nextContents);
       relayToken = normalized;
       return relayToken;
@@ -196,17 +257,23 @@ function createRelayTokenStore({
     return lockHeld ? commit() : tokenLock.runExclusive(commit);
   }
 
+  async function reload({ lockHeld = false } = {}) {
+    return lockHeld ? reconcileFromDisk() : tokenLock.runExclusive(reconcileFromDisk);
+  }
+
   return Object.freeze({
     current: () => relayToken,
     managementToken: () => managementToken,
     rotate,
     restore: rotate,
+    reload,
     lock: tokenLock,
   });
 }
 
 module.exports = {
   createDirectoryLock,
+  createFlockLock,
   createRelayTokenStore,
   normalizeToken,
   parseEnvironment,

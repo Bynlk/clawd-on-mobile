@@ -10,12 +10,13 @@ const {
   RELAY_ENVELOPE_MAX,
   RelayPairRegistry,
 } = require("./pair-registry");
-const { createDirectoryLock, createRelayTokenStore } = require("./relay-token-store");
+const { createFlockLock, createRelayTokenStore } = require("./relay-token-store");
 const { createWgManagement } = require("./wg-management");
 
 const MAX_WS_PAYLOAD = RELAY_ENVELOPE_MAX;
 const RATE_LIMIT_ATTEMPTS = 120;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const PREAUTH_MAX_SOURCES = 4096;
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const MAX_MANAGEMENT_BODY = 4096;
 
@@ -48,6 +49,8 @@ function createRelayServer({
   requestDeadlineMs = 5000,
   closeDeadlineMs = 2000,
   rateLimitAttempts = RATE_LIMIT_ATTEMPTS,
+  preAuthRateLimitAttempts = RATE_LIMIT_ATTEMPTS,
+  preAuthRateLimitWindowMs = RATE_LIMIT_WINDOW_MS,
 } = {}) {
   if (typeof bindAddr !== "string" || !bindAddr) throw new Error("bindAddr is required");
   if (!Number.isInteger(Number(port)) || Number(port) < 0 || Number(port) > 65535) {
@@ -65,31 +68,22 @@ function createRelayServer({
     throw new Error("request and close deadlines must be positive");
   }
   if (!Number.isInteger(rateLimitAttempts) || rateLimitAttempts <= 0) throw new Error("invalid rate limit");
+  if (!Number.isInteger(preAuthRateLimitAttempts) || preAuthRateLimitAttempts <= 0 ||
+      !Number.isFinite(preAuthRateLimitWindowMs) || preAuthRateLimitWindowMs <= 0) {
+    throw new Error("invalid pre-auth rate limit");
+  }
 
   const pairs = new RelayPairRegistry();
   const startedAt = now();
   const attemptsBySource = new Map();
+  const preAuthAttemptsBySource = new Map();
   let heartbeatTimer = null;
   let listening = false;
   let closing = null;
   const sockets = new Set();
 
-  function deadline(promise, statusCode, code) {
-    let timer;
-    return Promise.race([
-      Promise.resolve(promise),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          const error = new Error(code);
-          error.statusCode = statusCode;
-          error.code = code;
-          reject(error);
-        }, requestDeadlineMs);
-      }),
-    ]).finally(() => clearTimeout(timer));
-  }
-
   function json(res, statusCode, body) {
+    if (res.destroyed || res.writableEnded) return;
     const encoded = JSON.stringify(body);
     res.writeHead(statusCode, {
       "Content-Type": "application/json; charset=utf-8",
@@ -110,10 +104,10 @@ function createRelayServer({
       return;
     }
     if (management && req.method === "GET" && url.pathname === "/api/manage/status") {
-      deadline(Promise.resolve().then(() => management.status({
+      Promise.resolve().then(() => management.status({
         remoteAddress: remoteAddressOf(req),
         authorization: req.headers.authorization,
-      })), 504, "request_timeout").then((result) => json(res, 200, result), (error) => {
+      })).then((result) => json(res, 200, result), (error) => {
         json(res, Number.isInteger(error.statusCode) ? error.statusCode : 500, {
           error: error.code || "management_failed",
         });
@@ -127,11 +121,11 @@ function createRelayServer({
         req.resume();
         return;
       }
-      readJsonBody(req).then((body) => deadline(management.rotatePhone({
+      readJsonBody(req).then((body) => management.rotatePhone({
         remoteAddress: remoteAddressOf(req),
         authorization: req.headers.authorization,
         body,
-      }), 504, "request_timeout")).then((result) => json(res, 200, result), (error) => {
+      })).then((result) => json(res, 200, result), (error) => {
         json(res, Number.isInteger(error.statusCode) ? error.statusCode : 500, {
           error: error.code || (error.message === "request_too_large" ? "request_too_large" : "management_failed"),
         });
@@ -169,6 +163,14 @@ function createRelayServer({
         clearTimeout(timer);
         req.off("data", onData);
         req.off("end", onEnd);
+        req.off("error", onError);
+        req.off("aborted", onError);
+      };
+      const onError = (cause) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(cause instanceof Error ? cause : new Error("request_aborted"));
       };
       const onData = (chunk) => {
         if (settled) return;
@@ -199,7 +201,8 @@ function createRelayServer({
       };
       req.on("data", onData);
       req.on("end", onEnd);
-      req.once("error", reject);
+      req.once("error", onError);
+      req.once("aborted", onError);
     });
   }
 
@@ -219,6 +222,24 @@ function createRelayServer({
     }
     entry.attempts++;
     return entry.attempts <= rateLimitAttempts;
+  }
+
+  function withinPreAuthLimit(source) {
+    const timestamp = now();
+    for (const [key, entry] of preAuthAttemptsBySource) {
+      if (timestamp >= entry.resetAt) preAuthAttemptsBySource.delete(key);
+    }
+    if (!preAuthAttemptsBySource.has(source) && preAuthAttemptsBySource.size >= PREAUTH_MAX_SOURCES) {
+      const oldest = preAuthAttemptsBySource.keys().next().value;
+      preAuthAttemptsBySource.delete(oldest);
+    }
+    let entry = preAuthAttemptsBySource.get(source);
+    if (!entry) {
+      entry = { attempts: 0, resetAt: timestamp + preAuthRateLimitWindowMs };
+      preAuthAttemptsBySource.set(source, entry);
+    }
+    entry.attempts++;
+    return entry.attempts <= preAuthRateLimitAttempts;
   }
 
   function rejectUpgrade(socket, statusCode, code) {
@@ -251,11 +272,12 @@ function createRelayServer({
     }
     const submittedToken = bearerToken(req.headers.authorization);
     const currentToken = tokenStore.current();
+    const source = remoteAddressOf(req);
     if (!timingSafeStringEqual(submittedToken, currentToken)) {
-      rejectUpgrade(socket, 401, "authentication_failed");
+      if (!withinPreAuthLimit(source)) rejectUpgrade(socket, 429, "rate_limited");
+      else rejectUpgrade(socket, 401, "authentication_failed");
       return;
     }
-    const source = remoteAddressOf(req);
     if (!withinConnectionLimit(source)) {
       rejectUpgrade(socket, 429, "rate_limited");
       return;
@@ -280,8 +302,6 @@ function createRelayServer({
       log("connection_rejected", { reason: "invalid_role", remoteAddress: remoteAddressOf(req) });
       return;
     }
-    ws.isAlive = true;
-    ws.on("pong", () => { ws.isAlive = true; });
     const { pair, replaced } = pairs.add(currentToken, role, ws);
     ws._token = currentToken;
     ws._role = role;
@@ -298,7 +318,6 @@ function createRelayServer({
 
     ws.on("message", (data) => {
       if (!pairs.isCurrent(currentToken, role, ws)) return;
-      ws.isAlive = true;
       const wireBytes = Buffer.isBuffer(data) ? data.length : Buffer.byteLength(String(data), "utf8");
       const roleLimit = role === "phone" ? INNER_PROTOCOL_MAX : RELAY_ENVELOPE_MAX;
       if (wireBytes > roleLimit) {
@@ -337,14 +356,8 @@ function createRelayServer({
         listening = true;
         heartbeatTimer = setInterval(() => {
           for (const ws of wss.clients) {
-            if (ws.isAlive === false) {
-              ws.terminate();
-              continue;
-            }
-            ws.isAlive = false;
             try {
               ws.send(JSON.stringify({ type: "ping", timestamp: now() }));
-              ws.ping();
             } catch {}
           }
         }, heartbeatIntervalMs);
@@ -353,14 +366,11 @@ function createRelayServer({
     });
   }
 
-  function close() {
-    if (closing) return closing;
-    if (heartbeatTimer) clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
+  function closeNetwork() {
     pairs.closeAll(1001, "server_shutdown");
     for (const ws of wss.clients) ws.terminate();
     if (!listening) return Promise.resolve();
-    closing = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (error) => {
         if (settled) return;
@@ -373,12 +383,36 @@ function createRelayServer({
       const timer = setTimeout(() => {
         for (const socket of sockets) socket.destroy();
         if (typeof server.closeAllConnections === "function") server.closeAllConnections();
-        finish();
+        const error = new Error("shutdown_failed");
+        error.code = "shutdown_failed";
+        finish(error);
       }, closeDeadlineMs);
       try { wss.close(() => {}); } catch {}
       server.close((error) => finish(error || null));
       if (typeof server.closeIdleConnections === "function") server.closeIdleConnections();
     });
+  }
+
+  function close() {
+    if (closing) return closing;
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    closing = (async () => {
+      let shutdownError = null;
+      if (management && typeof management.shutdown === "function") {
+        try {
+          await management.shutdown({ deadlineMs: closeDeadlineMs });
+        } catch (error) {
+          shutdownError = error;
+        }
+      }
+      try {
+        await closeNetwork();
+      } catch (error) {
+        if (!shutdownError) shutdownError = error;
+      }
+      if (shutdownError) throw shutdownError;
+    })();
     return closing;
   }
 
@@ -402,7 +436,7 @@ function createCliRelay(env = process.env) {
 
   if (nodeFs.existsSync(envPath)) {
     const lockPath = env.RELAY_LOCK_PATH || "/run/lock/clawd-relay.lock";
-    managementLock = createDirectoryLock({ lockPath });
+    managementLock = createFlockLock({ lockPath });
     const expectedUid = env.CLAWD_INSTALL_TEST_MODE === "1" && typeof process.getuid === "function"
       ? process.getuid()
       : 0;
@@ -410,6 +444,8 @@ function createCliRelay(env = process.env) {
     management = Object.freeze({
       status(context) { return managementTarget.status(context); },
       rotatePhone(context) { return managementTarget.rotatePhone(context); },
+      shutdown(options) { return managementTarget.shutdown(options); },
+      isHealthy() { return managementTarget.isHealthy(); },
     });
   } else if (env.ALLOW_LEGACY_EPHEMERAL_RELAY === "1" && /^[0-9a-fA-F]{64}$/.test(env.RELAY_TOKEN || "")) {
     tokenStore = Object.freeze({ current() { return env.RELAY_TOKEN; } });

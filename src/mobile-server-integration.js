@@ -9,7 +9,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { MobileWSServer } = require("./mobile-ws-server");
+const { MobileWSServer, RELAY_ENVELOPE_MAX } = require("./mobile-ws-server");
 const { ManagedSessionMobileBridge } = require("./managed-session-mobile-bridge");
 const { parseDiff } = require("./managed-terminal-normalizer");
 
@@ -222,7 +222,8 @@ function initMobileServer(ctx, options = {}) {
       return;
     }
 
-    const MOBILE_PORT = 23334;
+    const MOBILE_PORT = Number.isInteger(options.port) && options.port >= 0 ? options.port : 23334;
+    const mobileBindHost = options.bindHost || process.env.CLAWD_BIND_HOST || "0.0.0.0";
     mobileHttpServer = createHttpServer((req, res) => {
       // Skip WebSocket upgrade requests — handled by ws library's upgrade listener
       if (req.headers && req.headers.upgrade && /websocket/i.test(req.headers.upgrade)) return;
@@ -254,7 +255,7 @@ function initMobileServer(ctx, options = {}) {
       noServer: true,
       perMessageDeflate: false,
       autoPong: false,
-      maxPayload: 64 * 1024,
+      maxPayload: RELAY_ENVELOPE_MAX,
     });
     mobileHttpServer.on("upgrade", (req, socket, head) => {
       const urlPath = (require("url").parse(req.url || "").pathname || "");
@@ -269,7 +270,6 @@ function initMobileServer(ctx, options = {}) {
     if (mobileWS) mobileWS.attachWSS(wss);
     console.log(`[mobile-ws] WebSocket endpoint at /mobile/ws on port ${MOBILE_PORT}`);
 
-    const mobileBindHost = process.env.CLAWD_BIND_HOST || "0.0.0.0";
     mobileHttpServer.listen(MOBILE_PORT, mobileBindHost, () => {
       const address = mobileHttpServer.address();
       mobileServerPort = address && typeof address === "object" ? address.port : MOBILE_PORT;

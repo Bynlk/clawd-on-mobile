@@ -17,6 +17,17 @@ class ManagementRequestError extends Error {
   }
 }
 
+function codedError(code, statusCode) {
+  const error = new Error(code);
+  error.code = code;
+  if (statusCode) error.statusCode = statusCode;
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal && signal.aborted) throw signal.reason || codedError("operation_aborted");
+}
+
 function normalizeRemoteAddress(address) {
   if (typeof address !== "string") return "";
   const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(address);
@@ -95,13 +106,20 @@ function atomicWriteFile(fs, destination, contents, label) {
   }
 }
 
-function defaultCommand(file, args, { input = "", timeoutMs = 5000 } = {}) {
+function defaultCommand(file, args, { input = "", timeoutMs = 5000, signal } = {}) {
   return new Promise((resolve, reject) => {
+    throwIfAborted(signal);
     const child = spawn(file, args, { stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderrBytes = 0;
     let settled = false;
     let timedOut = false;
+    let aborted = false;
+    const onAbort = () => {
+      aborted = true;
+      child.kill("SIGKILL");
+    };
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGKILL");
@@ -110,6 +128,7 @@ function defaultCommand(file, args, { input = "", timeoutMs = 5000 } = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
       if (error) reject(error);
       else resolve(result);
     };
@@ -124,7 +143,8 @@ function defaultCommand(file, args, { input = "", timeoutMs = 5000 } = {}) {
     });
     child.once("error", () => finish(new Error("WireGuard command failed")));
     child.once("close", (code) => {
-      if (timedOut) finish(Object.assign(new Error("WireGuard command timed out"), { code: "command_timeout" }));
+      if (aborted) finish(signal.reason || codedError("operation_aborted"));
+      else if (timedOut) finish(Object.assign(new Error("WireGuard command timed out"), { code: "command_timeout" }));
       else if (code === 0) finish(null, { stdout });
       else finish(new Error("WireGuard command failed"));
     });
@@ -148,6 +168,7 @@ function createWgManagement({
   lock = null,
   verifyLivePeer = null,
   commandTimeoutMs = 5000,
+  transactionTimeoutMs = 15000,
 } = {}) {
   if (!tokenStore || typeof tokenStore.current !== "function" ||
       typeof tokenStore.managementToken !== "function" || typeof tokenStore.rotate !== "function") {
@@ -159,30 +180,24 @@ function createWgManagement({
   if (![wgInterface, pcIp, phoneIp, subnet, endpoint].every((value) => typeof value === "string" && value)) {
     throw new Error("WireGuard management configuration is required");
   }
-  if (!Number.isFinite(commandTimeoutMs) || commandTimeoutMs <= 0) throw new Error("invalid command timeout");
+  if (!Number.isFinite(commandTimeoutMs) || commandTimeoutMs <= 0 ||
+      !Number.isFinite(transactionTimeoutMs) || transactionTimeoutMs <= 0) {
+    throw new Error("invalid management timeout");
+  }
   const transactionLock = lock || tokenStore.lock || Object.freeze({
     async runExclusive(operation) { return operation(); },
   });
   if (typeof transactionLock.runExclusive !== "function") throw new Error("management lock is required");
 
-  function withDeadline(operation, code = "command_timeout") {
-    let timer;
-    return Promise.race([
-      Promise.resolve().then(operation),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Object.assign(new Error(code), { code })), commandTimeoutMs);
-      }),
-    ]).finally(() => clearTimeout(timer));
-  }
-
   function runCommand(file, args, options = {}) {
-    return withDeadline(() => command(file, args, { ...options, timeoutMs: commandTimeoutMs }));
+    throwIfAborted(options.signal);
+    return command(file, args, { ...options, timeoutMs: commandTimeoutMs });
   }
 
-  const makeKeyPair = generateKeyPair || (async () => {
-    const privateResult = await runCommand("wg", ["genkey"]);
+  const makeKeyPair = generateKeyPair || (async ({ signal } = {}) => {
+    const privateResult = await runCommand("wg", ["genkey"], { signal });
     const privateKey = String(privateResult.stdout || "").trim();
-    const publicResult = await runCommand("wg", ["pubkey"], { input: `${privateKey}\n` });
+    const publicResult = await runCommand("wg", ["pubkey"], { input: `${privateKey}\n`, signal });
     return { privateKey, publicKey: String(publicResult.stdout || "").trim() };
   });
 
@@ -205,53 +220,87 @@ function createWgManagement({
   let recovery = null;
 
   async function defaultVerifyLivePeer(candidate) {
-    const result = await runCommand("wg", ["show", wgInterface, "peers"]);
-    const peers = String(result.stdout || "").trim().split(/\s+/).filter(Boolean);
-    return peers.includes(candidate.oldPublicKey) && !peers.includes(candidate.publicKey);
+    const result = await runCommand("wg", ["show", wgInterface, "allowed-ips"], {
+      signal: candidate.signal,
+    });
+    const peers = new Map();
+    for (const line of String(result.stdout || "").split(/\r?\n/)) {
+      const match = /^(\S+)\s+(.+)$/.exec(line.trim());
+      if (!match) continue;
+      if (peers.has(match[1])) return false;
+      peers.set(match[1], match[2].split(/\s*,\s*/).filter(Boolean));
+    }
+    const oldAllowedIps = peers.get(candidate.oldPublicKey) || [];
+    return oldAllowedIps.length === 1 && oldAllowedIps[0] === `${phoneIp}/32` &&
+      !peers.has(candidate.publicKey);
   }
   const verifyPeer = verifyLivePeer || defaultVerifyLivePeer;
 
   async function compensate(candidate, attempts) {
     const failures = [];
-    if (attempts.filesAttempted) {
-      for (const [destination, contents] of [
-        [paths.wgConfigPath, candidate.oldConfig],
-        [paths.phonePrivateKeyPath, candidate.oldPrivateKey],
-        [paths.phonePublicKeyPath, candidate.oldPublicKeyFile],
-      ]) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort(codedError("rollback_timeout"));
+    }, transactionTimeoutMs);
+    try {
+      if (attempts.filesAttempted) {
+        for (const [destination, contents] of [
+          [paths.wgConfigPath, candidate.oldConfig],
+          [paths.phonePrivateKeyPath, candidate.oldPrivateKey],
+          [paths.phonePublicKeyPath, candidate.oldPublicKeyFile],
+        ]) {
+          try {
+            atomicWriteFile(fs, destination, contents, "rollback");
+            if (fs.readFileSync(destination, "utf8") !== contents) {
+              throw new Error("rollback verification mismatch");
+            }
+          } catch (error) { failures.push(error); }
+        }
+      }
+      if (attempts.liveAttempted) {
         try {
-          atomicWriteFile(fs, destination, contents, "rollback");
-          if (fs.readFileSync(destination, "utf8") !== contents) throw new Error("rollback verification mismatch");
+          await runCommand("wg", [
+            "set", wgInterface,
+            "peer", candidate.publicKey, "remove",
+            "peer", candidate.oldPublicKey, "allowed-ips", `${phoneIp}/32`,
+          ], { signal: controller.signal });
+        } catch (error) { failures.push(error); }
+        try {
+          throwIfAborted(controller.signal);
+          const verified = await verifyPeer({
+            ...candidate, wgInterface, phoneIp, signal: controller.signal,
+          });
+          if (verified !== true) throw new Error("live peer verification mismatch");
         } catch (error) { failures.push(error); }
       }
+      if (attempts.tokenAttempted) {
+        try {
+          const diskToken = typeof tokenStore.reload === "function"
+            ? await tokenStore.reload({ lockHeld: true })
+            : tokenStore.current();
+          if (diskToken === candidate.relayToken) {
+            await tokenStore.restore(candidate.oldRelayToken, candidate.relayToken, { lockHeld: true });
+          } else if (diskToken !== candidate.oldRelayToken) {
+            throw new Error("token rollback CAS mismatch");
+          }
+        } catch (error) { failures.push(error); }
+      }
+      if (attempts.tokenAttempted && typeof tokenStore.reload === "function") {
+        try { await tokenStore.reload({ lockHeld: true }); } catch (error) { failures.push(error); }
+      }
+      if (tokenStore.current() !== candidate.oldRelayToken) {
+        failures.push(new Error("token rollback mismatch"));
+      }
+      return failures;
+    } finally {
+      clearTimeout(timer);
     }
-    if (attempts.liveAttempted) {
-      try {
-        await runCommand("wg", [
-          "set", wgInterface,
-          "peer", candidate.publicKey, "remove",
-          "peer", candidate.oldPublicKey, "allowed-ips", `${phoneIp}/32`,
-        ]);
-      } catch (error) { failures.push(error); }
-      try {
-        const verified = await withDeadline(() => verifyPeer({
-          ...candidate, wgInterface, phoneIp,
-        }), "verification_timeout");
-        if (verified !== true) throw new Error("live peer verification mismatch");
-      } catch (error) { failures.push(error); }
-    }
-    if (attempts.tokenAttempted && tokenStore.current() !== candidate.oldRelayToken) {
-      try {
-        await tokenStore.restore(candidate.oldRelayToken, candidate.relayToken, { lockHeld: true });
-      } catch (error) { failures.push(error); }
-    }
-    if (tokenStore.current() !== candidate.oldRelayToken) failures.push(new Error("token rollback mismatch"));
-    return failures;
   }
 
   async function status(context) {
     authorize(context);
     if (!healthy) {
+      if (!recovery) throw new ManagementRequestError(503, "rollback_failed");
       await transactionLock.runExclusive(async () => {
         const failures = await compensate(recovery.candidate, recovery.attempts);
         if (failures.length) throw new ManagementRequestError(503, "rollback_failed");
@@ -262,14 +311,16 @@ function createWgManagement({
     return { version: 1, status: "ok" };
   }
 
-  async function executeRotation(context) {
+  async function executeRotation(context, signal) {
     authorize(context);
     validateBody(context.body);
     if (!healthy) throw new ManagementRequestError(503, "rollback_failed");
 
     let candidate;
     try {
-      const keyPair = await withDeadline(() => makeKeyPair());
+      throwIfAborted(signal);
+      const keyPair = await makeKeyPair({ signal });
+      throwIfAborted(signal);
       const privateKey = validateWireGuardKey("phone private key", keyPair.privateKey);
       const publicKey = validateWireGuardKey("phone public key", keyPair.publicKey);
       const relayToken = String(generateRelayToken()).toLowerCase();
@@ -296,7 +347,8 @@ function createWgManagement({
         serverPublicKey,
         newConfig: replacePhonePeer(oldConfig, oldPublicKey, publicKey, phoneIp),
       };
-    } catch {
+    } catch (error) {
+      if (signal.aborted) throw signal.reason;
       throw new Error("rotation_failed");
     }
 
@@ -304,22 +356,28 @@ function createWgManagement({
     let liveAttempted = false;
     let tokenAttempted = false;
     try {
+      throwIfAborted(signal);
       filesAttempted = true;
       atomicWriteFile(fs, paths.wgConfigPath, candidate.newConfig, "tmp");
+      throwIfAborted(signal);
       atomicWriteFile(fs, paths.phonePrivateKeyPath, `${candidate.privateKey}\n`, "tmp");
+      throwIfAborted(signal);
       atomicWriteFile(fs, paths.phonePublicKeyPath, `${candidate.publicKey}\n`, "tmp");
 
+      throwIfAborted(signal);
       liveAttempted = true;
       await runCommand("wg", [
         "set", wgInterface,
         "peer", candidate.oldPublicKey, "remove",
         "peer", candidate.publicKey, "allowed-ips", `${phoneIp}/32`,
-      ]);
+      ], { signal });
 
+      throwIfAborted(signal);
       tokenAttempted = true;
       await tokenStore.rotate(candidate.relayToken, candidate.oldRelayToken, { lockHeld: true });
+      throwIfAborted(signal);
       pairs.closeToken(candidate.oldRelayToken, 4003, "token_rotated");
-    } catch {
+    } catch (cause) {
       const attempts = { filesAttempted, liveAttempted, tokenAttempted };
       const failures = await compensate(candidate, attempts);
       if (failures.length) {
@@ -327,6 +385,7 @@ function createWgManagement({
         recovery = { candidate, attempts };
         throw new ManagementRequestError(503, "rollback_failed");
       }
+      if (signal.aborted) throw signal.reason;
       const error = new Error("rotation_failed");
       error.code = "rotation_failed";
       throw error;
@@ -343,14 +402,73 @@ function createWgManagement({
     return { version: 1, phoneConfig, relayToken: candidate.relayToken };
   }
 
+  let acceptingRotations = true;
+  let activeController = null;
+  let activeTimer = null;
   let rotationQueue = Promise.resolve();
+  let shutdownPromise = null;
+
   function rotatePhone(context) {
-    const operation = rotationQueue.then(() => transactionLock.runExclusive(() => executeRotation(context)));
+    if (!acceptingRotations) return Promise.reject(new ManagementRequestError(503, "shutdown_in_progress"));
+    const operation = rotationQueue.then(async () => {
+      if (!acceptingRotations) throw new ManagementRequestError(503, "shutdown_in_progress");
+      const controller = new AbortController();
+      activeController = controller;
+      const timer = setTimeout(() => {
+        controller.abort(new ManagementRequestError(504, "transaction_timeout"));
+      }, transactionTimeoutMs);
+      activeTimer = timer;
+      try {
+        return await transactionLock.runExclusive(
+          () => executeRotation(context, controller.signal),
+          { signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timer);
+        if (activeController === controller) activeController = null;
+        if (activeTimer === timer) activeTimer = null;
+      }
+    });
     rotationQueue = operation.catch(() => {});
     return operation;
   }
 
-  return Object.freeze({ authorize, status, rotatePhone, isHealthy: () => healthy });
+  function shutdown({ deadlineMs = 2000 } = {}) {
+    if (shutdownPromise) return shutdownPromise;
+    acceptingRotations = false;
+    if (activeController && !activeController.signal.aborted) {
+      activeController.abort(new ManagementRequestError(503, "shutdown_in_progress"));
+    }
+    if (activeTimer) {
+      clearTimeout(activeTimer);
+      activeTimer = null;
+    }
+    shutdownPromise = new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        healthy = false;
+        reject(new ManagementRequestError(503, "shutdown_failed"));
+      }, deadlineMs);
+      rotationQueue.then(() => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+    return shutdownPromise;
+  }
+
+  return Object.freeze({
+    authorize,
+    status,
+    rotatePhone,
+    shutdown,
+    isHealthy: () => healthy,
+    transactionTimeoutMs,
+  });
 }
 
 module.exports = {

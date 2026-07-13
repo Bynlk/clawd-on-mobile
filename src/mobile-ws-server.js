@@ -653,4 +653,4 @@ class MobileWSServer extends EventEmitter {
   }
 }
 
-module.exports = { MobileWSServer };
+module.exports = { INNER_PROTOCOL_MAX, RELAY_ENVELOPE_MAX, MobileWSServer };

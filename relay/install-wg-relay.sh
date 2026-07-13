@@ -87,7 +87,7 @@ SYSTEMD_RUN_FS="$(install_path "/run/systemd/system")"
 VAR_TMP_FS="$(install_path "/var/tmp")"
 RELEASES_FS="${RELAY_ROOT_FS}/releases"
 NODE_CACHE_DIR_FS="${RELAY_ROOT_FS}/runtime-cache"
-LOCK_DIR_FS="$(install_path "/run/lock/clawd-relay.lock")"
+LOCK_FILE_FS="$(install_path "/run/lock/clawd-relay.lock")"
 
 SUBNET_BASE="${WG_SUBNET%.*/*}"
 SERVER_IP="${SUBNET_BASE}.1"
@@ -114,7 +114,6 @@ if [ "${TEST_MODE}" != "1" ] && [ "$(id -u)" -ne 0 ]; then
 fi
 
 LOCK_HELD=0
-LOCK_OWNER="$$-${RANDOM}"
 BACKUP_DIR=""
 COMMITTED=0
 ROLLING_BACK=0
@@ -134,12 +133,7 @@ cleanup_created_directories() {
 
 release_lock() {
   [ "${LOCK_HELD}" = 1 ] || return
-  local owner=""
-  $SUDO test ! -f "${LOCK_DIR_FS}/owner" || owner="$($SUDO cat "${LOCK_DIR_FS}/owner" 2>/dev/null || true)"
-  if [ "${owner}" = "${LOCK_OWNER}" ]; then
-    $SUDO rm -f "${LOCK_DIR_FS}/owner"
-    $SUDO rmdir "${LOCK_DIR_FS}" 2>/dev/null || true
-  fi
+  exec 9>&-
   LOCK_HELD=0
 }
 
@@ -158,18 +152,18 @@ trap 'on_signal 130' INT
 trap 'on_signal 143' TERM
 
 acquire_lock() {
+  command -v flock >/dev/null 2>&1 || die 15 "util-linux flock is required"
   local timeout_ms=5000
   if [ "${TEST_MODE}" = 1 ] && [[ "${CLAWD_INSTALL_LOCK_TIMEOUT_MS:-}" =~ ^[0-9]+$ ]]; then
     timeout_ms="${CLAWD_INSTALL_LOCK_TIMEOUT_MS}"
   fi
-  local attempts=$((timeout_ms / 50 + 1))
-  while ! $SUDO mkdir -m 700 "${LOCK_DIR_FS}" 2>/dev/null; do
-    attempts=$((attempts - 1))
-    [ "${attempts}" -gt 0 ] || die 21 "installer lock timeout"
-    sleep 0.05
-  done
-  printf '%s\n' "${LOCK_OWNER}" | $SUDO tee "${LOCK_DIR_FS}/owner" >/dev/null
-  $SUDO chmod 600 "${LOCK_DIR_FS}/owner"
+  $SUDO test ! -d "${LOCK_FILE_FS}" || die 21 "installer lock path must be a file"
+  : >> "${LOCK_FILE_FS}"
+  chmod 600 "${LOCK_FILE_FS}"
+  exec 9>>"${LOCK_FILE_FS}"
+  local timeout_seconds
+  timeout_seconds="$(printf '%d.%03d' "$((timeout_ms / 1000))" "$((timeout_ms % 1000))")"
+  flock -x -w "${timeout_seconds}" 9 || die 21 "installer lock timeout"
   LOCK_HELD=1
 }
 
