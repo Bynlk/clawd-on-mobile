@@ -10,10 +10,9 @@
 // SECURITY:
 //   SEC-1  password is NEVER part of a profile → sanitizeProfile strips it, and
 //          wgRelayApplyReadback only ever writes public/readback fields.
-//   SEC-3  phone private key is NEVER persisted → applyReadback whitelists the
-//          fields it copies; pcConf/phoneConf/phonePrivKey are deliberately
-//          absent from that whitelist (they're transient, returned to the UI
-//          for tunnel bring-up + QR only).
+//   SEC-3  configs and tokens are NEVER persisted → applyReadback whitelists
+//          the fields it copies; pcConfig/phoneConfig/relayToken/
+//          managementToken are deliberately absent from that whitelist.
 
 const {
   sanitizeProfile,
@@ -74,12 +73,22 @@ function wgRelayUpdateProfile(payload, deps) {
     return { status: "error", message: `wgRelay.update: subnet ${profile.wgSubnet} already in use (EX-14)` };
   }
   const prev = next.profiles[idx];
-  // Preserve createdAt / readback metadata across cosmetic edits unless the
-  // caller explicitly supplies new values.
+  // Preserve migration-era createdAt plus public deployment metadata across
+  // cosmetic edits unless the caller explicitly supplies new values.
   if (Number.isFinite(prev.createdAt) && !Number.isFinite(payload.createdAt)) {
     profile.createdAt = prev.createdAt;
   }
-  for (const f of ["serverPubKey", "endpoint", "pcAddress", "relayAddr", "lastDeployedAt"]) {
+  for (const f of [
+    "sshHostFingerprint",
+    "endpoint",
+    "relayAddr",
+    "lastDeployedAt",
+    "deployVersion",
+    // Legacy public readback values remain available until their callers move
+    // to the encrypted config store introduced by this task.
+    "serverPubKey",
+    "pcAddress",
+  ]) {
     if (profile[f] === undefined && prev[f] !== undefined) profile[f] = prev[f];
   }
   next.profiles[idx] = profile;
@@ -104,9 +113,8 @@ function wgRelayRemoveProfile(payload, deps) {
 
 // Stamp deploy readback onto a profile WITHOUT rewriting the whole profile
 // (deploy can take 30+s; user may have edited meanwhile — lost-update race).
-// CRITICAL SEC-1/SEC-3: only PUBLIC fields are written. pcConf/phoneConf and
-// any private key are intentionally NOT persisted — they are returned to the
-// renderer transiently for tunnel bring-up (wg-pc-tunnel) and QR only.
+// CRITICAL SEC-1/SEC-3: only PUBLIC fields are written. pcConfig/phoneConfig,
+// relayToken, managementToken and private keys are intentionally NOT persisted.
 const READBACK_PERSIST_FIELDS = ["serverPubKey", "endpoint", "pcAddress", "relayAddr"];
 
 function wgRelayApplyReadback(profileId, readback, deps) {
@@ -134,6 +142,12 @@ function wgRelayApplyReadback(profileId, readback, deps) {
   updated.lastDeployedAt = Number.isFinite(readback.deployedAt) && readback.deployedAt > 0
     ? readback.deployedAt
     : Date.now();
+  const deployVersion = readback.deployVersion === undefined
+    ? readback.schemaVersion
+    : readback.deployVersion;
+  if (Number.isInteger(deployVersion) && deployVersion > 0) {
+    updated.deployVersion = deployVersion;
+  }
   const newProfiles = next.profiles.slice();
   newProfiles[idx] = updated;
   return { status: "ok", commit: { wgRelay: { profiles: newProfiles } } };

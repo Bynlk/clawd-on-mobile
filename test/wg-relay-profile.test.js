@@ -19,8 +19,9 @@ function keyProfile(over = {}) {
   return {
     id: "wg-1",
     label: "My VPS",
-    host: "root@1.2.3.4",
-    port: 22,
+    host: "1.2.3.4",
+    sshUsername: "root",
+    sshPort: 22,
     authMethod: "key",
     identityFile: "/home/u/.ssh/id_ed25519",
     wgPort: 51820,
@@ -108,19 +109,59 @@ test("validateProfile rejects control chars in readback fields", () => {
   assert.equal(validateProfile(keyProfile({ endpoint: "1.2.3.4:51820\n" })).status, "error");
 });
 
-// ── sanitizeProfile ──
-test("sanitizeProfile strips password & phonePrivKey (SEC-1/3)", () => {
-  const p = sanitizeProfile(keyProfile({ password: "s3cret", phonePrivKey: "PRIV=" }));
-  assert.ok(p);
-  assert.equal(p.password, undefined);
-  assert.equal(p.phonePrivKey, undefined);
+test("validateProfile only accepts SHA256 base64 SSH host fingerprints", () => {
+  assert.equal(validateProfile(keyProfile({
+    sshHostFingerprint: "SHA256:AbCdEf0123456789+/AbCdEf0123456789+/AbCdEf0",
+  })).status, "ok");
+
+  for (const sshHostFingerprint of [
+    "MD5:aa:bb:cc",
+    "SHA256:",
+    "SHA256:abc",
+    "SHA256:not base64",
+    "SHA256:abc$def",
+    "SHA256:abc=def",
+  ]) {
+    assert.equal(
+      validateProfile(keyProfile({ sshHostFingerprint })).status,
+      "error",
+      sshHostFingerprint,
+    );
+  }
 });
 
-test("sanitizeProfile fills defaults for wgPort/wgSubnet", () => {
+// ── sanitizeProfile ──
+test("sanitizeProfile strips unknown and private fields (SEC-1/3)", () => {
+  const p = sanitizeProfile(keyProfile({
+    password: "s3cret",
+    pcConfig: "PC-PRIVATE",
+    phoneConfig: "PHONE-PRIVATE",
+    relayToken: "RELAY-SECRET",
+    managementToken: "MANAGEMENT-SECRET",
+    phonePrivKey: "PRIV=",
+    unknown: "drop-me",
+  }));
+  assert.ok(p);
+  for (const field of [
+    "password",
+    "pcConfig",
+    "phoneConfig",
+    "relayToken",
+    "managementToken",
+    "phonePrivKey",
+    "unknown",
+  ]) {
+    assert.equal(p[field], undefined, field);
+  }
+});
+
+test("sanitizeProfile defaults new profiles to password auth", () => {
   const p = sanitizeProfile({
-    id: "wg-x", label: "x", host: "h", authMethod: "password",
+    id: "wg-x", label: "x", host: "h",
   });
   assert.ok(p);
+  assert.equal(p.authMethod, "password");
+  assert.equal(p.sshPort, 22);
   assert.equal(p.wgPort, WG_DEFAULT_PORT);
   assert.equal(p.wgSubnet, WG_DEFAULT_SUBNET);
 });
@@ -130,12 +171,69 @@ test("sanitizeProfile returns null for invalid", () => {
   assert.equal(sanitizeProfile(null), null);
 });
 
-test("sanitizeProfile keeps public readback fields", () => {
+test("sanitizeProfile migrates legacy user@host and port fields", () => {
+  const migrated = sanitizeProfile({
+    id: "wg-1",
+    label: "VPS",
+    host: "root@203.0.113.10",
+    port: 22,
+    authMethod: "password",
+    wgPort: 51820,
+    wgSubnet: "10.8.0.0/24",
+  });
+  assert.ok(migrated);
+  assert.equal(migrated.host, "203.0.113.10");
+  assert.equal(migrated.sshUsername, "root");
+  assert.equal(migrated.sshPort, 22);
+  assert.equal(migrated.port, undefined);
+});
+
+test("sanitizeProfile round-trips explicit canonical public fields", () => {
   const p = sanitizeProfile(keyProfile({
-    serverPubKey: "abc=", endpoint: "1.2.3.4:51820", pcAddress: "10.8.0.2", relayAddr: "ws://10.8.0.1:7891",
+    authMethod: "password",
+    identityFile: undefined,
+    sshUsername: "deploy",
+    sshPort: 2222,
+    sshHostFingerprint: "SHA256:AbCdEf0123456789+/AbCdEf0123456789+/AbCdEf0",
+    endpoint: "1.2.3.4:51820",
+    relayAddr: "ws://10.8.0.1:7891",
+    lastDeployedAt: 1700000000000,
+    deployVersion: 1,
   }));
-  assert.equal(p.serverPubKey, "abc=");
-  assert.equal(p.relayAddr, "ws://10.8.0.1:7891");
+  assert.deepEqual(p, {
+    id: "wg-1",
+    label: "My VPS",
+    host: "1.2.3.4",
+    sshUsername: "deploy",
+    sshPort: 2222,
+    authMethod: "password",
+    wgPort: 51820,
+    wgSubnet: "10.8.0.0/24",
+    sshHostFingerprint: "SHA256:AbCdEf0123456789+/AbCdEf0123456789+/AbCdEf0",
+    endpoint: "1.2.3.4:51820",
+    relayAddr: "ws://10.8.0.1:7891",
+    lastDeployedAt: 1700000000000,
+    deployVersion: 1,
+  });
+});
+
+test("sanitizeProfile preserves valid legacy key-auth profiles", () => {
+  const p = sanitizeProfile({
+    id: "wg-key",
+    label: "Legacy key VPS",
+    host: "ubuntu@example.com",
+    port: 2200,
+    authMethod: "key",
+    identityFile: "/home/u/.ssh/id_ed25519",
+    wgPort: 51820,
+    wgSubnet: "10.9.0.0/24",
+  });
+  assert.ok(p);
+  assert.equal(p.authMethod, "key");
+  assert.equal(p.identityFile, "/home/u/.ssh/id_ed25519");
+  assert.equal(p.host, "example.com");
+  assert.equal(p.sshUsername, "ubuntu");
+  assert.equal(p.sshPort, 2200);
 });
 
 // ── normalizeWgRelay ──

@@ -398,3 +398,13 @@ POST /api/manage/phone/rotate
 ## 14. 完成定义
 
 只有当第 12 节自动测试与端到端验收全部有当前证据、设计中的 PC/VPS/Android 路径均可用、每次提交均已推送到 `Bynlk/clawd-on-mobile` 的当前功能分支，才把本功能标记为完成。任何仅有 UI、仅有部署脚本、仅有 Android VPN 或仅有 Relay 转发的局部结果都不算完成。
+
+## 15. 实施进度
+
+### Task 1：公开 profile 迁移与 PC 加密秘密存储（2026-07-13）
+
+- profile RED：`node --test test/wg-relay-profile.test.js test/settings-actions-wg-relay.test.js` 退出码 1；37 项中 5 项按预期失败，分别覆盖 SSH 指纹格式、密码认证默认值、`user@host` 迁移、显式新字段和旧 key-auth 兼容。
+- secret-store RED：`node --test test/wg-relay-secret-store.test.js` 退出码 1，并出现预期的 `MODULE_NOT_FOUND`，证明测试先于模块实现执行。
+- 实现：公开 profile 迁移为独立 `host`、`sshUsername`、`sshPort` 字段，新 profile 默认密码认证，未知字段和 `password`、配置、Token 均被剥离；合法旧 key-auth profile 保留兼容。
+- 安全存储：每个 profile 的秘密对象经 `safeStorage.encryptString()` 后以 base64 blob 保存；临时文件权限为 `0600`，支持时执行 `fsync`，再原子重命名。不可加密、Linux `basic_text`、损坏 JSON 和非法输入均关闭失败，错误和日志不包含秘密。
+- GREEN：`node --test test/wg-relay-profile.test.js test/settings-actions-wg-relay.test.js test/wg-relay-secret-store.test.js` 退出码 0；45 项全部通过，0 失败、0 跳过。
