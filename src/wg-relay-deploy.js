@@ -32,6 +32,33 @@ const EXIT_CODE_MAP = {
   14: { step: "firewall", hint: "wgErrFirewall", message: "Failed to configure the firewall to allow the WireGuard port. (EX-6)" },
 };
 
+const TRANSPORT_ERROR_MAP = {
+  HOST_KEY_CHANGED: {
+    step: "host-key",
+    reason: "host_key_changed",
+    hint: "wgErrHostKeyChanged",
+    message: "Saved SSH host key changed; remove the saved fingerprint before retrying.",
+  },
+  HOST_KEY_UNCONFIRMED: {
+    step: "host-key",
+    reason: "host_key_unconfirmed",
+    hint: "wgErrHostKeyUnconfirmed",
+    message: "SSH host key was not confirmed.",
+  },
+  HOST_KEY_CONFIRMATION_FAILED: {
+    step: "host-key",
+    reason: "host_key_confirmation_failed",
+    hint: "wgErrHostKeyConfirmationFailed",
+    message: "SSH host key confirmation failed.",
+  },
+  OUTPUT_LIMIT: {
+    step: "install",
+    reason: "output_limit",
+    hint: "wgErrOutputLimit",
+    message: "Remote installer output exceeded the safe limit.",
+  },
+};
+
 const JSON_RE = /<<<CLAWD_JSON>>>([\s\S]*?)<<<END_CLAWD_JSON>>>/;
 
 function resolveScriptPath(deps = {}) {
@@ -97,27 +124,51 @@ function isValidHostname(host) {
   ));
 }
 
-function isValidEndpoint(value) {
-  if (typeof value !== "string" || value.length > 512) return false;
+function parseEndpoint(value) {
+  if (typeof value !== "string" || value.length > 512) return null;
   let host;
   let portText;
   const ipv6 = /^\[([^\]]+)]:(\d+)$/.exec(value);
   if (ipv6) {
     host = ipv6[1];
     portText = ipv6[2];
-    if (net.isIP(host) !== 6) return false;
+    if (net.isIP(host) !== 6) return null;
   } else {
     const match = /^([^:]+):(\d+)$/.exec(value);
-    if (!match) return false;
+    if (!match) return null;
     host = match[1];
     portText = match[2];
-    if (net.isIP(host) !== 4 && !isValidHostname(host)) return false;
+    if (net.isIP(host) !== 4 && !isValidHostname(host)) return null;
   }
   const port = Number(portText);
-  return Number.isInteger(port) && port >= 1 && port <= 65535;
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? { host, port } : null;
 }
 
-function isInternalRelayUrl(value, subnetOctets) {
+function isPublicEndpointHost(host) {
+  const ipVersion = net.isIP(host);
+  if (ipVersion === 4) {
+    const octets = parseIpv4(host);
+    return !(octets[0] === 0
+      || octets[0] === 10
+      || octets[0] === 127
+      || (octets[0] === 169 && octets[1] === 254)
+      || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+      || (octets[0] === 192 && octets[1] === 168)
+      || (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127)
+      || octets[0] >= 224);
+  }
+  if (ipVersion === 6) {
+    const normalized = host.toLowerCase();
+    return normalized !== "::" && normalized !== "::1"
+      && !normalized.startsWith("fc") && !normalized.startsWith("fd")
+      && !normalized.startsWith("fe8") && !normalized.startsWith("fe9")
+      && !normalized.startsWith("fea") && !normalized.startsWith("feb");
+  }
+  return isValidHostname(host) && host.toLowerCase() !== "localhost"
+    && !host.toLowerCase().endsWith(".local");
+}
+
+function isExpectedRelayUrl(value, subnetOctets, relayPort) {
   if (typeof value !== "string" || value.length > 512) return false;
   let url;
   try {
@@ -128,49 +179,61 @@ function isInternalRelayUrl(value, subnetOctets) {
   if (url.protocol !== "ws:" || url.username || url.password || url.search || url.hash || url.pathname !== "/" || !url.port) {
     return false;
   }
-  const hostOctets = parseIpv4(url.hostname);
-  if (!hostOctets) return false;
-  const sameSubnet = hostOctets.slice(0, 3).every((octet, index) => octet === subnetOctets[index]);
-  return sameSubnet && hostOctets[3] >= 1 && hostOctets[3] <= 254;
+  const expectedHost = `${subnetOctets[0]}.${subnetOctets[1]}.${subnetOctets[2]}.1`;
+  return url.hostname === expectedHost && Number(url.port) === relayPort;
 }
 
-function parseCompleteWgConfig(value, { subnet, subnetOctets, endpoint }) {
+function isWireGuardKey(value) {
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(value || "")) return false;
+  const decoded = Buffer.from(value, "base64");
+  return decoded.length === 32 && decoded.toString("base64") === value;
+}
+
+function parseCompleteWgConfig(value, { subnet, subnetOctets, endpoint, clientHost }) {
   if (typeof value !== "string" || value.length < 1 || value.length > 16384 || value.includes("\0")) return null;
   const sections = { Interface: Object.create(null), Peer: Object.create(null) };
+  const sectionCounts = { Interface: 0, Peer: 0 };
+  const allowedKeys = {
+    Interface: new Set(["PrivateKey", "Address"]),
+    Peer: new Set(["PublicKey", "Endpoint", "AllowedIPs", "PersistentKeepalive"]),
+  };
   let section = null;
   for (const rawLine of value.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#") || line.startsWith(";")) continue;
     const heading = /^\[([^\]]+)]$/.exec(line);
     if (heading) {
-      section = Object.hasOwn(sections, heading[1]) ? heading[1] : null;
+      if (!Object.hasOwn(sections, heading[1])) return null;
+      section = heading[1];
+      sectionCounts[section] += 1;
+      if (sectionCounts[section] > 1) return null;
       continue;
     }
     const assignment = /^([^=]+?)\s*=\s*(.*)$/.exec(line);
-    if (!section || !assignment) continue;
-    sections[section][assignment[1].trim()] = assignment[2].trim();
+    if (!section || !assignment) return null;
+    const key = assignment[1].trim();
+    if (!allowedKeys[section].has(key) || Object.hasOwn(sections[section], key)) return null;
+    sections[section][key] = assignment[2].trim();
   }
 
-  if (!/^[A-Za-z0-9+/]{43}=$/.test(sections.Interface.PrivateKey || "")) return null;
-  if (!/^[A-Za-z0-9+/]{43}=$/.test(sections.Peer.PublicKey || "")) return null;
+  if (sectionCounts.Interface !== 1 || sectionCounts.Peer !== 1) return null;
+  if (Object.keys(sections.Interface).length !== allowedKeys.Interface.size) return null;
+  if (Object.keys(sections.Peer).length !== allowedKeys.Peer.size) return null;
+  if (!isWireGuardKey(sections.Interface.PrivateKey)) return null;
+  if (!isWireGuardKey(sections.Peer.PublicKey)) return null;
   if (sections.Peer.Endpoint !== endpoint) return null;
-  const allowedIps = String(sections.Peer.AllowedIPs || "").split(",").map((item) => item.trim());
-  if (!allowedIps.includes(subnet)) return null;
-
-  const addressMatch = /^(\d{1,3}(?:\.\d{1,3}){3})\/32$/.exec(sections.Interface.Address || "");
-  if (!addressMatch) return null;
-  const addressOctets = parseIpv4(addressMatch[1]);
-  if (!addressOctets) return null;
-  const sameSubnet = addressOctets.slice(0, 3).every((octet, index) => octet === subnetOctets[index]);
-  if (!sameSubnet || addressOctets[3] < 1 || addressOctets[3] > 254) return null;
-  return addressMatch[1];
+  if (sections.Peer.AllowedIPs !== subnet) return null;
+  if (sections.Peer.PersistentKeepalive !== "25") return null;
+  const expectedAddress = `${subnetOctets[0]}.${subnetOctets[1]}.${subnetOctets[2]}.${clientHost}/32`;
+  if (sections.Interface.Address !== expectedAddress) return null;
+  return { serverPublicKey: sections.Peer.PublicKey };
 }
 
 function invalidReadback(field) {
   return { ok: false, message: `Invalid readback: ${field} (EX-12)` };
 }
 
-function parseReadback(stdout) {
+function parseReadback(stdout, context = {}) {
   const m = JSON_RE.exec(stdout || "");
   if (!m) return { ok: false, message: "No CLAWD_JSON marker found in output (EX-12)" };
   let obj;
@@ -188,17 +251,37 @@ function parseReadback(stdout) {
     return invalidReadback("fields");
   }
   if (obj.schemaVersion !== 1) return invalidReadback("schemaVersion");
-  if (!isValidEndpoint(obj.endpoint)) return invalidReadback("endpoint");
-  const subnetOctets = parsePrivate24(obj.subnet);
+  const profile = context.profile || {};
+  const runtime = context.runtime || {};
+  const expectedSubnet = String(profile.wgSubnet || "10.8.0.0/24");
+  if (obj.subnet !== expectedSubnet) return invalidReadback("subnet");
+  const subnetOctets = parsePrivate24(expectedSubnet);
   if (!subnetOctets) return invalidReadback("subnet");
-  if (!isInternalRelayUrl(obj.relayUrl, subnetOctets)) return invalidReadback("relayUrl");
-  const configContext = { subnet: obj.subnet, subnetOctets, endpoint: obj.endpoint };
-  const pcAddress = parseCompleteWgConfig(obj.pcConfig, configContext);
-  if (!pcAddress) return invalidReadback("pcConfig");
-  const phoneAddress = parseCompleteWgConfig(obj.phoneConfig, configContext);
-  if (!phoneAddress || phoneAddress === pcAddress) return invalidReadback("phoneConfig");
+  const endpoint = parseEndpoint(obj.endpoint);
+  const expectedWgPort = Number(profile.wgPort) || 51820;
+  if (!endpoint || endpoint.port !== expectedWgPort) return invalidReadback("endpoint");
+  const requestedHost = profile.host ? normalizeSshTarget(profile).host : null;
+  if (requestedHost && net.isIP(requestedHost)) {
+    if (endpoint.host !== requestedHost) return invalidReadback("endpoint");
+  } else if (!isPublicEndpointHost(endpoint.host)) {
+    return invalidReadback("endpoint");
+  }
+  const expectedRelayPort = Number(runtime.relayPort) || 7891;
+  if (!isExpectedRelayUrl(obj.relayUrl, subnetOctets, expectedRelayPort)) {
+    return invalidReadback("relayUrl");
+  }
+  const configContext = { subnet: expectedSubnet, subnetOctets, endpoint: obj.endpoint };
+  const pcConfig = parseCompleteWgConfig(obj.pcConfig, { ...configContext, clientHost: 2 });
+  if (!pcConfig) return invalidReadback("pcConfig");
+  const phoneConfig = parseCompleteWgConfig(obj.phoneConfig, { ...configContext, clientHost: 3 });
+  if (!phoneConfig || phoneConfig.serverPublicKey !== pcConfig.serverPublicKey) {
+    return invalidReadback("phoneConfig");
+  }
   if (!/^[0-9a-fA-F]{64}$/.test(obj.relayToken || "")) return invalidReadback("relayToken");
   if (!/^[0-9a-fA-F]{64}$/.test(obj.managementToken || "")) return invalidReadback("managementToken");
+  if (obj.relayToken.toLowerCase() === obj.managementToken.toLowerCase()) {
+    return invalidReadback("managementToken");
+  }
   return { ok: true, readback: { ...obj } };
 }
 
@@ -357,6 +440,11 @@ async function deployInternal({ profile, password, runtime = {}, deps = {} }) {
   } catch (e) {
     // ssh2 auth / connection errors surface here.
     const msg = (e && e.message) || String(e);
+    const transportError = e && TRANSPORT_ERROR_MAP[e.code];
+    if (transportError) {
+      progress(transportError.step, "fail", transportError.message, transportError.hint);
+      return { ok: false, ...transportError };
+    }
     if (/password/i.test(msg) && /disabled|denied|not allowed/i.test(msg)) {
       progress("connect", "fail", "The server has disabled password login. Use an SSH key instead. (EX-3)", "wgErrPasswordDisabled");
       return { ok: false, step: "connect", reason: "password_disabled", hint: "wgErrPasswordDisabled", message: "Password login disabled on server (EX-3)" };
@@ -387,7 +475,7 @@ async function deployInternal({ profile, password, runtime = {}, deps = {} }) {
 
   // Exit 0 → parse readback (tolerate noisy stdout, EX-12).
   progress("validate", "start");
-  const parsed = parseReadback(result.stdout);
+  const parsed = parseReadback(result.stdout, { profile, runtime });
   if (!parsed.ok) {
     progress("validate", "fail", parsed.message);
     return { ok: false, step: "validate", message: parsed.message };

@@ -68,6 +68,10 @@ function makeBundleClient(behavior = {}) {
     operations: [],
     commands: [],
     stdin: [],
+    verifierCallbackCount: 0,
+    verifierValues: [],
+    sftpEnded: false,
+    streamDestroyed: false,
   };
 
   class FakeInstallStream extends EventEmitter {
@@ -79,13 +83,17 @@ function makeBundleClient(behavior = {}) {
       state.stdin.push({ type: "write", value: String(chunk) });
       return true;
     }
+    destroy() {
+      state.streamDestroyed = true;
+    }
     end(chunk) {
       if (chunk != null) state.stdin.push({ type: "end-data", value: String(chunk) });
       else state.stdin.push({ type: "end" });
+      if (behavior.hangInstall) return;
       process.nextTick(() => {
         if (behavior.stdout) this.emit("data", Buffer.from(behavior.stdout));
         if (behavior.stderr) this.stderr.emit("data", Buffer.from(behavior.stderr));
-        this.emit("close", behavior.exitCode == null ? 0 : behavior.exitCode);
+        if (!state.streamDestroyed) this.emit("close", behavior.exitCode == null ? 0 : behavior.exitCode);
       });
     }
   }
@@ -96,12 +104,17 @@ function makeBundleClient(behavior = {}) {
       state.connectOptions = options;
       const key = Buffer.from(behavior.hostKey || "bundle-host-key");
       options.hostVerifier(key, (accepted) => {
+        state.verifierCallbackCount += 1;
+        state.verifierValues.push(accepted);
         state.hostAccepted = accepted;
         if (!accepted) {
           process.nextTick(() => this.emit("error", new Error("Host key rejected")));
           return;
         }
-        process.nextTick(() => this.emit("ready"));
+        process.nextTick(() => {
+          if (behavior.closeBeforeReady) this.emit("close");
+          else this.emit("ready");
+        });
       });
     }
     sftp(callback) {
@@ -115,8 +128,13 @@ function makeBundleClient(behavior = {}) {
           state.operations.push(`write:${remotePath}:${options.mode.toString(8)}:${Buffer.isBuffer(contents)}`);
           done(behavior.uploadError || null);
         },
+        end() {
+          state.sftpEnded = true;
+        },
       };
-      process.nextTick(() => callback(null, sftp));
+      state.sftp = sftp;
+      if (behavior.sftpDelayMs) setTimeout(() => callback(null, sftp), behavior.sftpDelayMs);
+      else process.nextTick(() => callback(null, sftp));
     }
     exec(command, callback) {
       state.operations.push("exec");
@@ -131,13 +149,27 @@ function makeBundleClient(behavior = {}) {
   return { Client: FakeBundleClient, state };
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function bundleArgs(over = {}) {
   return {
     host: "1.2.3.4",
     port: 2222,
     username: "root",
     password: "ssh-password",
-    manifest: [{ localPath: __filename, remotePath: "install-wg-relay.sh", mode: 0o755 }],
+    manifest: [{ contents: Buffer.from("installer"), remotePath: "install-wg-relay.sh", mode: 0o755 }],
     installEnv: { WG_PORT: "51820", WG_SUBNET: "10.8.0.0/24" },
     timeoutMs: 1000,
     ...over,
@@ -217,11 +249,27 @@ test("deployBundle rejects a changed saved fingerprint without confirmation or u
       },
       deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-changed" },
     })),
-    /saved SSH host key has changed/i
+    (error) => error.code === "HOST_KEY_CHANGED"
+      && error.reason === "host_key_changed"
+      && !error.message.includes(sha256Fingerprint(Buffer.from("changed-host-key")))
   );
 
   assert.equal(confirmCalls, 0);
   assert.equal(fake.state.operations.length, 0);
+});
+
+test("deployBundle returns a stable unconfirmed TOFU reason", async () => {
+  const fake = makeBundleClient();
+  await assert.rejects(
+    deployBundle(bundleArgs({
+      confirmHostKey: () => false,
+      deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-unconfirmed" },
+    })),
+    (error) => error.code === "HOST_KEY_UNCONFIRMED"
+      && error.reason === "host_key_unconfirmed"
+  );
+  assert.equal(fake.state.verifierCallbackCount, 1);
+  assert.deepEqual(fake.state.verifierValues, [false]);
 });
 
 test("deployBundle non-root install writes sudo password before closing installer stdin", async () => {
@@ -262,6 +310,147 @@ test("deployBundle reports an upload failure without starting installation", asy
     "upload:fail",
   ]);
   assert.equal(fake.state.commands.length, 0);
+});
+
+test("deployBundle timeout during delayed SFTP open closes late SFTP and never execs", async () => {
+  const fake = makeBundleClient({ sftpDelayMs: 30 });
+  await assert.rejects(
+    deployBundle(bundleArgs({
+      confirmHostKey: () => true,
+      timeoutMs: 5,
+      deps: {
+        Client: fake.Client,
+        remoteRoot: "/tmp/clawd-relay-late-sftp",
+        bundleModule: { uploadRelayBundle: async () => {} },
+      },
+    })),
+    (error) => error.code === "SSH_TIMEOUT"
+  );
+
+  await wait(45);
+  assert.equal(fake.state.commands.length, 0);
+  assert.equal(fake.state.ended, true);
+  assert.equal(fake.state.sftpEnded, true);
+});
+
+test("deployBundle timeout during delayed upload closes SFTP and never execs after upload resolves", async () => {
+  const fake = makeBundleClient();
+  const upload = deferred();
+  const started = deferred();
+  const promise = deployBundle(bundleArgs({
+    confirmHostKey: () => true,
+    timeoutMs: 10,
+    deps: {
+      Client: fake.Client,
+      remoteRoot: "/tmp/clawd-relay-late-upload",
+      bundleModule: {
+        uploadRelayBundle: async () => {
+          started.resolve();
+          await upload.promise;
+        },
+      },
+    },
+  }));
+  await started.promise;
+  await assert.rejects(promise, (error) => error.code === "SSH_TIMEOUT");
+  upload.resolve();
+  await wait(10);
+
+  assert.equal(fake.state.commands.length, 0);
+  assert.equal(fake.state.sftpEnded, true);
+});
+
+test("deployBundle rejects connection close before ready", async () => {
+  const fake = makeBundleClient({ closeBeforeReady: true });
+  await assert.rejects(
+    deployBundle(bundleArgs({
+      confirmHostKey: () => true,
+      timeoutMs: 30,
+      deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-close-before-ready" },
+    })),
+    (error) => error.code === "SSH_CONNECTION_CLOSED"
+  );
+  assert.equal(fake.state.commands.length, 0);
+});
+
+test("deployBundle timeout closes an active install channel", async () => {
+  const fake = makeBundleClient({ hangInstall: true });
+  await assert.rejects(
+    deployBundle(bundleArgs({
+      confirmHostKey: () => true,
+      timeoutMs: 10,
+      deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-hung-install" },
+    })),
+    (error) => error.code === "SSH_TIMEOUT"
+  );
+  assert.equal(fake.state.commands.length, 1);
+  assert.equal(fake.state.streamDestroyed, true);
+});
+
+test("deployBundle maps synchronous TOFU confirmation throws and invokes verifier callback once", async () => {
+  const fake = makeBundleClient();
+  await assert.rejects(
+    deployBundle(bundleArgs({
+      confirmHostKey: () => { throw new Error("sensitive confirmation detail"); },
+      deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-confirm-throw" },
+    })),
+    (error) => error.code === "HOST_KEY_CONFIRMATION_FAILED"
+      && !error.message.includes("sensitive confirmation detail")
+  );
+  assert.equal(fake.state.verifierCallbackCount, 1);
+  assert.deepEqual(fake.state.verifierValues, [false]);
+  assert.equal(fake.state.ended, true);
+});
+
+test("deployBundle pending TOFU confirmation cannot revive after timeout", async () => {
+  const fake = makeBundleClient();
+  const confirmation = deferred();
+  const promise = deployBundle(bundleArgs({
+    confirmHostKey: () => confirmation.promise,
+    timeoutMs: 10,
+    deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-late-confirm" },
+  }));
+  await assert.rejects(promise, (error) => error.code === "SSH_TIMEOUT");
+  confirmation.resolve(true);
+  await wait(10);
+
+  assert.equal(fake.state.verifierCallbackCount, 1);
+  assert.deepEqual(fake.state.verifierValues, [false]);
+  assert.equal(fake.state.operations.length, 0);
+});
+
+test("deployBundle rejects CR or LF in a non-root sudo password before connect", async () => {
+  for (const password of ["bad\npassword", "bad\rpassword"]) {
+    const fake = makeBundleClient();
+    await assert.rejects(
+      deployBundle(bundleArgs({
+        username: "deploy",
+        password,
+        confirmHostKey: () => true,
+        deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-password" },
+      })),
+      (error) => error.code === "INVALID_SUDO_PASSWORD"
+    );
+    assert.equal(fake.state.connectCalls, 0);
+    assert.equal(fake.state.commands.length, 0);
+  }
+});
+
+test("deployBundle bounds combined stdout and stderr and aborts the install channel", async () => {
+  const fake = makeBundleClient({
+    stdout: Buffer.alloc(1024 * 1024 + 1, 65),
+    stderr: Buffer.alloc(1024 * 1024 + 1, 66),
+  });
+  await assert.rejects(
+    deployBundle(bundleArgs({
+      confirmHostKey: () => true,
+      deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-output-limit" },
+    })),
+    (error) => error.code === "OUTPUT_LIMIT"
+      && error.reason === "output_limit"
+      && !error.message.includes("AAAA")
+  );
+  assert.equal(fake.state.streamDestroyed, true);
 });
 
 test("execScript runs bash -s, feeds script, returns code/stdout/stderr", async () => {

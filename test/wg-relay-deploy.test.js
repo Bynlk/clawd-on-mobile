@@ -15,24 +15,40 @@ const {
   STEPS,
 } = require("../src/wg-relay-deploy");
 
-const TOKEN_A = "a".repeat(64);
-const TOKEN_B = "b".repeat(64);
-const PRIVATE_KEY = `${"A".repeat(43)}=`;
-const PUBLIC_KEY = `${"B".repeat(43)}=`;
+const TOKEN_A = "aA".repeat(32);
+const TOKEN_B = "bB".repeat(32);
+const PRIVATE_KEY = Buffer.alloc(32, 1).toString("base64");
+const PUBLIC_KEY = Buffer.alloc(32, 2).toString("base64");
+const OTHER_PUBLIC_KEY = Buffer.alloc(32, 3).toString("base64");
 
 function wgConfig(address, over = {}) {
-  return [
+  const lines = [
     "[Interface]",
     `PrivateKey = ${over.privateKey || PRIVATE_KEY}`,
     `Address = ${address}`,
+  ];
+  if (over.duplicatePrivateKey) lines.push(`PrivateKey = ${over.privateKey || PRIVATE_KEY}`);
+  if (over.interfaceExtra) lines.push(over.interfaceExtra);
+  lines.push(
     "",
     "[Peer]",
     `PublicKey = ${over.publicKey || PUBLIC_KEY}`,
-    "Endpoint = 1.2.3.4:51820",
-    "AllowedIPs = 10.8.0.0/24",
-    "PersistentKeepalive = 25",
+    `Endpoint = ${over.endpoint || "1.2.3.4:51820"}`,
+    `AllowedIPs = ${over.allowedIps || "10.8.0.0/24"}`,
+    `PersistentKeepalive = ${over.keepalive || "25"}`,
     "",
-  ].join("\n");
+  );
+  if (over.duplicatePeerSection) {
+    lines.push(
+      "[Peer]",
+      `PublicKey = ${over.publicKey || PUBLIC_KEY}`,
+      `Endpoint = ${over.endpoint || "1.2.3.4:51820"}`,
+      `AllowedIPs = ${over.allowedIps || "10.8.0.0/24"}`,
+      `PersistentKeepalive = ${over.keepalive || "25"}`,
+      ""
+    );
+  }
+  return lines.join("\n");
 }
 
 function valueOr(over, key, fallback) {
@@ -65,6 +81,13 @@ function keyProfile(over = {}) {
     wgPort: 51820,
     wgSubnet: "10.8.0.0/24",
     ...over,
+  };
+}
+
+function readbackContext(profile = {}, runtime = {}) {
+  return {
+    profile: keyProfile({ host: "root@1.2.3.4", ...profile }),
+    runtime: { relayPort: 7891, ...runtime },
   };
 }
 
@@ -154,6 +177,78 @@ test("parseReadback rejects every partial or malformed security field", async (t
   }
 });
 
+test("parseReadback rejects adversarial WireGuard and Relay configurations", async (t) => {
+  const endpoint51999 = "1.2.3.4:51999";
+  const endpointOtherHost = "5.6.7.8:51820";
+  const cases = [
+    ["AllowedIPs also routes the public Internet", {
+      pcConfig: wgConfig("10.8.0.2/32", { allowedIps: "10.8.0.0/24, 0.0.0.0/0" }),
+    }],
+    ["PC address is not subnet .2", { pcConfig: wgConfig("10.8.0.4/32") }],
+    ["phone address is not subnet .3", { phoneConfig: wgConfig("10.8.0.4/32") }],
+    ["Relay host is not subnet .1", { relayUrl: "ws://10.8.0.2:7891" }],
+    ["Relay port differs from runtime", { relayUrl: "ws://10.8.0.1:7999" }],
+    ["keepalive is not 25", { pcConfig: wgConfig("10.8.0.2/32", { keepalive: "20" }) }],
+    ["unknown Interface directive", {
+      pcConfig: wgConfig("10.8.0.2/32", { interfaceExtra: "PostUp = expose-secret" }),
+    }],
+    ["duplicate Interface directive", {
+      pcConfig: wgConfig("10.8.0.2/32", { duplicatePrivateKey: true }),
+    }],
+    ["duplicate Peer section", {
+      pcConfig: wgConfig("10.8.0.2/32", { duplicatePeerSection: true }),
+    }],
+    ["Relay and management tokens are identical", { managementToken: TOKEN_A }],
+    ["Relay and management tokens differ only by hex case", {
+      managementToken: TOKEN_A.toLowerCase(),
+    }],
+    ["private key is not 32 bytes", {
+      pcConfig: wgConfig("10.8.0.2/32", { privateKey: Buffer.alloc(31, 1).toString("base64") }),
+    }],
+    ["server public key is malformed base64", {
+      pcConfig: wgConfig("10.8.0.2/32", { publicKey: "!".repeat(44) }),
+    }],
+    ["PC and phone server public keys differ", {
+      phoneConfig: wgConfig("10.8.0.3/32", { publicKey: OTHER_PUBLIC_KEY }),
+    }],
+    ["endpoint port differs from profile WireGuard port", {
+      endpoint: endpoint51999,
+      pcConfig: wgConfig("10.8.0.2/32", { endpoint: endpoint51999 }),
+      phoneConfig: wgConfig("10.8.0.3/32", { endpoint: endpoint51999 }),
+    }],
+    ["endpoint host differs from requested literal IP", {
+      endpoint: endpointOtherHost,
+      pcConfig: wgConfig("10.8.0.2/32", { endpoint: endpointOtherHost }),
+      phoneConfig: wgConfig("10.8.0.3/32", { endpoint: endpointOtherHost }),
+    }],
+    ["readback subnet differs from profile subnet", {
+      subnet: "10.9.0.0/24",
+      relayUrl: "ws://10.9.0.1:7891",
+      pcConfig: wgConfig("10.9.0.2/32", { allowedIps: "10.9.0.0/24" }),
+      phoneConfig: wgConfig("10.9.0.3/32", { allowedIps: "10.9.0.0/24" }),
+    }],
+  ];
+
+  for (const [name, over] of cases) {
+    await t.test(name, () => {
+      const result = parseReadback(makeReadbackStdout(over), readbackContext());
+      assert.equal(result.ok, false);
+      assert.match(result.message, /^Invalid readback: [A-Za-z]+ \(EX-12\)$/);
+      assert.doesNotMatch(result.message, /expose-secret|PrivateKey|aAaA/);
+    });
+  }
+});
+
+test("parseReadback accepts a public endpoint for a requested domain and preserves mixed-case tokens", () => {
+  const result = parseReadback(
+    makeReadbackStdout(),
+    readbackContext({ host: "relay.example.com", sshUsername: "deploy" })
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.readback.relayToken, TOKEN_A);
+  assert.equal(result.readback.managementToken, TOKEN_B);
+});
+
 // ── makeStepTracker ──
 test("makeStepTracker maps log lines to progress events", () => {
   const events = [];
@@ -214,11 +309,18 @@ test("deploy key path normalizes canonical SSH fields and preserves legacy host 
       },
     },
     deployModule: {
-      spawnAndWait: async () => ({
-        code: 0,
-        stdout: makeReadbackStdout(),
-        stderr: "",
-      }),
+      spawnAndWait: async (_spawn, _command, args) => {
+        const endpoint = `${args[0].split("@").at(-1)}:51820`;
+        return {
+          code: 0,
+          stdout: makeReadbackStdout({
+            endpoint,
+            pcConfig: wgConfig("10.8.0.2/32", { endpoint }),
+            phoneConfig: wgConfig("10.8.0.3/32", { endpoint }),
+          }),
+          stderr: "",
+        };
+      },
     },
   };
   const canonical = keyProfile({
@@ -383,6 +485,35 @@ test("deploy maps host-key ssh2 error", async () => {
   assert.equal(r.ok, false);
   assert.equal(r.reason, "host_key");
   assert.equal(r.hint, "wgErrHostKey");
+});
+
+test("deploy maps stable transport codes to distinct safe reasons", async (t) => {
+  const cases = [
+    ["HOST_KEY_CHANGED", "host_key_changed", "wgErrHostKeyChanged"],
+    ["HOST_KEY_UNCONFIRMED", "host_key_unconfirmed", "wgErrHostKeyUnconfirmed"],
+    ["HOST_KEY_CONFIRMATION_FAILED", "host_key_confirmation_failed", "wgErrHostKeyConfirmationFailed"],
+    ["OUTPUT_LIMIT", "output_limit", "wgErrOutputLimit"],
+  ];
+  for (const [code, reason, hint] of cases) {
+    await t.test(code, async () => {
+      const secretDetail = "never-return-transport-detail";
+      const error = new Error(secretDetail);
+      error.code = code;
+      const result = await deploy({
+        profile: keyProfile({ authMethod: "password", identityFile: undefined }),
+        password: "pw",
+        deps: {
+          bundleModule: { buildRelayBundleManifest: () => [{ remotePath: "install-wg-relay.sh" }] },
+          ssh2Module: { deployBundle: async () => { throw error; } },
+          confirmHostKey: () => true,
+        },
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, reason);
+      assert.equal(result.hint, hint);
+      assert.doesNotMatch(JSON.stringify(result), /never-return-transport-detail/);
+    });
+  }
 });
 
 test("deploy never returns or emits a password contained in a transport error", async () => {

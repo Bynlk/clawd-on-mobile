@@ -23,6 +23,15 @@
 
 const crypto = require("crypto");
 
+const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
+
+function transportError(code, reason, message) {
+  const error = new Error(message);
+  error.code = code;
+  error.reason = reason;
+  return error;
+}
+
 // Compute the SHA256 fingerprint the way OpenSSH prints it:
 //   SHA256:<base64-no-padding>
 function sha256Fingerprint(keyBuf) {
@@ -74,19 +83,80 @@ function openSftp(conn) {
   });
 }
 
-function executeInstaller(conn, { command, username, password }) {
+function closeSftp(sftp) {
+  if (!sftp) return;
+  try {
+    if (typeof sftp.end === "function") sftp.end();
+    else if (typeof sftp.close === "function") sftp.close();
+  } catch {
+    // Best-effort cleanup.
+  }
+}
+
+function abortChannel(stream) {
+  if (!stream) return;
+  try {
+    if (typeof stream.destroy === "function") stream.destroy();
+    else if (typeof stream.close === "function") stream.close();
+  } catch {
+    // Best-effort cleanup.
+  }
+}
+
+function executeInstaller(conn, {
+  command,
+  username,
+  password,
+  isAborted,
+  onChannel,
+}) {
   return new Promise((resolve, reject) => {
     conn.exec(command, (error, stream) => {
       if (error) {
         reject(error);
         return;
       }
+      if (isAborted()) {
+        abortChannel(stream);
+        reject(transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted"));
+        return;
+      }
+      onChannel(stream);
       const stdoutChunks = [];
       const stderrChunks = [];
-      stream.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
-      stream.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
-      stream.on("error", reject);
+      let outputBytes = 0;
+      let done = false;
+
+      function finishReject(error) {
+        if (done) return;
+        done = true;
+        onChannel(null);
+        abortChannel(stream);
+        reject(error);
+      }
+
+      function appendOutput(chunks, chunk) {
+        if (done) return;
+        const buffer = Buffer.from(chunk);
+        if (outputBytes + buffer.length > MAX_OUTPUT_BYTES) {
+          finishReject(transportError(
+            "OUTPUT_LIMIT",
+            "output_limit",
+            "Remote installer output exceeded the safe limit"
+          ));
+          return;
+        }
+        outputBytes += buffer.length;
+        chunks.push(buffer);
+      }
+
+      stream.on("data", (chunk) => appendOutput(stdoutChunks, chunk));
+      stream.stderr.on("data", (chunk) => appendOutput(stderrChunks, chunk));
+      stream.on("error", finishReject);
       stream.on("close", (code) => {
+        if (done) return;
+        done = true;
+        onChannel(null);
         resolve({
           code: typeof code === "number" ? code : 0,
           stdout: Buffer.concat(stdoutChunks).toString("utf8"),
@@ -94,7 +164,15 @@ function executeInstaller(conn, { command, username, password }) {
         });
       });
 
+      if (isAborted()) {
+        finishReject(transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted"));
+        return;
+      }
       if (username !== "root") stream.write(`${password}\n`);
+      if (isAborted()) {
+        finishReject(transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted"));
+        return;
+      }
       stream.end();
     });
   });
@@ -117,6 +195,13 @@ async function deployBundle({
   if (!Array.isArray(manifest) || manifest.length === 0) {
     throw new Error("deployBundle: manifest required");
   }
+  if (username !== "root" && (typeof password !== "string" || /[\r\n]/.test(password))) {
+    throw transportError(
+      "INVALID_SUDO_PASSWORD",
+      "invalid_sudo_password",
+      "SSH password cannot contain CR or LF for sudo deployment"
+    );
+  }
   const Client = loadClient(deps);
   const { uploadRelayBundle } = deps.bundleModule || require("./wg-relay-bundle");
   const remoteRoot = deps.remoteRoot || `/tmp/clawd-relay-${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
@@ -125,15 +210,30 @@ async function deployBundle({
   return new Promise((resolve, reject) => {
     const conn = new Client();
     let settled = false;
+    let aborted = false;
     let acceptedFingerprint = null;
-    let hostKeyError = null;
+    let activeSftp = null;
+    let activeChannel = null;
+    let activeVerifier = null;
 
     const timer = setTimeout(() => {
-      finishReject(new Error(`SSH deployment timed out after ${timeoutMs}ms`));
+      finishReject(transportError(
+        "SSH_TIMEOUT",
+        "timeout",
+        `SSH deployment timed out after ${timeoutMs}ms`
+      ));
     }, timeoutMs);
 
+    function isAborted() {
+      return aborted || settled;
+    }
     function cleanup() {
       clearTimeout(timer);
+      if (activeVerifier) activeVerifier(false);
+      abortChannel(activeChannel);
+      activeChannel = null;
+      closeSftp(activeSftp);
+      activeSftp = null;
       try { conn.end(); } catch { /* ignore cleanup errors */ }
     }
     function finishResolve(value) {
@@ -145,29 +245,58 @@ async function deployBundle({
     function finishReject(error) {
       if (settled) return;
       settled = true;
+      aborted = true;
       cleanup();
       reject(error);
     }
 
     conn.on("error", (error) => {
-      finishReject(hostKeyError || error);
+      finishReject(error);
+    });
+    conn.on("close", () => {
+      finishReject(transportError(
+        "SSH_CONNECTION_CLOSED",
+        "connection_closed",
+        "SSH connection closed before deployment completed"
+      ));
     });
 
     conn.on("ready", async () => {
+      if (isAborted()) return;
       emitProgress(onProgress, "connect", "ok");
       let activeStage = "upload";
       try {
+        if (isAborted()) return;
         emitProgress(onProgress, "upload", "start");
         const sftp = await openSftp(conn);
+        if (isAborted()) {
+          closeSftp(sftp);
+          return;
+        }
+        activeSftp = sftp;
+        if (isAborted()) return;
         await uploadRelayBundle({ sftp, manifest, remoteRoot });
+        if (isAborted()) return;
+        closeSftp(activeSftp);
+        activeSftp = null;
         emitProgress(onProgress, "upload", "ok");
 
+        if (isAborted()) return;
         activeStage = "install";
         emitProgress(onProgress, "install", "start");
-        const result = await executeInstaller(conn, { command, username, password });
+        if (isAborted()) return;
+        const result = await executeInstaller(conn, {
+          command,
+          username,
+          password,
+          isAborted,
+          onChannel: (stream) => { activeChannel = stream; },
+        });
+        if (isAborted()) return;
         emitProgress(onProgress, "install", result.code === 0 ? "ok" : "fail");
         finishResolve({ ...result, acceptedFingerprint });
       } catch (error) {
+        if (isAborted()) return;
         emitProgress(onProgress, activeStage, "fail");
         finishReject(error);
       }
@@ -181,6 +310,22 @@ async function deployBundle({
       password,
       readyTimeout: Math.min(timeoutMs, 30000),
       hostVerifier: (keyBuf, callback) => {
+        let verifierCalled = false;
+        const respond = (accepted) => {
+          if (verifierCalled) return;
+          verifierCalled = true;
+          if (activeVerifier === respond) activeVerifier = null;
+          try {
+            callback(Boolean(accepted) && !isAborted());
+          } catch {
+            finishReject(transportError(
+              "HOST_KEY_CONFIRMATION_FAILED",
+              "host_key_confirmation_failed",
+              "SSH host key verification callback failed"
+            ));
+          }
+        };
+        activeVerifier = respond;
         const fingerprint = sha256Fingerprint(keyBuf);
         const info = { fingerprint, host, port };
         emitProgress(onProgress, "host-key", "start");
@@ -189,31 +334,55 @@ async function deployBundle({
           if (fingerprint === expectedFingerprint) {
             acceptedFingerprint = fingerprint;
             emitProgress(onProgress, "host-key", "ok");
-            callback(true);
+            respond(true);
           } else {
-            hostKeyError = new Error("Saved SSH host key has changed; remove the saved fingerprint before confirming a replacement");
+            const error = transportError(
+              "HOST_KEY_CHANGED",
+              "host_key_changed",
+              "Saved SSH host key has changed; remove it before confirming a replacement"
+            );
             emitProgress(onProgress, "host-key", "fail");
-            callback(false);
+            respond(false);
+            finishReject(error);
           }
           return;
         }
 
-        Promise.resolve(typeof confirmHostKey === "function" ? confirmHostKey(info) : false)
+        Promise.resolve()
+          .then(() => (typeof confirmHostKey === "function" ? confirmHostKey(info) : false))
           .then((confirmed) => {
+            if (isAborted()) {
+              respond(false);
+              return;
+            }
             if (confirmed) {
               acceptedFingerprint = fingerprint;
               emitProgress(onProgress, "host-key", "ok");
-              callback(true);
+              respond(true);
             } else {
-              hostKeyError = new Error("SSH host key was not confirmed");
+              const error = transportError(
+                "HOST_KEY_UNCONFIRMED",
+                "host_key_unconfirmed",
+                "SSH host key was not confirmed"
+              );
               emitProgress(onProgress, "host-key", "fail");
-              callback(false);
+              respond(false);
+              finishReject(error);
             }
           })
           .catch(() => {
-            hostKeyError = new Error("SSH host key confirmation failed");
+            if (isAborted()) {
+              respond(false);
+              return;
+            }
+            const error = transportError(
+              "HOST_KEY_CONFIRMATION_FAILED",
+              "host_key_confirmation_failed",
+              "SSH host key confirmation failed"
+            );
             emitProgress(onProgress, "host-key", "fail");
-            callback(false);
+            respond(false);
+            finishReject(error);
           });
       },
     });

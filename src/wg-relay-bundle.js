@@ -67,6 +67,29 @@ function assertNoSymlinkComponents(root, relativePath) {
   }
 }
 
+function captureContainedFile(root, relativePath) {
+  const localPath = path.join(root, relativePath);
+  assertRegularFile(localPath, relativePath);
+  assertNoSymlinkComponents(root, relativePath);
+  const realRoot = fs.realpathSync(root);
+  const realFile = fs.realpathSync(localPath);
+  const containedPath = path.relative(realRoot, realFile);
+  if (containedPath === ".." || containedPath.startsWith(`..${path.sep}`) || path.isAbsolute(containedPath)) {
+    throw new Error(`Relay bundle file escapes appRoot: ${relativePath}`);
+  }
+  return { localPath, contents: fs.readFileSync(localPath) };
+}
+
+function createManifestEntry(captured, remotePath, mode) {
+  const snapshot = Buffer.from(captured.contents);
+  const entry = { localPath: captured.localPath, remotePath, mode };
+  Object.defineProperty(entry, "contents", {
+    enumerable: true,
+    get() { return Buffer.from(snapshot); },
+  });
+  return Object.freeze(entry);
+}
+
 function walkRuntimeFiles(rootPath, relativePath = "") {
   let entries;
   try {
@@ -103,10 +126,8 @@ function buildRelayBundleManifest({ appRoot }) {
   }
   const root = path.resolve(appRoot);
   const manifest = REQUIRED_FILES.map(([sourcePath, remotePath, mode]) => {
-    const localPath = path.join(root, sourcePath);
-    assertRegularFile(localPath, sourcePath);
-    assertNoSymlinkComponents(root, sourcePath);
-    return { localPath, remotePath, mode };
+    const captured = captureContainedFile(root, sourcePath);
+    return createManifestEntry(captured, remotePath, mode);
   });
 
   const wsRoot = path.join(root, "node_modules", "ws");
@@ -116,10 +137,11 @@ function buildRelayBundleManifest({ appRoot }) {
     throw new Error("Required relay bundle path is not a directory: node_modules/ws");
   }
   for (const relativePath of walkRuntimeFiles(wsRoot).sort(comparePaths)) {
-    const localPath = path.join(wsRoot, relativePath);
+    const sourcePath = path.join("node_modules", "ws", relativePath);
+    const captured = captureContainedFile(root, sourcePath);
     const remotePath = path.posix.join("app/node_modules/ws", relativePath.split(path.sep).join("/"));
     assertSafeRemotePath(remotePath);
-    manifest.push({ localPath, remotePath, mode: 0o644 });
+    manifest.push(createManifestEntry(captured, remotePath, 0o644));
   }
   return manifest;
 }
@@ -161,10 +183,9 @@ async function uploadRelayBundle({ sftp, manifest, remoteRoot, onProgress }) {
 
   for (const entry of manifest) {
     assertSafeRemotePath(entry && entry.remotePath);
-    if (!entry || typeof entry.localPath !== "string" || ![0o644, 0o755].includes(entry.mode)) {
+    if (!entry || !Buffer.isBuffer(entry.contents) || ![0o644, 0o755].includes(entry.mode)) {
       throw new Error("uploadRelayBundle: invalid manifest entry");
     }
-    assertRegularFile(entry.localPath, entry.remotePath);
   }
 
   for (const directory of collectRemoteDirectories(remoteRoot, manifest)) {
@@ -173,9 +194,8 @@ async function uploadRelayBundle({ sftp, manifest, remoteRoot, onProgress }) {
 
   let completed = 0;
   for (const entry of manifest) {
-    const contents = fs.readFileSync(entry.localPath);
     const remotePath = path.posix.join(remoteRoot, entry.remotePath);
-    await callSftp(sftp, "writeFile", remotePath, contents, { mode: entry.mode });
+    await callSftp(sftp, "writeFile", remotePath, Buffer.from(entry.contents), { mode: entry.mode });
     completed += 1;
     if (typeof onProgress === "function") {
       onProgress({ stage: "upload", completed, total: manifest.length });

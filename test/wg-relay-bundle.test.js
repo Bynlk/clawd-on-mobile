@@ -74,6 +74,7 @@ test("buildRelayBundleManifest declares every required Relay and ws runtime file
   assert.equal(manifest[0].mode, 0o755);
   assert.ok(manifest.slice(1).every((entry) => entry.mode === 0o644));
   assert.ok(manifest.every((entry) => path.isAbsolute(entry.localPath)));
+  assert.ok(manifest.every((entry) => Buffer.isBuffer(entry.contents)));
 });
 
 test("buildRelayBundleManifest fails clearly when a future Task 3 module is absent", (t) => {
@@ -168,7 +169,7 @@ test("uploadRelayBundle rejects traversal and absolute manifest paths before SFT
     await assert.rejects(
       uploadRelayBundle({
         sftp,
-        manifest: [{ localPath: __filename, remotePath, mode: 0o644 }],
+        manifest: [{ contents: Buffer.from("safe"), remotePath, mode: 0o644 }],
         remoteRoot: "/tmp/clawd-relay-test",
       }),
       /unsafe relay bundle path/i
@@ -177,20 +178,24 @@ test("uploadRelayBundle rejects traversal and absolute manifest paths before SFT
   }
 });
 
-test("uploadRelayBundle rejects a local file replaced by a symlink after manifest creation", async (t) => {
+test("uploadRelayBundle uses captured bytes after source mutation or replacement", async (t) => {
   const appRoot = makeFixture();
   t.after(() => removeFixture(appRoot));
-  const manifest = buildRelayBundleManifest({ appRoot });
   const installer = path.join(appRoot, "relay/install-wg-relay.sh");
-  fs.rmSync(installer);
-  fs.symlinkSync(__filename, installer);
+  const original = fs.readFileSync(installer);
+  const manifest = buildRelayBundleManifest({ appRoot });
+  manifest[0].contents.fill(0);
+  fs.renameSync(installer, `${installer}.captured`);
+  fs.writeFileSync(installer, "replacement after manifest\n");
   const sftp = makeSftpRecorder();
 
-  await assert.rejects(
-    uploadRelayBundle({ sftp, manifest, remoteRoot: "/tmp/clawd-relay-test" }),
-    /symlink.*install-wg-relay\.sh/i
-  );
-  assert.equal(sftp.operations.filter((op) => op.type === "writeFile").length, 0);
+  await uploadRelayBundle({ sftp, manifest, remoteRoot: "/tmp/clawd-relay-test" });
+
+  const installerWrite = sftp.operations.find((op) => (
+    op.type === "writeFile" && op.remotePath.endsWith("/install-wg-relay.sh")
+  ));
+  assert.deepEqual(installerWrite.contents, original);
+  assert.notEqual(installerWrite.contents.toString("utf8"), "replacement after manifest\n");
 });
 
 test("desktop packaging includes the Relay sources required by the production manifest", () => {

@@ -419,7 +419,7 @@ POST /api/manage/phone/rotate
 ### Task 2：单会话 SSH、TOFU 与完整 VPS bundle 上传（2026-07-13）
 
 - bundle RED：`node --test test/wg-relay-bundle.test.js` 退出码 1，按预期出现 `MODULE_NOT_FOUND`；测试先使用临时 `appRoot` 提供假的 `relay-token-store.js` 与 `wg-management.js`，没有创建 Task 3 占位文件。
-- bundle 实现：清单以固定顺序声明安装器、Relay server、pair registry、token store、management 模块，再以稳定代码点顺序递归加入根 `node_modules/ws` 的全部运行时文件。构建与上传均拒绝符号链接，远端路径拒绝绝对路径和 `..`；SFTP 通过 `fs.readFileSync()` 读取 Buffer，目录为 `0755`，安装脚本为 `0755`，其他文件为 `0644`。桌面打包清单加入 `relay/**/*`。
+- bundle 实现：清单以固定顺序声明安装器、Relay server、pair registry、token store、management 模块，再以稳定代码点顺序递归加入根 `node_modules/ws` 的全部运行时文件。构建阶段完成父路径符号链接与 realpath containment 校验，并在任何网络活动前通过 `fs.readFileSync()` 捕获私有 Buffer 快照；SFTP 仅上传快照副本，不再读取本地路径。远端路径拒绝绝对路径和 `..`，目录为 `0755`，安装脚本为 `0755`，其他文件为 `0644`。桌面打包清单加入 `relay/**/*`。
 - ssh2 RED：`node --test test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 1；25 项中原有 21 项通过，新增 4 项按预期因 `deployBundle is not a function` 失败。
 - 单会话实现：一次 `Client.connect()` 完成 SHA-256 TOFU、SFTP 上传和一次安装 exec。已保存指纹精确匹配直接接受；未知指纹调用确认回调；已保存指纹变化直接拒绝且不再次确认。root 直接按上传路径执行安装器，普通用户使用 `sudo -S -p ''`，并先写入 sudo 密码。旧 `execScript` 导出与测试保持兼容。
 - 编排 RED：`node --test test/wg-relay-deploy.test.js` 退出码 1；27 项中 17 项按预期失败，覆盖规范 `host`/`sshUsername`/`sshPort`、旧 `user@host`/`port` 回退、严格 readback 与脱敏错误。
@@ -429,3 +429,9 @@ POST /api/manage/phone/rotate
 - 密钥部署兼容性审查 RED：`node --test --test-name-pattern="normalizes canonical SSH fields" test/wg-relay-deploy.test.js` 退出码 1；实际传给旧 `buildSshArgs` 的 host 为裸 `203.0.113.10`，而不是规范字段要求的 `deploy@203.0.113.10`。
 - 密钥部署兼容性修复：key 与 password transport 共用一个基于既有 `splitHost()` 的 SSH target normalizer；规范 `host`/`sshUsername`/`sshPort` 转换为旧 builder 所需的 `user@host`/`port`，旧 `user@host`/`port` 输入保持原值。
 - 密钥部署兼容性 GREEN：`node --test test/wg-relay-bundle.test.js test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 0；49 项全部通过，0 失败、0 跳过。
+- 安全审查 bundle RED：`node --test test/wg-relay-bundle.test.js` 退出码 1；9 项中 2 项按预期失败，证明清单没有捕获 Buffer 且上传仍会读取已变更文件。进一步修改已暴露 Buffer 后再次运行，9 项中 1 项按预期失败，证明公开 Buffer 可反向修改上传内容。
+- 安全审查 SSH RED：`node --test test/wg-ssh2-exec.test.js` 退出码 1；19 项中 8 项按预期失败，覆盖 SFTP 打开/上传超时后继续 exec、close-before-ready、活动 channel 未关闭、同步 TOFU 异常泄漏、延迟确认复活、sudo 密码换行与无限输出。
+- 安全审查 readback RED：`node --test test/wg-relay-deploy.test.js` 退出码 1；47 项中 15 项按预期失败，覆盖额外路由、错误客户端地址、错误 Relay host/port、keepalive、未知/重复 directive、重复 section、相同 Token、不同服务器公钥、endpoint host/port 与 profile 不一致。补充大小写等价 Token 后再次 RED，证明同一 256-bit 值可绕过精确字符串比较。
+- 安全审查映射 RED：筛选 stable transport code 用例运行后退出码 1；TOFU changed/unconfirmed/confirmation-failed 与 output-limit 的 4 个子用例全部缺少独立 reason/hint，且父级测试一并失败。
+- 安全审查实现：单 SSH session 使用 settled/aborted 双状态并跟踪 verifier、SFTP 与 install channel；每次 await 后和副作用前重新检查，timeout/close 会关闭连接及活动资源，延迟回调只能一次性返回 false 且不能恢复流程。未知主机确认经 microtask 调用，三类 TOFU 错误使用稳定安全 code。非 root sudo 密码拒绝 CR/LF，安装 stdout+stderr 合计上限为 2 MiB，超限中止 channel。readback 只接受各一个 `[Interface]`/`[Peer]`、固定且不重复的 directive、profile/runtime 派生的精确 subnet/端口/地址/Relay URL/keepalive、相同服务器公钥，以及两个不同的 32-byte（64 个 hex 字符）Token；错误只返回字段名，不包含秘密。
+- 安全审查 GREEN：`node --test test/wg-relay-bundle.test.js test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 0；82 项全部通过，0 失败、0 跳过。邻近 `wg-relay-ipc/profile/settings-actions/secret-store` 测试 74 项全部通过。
