@@ -51,3 +51,16 @@ test("factory listens on the injected address and exposes the bound address", as
   assert.equal(relay.address().address, "127.0.0.1");
   assert.ok(relay.address().port > 0);
 });
+
+test("CLI refuses ephemeral RELAY_TOKEN unless explicit legacy opt-in is set", () => {
+  const { createCliRelay } = require(SERVER_PATH);
+  const env = {
+    BIND_ADDR: "127.0.0.1",
+    PORT: "0",
+    RELAY_ENV_PATH: path.join(__dirname, "missing-relay.env"),
+    RELAY_TOKEN: "55".repeat(32),
+  };
+  assert.throws(() => createCliRelay(env), /persistent Relay environment/);
+  const legacy = createCliRelay({ ...env, ALLOW_LEGACY_EPHEMERAL_RELAY: "1" });
+  assert.equal(typeof legacy.listen, "function");
+});

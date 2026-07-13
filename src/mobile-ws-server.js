@@ -4,12 +4,13 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { EventEmitter } = require("events");
+const { INNER_PROTOCOL_MAX, RELAY_ENVELOPE_MAX } = require("../relay/pair-registry");
 
 const DEFAULT_MAX_CLIENTS = 10;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000;
 const RATE_LIMIT_WINDOW_MS = 60000;
 const RATE_LIMIT_MAX_MESSAGES = 60;
-const MAX_CLIENT_MESSAGE_BYTES = 64 * 1024;
+const MAX_CLIENT_MESSAGE_BYTES = INNER_PROTOCOL_MAX;
 const MAX_HISTORY = 50;
 const SESSION_CACHE_MAX_SIZE = 200;
 const SESSION_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -182,7 +183,8 @@ class MobileWSServer extends EventEmitter {
       const messageBytes = Buffer.isBuffer(data)
         ? data.length
         : Buffer.byteLength(String(data), "utf8");
-      if (messageBytes > MAX_CLIENT_MESSAGE_BYTES) {
+      const wireLimit = meta.relayTransport ? RELAY_ENVELOPE_MAX : MAX_CLIENT_MESSAGE_BYTES;
+      if (messageBytes > wireLimit) {
         ws.close(1009, "Message too large");
         return;
       }
@@ -203,6 +205,10 @@ class MobileWSServer extends EventEmitter {
       }
       if (meta.relayTransport && msg.type === "relay_forward" &&
           typeof msg.sourceClientId === "string" && typeof msg.payload === "string") {
+        if (Buffer.byteLength(msg.payload, "utf8") > MAX_CLIENT_MESSAGE_BYTES) {
+          ws.close(1009, "Message too large");
+          return;
+        }
         try {
           dispatchWs = this._relayClient(ws, msg.sourceClientId);
           msg = JSON.parse(msg.payload);
@@ -419,11 +425,15 @@ class MobileWSServer extends EventEmitter {
       const parent = relayMeta.relayParent;
       if (!this.clients.has(parent) || parent.readyState !== WebSocket.OPEN) return false;
       try {
-        parent.send(JSON.stringify({
+        const payload = JSON.stringify(data);
+        if (Buffer.byteLength(payload, "utf8") > MAX_CLIENT_MESSAGE_BYTES) return false;
+        const envelope = JSON.stringify({
           type: "relay_forward",
           targetClientId: relayMeta.relayClientId,
-          payload: JSON.stringify(data),
-        }));
+          payload,
+        });
+        if (Buffer.byteLength(envelope, "utf8") > RELAY_ENVELOPE_MAX) return false;
+        parent.send(envelope);
         return true;
       } catch {
         return false;

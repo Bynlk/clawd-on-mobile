@@ -1,5 +1,13 @@
 "use strict";
 
+const INNER_PROTOCOL_MAX = 64 * 1024;
+const RELAY_ENVELOPE_OVERHEAD = INNER_PROTOCOL_MAX * 5 + 512;
+const RELAY_ENVELOPE_MAX = INNER_PROTOCOL_MAX + RELAY_ENVELOPE_OVERHEAD;
+
+function byteLength(data) {
+  return Buffer.isBuffer(data) ? data.length : Buffer.byteLength(String(data), "utf8");
+}
+
 function isOpen(ws) {
   return !!ws && ws.readyState === ws.OPEN;
 }
@@ -32,10 +40,16 @@ class RelayPairRegistry {
 
   remove(token, role, ws) {
     const pair = this.pairs.get(token);
-    if (!pair) return null;
-    if (pair[role] === ws) pair[role] = null;
+    if (!pair) return { pair: null, removedCurrent: false };
+    const removedCurrent = pair[role] === ws;
+    if (removedCurrent) pair[role] = null;
     if (!pair.pc && !pair.phone) this.pairs.delete(token);
-    return pair;
+    return { pair, removedCurrent };
+  }
+
+  isCurrent(token, role, ws) {
+    const pair = this.pairs.get(token);
+    return !!pair && pair[role] === ws;
   }
 
   peers(token, role) {
@@ -50,7 +64,9 @@ class RelayPairRegistry {
   }
 
   forward(token, role, data, sender = null) {
+    if (sender && !this.isCurrent(token, role, sender)) return 0;
     if (role === "phone" && sender) {
+      if (byteLength(data) > INNER_PROTOCOL_MAX) return 0;
       const peer = this.peers(token, role)[0];
       if (!peer) return 0;
       const envelope = JSON.stringify({
@@ -58,6 +74,7 @@ class RelayPairRegistry {
         sourceClientId: this.clientIdFor(sender),
         payload: Buffer.isBuffer(data) ? data.toString("utf8") : String(data),
       });
+      if (Buffer.byteLength(envelope, "utf8") > RELAY_ENVELOPE_MAX) return 0;
       try {
         peer.send(envelope);
         return 1;
@@ -67,10 +84,12 @@ class RelayPairRegistry {
     }
 
     if (role === "pc") {
+      if (byteLength(data) > RELAY_ENVELOPE_MAX) return 0;
       try {
         const envelope = JSON.parse(Buffer.isBuffer(data) ? data.toString("utf8") : String(data));
         if (envelope.type === "relay_forward" && typeof envelope.targetClientId === "string" &&
             typeof envelope.payload === "string") {
+          if (Buffer.byteLength(envelope.payload, "utf8") > INNER_PROTOCOL_MAX) return 0;
           const pair = this.pairs.get(token);
           const target = pair && pair.phone;
           if (!isOpen(target) || this.clientIdFor(target) !== envelope.targetClientId) return 0;
@@ -78,6 +97,7 @@ class RelayPairRegistry {
           return 1;
         }
       } catch {}
+      if (byteLength(data) > INNER_PROTOCOL_MAX) return 0;
     }
 
     const peer = this.peers(token, role)[0];
@@ -118,4 +138,10 @@ class RelayPairRegistry {
   }
 }
 
-module.exports = { RelayPairRegistry, isOpen };
+module.exports = {
+  INNER_PROTOCOL_MAX,
+  RELAY_ENVELOPE_MAX,
+  RELAY_ENVELOPE_OVERHEAD,
+  RelayPairRegistry,
+  isOpen,
+};

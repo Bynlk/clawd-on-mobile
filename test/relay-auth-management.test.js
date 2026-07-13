@@ -4,6 +4,7 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const http = require("node:http");
+const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
@@ -18,6 +19,15 @@ const OLD_PHONE_PUBLIC = Buffer.alloc(32, 2).toString("base64");
 const NEW_PHONE_PRIVATE = Buffer.alloc(32, 3).toString("base64");
 const NEW_PHONE_PUBLIC = Buffer.alloc(32, 4).toString("base64");
 const SERVER_PUBLIC = Buffer.alloc(32, 5).toString("base64");
+const INNER_PROTOCOL_MAX = 64 * 1024;
+
+function exactJsonBytes(size) {
+  const prefix = '{"type":"size_probe","padding":"';
+  const suffix = '"}';
+  const value = `${prefix}${"x".repeat(size - Buffer.byteLength(prefix) - Buffer.byteLength(suffix))}${suffix}`;
+  assert.equal(Buffer.byteLength(value), size);
+  return value;
+}
 
 function deferred() {
   let resolve;
@@ -42,13 +52,20 @@ async function startRelay(t, overrides = {}) {
     management: overrides.management || null,
     log() {},
     remoteAddressOf: overrides.remoteAddressOf,
+    heartbeatIntervalMs: overrides.heartbeatIntervalMs,
+    requestDeadlineMs: overrides.requestDeadlineMs,
+    closeDeadlineMs: overrides.closeDeadlineMs,
+    rateLimitAttempts: overrides.rateLimitAttempts,
   });
   await relay.listen();
-  t.after(() => relay.close());
+  t.after(() => Promise.race([
+    relay.close(),
+    new Promise((resolve) => setTimeout(resolve, 500)),
+  ]));
   return relay;
 }
 
-function request(relay, { method = "GET", pathname, headers = {}, body = "" }) {
+function request(relay, { method = "GET", pathname, headers = {}, body = "", signal }) {
   const address = relay.address();
   return new Promise((resolve, reject) => {
     const req = http.request({
@@ -57,6 +74,7 @@ function request(relay, { method = "GET", pathname, headers = {}, body = "" }) {
       method,
       path: pathname,
       headers,
+      signal,
     }, (res) => {
       let responseBody = "";
       res.setEncoding("utf8");
@@ -72,9 +90,9 @@ function request(relay, { method = "GET", pathname, headers = {}, body = "" }) {
 }
 
 function loadManagementModules() {
-  const { createRelayTokenStore } = require("../relay/relay-token-store");
+  const { createDirectoryLock, createRelayTokenStore } = require("../relay/relay-token-store");
   const { createWgManagement } = require("../relay/wg-management");
-  return { createRelayTokenStore, createWgManagement };
+  return { createDirectoryLock, createRelayTokenStore, createWgManagement };
 }
 
 function oldWgConfig() {
@@ -136,6 +154,10 @@ function createManagementFixture(t, options = {}) {
           if (options.failAt === "persist" && to === paths.phonePublicKeyPath && !String(from).includes("rollback")) {
             throw new Error("file persistence failed");
           }
+          if (options.failRollbackFile && String(from).includes("rollback") && !options.rollbackFileFailed) {
+            options.rollbackFileFailed = true;
+            throw new Error("rollback file failed");
+          }
           return target.renameSync(from, to);
         };
       }
@@ -148,7 +170,17 @@ function createManagementFixture(t, options = {}) {
     liveCalls++;
     calls.push(liveCalls === 1 ? "apply-live" : "restore-live");
     if (options.failAt === "apply" && liveCalls === 1) throw new Error("live apply failed");
+    if (options.failRollbackLive && liveCalls === 2) throw new Error("live rollback failed");
     return { stdout: "" };
+  };
+  let verifyCalls = 0;
+  const verifyLivePeer = async () => {
+    verifyCalls++;
+    calls.push("verify-live");
+    return !(options.failVerificationAlways || (options.failVerificationOnce && verifyCalls === 1));
+  };
+  const transactionLock = options.lock || {
+    async runExclusive(operation) { return operation(); },
   };
   const management = createWgManagement({
     fs: tracedFs,
@@ -161,6 +193,9 @@ function createManagementFixture(t, options = {}) {
     generateRelayToken: () => NEXT_RELAY_TOKEN,
     tokenStore,
     pairs,
+    lock: transactionLock,
+    verifyLivePeer,
+    commandTimeoutMs: options.commandTimeoutMs,
     paths,
     wgInterface: "clawd",
     pcIp: "10.8.0.2",
@@ -260,10 +295,24 @@ function createConcurrentManagementFixture(t, { failFirst = false } = {}) {
   };
 }
 
-function connect(relay, role, token) {
+function connect(relay, role, token, { pathname = "/mobile/ws", headers: extraHeaders = {} } = {}) {
   const { port } = relay.address();
-  const headers = token === undefined ? {} : { Authorization: `Bearer ${token}` };
-  return new WebSocket(`ws://127.0.0.1:${port}/mobile/ws?role=${role}`, { headers });
+  const headers = { ...extraHeaders };
+  if (token !== undefined) headers.Authorization = `Bearer ${token}`;
+  return new WebSocket(`ws://127.0.0.1:${port}${pathname}?role=${role}`, { headers });
+}
+
+function rejectedUpgrade(ws) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("upgrade rejection timeout")), 1000);
+    ws.once("unexpected-response", (_request, response) => {
+      clearTimeout(timer);
+      response.resume();
+      resolve(response.statusCode);
+    });
+    ws.once("open", () => reject(new Error("unexpected 101 upgrade")));
+    ws.once("error", () => {});
+  });
 }
 
 function opened(ws) {
@@ -302,20 +351,36 @@ async function nextJsonMessageOfType(ws, type) {
 }
 
 describe("Relay strict authentication and single-phone pairing", () => {
-  it("closes a missing Bearer token with code 4001", async (t) => {
+  it("rejects a missing Bearer before WebSocket upgrade with HTTP 401", async (t) => {
     const relay = await startRelay(t);
     const ws = connect(relay, "pc");
-    const close = closed(ws);
-    await opened(ws);
-    assert.equal((await close).code, 4001);
+    assert.equal(await rejectedUpgrade(ws), 401);
   });
 
-  it("closes a wrong Bearer token with code 4001", async (t) => {
+  it("rejects a wrong Bearer before WebSocket upgrade with HTTP 401", async (t) => {
     const relay = await startRelay(t);
     const ws = connect(relay, "phone", "22".repeat(32));
-    const close = closed(ws);
-    await opened(ws);
-    assert.equal((await close).code, 4001);
+    assert.equal(await rejectedUpgrade(ws), 401);
+  });
+
+  it("rejects path/role with 403 and rate-limits each source independently before upgrade", async (t) => {
+    const relay = await startRelay(t, {
+      rateLimitAttempts: 2,
+      remoteAddressOf: (req) => req.headers["x-test-source"] || "unknown",
+    });
+    assert.equal(await rejectedUpgrade(connect(relay, "admin", RELAY_TOKEN)), 403);
+    assert.equal(await rejectedUpgrade(connect(relay, "pc", RELAY_TOKEN, { pathname: "/public" })), 403);
+
+    const first = connect(relay, "pc", RELAY_TOKEN, { headers: { "X-Test-Source": "source-a" } });
+    const second = connect(relay, "phone", RELAY_TOKEN, { headers: { "X-Test-Source": "source-a" } });
+    t.after(() => { first.close(); second.close(); });
+    await Promise.all([opened(first), opened(second)]);
+    const limited = connect(relay, "pc", RELAY_TOKEN, { headers: { "X-Test-Source": "source-a" } });
+    assert.equal(await rejectedUpgrade(limited), 429);
+    const otherSource = connect(relay, "pc", RELAY_TOKEN, { headers: { "X-Test-Source": "source-b" } });
+    t.after(() => otherSource.close());
+    await opened(otherSource);
+    assert.equal(otherSource.readyState, WebSocket.OPEN);
   });
 
   it("pairs exactly one authenticated PC and one authenticated phone", async (t) => {
@@ -347,6 +412,48 @@ describe("Relay strict authentication and single-phone pairing", () => {
     assert.deepEqual(relay.pairs.countConnections(), { pc: 0, phone: 1 });
   });
 
+  it("does not emit peer_disconnected when a replaced phone closes after its replacement is current", async (t) => {
+    const relay = await startRelay(t);
+    const pc = connect(relay, "pc", RELAY_TOKEN);
+    const first = connect(relay, "phone", RELAY_TOKEN);
+    t.after(() => { pc.close(); first.close(); });
+    await Promise.all([opened(pc), opened(first)]);
+    const messages = [];
+    pc.on("message", (data) => messages.push(JSON.parse(String(data))));
+
+    const firstClosed = closed(first);
+    const replacement = connect(relay, "phone", RELAY_TOKEN);
+    t.after(() => replacement.close());
+    await opened(replacement);
+    await firstClosed;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    assert.equal(messages.some((message) => message.type === "peer_disconnected"), false);
+    assert.equal(relay.pairs.get(RELAY_TOKEN).phone.readyState, WebSocket.OPEN);
+  });
+
+  it("sends application JSON heartbeats and keeps an idle client alive across three intervals", async (t) => {
+    const relay = await startRelay(t, { heartbeatIntervalMs: 10 });
+    const phone = connect(relay, "phone", RELAY_TOKEN);
+    t.after(() => phone.close());
+    await opened(phone);
+    let heartbeats = 0;
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("heartbeat timeout")), 500);
+      phone.on("message", (data) => {
+        const message = JSON.parse(String(data));
+        if (message.type !== "ping") return;
+        assert.equal(typeof message.timestamp, "number");
+        heartbeats++;
+        if (heartbeats >= 3) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+    assert.equal(phone.readyState, WebSocket.OPEN);
+  });
+
   it("forwards payloads through the managed-session envelope without retaining them", async (t) => {
     const relay = await startRelay(t);
     const pc = connect(relay, "pc", RELAY_TOKEN);
@@ -362,6 +469,24 @@ describe("Relay strict authentication and single-phone pairing", () => {
     const pair = relay.pairs.get(RELAY_TOKEN);
     assert.deepEqual(Object.keys(pair).sort(), ["pc", "phone"]);
     assert.doesNotMatch(JSON.stringify([...relay.pairs.pairs.values()].map(Object.keys)), /secret-payload/);
+  });
+
+  it("accepts a targeted PC relay envelope carrying exactly 65536 inner bytes", async (t) => {
+    const relay = await startRelay(t);
+    const pc = connect(relay, "pc", RELAY_TOKEN);
+    const phone = connect(relay, "phone", RELAY_TOKEN);
+    t.after(() => { pc.close(); phone.close(); });
+    await Promise.all([opened(pc), opened(phone)]);
+    const source = nextJsonMessageOfType(pc, "relay_forward");
+    phone.send('{"type":"source_probe"}');
+    const sourceClientId = (await source).sourceClientId;
+    const exact = exactJsonBytes(INNER_PROTOCOL_MAX);
+    const delivered = nextMessage(phone);
+
+    pc.send(JSON.stringify({ type: "relay_forward", targetClientId: sourceClientId, payload: exact }));
+
+    assert.equal(await delivered, exact);
+    assert.equal(pc.readyState, WebSocket.OPEN);
   });
 });
 
@@ -382,7 +507,7 @@ describe("Relay token store", () => {
     assert.equal(store.managementToken(), mixedManagementToken);
   });
 
-  it("atomically updates relay.env as 0600 while preserving management and runtime fields", (t) => {
+  it("atomically updates relay.env as 0600 while preserving management and runtime fields", async (t) => {
     const { createRelayTokenStore } = loadManagementModules();
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-token-store-"));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -406,7 +531,7 @@ describe("Relay token store", () => {
     });
 
     const store = createRelayTokenStore({ envPath, fs: tracedFs });
-    store.rotate(NEXT_RELAY_TOKEN);
+    await store.rotate(NEXT_RELAY_TOKEN, RELAY_TOKEN);
 
     assert.equal(store.current(), NEXT_RELAY_TOKEN);
     assert.equal(store.managementToken(), MANAGEMENT_TOKEN);
@@ -425,14 +550,103 @@ describe("Relay token store", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-token-invalid-"));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     const envPath = path.join(dir, "relay.env");
-    fs.writeFileSync(envPath, `RELAY_TOKEN=short\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\n`);
+    fs.writeFileSync(envPath, `RELAY_TOKEN=short\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\n`, { mode: 0o600 });
     assert.throws(() => createRelayTokenStore({ envPath }), /RELAY_TOKEN/);
-    fs.writeFileSync(envPath, `RELAY_TOKEN=${MANAGEMENT_TOKEN.toUpperCase()}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\n`);
+    fs.writeFileSync(envPath, `RELAY_TOKEN=${MANAGEMENT_TOKEN.toUpperCase()}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\n`, { mode: 0o600 });
     assert.throws(() => createRelayTokenStore({ envPath }), /distinct/);
+  });
+
+  it("reloads relay.env under lock, preserves external fields, and CAS-rejects a stale token", async (t) => {
+    const { createRelayTokenStore } = loadManagementModules();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-token-cas-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const envPath = path.join(dir, "relay.env");
+    fs.writeFileSync(envPath,
+      `RELAY_TOKEN=${RELAY_TOKEN}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\nBIND_ADDR=10.8.0.1\n`,
+      { mode: 0o600 });
+    const store = createRelayTokenStore({ envPath });
+    fs.writeFileSync(envPath,
+      `RELAY_TOKEN=${RELAY_TOKEN}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\nBIND_ADDR=10.8.0.9\nEXTERNAL_FIELD=preserve\n`,
+      { mode: 0o600 });
+
+    await store.rotate(NEXT_RELAY_TOKEN, RELAY_TOKEN);
+    const persisted = fs.readFileSync(envPath, "utf8");
+    assert.match(persisted, /BIND_ADDR=10\.8\.0\.9/);
+    assert.match(persisted, /EXTERNAL_FIELD=preserve/);
+
+    fs.writeFileSync(envPath,
+      `RELAY_TOKEN=${"77".repeat(32)}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\nBIND_ADDR=10.8.0.10\n`,
+      { mode: 0o600 });
+    await assert.rejects(store.rotate("88".repeat(32), NEXT_RELAY_TOKEN), (error) => {
+      assert.equal(error.code, "stale_token_conflict");
+      return true;
+    });
+    assert.match(fs.readFileSync(envPath, "utf8"), /BIND_ADDR=10\.8\.0\.10/);
+  });
+
+  it("rejects an existing relay.env with insecure mode before loading secrets", (t) => {
+    const { createRelayTokenStore } = loadManagementModules();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-token-mode-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const envPath = path.join(dir, "relay.env");
+    fs.writeFileSync(envPath, `RELAY_TOKEN=${RELAY_TOKEN}\nMANAGEMENT_TOKEN=${MANAGEMENT_TOKEN}\n`, { mode: 0o644 });
+    assert.throws(() => createRelayTokenStore({ envPath }), /mode.*0600/i);
+    fs.chmodSync(envPath, 0o600);
+    assert.throws(() => createRelayTokenStore({ envPath, expectedUid: fs.statSync(envPath).uid + 1 }), /owner/i);
+  });
+
+  it("uses a bounded mkdir lock that cannot be released by a competing owner", async (t) => {
+    const { createDirectoryLock } = loadManagementModules();
+    assert.equal(typeof createDirectoryLock, "function");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-lock-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const lockPath = path.join(dir, "clawd-relay.lock");
+    const first = createDirectoryLock({ lockPath, timeoutMs: 25, retryMs: 2 });
+    const second = createDirectoryLock({ lockPath, timeoutMs: 25, retryMs: 2 });
+    const releaseFirst = await first.acquire();
+    await assert.rejects(second.acquire(), (error) => error.code === "lock_timeout");
+    assert.equal(fs.existsSync(lockPath), true);
+    await releaseFirst();
+    const releaseSecond = await second.acquire();
+    assert.equal(fs.existsSync(lockPath), true);
+    await releaseSecond();
+    assert.equal(fs.existsSync(lockPath), false);
   });
 });
 
 describe("WireGuard phone rotation transaction", () => {
+  it("kills and reaps a hung production command at its deadline", async () => {
+    const { defaultCommand } = require("../relay/wg-management");
+    assert.equal(typeof defaultCommand, "function");
+    const started = Date.now();
+    await assert.rejects(
+      defaultCommand(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { timeoutMs: 25 }),
+      (error) => error.code === "command_timeout",
+    );
+    assert.ok(Date.now() - started < 500);
+  });
+
+  it("preserves the phone peer block and rejects duplicate key or AllowedIPs directives", () => {
+    const { replacePhonePeer } = require("../relay/wg-management");
+    const config = oldWgConfig().replace(
+      `PublicKey = ${OLD_PHONE_PUBLIC}\nAllowedIPs = 10.8.0.3/32`,
+      `# retained\nPublicKey = ${OLD_PHONE_PUBLIC}\nAllowedIPs = 10.8.0.3/32\nPersistentKeepalive = 25`,
+    );
+    const replaced = replacePhonePeer(config, OLD_PHONE_PUBLIC, NEW_PHONE_PUBLIC, "10.8.0.3");
+    assert.match(replaced, /# retained/);
+    assert.match(replaced, /PersistentKeepalive = 25/);
+    assert.doesNotMatch(replaced, new RegExp(OLD_PHONE_PUBLIC.replace(/[+]/g, "\\+")));
+    for (const duplicate of [
+      `PublicKey = ${OLD_PHONE_PUBLIC}\n`,
+      "AllowedIPs = 10.8.0.3/32\n",
+    ]) {
+      const malformed = config.replace("# retained\n", `# retained\n${duplicate}`);
+      assert.throws(() => replacePhonePeer(
+        malformed, OLD_PHONE_PUBLIC, NEW_PHONE_PUBLIC, "10.8.0.3"
+      ), /duplicate|exactly once/);
+    }
+  });
+
   it("serializes complete rotations so the second snapshots the first committed state", async (t) => {
     const fixture = createConcurrentManagementFixture(t);
     const first = fixture.management.rotatePhone(fixture.context);
@@ -525,9 +739,202 @@ describe("WireGuard phone rotation transaction", () => {
       if (failure === "token") assert.ok(fixture.calls.includes("restore-token"));
     });
   }
+
+  for (const scenario of ["live rollback failure", "file rollback failure", "verification mismatch"]) {
+    it(`marks management unhealthy on ${scenario} and recovers only through status`, async (t) => {
+      const fixture = createManagementFixture(t, {
+        failAt: "token",
+        failRollbackLive: scenario === "live rollback failure",
+        failRollbackFile: scenario === "file rollback failure",
+        failVerificationOnce: scenario === "verification mismatch",
+      });
+      const context = {
+        remoteAddress: "10.8.0.2",
+        authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      };
+      await assert.rejects(fixture.management.rotatePhone({
+        ...context,
+        body: { version: 1 },
+      }), (error) => {
+        assert.equal(error.code, "rollback_failed");
+        return true;
+      });
+      assert.equal(fixture.management.isHealthy(), false);
+      const generationsBeforeBlockedRetry = fixture.calls.filter((call) => call === "generate").length;
+      await assert.rejects(fixture.management.rotatePhone({
+        ...context,
+        body: { version: 1 },
+      }), (error) => error.code === "rollback_failed");
+      assert.equal(
+        fixture.calls.filter((call) => call === "generate").length,
+        generationsBeforeBlockedRetry,
+      );
+
+      const recovered = await fixture.management.status(context);
+      assert.deepEqual(recovered, { version: 1, status: "ok" });
+      assert.equal(fixture.management.isHealthy(), true);
+      for (const [file, contents] of Object.entries(fixture.oldFiles)) {
+        assert.equal(fs.readFileSync(file, "utf8"), contents);
+      }
+      assert.equal(fixture.currentToken(), RELAY_TOKEN);
+    });
+  }
+
+  it("holds the shared lock around the complete rotation transaction", async (t) => {
+    const lockEvents = [];
+    const fixture = createManagementFixture(t, {
+      lock: {
+        async runExclusive(operation) {
+          lockEvents.push("lock-acquired");
+          try { return await operation(); } finally { lockEvents.push("lock-released"); }
+        },
+      },
+    });
+    await fixture.management.rotatePhone({
+      remoteAddress: "10.8.0.2",
+      authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      body: { version: 1 },
+    });
+    assert.deepEqual(lockEvents, ["lock-acquired", "lock-released"]);
+    assert.equal(fixture.calls[0], "generate");
+    assert.equal(fixture.calls.at(-1), "close-old");
+  });
+
+  it("times out a hung key generation and unblocks the queued rotation", async (t) => {
+    const { createWgManagement } = loadManagementModules();
+    const base = createManagementFixture(t);
+    let generations = 0;
+    const management = createWgManagement({
+      fs,
+      command: async (_file, args) => ({ stdout: args.includes("peers") ? `${OLD_PHONE_PUBLIC}\n` : "" }),
+      commandTimeoutMs: 20,
+      generateKeyPair: async () => {
+        generations++;
+        if (generations === 1) return new Promise(() => {});
+        return { privateKey: NEW_PHONE_PRIVATE, publicKey: NEW_PHONE_PUBLIC };
+      },
+      generateRelayToken: () => NEXT_RELAY_TOKEN,
+      tokenStore: base.tokenStore,
+      pairs: base.pairs,
+      lock: { async runExclusive(operation) { return operation(); } },
+      verifyLivePeer: async () => true,
+      paths: base.paths,
+      wgInterface: "clawd",
+      pcIp: "10.8.0.2",
+      phoneIp: "10.8.0.3",
+      subnet: "10.8.0.0/24",
+      endpoint: "203.0.113.10:51820",
+    });
+    const context = {
+      remoteAddress: "10.8.0.2",
+      authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      body: { version: 1 },
+    };
+    const first = management.rotatePhone(context);
+    const second = management.rotatePhone(context);
+    await assert.rejects(Promise.race([
+      first,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("test_watchdog_timeout")), 250)),
+    ]), (error) => {
+      assert.notEqual(error.message, "test_watchdog_timeout");
+      assert.match(error.message, /rotation_failed/);
+      return true;
+    });
+    const result = await second;
+    assert.equal(result.relayToken, NEXT_RELAY_TOKEN);
+    assert.equal(generations, 2);
+  });
 });
 
 describe("Relay management HTTP API", () => {
+  it("returns rollback_failed while management cannot verify recovered old state", async (t) => {
+    const fixture = createManagementFixture(t, {
+      failAt: "token",
+      failVerificationAlways: true,
+    });
+    const relay = await startRelay(t, { management: fixture.management, remoteAddressOf: () => "10.8.0.2" });
+    const headers = {
+      Authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      "Content-Type": "application/json",
+    };
+    const rotate = await request(relay, {
+      method: "POST",
+      pathname: "/api/manage/phone/rotate",
+      headers,
+      body: JSON.stringify({ version: 1 }),
+    });
+    assert.equal(rotate.statusCode, 503);
+    assert.equal(rotate.body.error, "rollback_failed");
+    const status = await request(relay, {
+      pathname: "/api/manage/status",
+      headers: { Authorization: `Bearer ${MANAGEMENT_TOKEN}` },
+    });
+    assert.equal(status.statusCode, 503);
+    assert.equal(status.body.error, "rollback_failed");
+  });
+
+  it("times out a partial JSON body and a hung management handler", async (t) => {
+    const relay = await startRelay(t, {
+      management: {
+        status: () => new Promise(() => {}),
+        rotatePhone: () => new Promise(() => {}),
+      },
+      remoteAddressOf: () => "10.8.0.2",
+      requestDeadlineMs: 20,
+    });
+    const partial = new Promise((resolve, reject) => {
+      const req = http.request({
+        host: "127.0.0.1",
+        port: relay.address().port,
+        method: "POST",
+        path: "/api/manage/phone/rotate",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": "20",
+        },
+      }, (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode));
+      });
+      req.once("error", reject);
+      req.write("{");
+      t.after(() => req.destroy());
+    });
+    assert.equal(await Promise.race([
+      partial,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("body_watchdog_timeout")), 250)),
+    ]), 408);
+    const controller = new AbortController();
+    t.after(() => controller.abort());
+    const hung = await Promise.race([request(relay, {
+      pathname: "/api/manage/status",
+      headers: { Authorization: `Bearer ${MANAGEMENT_TOKEN}` },
+      signal: controller.signal,
+    }), new Promise((_, reject) => setTimeout(() => reject(new Error("request_watchdog_timeout")), 250))]);
+    assert.equal(hung.statusCode, 504);
+    assert.equal(hung.body.error, "request_timeout");
+  });
+
+  it("forces shutdown of lingering HTTP sockets within the close deadline", async (t) => {
+    const relay = await startRelay(t, { closeDeadlineMs: 20 });
+    const socket = net.connect(relay.address().port, "127.0.0.1");
+    await new Promise((resolve, reject) => {
+      socket.once("connect", resolve);
+      socket.once("error", reject);
+    });
+    t.after(() => socket.destroy());
+    const socketClosed = new Promise((resolve) => socket.once("close", resolve));
+    await Promise.race([
+      relay.close(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("close_watchdog_timeout")), 250)),
+    ]);
+    await Promise.race([
+      socketClosed,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("socket_close_timeout")), 250)),
+    ]);
+    assert.equal(socket.destroyed, true);
+  });
+
   it("accepts management requests only from the exact PC address, including its IPv4-mapped form", async (t) => {
     for (const remoteAddress of ["10.8.0.2", "::ffff:10.8.0.2"]) {
       await t.test(`accepts ${remoteAddress}`, async (t) => {

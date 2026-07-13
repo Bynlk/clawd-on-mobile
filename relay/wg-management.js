@@ -48,12 +48,15 @@ function replacePhonePeer(config, oldPublicKey, newPublicKey, phoneIp) {
   let replacements = 0;
   const next = blocks.map((block) => {
     if (!block.startsWith("[Peer]\n")) return block;
-    const allowed = block.match(/^AllowedIPs\s*=\s*(\S+)\s*$/m);
-    if (!allowed || allowed[1] !== `${phoneIp}/32`) return block;
-    const publicKey = block.match(/^PublicKey\s*=\s*(\S+)\s*$/m);
-    if (!publicKey || publicKey[1] !== oldPublicKey) throw new Error("phone peer does not match key file");
+    const allowed = [...block.matchAll(/^AllowedIPs\s*=\s*(\S+)\s*$/gm)];
+    if (!allowed.some((match) => match[1] === `${phoneIp}/32`)) return block;
+    const publicKeys = [...block.matchAll(/^PublicKey\s*=\s*(\S+)\s*$/gm)];
+    if (allowed.length !== 1 || publicKeys.length !== 1) {
+      throw new Error("phone peer contains duplicate directives");
+    }
+    if (publicKeys[0][1] !== oldPublicKey) throw new Error("phone peer does not match key file");
     replacements++;
-    return `[Peer]\n# phone\nPublicKey = ${newPublicKey}\nAllowedIPs = ${phoneIp}/32`;
+    return block.replace(/^PublicKey\s*=\s*\S+\s*$/m, `PublicKey = ${newPublicKey}`);
   });
   if (replacements !== 1) throw new Error("phone peer must appear exactly once");
   return `${next.join("\n")}\n`;
@@ -74,6 +77,15 @@ function atomicWriteFile(fs, destination, contents, label) {
     descriptor = null;
     fs.renameSync(temporary, destination);
     fs.chmodSync(destination, 0o600);
+    if (typeof fs.fsyncSync === "function") {
+      let directoryDescriptor = null;
+      try {
+        directoryDescriptor = fs.openSync(path.dirname(destination), "r");
+        fs.fsyncSync(directoryDescriptor);
+      } finally {
+        if (directoryDescriptor !== null) fs.closeSync(directoryDescriptor);
+      }
+    }
   } catch (error) {
     if (descriptor !== null) {
       try { fs.closeSync(descriptor); } catch {}
@@ -83,11 +95,24 @@ function atomicWriteFile(fs, destination, contents, label) {
   }
 }
 
-function defaultCommand(file, args, { input = "" } = {}) {
+function defaultCommand(file, args, { input = "", timeoutMs = 5000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, { stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderrBytes = 0;
+    let settled = false;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(result);
+    };
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
@@ -97,10 +122,11 @@ function defaultCommand(file, args, { input = "" } = {}) {
       stderrBytes += chunk.length;
       if (stderrBytes > 4096) child.kill("SIGKILL");
     });
-    child.once("error", () => reject(new Error("WireGuard command failed")));
+    child.once("error", () => finish(new Error("WireGuard command failed")));
     child.once("close", (code) => {
-      if (code === 0) resolve({ stdout });
-      else reject(new Error("WireGuard command failed"));
+      if (timedOut) finish(Object.assign(new Error("WireGuard command timed out"), { code: "command_timeout" }));
+      else if (code === 0) finish(null, { stdout });
+      else finish(new Error("WireGuard command failed"));
     });
     child.stdin.end(input);
   });
@@ -119,6 +145,9 @@ function createWgManagement({
   phoneIp,
   subnet,
   endpoint,
+  lock = null,
+  verifyLivePeer = null,
+  commandTimeoutMs = 5000,
 } = {}) {
   if (!tokenStore || typeof tokenStore.current !== "function" ||
       typeof tokenStore.managementToken !== "function" || typeof tokenStore.rotate !== "function") {
@@ -130,11 +159,30 @@ function createWgManagement({
   if (![wgInterface, pcIp, phoneIp, subnet, endpoint].every((value) => typeof value === "string" && value)) {
     throw new Error("WireGuard management configuration is required");
   }
+  if (!Number.isFinite(commandTimeoutMs) || commandTimeoutMs <= 0) throw new Error("invalid command timeout");
+  const transactionLock = lock || tokenStore.lock || Object.freeze({
+    async runExclusive(operation) { return operation(); },
+  });
+  if (typeof transactionLock.runExclusive !== "function") throw new Error("management lock is required");
+
+  function withDeadline(operation, code = "command_timeout") {
+    let timer;
+    return Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Object.assign(new Error(code), { code })), commandTimeoutMs);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  }
+
+  function runCommand(file, args, options = {}) {
+    return withDeadline(() => command(file, args, { ...options, timeoutMs: commandTimeoutMs }));
+  }
 
   const makeKeyPair = generateKeyPair || (async () => {
-    const privateResult = await command("wg", ["genkey"]);
+    const privateResult = await runCommand("wg", ["genkey"]);
     const privateKey = String(privateResult.stdout || "").trim();
-    const publicResult = await command("wg", ["pubkey"], { input: `${privateKey}\n` });
+    const publicResult = await runCommand("wg", ["pubkey"], { input: `${privateKey}\n` });
     return { privateKey, publicKey: String(publicResult.stdout || "").trim() };
   });
 
@@ -153,18 +201,75 @@ function createWgManagement({
     }
   }
 
-  function status(context) {
+  let healthy = true;
+  let recovery = null;
+
+  async function defaultVerifyLivePeer(candidate) {
+    const result = await runCommand("wg", ["show", wgInterface, "peers"]);
+    const peers = String(result.stdout || "").trim().split(/\s+/).filter(Boolean);
+    return peers.includes(candidate.oldPublicKey) && !peers.includes(candidate.publicKey);
+  }
+  const verifyPeer = verifyLivePeer || defaultVerifyLivePeer;
+
+  async function compensate(candidate, attempts) {
+    const failures = [];
+    if (attempts.filesAttempted) {
+      for (const [destination, contents] of [
+        [paths.wgConfigPath, candidate.oldConfig],
+        [paths.phonePrivateKeyPath, candidate.oldPrivateKey],
+        [paths.phonePublicKeyPath, candidate.oldPublicKeyFile],
+      ]) {
+        try {
+          atomicWriteFile(fs, destination, contents, "rollback");
+          if (fs.readFileSync(destination, "utf8") !== contents) throw new Error("rollback verification mismatch");
+        } catch (error) { failures.push(error); }
+      }
+    }
+    if (attempts.liveAttempted) {
+      try {
+        await runCommand("wg", [
+          "set", wgInterface,
+          "peer", candidate.publicKey, "remove",
+          "peer", candidate.oldPublicKey, "allowed-ips", `${phoneIp}/32`,
+        ]);
+      } catch (error) { failures.push(error); }
+      try {
+        const verified = await withDeadline(() => verifyPeer({
+          ...candidate, wgInterface, phoneIp,
+        }), "verification_timeout");
+        if (verified !== true) throw new Error("live peer verification mismatch");
+      } catch (error) { failures.push(error); }
+    }
+    if (attempts.tokenAttempted && tokenStore.current() !== candidate.oldRelayToken) {
+      try {
+        await tokenStore.restore(candidate.oldRelayToken, candidate.relayToken, { lockHeld: true });
+      } catch (error) { failures.push(error); }
+    }
+    if (tokenStore.current() !== candidate.oldRelayToken) failures.push(new Error("token rollback mismatch"));
+    return failures;
+  }
+
+  async function status(context) {
     authorize(context);
+    if (!healthy) {
+      await transactionLock.runExclusive(async () => {
+        const failures = await compensate(recovery.candidate, recovery.attempts);
+        if (failures.length) throw new ManagementRequestError(503, "rollback_failed");
+        healthy = true;
+        recovery = null;
+      });
+    }
     return { version: 1, status: "ok" };
   }
 
   async function executeRotation(context) {
     authorize(context);
     validateBody(context.body);
+    if (!healthy) throw new ManagementRequestError(503, "rollback_failed");
 
     let candidate;
     try {
-      const keyPair = await makeKeyPair();
+      const keyPair = await withDeadline(() => makeKeyPair());
       const privateKey = validateWireGuardKey("phone private key", keyPair.privateKey);
       const publicKey = validateWireGuardKey("phone public key", keyPair.publicKey);
       const relayToken = String(generateRelayToken()).toLowerCase();
@@ -205,34 +310,26 @@ function createWgManagement({
       atomicWriteFile(fs, paths.phonePublicKeyPath, `${candidate.publicKey}\n`, "tmp");
 
       liveAttempted = true;
-      await command("wg", [
+      await runCommand("wg", [
         "set", wgInterface,
         "peer", candidate.oldPublicKey, "remove",
         "peer", candidate.publicKey, "allowed-ips", `${phoneIp}/32`,
       ]);
 
       tokenAttempted = true;
-      tokenStore.rotate(candidate.relayToken);
+      await tokenStore.rotate(candidate.relayToken, candidate.oldRelayToken, { lockHeld: true });
       pairs.closeToken(candidate.oldRelayToken, 4003, "token_rotated");
     } catch {
-      if (filesAttempted) {
-        try { atomicWriteFile(fs, paths.wgConfigPath, candidate.oldConfig, "rollback"); } catch {}
-        try { atomicWriteFile(fs, paths.phonePrivateKeyPath, candidate.oldPrivateKey, "rollback"); } catch {}
-        try { atomicWriteFile(fs, paths.phonePublicKeyPath, candidate.oldPublicKeyFile, "rollback"); } catch {}
+      const attempts = { filesAttempted, liveAttempted, tokenAttempted };
+      const failures = await compensate(candidate, attempts);
+      if (failures.length) {
+        healthy = false;
+        recovery = { candidate, attempts };
+        throw new ManagementRequestError(503, "rollback_failed");
       }
-      if (liveAttempted) {
-        try {
-          await command("wg", [
-            "set", wgInterface,
-            "peer", candidate.publicKey, "remove",
-            "peer", candidate.oldPublicKey, "allowed-ips", `${phoneIp}/32`,
-          ]);
-        } catch {}
-      }
-      if (tokenAttempted && typeof tokenStore.restore === "function") {
-        try { tokenStore.restore(candidate.oldRelayToken); } catch {}
-      }
-      throw new Error("rotation_failed");
+      const error = new Error("rotation_failed");
+      error.code = "rotation_failed";
+      throw error;
     }
 
     const phoneConfig = `[Interface]\n` +
@@ -248,17 +345,18 @@ function createWgManagement({
 
   let rotationQueue = Promise.resolve();
   function rotatePhone(context) {
-    const operation = rotationQueue.then(() => executeRotation(context));
+    const operation = rotationQueue.then(() => transactionLock.runExclusive(() => executeRotation(context)));
     rotationQueue = operation.catch(() => {});
     return operation;
   }
 
-  return Object.freeze({ authorize, status, rotatePhone });
+  return Object.freeze({ authorize, status, rotatePhone, isHealthy: () => healthy });
 }
 
 module.exports = {
   ManagementRequestError,
   createWgManagement,
+  defaultCommand,
   normalizeRemoteAddress,
   replacePhonePeer,
 };

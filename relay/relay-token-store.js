@@ -6,6 +6,63 @@ const path = require("node:path");
 const TOKEN_PATTERN = /^[0-9a-fA-F]{64}$/;
 let temporarySequence = 0;
 
+function codedError(code, message = code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function createDirectoryLock({
+  fs = nodeFs,
+  lockPath = "/run/lock/clawd-relay.lock",
+  timeoutMs = 5000,
+  retryMs = 25,
+  now = Date.now,
+  sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay)),
+  ownerId = `${process.pid}-${Math.random().toString(16).slice(2)}`,
+} = {}) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0 || !Number.isFinite(retryMs) || retryMs <= 0) {
+    throw new Error("invalid lock timing");
+  }
+  const ownerPath = path.join(lockPath, "owner");
+
+  async function acquire() {
+    const deadline = now() + timeoutMs;
+    for (;;) {
+      try {
+        fs.mkdirSync(lockPath, { mode: 0o700 });
+        try {
+          fs.writeFileSync(ownerPath, `${ownerId}\n`, { mode: 0o600, flag: "wx" });
+        } catch (error) {
+          try { fs.rmSync(lockPath, { recursive: true, force: true }); } catch {}
+          throw error;
+        }
+        let released = false;
+        return async function release() {
+          if (released) return;
+          released = true;
+          let currentOwner;
+          try { currentOwner = fs.readFileSync(ownerPath, "utf8").trim(); } catch { return; }
+          if (currentOwner !== ownerId) return;
+          try { fs.unlinkSync(ownerPath); } catch { return; }
+          try { fs.rmdirSync(lockPath); } catch {}
+        };
+      } catch (error) {
+        if (!error || error.code !== "EEXIST") throw error;
+        if (now() >= deadline) throw codedError("lock_timeout");
+        await sleep(Math.min(retryMs, Math.max(0, deadline - now())));
+      }
+    }
+  }
+
+  async function runExclusive(operation) {
+    const release = await acquire();
+    try { return await operation(); } finally { await release(); }
+  }
+
+  return Object.freeze({ acquire, runExclusive, lockPath });
+}
+
 function normalizeToken(name, value) {
   if (typeof value !== "string" || !TOKEN_PATTERN.test(value)) {
     throw new Error(`${name} must be 64 hexadecimal characters`);
@@ -60,6 +117,15 @@ function atomicWrite(fs, destination, contents) {
     descriptor = null;
     fs.renameSync(temporary, destination);
     fs.chmodSync(destination, 0o600);
+    if (typeof fs.fsyncSync === "function") {
+      let directoryDescriptor = null;
+      try {
+        directoryDescriptor = fs.openSync(path.dirname(destination), "r");
+        fs.fsyncSync(directoryDescriptor);
+      } finally {
+        if (directoryDescriptor !== null) fs.closeSync(directoryDescriptor);
+      }
+    }
   } catch (error) {
     if (descriptor !== null) {
       try { fs.closeSync(descriptor); } catch {}
@@ -69,15 +135,28 @@ function atomicWrite(fs, destination, contents) {
   }
 }
 
+function assertSecureEnvironmentFile(fs, envPath, expectedUid) {
+  const stat = fs.lstatSync(envPath);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("relay.env must be a regular file");
+  if ((stat.mode & 0o777) !== 0o600) throw new Error("relay.env mode must be 0600");
+  if (expectedUid !== null && expectedUid !== undefined && stat.uid !== expectedUid) {
+    throw new Error("relay.env owner is invalid");
+  }
+}
+
 function createRelayTokenStore({
   envPath = "/etc/clawd-relay/relay.env",
   fs = nodeFs,
   initialRelayToken,
   initialManagementToken,
   initialEnvironment = {},
+  expectedUid = typeof process.getuid === "function" ? process.getuid() : null,
+  lock = null,
+  lockPath = path.join(path.dirname(envPath), ".clawd-relay.lock"),
 } = {}) {
   let contents;
   try {
+    assertSecureEnvironmentFile(fs, envPath, expectedUid);
     contents = fs.readFileSync(envPath, "utf8");
   } catch (error) {
     if (!initialRelayToken || !initialManagementToken || (error && error.code !== "ENOENT")) throw error;
@@ -94,17 +173,27 @@ function createRelayTokenStore({
   if (relayToken.toLowerCase() === managementToken.toLowerCase()) {
     throw new Error("Relay and management tokens must be distinct");
   }
+  const tokenLock = lock || createDirectoryLock({ fs, lockPath });
 
-  function rotate(nextToken) {
+  async function rotate(nextToken, expectedRelayToken = relayToken, { lockHeld = false } = {}) {
     const normalized = normalizeToken("RELAY_TOKEN", nextToken);
     if (normalized.toLowerCase() === managementToken.toLowerCase()) {
       throw new Error("Relay and management tokens must be distinct");
     }
-    const nextContents = renderEnvironment(parsed, normalized);
-    atomicWrite(fs, envPath, nextContents);
-    parsed = parseEnvironment(nextContents);
-    relayToken = normalized;
-    return relayToken;
+    const commit = () => {
+      assertSecureEnvironmentFile(fs, envPath, expectedUid);
+      const fresh = parseEnvironment(fs.readFileSync(envPath, "utf8"));
+      const diskRelayToken = normalizeToken("RELAY_TOKEN", fresh.values.RELAY_TOKEN);
+      const diskManagementToken = normalizeToken("MANAGEMENT_TOKEN", fresh.values.MANAGEMENT_TOKEN);
+      if (diskManagementToken !== managementToken) throw codedError("management_token_conflict");
+      if (diskRelayToken !== expectedRelayToken) throw codedError("stale_token_conflict");
+      const nextContents = renderEnvironment(fresh, normalized);
+      atomicWrite(fs, envPath, nextContents);
+      parsed = parseEnvironment(nextContents);
+      relayToken = normalized;
+      return relayToken;
+    };
+    return lockHeld ? commit() : tokenLock.runExclusive(commit);
   }
 
   return Object.freeze({
@@ -112,10 +201,12 @@ function createRelayTokenStore({
     managementToken: () => managementToken,
     rotate,
     restore: rotate,
+    lock: tokenLock,
   });
 }
 
 module.exports = {
+  createDirectoryLock,
   createRelayTokenStore,
   normalizeToken,
   parseEnvironment,

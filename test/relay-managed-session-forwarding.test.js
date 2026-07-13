@@ -8,10 +8,15 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const WebSocket = require("ws");
-const { RelayPairRegistry } = require("../relay/pair-registry");
+const {
+  RelayPairRegistry,
+  INNER_PROTOCOL_MAX,
+  RELAY_ENVELOPE_MAX,
+} = require("../relay/pair-registry");
 const { MobileWSServer } = require("../src/mobile-ws-server");
 const { ManagedSessionMobileBridge } = require("../src/managed-session-mobile-bridge");
 const { initMobileServer } = require("../src/mobile-server-integration");
+const EXPECTED_INNER_PROTOCOL_MAX = 64 * 1024;
 
 function socket(name) {
   return {
@@ -28,6 +33,26 @@ function socket(name) {
       this.readyState = 3;
     },
   };
+}
+
+function closePendingSocket(name) {
+  const ws = socket(name);
+  ws.close = function close(code, reason) {
+    this.closed = true;
+    this.closeCode = code;
+    this.closeReason = reason;
+  };
+  return ws;
+}
+
+function exactJsonBytes(size) {
+  const prefix = '{"type":"size_probe","padding":"';
+  const suffix = '"}';
+  const padding = size - Buffer.byteLength(prefix) - Buffer.byteLength(suffix);
+  assert.ok(padding >= 0);
+  const value = `${prefix}${"x".repeat(padding)}${suffix}`;
+  assert.equal(Buffer.byteLength(value), size);
+  return value;
 }
 
 describe("RelayPairRegistry", () => {
@@ -95,6 +120,58 @@ describe("RelayPairRegistry", () => {
     assert.equal(pairs.get("token").pc, second);
     assert.equal(Object.prototype.hasOwnProperty.call(pairs.get("token"), "messages"), false);
     assert.equal(Object.prototype.hasOwnProperty.call(pairs.get("token"), "history"), false);
+  });
+
+  it("rejects close-pending replaced phone and PC senders before their close events", () => {
+    for (const role of ["phone", "pc"]) {
+      const pairs = new RelayPairRegistry();
+      const peerRole = role === "phone" ? "pc" : "phone";
+      const peer = socket(`${role}-peer`);
+      const replaced = closePendingSocket(`${role}-old`);
+      const replacement = socket(`${role}-new`);
+      pairs.add("token", peerRole, peer);
+      pairs.add("token", role, replaced);
+      pairs.add("token", role, replacement);
+      peer.sent.length = 0;
+
+      assert.equal(pairs.isCurrent("token", role, replaced), false);
+      assert.equal(pairs.forward("token", role, "stale", replaced), 0);
+      assert.deepEqual(peer.sent, []);
+      assert.deepEqual(pairs.remove("token", role, replaced), {
+        pair: pairs.get("token"),
+        removedCurrent: false,
+      });
+      assert.equal(pairs.isCurrent("token", role, replacement), true);
+    }
+  });
+
+  it("accepts exactly 64KiB inner payloads and rejects 65537 bytes in both directions", () => {
+    const pairs = new RelayPairRegistry();
+    const pc = socket("pc");
+    const phone = socket("phone");
+    pairs.add("token", "pc", pc);
+    pairs.add("token", "phone", phone);
+    const phoneClientId = pairs.clientIdFor(phone);
+    const exact = exactJsonBytes(EXPECTED_INNER_PROTOCOL_MAX);
+    const oversized = exactJsonBytes(EXPECTED_INNER_PROTOCOL_MAX + 1);
+
+    assert.equal(INNER_PROTOCOL_MAX, EXPECTED_INNER_PROTOCOL_MAX);
+    assert.ok(RELAY_ENVELOPE_MAX > INNER_PROTOCOL_MAX);
+    assert.equal(pairs.forward("token", "phone", exact, phone), 1);
+    assert.equal(JSON.parse(pc.sent.at(-1)).payload, exact);
+    assert.equal(pairs.forward("token", "phone", oversized, phone), 0);
+
+    assert.equal(pairs.forward("token", "pc", JSON.stringify({
+      type: "relay_forward",
+      targetClientId: phoneClientId,
+      payload: exact,
+    }), pc), 1);
+    assert.equal(phone.sent.at(-1), exact);
+    assert.equal(pairs.forward("token", "pc", JSON.stringify({
+      type: "relay_forward",
+      targetClientId: phoneClientId,
+      payload: oversized,
+    }), pc), 0);
   });
 });
 
@@ -166,6 +243,22 @@ function setupRelayTopology() {
 }
 
 describe("managed console over a real Relay topology", () => {
+  it("delivers exactly 65536 inner bytes through Relay envelope decoding and drops 65537", (t) => {
+    const topology = setupRelayTopology();
+    t.after(() => { topology.bridge.dispose(); topology.mobile.close(); });
+    const delivered = [];
+    topology.mobile.onClientMessage((_ws, message) => delivered.push(message));
+    const exact = exactJsonBytes(EXPECTED_INNER_PROTOCOL_MAX);
+    const oversized = exactJsonBytes(EXPECTED_INNER_PROTOCOL_MAX + 1);
+
+    assert.equal(topology.pairs.forward("token", "phone", exact, topology.phone), 1);
+    assert.equal(delivered.some((message) => message.type === "size_probe" &&
+      Buffer.byteLength(JSON.stringify(message)) === EXPECTED_INNER_PROTOCOL_MAX), true);
+    const before = delivered.length;
+    assert.equal(topology.pairs.forward("token", "phone", oversized, topology.phone), 0);
+    assert.equal(delivered.length, before);
+  });
+
   it("routes managed-session deltas to the single Relay phone", (t) => {
     const topology = setupRelayTopology();
     t.after(() => { topology.bridge.dispose(); topology.mobile.close(); });
@@ -288,6 +381,12 @@ function openSocket(url, token) {
     });
     ws.once("open", () => resolve(ws));
     ws.once("error", reject);
+    ws.once("unexpected-response", (_request, response) => {
+      response.resume();
+      const error = new Error(`upgrade rejected: ${response.statusCode}`);
+      error.statusCode = response.statusCode;
+      reject(error);
+    });
   });
 }
 
@@ -319,7 +418,7 @@ it("production relay forwards more than 120 paired data frames without silent lo
   const port = await reservePort();
   const token = "33".repeat(32);
   const child = spawn(process.execPath, [path.join(__dirname, "..", "relay", "relay-server.js")], {
-    env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token },
+    env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token, ALLOW_LEGACY_EPHEMERAL_RELAY: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   t.after(() => terminateChild(child));
@@ -365,7 +464,7 @@ it("production relay retains handshake abuse limits across disconnects", async (
   const port = await reservePort();
   const token = "44".repeat(32);
   const child = spawn(process.execPath, [path.join(__dirname, "..", "relay", "relay-server.js")], {
-    env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token },
+    env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token, ALLOW_LEGACY_EPHEMERAL_RELAY: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   t.after(() => terminateChild(child));
@@ -379,14 +478,16 @@ it("production relay retains handshake abuse limits across disconnects", async (
     });
   });
 
-  let finalCode = null;
-  for (let index = 0; index < 121; index++) {
+  for (let index = 0; index < 120; index++) {
     const ws = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, token);
     const closed = waitForClose(ws);
-    if (index < 120) ws.close();
-    finalCode = await closed;
+    ws.close();
+    await closed;
   }
-  assert.equal(finalCode, 4008);
+  await assert.rejects(
+    openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, token),
+    (error) => error.statusCode === 429,
+  );
 });
 
 it("production Relay uses the single-phone registry and managed-session envelope", () => {
@@ -407,7 +508,7 @@ it("both shipped Relay entry points enforce submitted Bearer authentication", as
     await t.test(relative, async (t) => {
       const port = await reservePort();
       const child = spawn(process.execPath, [path.join(__dirname, "..", relative)], {
-        env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token },
+        env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token, ALLOW_LEGACY_EPHEMERAL_RELAY: "1" },
         stdio: ["ignore", "pipe", "pipe"],
       });
       t.after(() => terminateChild(child));
@@ -423,9 +524,10 @@ it("both shipped Relay entry points enforce submitted Bearer authentication", as
       });
 
       for (const submitted of [undefined, "aa".repeat(32)]) {
-        const ws = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, submitted);
-        const result = waitForClose(ws);
-        assert.equal(await result, 4001);
+        await assert.rejects(
+          openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, submitted),
+          (error) => error.statusCode === 401,
+        );
       }
       const valid = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, token);
       t.after(() => valid.close());
