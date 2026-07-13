@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdh"
 	"encoding/base64"
 	"encoding/json"
 	"strconv"
@@ -19,6 +20,19 @@ func testPrivateKey() string {
 func testPublicKey() string {
 	key := bytes.Repeat([]byte{2}, 32)
 	return base64.StdEncoding.EncodeToString(key)
+}
+
+func testClientPublicKey(t *testing.T) string {
+	t.Helper()
+	privateBytes, err := base64.StdEncoding.DecodeString(testPrivateKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey, err := ecdh.X25519().NewPrivateKey(privateBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(privateKey.PublicKey().Bytes())
 }
 
 func validConfigJSON(t *testing.T, mutate func(map[string]any)) string {
@@ -115,6 +129,23 @@ func TestParseConfigRejectsInvalidWireGuardKeys(t *testing.T) {
 				t.Fatal("ParseConfig() exposed a key")
 			}
 		})
+	}
+}
+
+func TestParseConfigRejectsSelfPeerPublicKeyWithoutExposingIt(t *testing.T) {
+	selfPublicKey := testClientPublicKey(t)
+	input := validConfigJSON(t, func(value map[string]any) {
+		value["ServerPublicKey"] = selfPublicKey
+	})
+	_, err := ParseConfig(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("ParseConfig() accepted the client's own public key as the server peer")
+	}
+	if got := errorCode(err, "fallback"); got != "invalid_server_public_key" {
+		t.Fatalf("errorCode = %q, want invalid_server_public_key", got)
+	}
+	if strings.Contains(err.Error(), selfPublicKey) {
+		t.Fatal("ParseConfig() exposed the derived client public key")
 	}
 }
 
@@ -229,6 +260,44 @@ func TestParseConfigRejectsInvalidForwardAddress(t *testing.T) {
 			})
 			if _, err := ParseConfig(strings.NewReader(input)); err == nil {
 				t.Fatal("ParseConfig() accepted an invalid ForwardAddress")
+			}
+		})
+	}
+}
+
+func TestParseConfigRejectsForwardAddressThatIsTheClientAddress(t *testing.T) {
+	tests := []struct {
+		name      string
+		address   string
+		allowedIP string
+		forward   string
+	}{
+		{
+			name:      "same host in subnet",
+			address:   "10.8.0.2/32",
+			allowedIP: "10.8.0.0/24",
+			forward:   "10.8.0.2:7891",
+		},
+		{
+			name:      "self-only AllowedIP",
+			address:   "10.8.0.2/32",
+			allowedIP: "10.8.0.2/32",
+			forward:   "10.8.0.2:7891",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := validConfigJSON(t, func(value map[string]any) {
+				value["Address"] = test.address
+				value["AllowedIP"] = test.allowedIP
+				value["ForwardAddress"] = test.forward
+			})
+			_, err := ParseConfig(strings.NewReader(input))
+			if err == nil {
+				t.Fatal("ParseConfig() accepted a ForwardAddress equal to the client Address")
+			}
+			if got := errorCode(err, "fallback"); got != "invalid_forward_address" {
+				t.Fatalf("errorCode = %q, want invalid_forward_address", got)
 			}
 		})
 	}

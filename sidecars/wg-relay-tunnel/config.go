@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdh"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -113,6 +115,9 @@ func validateConfig(config Config) (Config, error) {
 	if !validPublicKey(config.ServerPublicKey) {
 		return Config{}, &configError{code: "invalid_server_public_key"}
 	}
+	if matchesClientPublicKey(config.PrivateKey, config.ServerPublicKey) {
+		return Config{}, &configError{code: "invalid_server_public_key"}
+	}
 	allowedIP, err := parsePrivateIPv4Prefix(config.AllowedIP)
 	if err != nil {
 		return Config{}, err
@@ -123,7 +128,8 @@ func validateConfig(config Config) (Config, error) {
 	if err := validateEndpoint(config.Endpoint); err != nil {
 		return Config{}, err
 	}
-	if err := validateForwardAddress(config.ForwardAddress, allowedIP); err != nil {
+	clientAddress, _ := netip.ParsePrefix(config.Address)
+	if err := validateForwardAddress(config.ForwardAddress, allowedIP, clientAddress.Addr()); err != nil {
 		return Config{}, err
 	}
 	if config.KeepaliveSeconds < 1 || config.KeepaliveSeconds > 120 {
@@ -156,6 +162,19 @@ func validPublicKey(value string) bool {
 	}
 	var key device.NoisePublicKey
 	return key.FromHex(hex.EncodeToString(decoded)) == nil && !key.IsZero()
+}
+
+func matchesClientPublicKey(privateValue, publicValue string) bool {
+	privateBytes, privateOK := decodeKey(privateValue)
+	publicBytes, publicOK := decodeKey(publicValue)
+	if !privateOK || !publicOK {
+		return false
+	}
+	privateKey, err := ecdh.X25519().NewPrivateKey(privateBytes)
+	if err != nil {
+		return false
+	}
+	return subtle.ConstantTimeCompare(privateKey.PublicKey().Bytes(), publicBytes) == 1
 }
 
 var privateIPv4Blocks = [...]netip.Prefix{
@@ -260,10 +279,10 @@ func isASCIIAlphaNumeric(character byte) bool {
 	return character >= 'A' && character <= 'Z' || character >= 'a' && character <= 'z' || character >= '0' && character <= '9'
 }
 
-func validateForwardAddress(value string, allowedIP netip.Prefix) error {
+func validateForwardAddress(value string, allowedIP netip.Prefix, clientAddress netip.Addr) error {
 	address, err := netip.ParseAddrPort(value)
 	if err != nil || address.String() != value || !address.Addr().Is4() || address.Port() == 0 ||
-		!isUsableIPv4Host(allowedIP, address.Addr()) {
+		address.Addr() == clientAddress || !isUsableIPv4Host(allowedIP, address.Addr()) {
 		return &configError{code: "invalid_forward_address"}
 	}
 	return nil

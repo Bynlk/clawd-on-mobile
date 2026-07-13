@@ -273,19 +273,32 @@ func (forwarder *Forwarder) forward(local net.Conn) {
 	if !forwarder.track(remote) {
 		return
 	}
-	defer forwarder.untrackAndClose(remote)
 
-	copyDone := make(chan struct{}, 2)
-	go copyHalf(remote, local, copyDone)
-	go copyHalf(local, remote, copyDone)
-	<-copyDone
-	<-copyDone
+	var closeOnce sync.Once
+	closeBoth := func() {
+		closeOnce.Do(func() {
+			forwarder.untrackAndClose(local)
+			forwarder.untrackAndClose(remote)
+		})
+	}
+	defer closeBoth()
+
+	copyDone := make(chan error, 2)
+	go func() { copyDone <- copyHalf(remote, local) }()
+	go func() { copyDone <- copyHalf(local, remote) }()
+	if err := <-copyDone; err != nil {
+		closeBoth()
+	}
+	if err := <-copyDone; err != nil {
+		closeBoth()
+	}
 }
 
-func copyHalf(destination, source net.Conn, done chan<- struct{}) {
-	_, _ = io.Copy(destination, source)
-	_ = closeWrite(destination)
-	done <- struct{}{}
+func copyHalf(destination, source net.Conn) error {
+	if _, err := io.Copy(destination, source); err != nil {
+		return err
+	}
+	return closeWrite(destination)
 }
 
 func closeWrite(connection net.Conn) error {
@@ -308,9 +321,14 @@ func (forwarder *Forwarder) track(connection net.Conn) bool {
 
 func (forwarder *Forwarder) untrackAndClose(connection net.Conn) {
 	forwarder.connectionsMu.Lock()
-	delete(forwarder.connections, connection)
+	_, tracked := forwarder.connections[connection]
+	if tracked {
+		delete(forwarder.connections, connection)
+	}
 	forwarder.connectionsMu.Unlock()
-	_ = connection.Close()
+	if tracked {
+		_ = connection.Close()
+	}
 }
 
 func (forwarder *Forwarder) shutdown() {
@@ -320,10 +338,15 @@ func (forwarder *Forwarder) shutdown() {
 		<-forwarder.acceptDone
 
 		forwarder.connectionsMu.Lock()
+		connections := make([]net.Conn, 0, len(forwarder.connections))
 		for connection := range forwarder.connections {
-			_ = connection.Close()
+			delete(forwarder.connections, connection)
+			connections = append(connections, connection)
 		}
 		forwarder.connectionsMu.Unlock()
+		for _, connection := range connections {
+			_ = connection.Close()
+		}
 
 		forwarder.workers.Wait()
 		close(forwarder.done)

@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ecdh"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -12,12 +15,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.zx2c4.com/wireguard/conn"
+	"golang.zx2c4.com/wireguard/device"
+	"golang.zx2c4.com/wireguard/tun/netstack"
 )
 
 func TestProcessSignalsInterruptOpenConfigInput(t *testing.T) {
@@ -300,6 +309,384 @@ func TestStartTunnelUsesUserspaceNetstack(t *testing.T) {
 	if err := tunnel.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
+}
+
+type parsedIPCGetPeer struct {
+	publicKey  [32]byte
+	allowedIPs []netip.Prefix
+	seen       map[string]struct{}
+}
+
+type parsedIPCGetState struct {
+	peers []parsedIPCGetPeer
+}
+
+func parseIPCGetState(raw string) (parsedIPCGetState, error) {
+	invalid := func() (parsedIPCGetState, error) {
+		return parsedIPCGetState{}, errors.New("invalid_ipc_state")
+	}
+	if raw == "" || !strings.HasSuffix(raw, "\n") {
+		return invalid()
+	}
+	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
+	state := parsedIPCGetState{}
+	deviceSeen := make(map[string]struct{})
+	var current *parsedIPCGetPeer
+	finishPeer := func() bool {
+		if current == nil {
+			return true
+		}
+		for _, required := range []string{
+			"preshared_key", "protocol_version", "endpoint", "last_handshake_time_sec",
+			"last_handshake_time_nsec", "tx_bytes", "rx_bytes", "persistent_keepalive_interval",
+		} {
+			if _, ok := current.seen[required]; !ok {
+				return false
+			}
+		}
+		if len(current.allowedIPs) == 0 {
+			return false
+		}
+		state.peers = append(state.peers, *current)
+		return true
+	}
+
+	for _, line := range lines {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || key == "" || value == "" {
+			return invalid()
+		}
+		if key == "public_key" {
+			if !finishPeer() {
+				return invalid()
+			}
+			publicKey, ok := parseCanonicalIPCKey(value, false)
+			if !ok {
+				return invalid()
+			}
+			for _, peer := range state.peers {
+				if peer.publicKey == publicKey {
+					return invalid()
+				}
+			}
+			current = &parsedIPCGetPeer{publicKey: publicKey, seen: make(map[string]struct{})}
+			continue
+		}
+		if current == nil {
+			if _, duplicate := deviceSeen[key]; duplicate {
+				return invalid()
+			}
+			deviceSeen[key] = struct{}{}
+			switch key {
+			case "private_key":
+				if _, ok := parseCanonicalIPCKey(value, false); !ok {
+					return invalid()
+				}
+			case "listen_port":
+				port, err := strconv.ParseUint(value, 10, 16)
+				if err != nil || port == 0 || strconv.FormatUint(port, 10) != value {
+					return invalid()
+				}
+			case "fwmark":
+				mark, err := strconv.ParseUint(value, 10, 32)
+				if err != nil || mark == 0 || strconv.FormatUint(mark, 10) != value {
+					return invalid()
+				}
+			default:
+				return invalid()
+			}
+			continue
+		}
+
+		if key == "allowed_ip" {
+			prefix, err := netip.ParsePrefix(value)
+			if err != nil || prefix.String() != value {
+				return invalid()
+			}
+			if slices.Contains(current.allowedIPs, prefix) {
+				return invalid()
+			}
+			current.allowedIPs = append(current.allowedIPs, prefix)
+			continue
+		}
+		if _, duplicate := current.seen[key]; duplicate {
+			return invalid()
+		}
+		current.seen[key] = struct{}{}
+		switch key {
+		case "preshared_key":
+			if _, ok := parseCanonicalIPCKey(value, true); !ok {
+				return invalid()
+			}
+		case "protocol_version":
+			if value != "1" {
+				return invalid()
+			}
+		case "endpoint":
+			endpoint, err := netip.ParseAddrPort(value)
+			if err != nil || endpoint.String() != value {
+				return invalid()
+			}
+		case "last_handshake_time_sec", "tx_bytes", "rx_bytes":
+			number, err := strconv.ParseUint(value, 10, 64)
+			if err != nil || strconv.FormatUint(number, 10) != value {
+				return invalid()
+			}
+		case "last_handshake_time_nsec":
+			nanoseconds, err := strconv.ParseUint(value, 10, 32)
+			if err != nil || nanoseconds >= uint64(time.Second) || strconv.FormatUint(nanoseconds, 10) != value {
+				return invalid()
+			}
+		case "persistent_keepalive_interval":
+			keepalive, err := strconv.ParseUint(value, 10, 16)
+			if err != nil || keepalive == 0 || strconv.FormatUint(keepalive, 10) != value {
+				return invalid()
+			}
+		default:
+			return invalid()
+		}
+	}
+	if _, ok := deviceSeen["private_key"]; !ok || !finishPeer() || len(state.peers) == 0 {
+		return invalid()
+	}
+	return state, nil
+}
+
+func parseCanonicalIPCKey(value string, allowZero bool) ([32]byte, bool) {
+	var key [32]byte
+	if len(value) != hex.EncodedLen(len(key)) {
+		return key, false
+	}
+	decoded, err := hex.DecodeString(value)
+	if err != nil || hex.EncodeToString(decoded) != value {
+		return key, false
+	}
+	copy(key[:], decoded)
+	if !allowZero && key == [32]byte{} {
+		return [32]byte{}, false
+	}
+	return key, true
+}
+
+func TestStartTunnelIpcGetHasExactlyConfiguredPeerAndAllowedIP(t *testing.T) {
+	config := parsedTestConfig(t, func(value map[string]any) {
+		value["Endpoint"] = "127.0.0.1:51820"
+	})
+	tunnel, err := StartTunnel(context.Background(), config)
+	if err != nil {
+		t.Fatalf("StartTunnel() error = %v", err)
+	}
+	defer tunnel.Close()
+	rawState, err := tunnel.device.IpcGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := parseIPCGetState(rawState)
+	if err != nil {
+		t.Fatalf("parseIPCGetState() error = %v", err)
+	}
+	if len(state.peers) != 1 {
+		t.Fatalf("peer count = %d, want 1", len(state.peers))
+	}
+	expectedPublicKey, ok := decodeKey(config.ServerPublicKey)
+	if !ok {
+		t.Fatal("test server public key is invalid")
+	}
+	if !bytes.Equal(state.peers[0].publicKey[:], expectedPublicKey) {
+		t.Fatal("IpcGet peer public key does not match the configured server")
+	}
+	if got, want := state.peers[0].allowedIPs, []netip.Prefix{netip.MustParsePrefix(config.AllowedIP)}; !slices.Equal(got, want) {
+		t.Fatalf("AllowedIPs = %v, want %v", got, want)
+	}
+}
+
+func TestParseIPCGetStateRejectsMalformedOrAmbiguousOutput(t *testing.T) {
+	config := parsedTestConfig(t, func(value map[string]any) {
+		value["Endpoint"] = "127.0.0.1:51820"
+	})
+	tunnel, err := StartTunnel(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawState, err := tunnel.device.IpcGet()
+	_ = tunnel.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey, _ := decodeKey(config.PrivateKey)
+	privateHex := hex.EncodeToString(privateKey)
+	publicKey, _ := decodeKey(config.ServerPublicKey)
+	publicHex := hex.EncodeToString(publicKey)
+	missingRequired := rawState
+	for _, line := range strings.Split(rawState, "\n") {
+		if strings.HasPrefix(line, "tx_bytes=") {
+			missingRequired = strings.Replace(rawState, line+"\n", "", 1)
+			break
+		}
+	}
+	tests := map[string]string{
+		"unknown field":         rawState + "unknown=1\n",
+		"duplicate singleton":   strings.Replace(rawState, "protocol_version=1\n", "protocol_version=1\nprotocol_version=1\n", 1),
+		"duplicate AllowedIP":   strings.Replace(rawState, "allowed_ip="+config.AllowedIP+"\n", "allowed_ip="+config.AllowedIP+"\nallowed_ip="+config.AllowedIP+"\n", 1),
+		"missing required":      missingRequired,
+		"malformed line":        rawState + "not-a-pair\n",
+		"missing final newline": strings.TrimSuffix(rawState, "\n"),
+	}
+	for name, malformed := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseIPCGetState(malformed)
+			if err == nil {
+				t.Fatal("parseIPCGetState() accepted malformed output")
+			}
+			if strings.Contains(err.Error(), privateHex) || strings.Contains(err.Error(), publicHex) {
+				t.Fatal("parseIPCGetState() error exposed a WireGuard key")
+			}
+		})
+	}
+}
+
+func TestUserspaceWireGuardNetstackTCPForwarding(t *testing.T) {
+	serverPrivate := make([]byte, 32)
+	serverPrivate[0] = 16
+	serverPrivate[31] = 64
+	clientPrivate, ok := decodeKey(testPrivateKey())
+	if !ok {
+		t.Fatal("invalid test client private key")
+	}
+	serverPrivateKey, err := ecdh.X25519().NewPrivateKey(serverPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientPrivateKey, err := ecdh.X25519().NewPrivateKey(clientPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverPublic := serverPrivateKey.PublicKey().Bytes()
+	clientPublic := clientPrivateKey.PublicKey().Bytes()
+
+	serverTUN, serverNetwork, err := netstack.CreateNetTUN([]netip.Addr{netip.MustParseAddr("10.8.0.1")}, nil, 1420)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverDevice := device.NewDevice(serverTUN, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, ""))
+	defer serverDevice.Close()
+	if err := serverDevice.IpcSet("private_key=" + hex.EncodeToString(serverPrivate) + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := serverDevice.Up(); err != nil {
+		t.Fatal(err)
+	}
+	serverState, err := serverDevice.IpcGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverPort, err := parseSingleIPCListenPort(serverState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := serverDevice.IpcSet(fmt.Sprintf(
+		"public_key=%s\nallowed_ip=10.8.0.2/32\n",
+		hex.EncodeToString(clientPublic),
+	)); err != nil {
+		t.Fatal(err)
+	}
+
+	clientTUN, clientNetwork, err := netstack.CreateNetTUN([]netip.Addr{netip.MustParseAddr("10.8.0.2")}, nil, 1420)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientDevice := device.NewDevice(clientTUN, conn.NewDefaultBind(), device.NewLogger(device.LogLevelSilent, ""))
+	defer clientDevice.Close()
+	if err := clientDevice.IpcSet(fmt.Sprintf(
+		"private_key=%s\npublic_key=%s\nendpoint=127.0.0.1:%d\nallowed_ip=10.8.0.1/32\npersistent_keepalive_interval=1\n",
+		hex.EncodeToString(clientPrivate),
+		hex.EncodeToString(serverPublic),
+		serverPort,
+	)); err != nil {
+		t.Fatal(err)
+	}
+	if err := clientDevice.Up(); err != nil {
+		t.Fatal(err)
+	}
+
+	backend, err := serverNetwork.ListenTCPAddrPort(netip.MustParseAddrPort("10.8.0.1:7891"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	backendDone := make(chan error, 1)
+	go func() {
+		connection, acceptErr := backend.Accept()
+		if acceptErr != nil {
+			backendDone <- acceptErr
+			return
+		}
+		defer connection.Close()
+		request, readErr := io.ReadAll(connection)
+		if readErr != nil {
+			backendDone <- readErr
+			return
+		}
+		if _, writeErr := connection.Write(append([]byte("wg-reply:"), request...)); writeErr != nil {
+			backendDone <- writeErr
+			return
+		}
+		backendDone <- closeWrite(connection)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	forwarder, err := StartForwarder(ctx, clientNetwork.DialContext, "10.8.0.1:7891")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer forwarder.Close()
+	localRaw, err := net.Dial("tcp4", forwarder.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := localRaw.(*net.TCPConn)
+	defer local.Close()
+	if err := local.SetDeadline(time.Now().Add(8 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := local.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if err := local.CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	response, err := io.ReadAll(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(response), "wg-reply:hello"; got != want {
+		t.Fatalf("response = %q, want %q", got, want)
+	}
+	if err := <-backendDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func parseSingleIPCListenPort(raw string) (uint16, error) {
+	var port uint64
+	count := 0
+	for _, line := range strings.Split(strings.TrimSuffix(raw, "\n"), "\n") {
+		if !strings.HasPrefix(line, "listen_port=") {
+			continue
+		}
+		value := strings.TrimPrefix(line, "listen_port=")
+		parsed, err := strconv.ParseUint(value, 10, 16)
+		if err != nil || parsed == 0 || strconv.FormatUint(parsed, 10) != value {
+			return 0, errors.New("invalid_ipc_listen_port")
+		}
+		port = parsed
+		count++
+	}
+	if count != 1 {
+		return 0, errors.New("invalid_ipc_listen_port")
+	}
+	return uint16(port), nil
 }
 
 type protocolTunnel struct {
