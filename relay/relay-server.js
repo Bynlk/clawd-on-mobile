@@ -17,6 +17,7 @@ const MAX_WS_PAYLOAD = RELAY_ENVELOPE_MAX;
 const RATE_LIMIT_ATTEMPTS = 120;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const PREAUTH_MAX_SOURCES = 4096;
+const RATE_LIMIT_MAX_SOURCES = 4096;
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const MAX_MANAGEMENT_BODY = 4096;
 
@@ -49,6 +50,8 @@ function createRelayServer({
   requestDeadlineMs = 5000,
   closeDeadlineMs = 2000,
   rateLimitAttempts = RATE_LIMIT_ATTEMPTS,
+  rateLimitWindowMs = RATE_LIMIT_WINDOW_MS,
+  rateLimitMaxSources = RATE_LIMIT_MAX_SOURCES,
   preAuthRateLimitAttempts = RATE_LIMIT_ATTEMPTS,
   preAuthRateLimitWindowMs = RATE_LIMIT_WINDOW_MS,
 } = {}) {
@@ -67,7 +70,11 @@ function createRelayServer({
       !Number.isFinite(closeDeadlineMs) || closeDeadlineMs <= 0) {
     throw new Error("request and close deadlines must be positive");
   }
-  if (!Number.isInteger(rateLimitAttempts) || rateLimitAttempts <= 0) throw new Error("invalid rate limit");
+  if (!Number.isInteger(rateLimitAttempts) || rateLimitAttempts <= 0 ||
+      !Number.isFinite(rateLimitWindowMs) || rateLimitWindowMs <= 0 ||
+      !Number.isInteger(rateLimitMaxSources) || rateLimitMaxSources <= 0) {
+    throw new Error("invalid rate limit");
+  }
   if (!Number.isInteger(preAuthRateLimitAttempts) || preAuthRateLimitAttempts <= 0 ||
       !Number.isFinite(preAuthRateLimitWindowMs) || preAuthRateLimitWindowMs <= 0) {
     throw new Error("invalid pre-auth rate limit");
@@ -79,6 +86,7 @@ function createRelayServer({
   const preAuthAttemptsBySource = new Map();
   let heartbeatTimer = null;
   let listening = false;
+  let listenPromise = null;
   let closing = null;
   const sockets = new Set();
 
@@ -215,9 +223,15 @@ function createRelayServer({
 
   function withinConnectionLimit(source) {
     const timestamp = now();
+    for (const [key, value] of attemptsBySource) {
+      if (timestamp >= value.resetAt) attemptsBySource.delete(key);
+    }
+    if (!attemptsBySource.has(source) && attemptsBySource.size >= rateLimitMaxSources) {
+      attemptsBySource.delete(attemptsBySource.keys().next().value);
+    }
     let entry = attemptsBySource.get(source);
     if (!entry || timestamp >= entry.resetAt) {
-      entry = { attempts: 0, resetAt: timestamp + RATE_LIMIT_WINDOW_MS };
+      entry = { attempts: 0, resetAt: timestamp + rateLimitWindowMs };
       attemptsBySource.set(source, entry);
     }
     entry.attempts++;
@@ -305,6 +319,9 @@ function createRelayServer({
     const { pair, replaced } = pairs.add(currentToken, role, ws);
     ws._token = currentToken;
     ws._role = role;
+    ws._relayAlive = true;
+    ws._relayAwaitingHeartbeat = false;
+    ws._relayMissedHeartbeats = 0;
     log(replaced ? "connection_replaced" : "connection_established", {
       role,
       pcConnected: !!pair.pc,
@@ -324,11 +341,17 @@ function createRelayServer({
         ws.close(1009, "message_too_large");
         return;
       }
+      ws._relayAlive = true;
+      ws._relayAwaitingHeartbeat = false;
+      ws._relayMissedHeartbeats = 0;
       pairs.forward(currentToken, role, data, ws);
     });
 
     ws.on("close", () => {
       const relayClientId = role === "phone" ? pairs.clientIdFor(ws) : null;
+      delete ws._relayAlive;
+      delete ws._relayAwaitingHeartbeat;
+      delete ws._relayMissedHeartbeats;
       const removal = pairs.remove(currentToken, role, ws);
       if (removal.removedCurrent && (!removal.pair || !removal.pair[role])) {
         for (const peer of pairs.peers(currentToken, role)) {
@@ -348,22 +371,44 @@ function createRelayServer({
 
   function listen() {
     if (listening) return Promise.resolve(api.address());
-    return new Promise((resolve, reject) => {
-      const onError = (error) => reject(error);
-      server.once("error", onError);
-      server.listen(Number(port), bindAddr, () => {
-        server.off("error", onError);
-        listening = true;
-        heartbeatTimer = setInterval(() => {
-          for (const ws of wss.clients) {
-            try {
-              ws.send(JSON.stringify({ type: "ping", timestamp: now() }));
-            } catch {}
-          }
-        }, heartbeatIntervalMs);
-        resolve(api.address());
+    if (listenPromise) return listenPromise;
+    listenPromise = Promise.resolve()
+      .then(() => management && typeof management.initialize === "function"
+        ? management.initialize()
+        : undefined)
+      .then(() => new Promise((resolve, reject) => {
+        const onError = (error) => reject(error);
+        server.once("error", onError);
+        server.listen(Number(port), bindAddr, () => {
+          server.off("error", onError);
+          listening = true;
+          heartbeatTimer = setInterval(() => {
+            for (const ws of wss.clients) {
+              if (ws.readyState !== 1) continue;
+              if (ws._relayAwaitingHeartbeat && ws._relayAlive === false) {
+                ws._relayMissedHeartbeats = (ws._relayMissedHeartbeats || 0) + 1;
+                if (ws._relayMissedHeartbeats >= 2) {
+                  delete ws._relayAlive;
+                  delete ws._relayAwaitingHeartbeat;
+                  delete ws._relayMissedHeartbeats;
+                  ws.terminate();
+                  continue;
+                }
+              }
+              try {
+                ws._relayAlive = false;
+                ws._relayAwaitingHeartbeat = true;
+                ws.send(JSON.stringify({ type: "ping", timestamp: now() }));
+              } catch {}
+            }
+          }, heartbeatIntervalMs);
+          resolve(api.address());
+        });
+      })).catch((error) => {
+        listenPromise = null;
+        throw error;
       });
-    });
+    return listenPromise;
   }
 
   function closeNetwork() {
@@ -436,12 +481,13 @@ function createCliRelay(env = process.env) {
 
   if (nodeFs.existsSync(envPath)) {
     const lockPath = env.RELAY_LOCK_PATH || "/run/lock/clawd-relay.lock";
-    managementLock = createFlockLock({ lockPath });
     const expectedUid = env.CLAWD_INSTALL_TEST_MODE === "1" && typeof process.getuid === "function"
       ? process.getuid()
       : 0;
+    managementLock = createFlockLock({ lockPath, expectedUid });
     tokenStore = createRelayTokenStore({ envPath, expectedUid, lock: managementLock });
     management = Object.freeze({
+      initialize() { return managementTarget.initialize(); },
       status(context) { return managementTarget.status(context); },
       rotatePhone(context) { return managementTarget.rotatePhone(context); },
       shutdown(options) { return managementTarget.shutdown(options); },
@@ -465,6 +511,7 @@ function createCliRelay(env = process.env) {
         phonePrivateKeyPath: env.PHONE_PRIVATE_KEY_PATH || `${keyDirectory}/phone.key`,
         phonePublicKeyPath: env.PHONE_PUBLIC_KEY_PATH || `${keyDirectory}/phone.pub`,
         serverPublicKeyPath: env.SERVER_PUBLIC_KEY_PATH || `${keyDirectory}/server.pub`,
+        journalPath: env.PHONE_ROTATION_JOURNAL_PATH || "/etc/clawd-relay/phone-rotation.journal",
       },
       wgInterface: env.WG_INTERFACE || "clawd",
       pcIp: env.PC_IP,

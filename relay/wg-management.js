@@ -106,6 +106,17 @@ function atomicWriteFile(fs, destination, contents, label) {
   }
 }
 
+function fsyncDirectory(fs, directory) {
+  if (typeof fs.fsyncSync !== "function") return;
+  let descriptor = null;
+  try {
+    descriptor = fs.openSync(directory, "r");
+    fs.fsyncSync(descriptor);
+  } finally {
+    if (descriptor !== null) fs.closeSync(descriptor);
+  }
+}
+
 function defaultCommand(file, args, { input = "", timeoutMs = 5000, signal } = {}) {
   return new Promise((resolve, reject) => {
     throwIfAborted(signal);
@@ -169,6 +180,7 @@ function createWgManagement({
   verifyLivePeer = null,
   commandTimeoutMs = 5000,
   transactionTimeoutMs = 15000,
+  afterStage = null,
 } = {}) {
   if (!tokenStore || typeof tokenStore.current !== "function" ||
       typeof tokenStore.managementToken !== "function" || typeof tokenStore.rotate !== "function") {
@@ -188,6 +200,9 @@ function createWgManagement({
     async runExclusive(operation) { return operation(); },
   });
   if (typeof transactionLock.runExclusive !== "function") throw new Error("management lock is required");
+  const journalPath = paths.journalPath || path.join(
+    path.dirname(paths.wgConfigPath), ".clawd-phone-rotation.journal"
+  );
 
   function runCommand(file, args, options = {}) {
     throwIfAborted(options.signal);
@@ -230,11 +245,80 @@ function createWgManagement({
       if (peers.has(match[1])) return false;
       peers.set(match[1], match[2].split(/\s*,\s*/).filter(Boolean));
     }
-    const oldAllowedIps = peers.get(candidate.oldPublicKey) || [];
-    return oldAllowedIps.length === 1 && oldAllowedIps[0] === `${phoneIp}/32` &&
-      !peers.has(candidate.publicKey);
+    const expectedAllowedIps = peers.get(candidate.expectedPublicKey) || [];
+    return expectedAllowedIps.length === 1 && expectedAllowedIps[0] === `${phoneIp}/32` &&
+      !peers.has(candidate.absentPublicKey);
   }
   const verifyPeer = verifyLivePeer || defaultVerifyLivePeer;
+
+  function journalContents(candidate, phase) {
+    return `${JSON.stringify({
+      version: 1,
+      phase,
+      candidate: {
+        privateKey: candidate.privateKey,
+        publicKey: candidate.publicKey,
+        relayToken: candidate.relayToken,
+        oldRelayToken: candidate.oldRelayToken,
+        oldConfig: candidate.oldConfig,
+        oldPrivateKey: candidate.oldPrivateKey,
+        oldPublicKeyFile: candidate.oldPublicKeyFile,
+        oldPublicKey: candidate.oldPublicKey,
+        serverPublicKey: candidate.serverPublicKey,
+        newConfig: candidate.newConfig,
+      },
+    })}\n`;
+  }
+
+  function persistJournal(candidate, phase) {
+    atomicWriteFile(fs, journalPath, journalContents(candidate, phase), "journal");
+  }
+
+  function clearJournal() {
+    try {
+      fs.unlinkSync(journalPath);
+    } catch (error) {
+      if (error && error.code === "ENOENT") return;
+      throw error;
+    }
+    fsyncDirectory(fs, path.dirname(journalPath));
+  }
+
+  function readJournal() {
+    let contents;
+    try {
+      contents = fs.readFileSync(journalPath, "utf8");
+    } catch (error) {
+      if (error && error.code === "ENOENT") return null;
+      throw error;
+    }
+    const stat = fs.lstatSync(journalPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o600) {
+      throw new Error("rotation journal is insecure");
+    }
+    const journal = JSON.parse(contents);
+    const phases = new Set(["prepared", "files_attempted", "live_attempted", "token_attempted", "connections_closed"]);
+    if (!journal || journal.version !== 1 || !phases.has(journal.phase) ||
+        !journal.candidate || Object.getPrototypeOf(journal.candidate) !== Object.prototype) {
+      throw new Error("rotation journal is invalid");
+    }
+    const candidate = journal.candidate;
+    for (const name of [
+      "privateKey", "publicKey", "relayToken", "oldRelayToken", "oldConfig",
+      "oldPrivateKey", "oldPublicKeyFile", "oldPublicKey", "serverPublicKey", "newConfig",
+    ]) {
+      if (typeof candidate[name] !== "string") throw new Error("rotation journal is invalid");
+    }
+    validateWireGuardKey("journal private key", candidate.privateKey);
+    validateWireGuardKey("journal public key", candidate.publicKey);
+    validateWireGuardKey("journal old public key", candidate.oldPublicKey);
+    validateWireGuardKey("journal server public key", candidate.serverPublicKey);
+    if (!/^[0-9a-fA-F]{64}$/.test(candidate.relayToken) ||
+        !/^[0-9a-fA-F]{64}$/.test(candidate.oldRelayToken)) {
+      throw new Error("rotation journal is invalid");
+    }
+    return { phase: journal.phase, candidate };
+  }
 
   async function compensate(candidate, attempts) {
     const failures = [];
@@ -268,7 +352,10 @@ function createWgManagement({
         try {
           throwIfAborted(controller.signal);
           const verified = await verifyPeer({
-            ...candidate, wgInterface, phoneIp, signal: controller.signal,
+            ...candidate,
+            expectedPublicKey: candidate.oldPublicKey,
+            absentPublicKey: candidate.publicKey,
+            wgInterface, phoneIp, signal: controller.signal,
           });
           if (verified !== true) throw new Error("live peer verification mismatch");
         } catch (error) { failures.push(error); }
@@ -299,6 +386,7 @@ function createWgManagement({
 
   async function status(context) {
     authorize(context);
+    await initialize();
     if (!healthy) {
       if (!recovery) throw new ManagementRequestError(503, "rollback_failed");
       await transactionLock.runExclusive(async () => {
@@ -356,16 +444,21 @@ function createWgManagement({
     let liveAttempted = false;
     let tokenAttempted = false;
     try {
+      persistJournal(candidate, "prepared");
+      if (afterStage) await afterStage("journal-prepared", candidate);
       throwIfAborted(signal);
       filesAttempted = true;
+      persistJournal(candidate, "files_attempted");
       atomicWriteFile(fs, paths.wgConfigPath, candidate.newConfig, "tmp");
       throwIfAborted(signal);
       atomicWriteFile(fs, paths.phonePrivateKeyPath, `${candidate.privateKey}\n`, "tmp");
       throwIfAborted(signal);
       atomicWriteFile(fs, paths.phonePublicKeyPath, `${candidate.publicKey}\n`, "tmp");
+      if (afterStage) await afterStage("files-persisted", candidate);
 
       throwIfAborted(signal);
       liveAttempted = true;
+      persistJournal(candidate, "live_attempted");
       await runCommand("wg", [
         "set", wgInterface,
         "peer", candidate.oldPublicKey, "remove",
@@ -373,13 +466,31 @@ function createWgManagement({
       ], { signal });
 
       throwIfAborted(signal);
+      const newPeerVerified = await verifyPeer({
+        ...candidate,
+        expectedPublicKey: candidate.publicKey,
+        absentPublicKey: candidate.oldPublicKey,
+        wgInterface, phoneIp, signal,
+      });
+      if (newPeerVerified !== true) throw new Error("new live peer verification mismatch");
+      if (afterStage) await afterStage("live-applied", candidate);
+
+      throwIfAborted(signal);
       tokenAttempted = true;
+      persistJournal(candidate, "token_attempted");
       await tokenStore.rotate(candidate.relayToken, candidate.oldRelayToken, { lockHeld: true });
+      if (afterStage) await afterStage("token-persisted", candidate);
       throwIfAborted(signal);
       pairs.closeToken(candidate.oldRelayToken, 4003, "token_rotated");
+      persistJournal(candidate, "connections_closed");
+      clearJournal();
     } catch (cause) {
+      if (cause && cause.simulatedCrash === true) throw cause;
       const attempts = { filesAttempted, liveAttempted, tokenAttempted };
       const failures = await compensate(candidate, attempts);
+      if (!failures.length) {
+        try { clearJournal(); } catch (error) { failures.push(error); }
+      }
       if (failures.length) {
         healthy = false;
         recovery = { candidate, attempts };
@@ -407,6 +518,39 @@ function createWgManagement({
   let activeTimer = null;
   let rotationQueue = Promise.resolve();
   let shutdownPromise = null;
+  let initializationPromise = null;
+
+  function initialize({ lockHeld = false } = {}) {
+    if (initializationPromise) return initializationPromise;
+    const recover = async () => {
+      let journal;
+      try {
+        journal = readJournal();
+        if (!journal) return;
+        const attempts = {
+          filesAttempted: journal.phase !== "prepared",
+          liveAttempted: ["live_attempted", "token_attempted", "connections_closed"].includes(journal.phase),
+          tokenAttempted: ["token_attempted", "connections_closed"].includes(journal.phase),
+        };
+        const failures = await compensate(journal.candidate, attempts);
+        if (failures.length) throw failures[0];
+        clearJournal();
+      } catch (error) {
+        healthy = false;
+        if (journal) recovery = {
+          candidate: journal.candidate,
+          attempts: {
+            filesAttempted: journal.phase !== "prepared",
+            liveAttempted: ["live_attempted", "token_attempted", "connections_closed"].includes(journal.phase),
+            tokenAttempted: ["token_attempted", "connections_closed"].includes(journal.phase),
+          },
+        };
+        throw new ManagementRequestError(503, "rollback_failed");
+      }
+    };
+    initializationPromise = lockHeld ? recover() : transactionLock.runExclusive(recover);
+    return initializationPromise;
+  }
 
   function rotatePhone(context) {
     if (!acceptingRotations) return Promise.reject(new ManagementRequestError(503, "shutdown_in_progress"));
@@ -420,7 +564,10 @@ function createWgManagement({
       activeTimer = timer;
       try {
         return await transactionLock.runExclusive(
-          () => executeRotation(context, controller.signal),
+          async () => {
+            await initialize({ lockHeld: true });
+            return executeRotation(context, controller.signal);
+          },
           { signal: controller.signal },
         );
       } finally {
@@ -463,6 +610,7 @@ function createWgManagement({
 
   return Object.freeze({
     authorize,
+    initialize,
     status,
     rotatePhone,
     shutdown,

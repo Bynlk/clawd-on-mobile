@@ -58,6 +58,8 @@ async function startRelay(t, overrides = {}) {
     requestDeadlineMs: overrides.requestDeadlineMs,
     closeDeadlineMs: overrides.closeDeadlineMs,
     rateLimitAttempts: overrides.rateLimitAttempts,
+    rateLimitWindowMs: overrides.rateLimitWindowMs,
+    rateLimitMaxSources: overrides.rateLimitMaxSources,
     preAuthRateLimitAttempts: overrides.preAuthRateLimitAttempts,
     preAuthRateLimitWindowMs: overrides.preAuthRateLimitWindowMs,
   });
@@ -178,6 +180,7 @@ function createManagementFixture(t, options = {}) {
     phonePrivateKeyPath: path.join(dir, "phone.key"),
     phonePublicKeyPath: path.join(dir, "phone.pub"),
     serverPublicKeyPath: path.join(dir, "server.pub"),
+    journalPath: path.join(dir, "phone-rotation.journal"),
   };
   const oldFiles = {
     [paths.wgConfigPath]: oldWgConfig(),
@@ -243,10 +246,16 @@ function createManagementFixture(t, options = {}) {
     return { stdout: "" };
   };
   let verifyCalls = 0;
-  const verifyLivePeer = async () => {
+  let rollbackVerificationFailed = false;
+  const verifyLivePeer = async ({ expectedPublicKey } = {}) => {
     verifyCalls++;
     calls.push("verify-live");
-    return !(options.failVerificationAlways || (options.failVerificationOnce && verifyCalls === 1));
+    if (options.failVerificationAlways) return false;
+    if (options.failVerificationOnce && expectedPublicKey === OLD_PHONE_PUBLIC && !rollbackVerificationFailed) {
+      rollbackVerificationFailed = true;
+      return false;
+    }
+    return true;
   };
   const transactionLock = options.lock || {
     async runExclusive(operation) { return operation(); },
@@ -271,6 +280,7 @@ function createManagementFixture(t, options = {}) {
     phoneIp: "10.8.0.3",
     subnet: "10.8.0.0/24",
     endpoint: "203.0.113.10:51820",
+    afterStage: options.afterStage,
   });
   return { management, tokenStore, pairs, paths, oldFiles, calls, currentToken: () => activeToken };
 }
@@ -346,6 +356,7 @@ function createConcurrentManagementFixture(t, { failFirst = false } = {}) {
     generateRelayToken: () => relayTokens[relayTokenIndex++],
     tokenStore,
     pairs,
+    verifyLivePeer: async () => true,
     paths,
     wgInterface: "clawd",
     pcIp: "10.8.0.2",
@@ -527,7 +538,7 @@ describe("Relay strict authentication and single-phone pairing", () => {
     assert.equal(relay.pairs.get(RELAY_TOKEN).phone.readyState, WebSocket.OPEN);
   });
 
-  it("sends application JSON heartbeats and keeps an idle client alive across three intervals", async (t) => {
+  it("keeps a client alive across repeated application heartbeat pongs without protocol ping", async (t) => {
     const relay = await startRelay(t, { heartbeatIntervalMs: 10 });
     const phone = connect(relay, "phone", RELAY_TOKEN);
     t.after(() => phone.close());
@@ -541,6 +552,7 @@ describe("Relay strict authentication and single-phone pairing", () => {
         const message = JSON.parse(String(data));
         if (message.type !== "ping") return;
         assert.equal(typeof message.timestamp, "number");
+        phone.send(JSON.stringify({ type: "pong", timestamp: message.timestamp }));
         heartbeats++;
         if (heartbeats >= 3) {
           clearTimeout(timeout);
@@ -550,6 +562,53 @@ describe("Relay strict authentication and single-phone pairing", () => {
     });
     assert.equal(phone.readyState, WebSocket.OPEN);
     assert.equal(protocolPings, 0);
+  });
+
+  it("terminates a silent client after one unanswered application heartbeat", async (t) => {
+    const relay = await startRelay(t, { heartbeatIntervalMs: 10 });
+    const phone = connect(relay, "phone", RELAY_TOKEN);
+    await opened(phone);
+    const result = await closed(phone);
+    assert.equal(result.code, 1006);
+    assert.equal(relay.pairs.get(RELAY_TOKEN), null);
+  });
+
+  it("does not carry heartbeat state from a replaced socket to its replacement", async (t) => {
+    const relay = await startRelay(t, { heartbeatIntervalMs: 10 });
+    const first = connect(relay, "phone", RELAY_TOKEN);
+    await opened(first);
+    await nextJsonMessageOfType(first, "ping");
+    const firstClosed = closed(first);
+    const replacement = connect(relay, "phone", RELAY_TOKEN);
+    t.after(() => replacement.close());
+    replacement.on("message", (data) => {
+      const message = JSON.parse(String(data));
+      if (message.type === "ping") replacement.send(JSON.stringify({ type: "pong" }));
+    });
+    await opened(replacement);
+    await firstClosed;
+    await new Promise((resolve) => setTimeout(resolve, 45));
+    assert.equal(replacement.readyState, WebSocket.OPEN);
+    assert.equal(relay.pairs.get(RELAY_TOKEN).phone.readyState, WebSocket.OPEN);
+    assert.deepEqual(relay.pairs.countConnections(), { pc: 0, phone: 1 });
+  });
+
+  it("bounds the authenticated source limiter and evicts its oldest source", async (t) => {
+    const relay = await startRelay(t, {
+      rateLimitAttempts: 1,
+      rateLimitMaxSources: 2,
+      remoteAddressOf: (req) => req.headers["x-test-source"] || "unknown",
+    });
+    async function connectAndClose(source) {
+      const ws = connect(relay, "pc", RELAY_TOKEN, { headers: { "X-Test-Source": source } });
+      await opened(ws);
+      ws.close();
+      await closed(ws);
+    }
+    await connectAndClose("source-a");
+    await connectAndClose("source-b");
+    await connectAndClose("source-c");
+    await connectAndClose("source-a");
   });
 
   it("forwards payloads through the managed-session envelope without retaining them", async (t) => {
@@ -589,6 +648,42 @@ describe("Relay strict authentication and single-phone pairing", () => {
 });
 
 describe("Relay token store", () => {
+  it("refuses a symlink lock path without changing its target", (t) => {
+    const { createFlockLock } = loadManagementModules();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-lock-symlink-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const target = path.join(dir, "victim");
+    const lockPath = path.join(dir, "relay.lock");
+    fs.writeFileSync(target, "sentinel", { mode: 0o644 });
+    fs.symlinkSync(target, lockPath);
+
+    assert.throws(() => createFlockLock({ lockPath }), /lock.*regular|symlink|ELOOP/i);
+    assert.equal(fs.readFileSync(target, "utf8"), "sentinel");
+    assert.equal(fs.statSync(target).mode & 0o777, 0o644);
+  });
+
+  it("rejects an existing lock with unsafe mode, owner, or non-regular type", (t) => {
+    const { createFlockLock } = loadManagementModules();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-lock-metadata-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const insecure = path.join(dir, "insecure.lock");
+    fs.writeFileSync(insecure, "", { mode: 0o644 });
+    assert.throws(() => createFlockLock({ lockPath: insecure }), /mode.*0600/i);
+    assert.equal(fs.statSync(insecure).mode & 0o777, 0o644);
+
+    const wrongOwner = path.join(dir, "wrong-owner.lock");
+    fs.writeFileSync(wrongOwner, "", { mode: 0o600 });
+    const actualUid = fs.statSync(wrongOwner).uid;
+    assert.throws(() => createFlockLock({
+      lockPath: wrongOwner,
+      expectedUid: actualUid + 1,
+    }), /owner/i);
+
+    const directory = path.join(dir, "directory.lock");
+    fs.mkdirSync(directory);
+    assert.throws(() => createFlockLock({ lockPath: directory }), /regular|EISDIR/i);
+  });
+
   it("preserves mixed-case token bytes for exact Bearer authentication", (t) => {
     const { createRelayTokenStore } = loadManagementModules();
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-relay-token-case-"));
@@ -782,6 +877,69 @@ describe("Relay token store", () => {
 });
 
 describe("WireGuard phone rotation transaction", () => {
+  it("verifies the exact new live peer before committing the Relay token", async (t) => {
+    const fixture = createManagementFixture(t, { failVerificationAlways: true });
+    await assert.rejects(fixture.management.rotatePhone(fixture.context || {
+      remoteAddress: "10.8.0.2",
+      authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+      body: { version: 1 },
+    }), /rotation_failed|rollback_failed/);
+    assert.equal(fixture.calls.includes("persist-token"), false);
+    assert.equal(fixture.currentToken(), RELAY_TOKEN);
+  });
+
+  it("durably journals every mutation boundary and rolls an interrupted rotation back on initialize", async (t) => {
+    for (const interruptedStage of [
+      "journal-prepared",
+      "files-persisted",
+      "live-applied",
+      "token-persisted",
+    ]) {
+      await t.test(interruptedStage, async (t) => {
+        const crashed = createManagementFixture(t, {
+          afterStage(stage) {
+            if (stage !== interruptedStage) return;
+            const error = new Error("simulated abrupt process death");
+            error.simulatedCrash = true;
+            throw error;
+          },
+        });
+        await assert.rejects(crashed.management.rotatePhone({
+          remoteAddress: "10.8.0.2",
+          authorization: `Bearer ${MANAGEMENT_TOKEN}`,
+          body: { version: 1 },
+        }), /simulated abrupt process death/);
+        assert.equal(fs.existsSync(crashed.paths.journalPath), true);
+        assert.equal(fs.statSync(crashed.paths.journalPath).mode & 0o777, 0o600);
+
+        const { createWgManagement } = loadManagementModules();
+        const recovered = createWgManagement({
+          fs,
+          command: async () => ({ stdout: "" }),
+          generateKeyPair: async () => ({ privateKey: NEW_PHONE_PRIVATE, publicKey: NEW_PHONE_PUBLIC }),
+          generateRelayToken: () => NEXT_RELAY_TOKEN,
+          tokenStore: crashed.tokenStore,
+          pairs: crashed.pairs,
+          lock: { async runExclusive(operation) { return operation(); } },
+          verifyLivePeer: async ({ expectedPublicKey }) => expectedPublicKey === OLD_PHONE_PUBLIC,
+          paths: crashed.paths,
+          wgInterface: "clawd",
+          pcIp: "10.8.0.2",
+          phoneIp: "10.8.0.3",
+          subnet: "10.8.0.0/24",
+          endpoint: "203.0.113.10:51820",
+        });
+        await recovered.initialize();
+
+        assert.equal(fs.existsSync(crashed.paths.journalPath), false);
+        assert.equal(crashed.currentToken(), RELAY_TOKEN);
+        for (const [file, contents] of Object.entries(crashed.oldFiles)) {
+          assert.equal(fs.readFileSync(file, "utf8"), contents);
+        }
+        assert.equal(recovered.isHealthy(), true);
+      });
+    }
+  });
   it("kills and reaps a hung production command at its deadline", async () => {
     const { defaultCommand } = require("../relay/wg-management");
     assert.equal(typeof defaultCommand, "function");
@@ -859,8 +1017,8 @@ describe("WireGuard phone rotation transaction", () => {
       body: { version: 1 },
     });
 
-    assert.deepEqual(fixture.calls.slice(0, 5), [
-      "generate", "persist-wg", "apply-live", "persist-token", "close-old",
+    assert.deepEqual(fixture.calls.slice(0, 6), [
+      "generate", "persist-wg", "apply-live", "verify-live", "persist-token", "close-old",
     ]);
     assert.equal(result.version, 1);
     assert.equal(result.relayToken, NEXT_RELAY_TOKEN);
@@ -1107,13 +1265,13 @@ describe("WireGuard phone rotation transaction", () => {
     ]) {
       await t.test(name, async (t) => {
         const base = createManagementFixture(t, { failAt: "token" });
-        let commandCalls = 0;
         const management = createWgManagement({
           fs,
           command: async (_file, args) => {
-            commandCalls++;
-            if (commandCalls === 3) {
-              assert.deepEqual(args, ["show", "clawd", "allowed-ips"]);
+            if (args[0] === "show") {
+              if (fs.readFileSync(base.paths.phonePublicKeyPath, "utf8").trim() === NEW_PHONE_PUBLIC) {
+                return { stdout: `${NEW_PHONE_PUBLIC}\t10.8.0.3/32\n` };
+              }
               return { stdout: allowedIpsOutput };
             }
             return { stdout: "" };
@@ -1234,6 +1392,35 @@ describe("WireGuard phone rotation transaction", () => {
 });
 
 describe("Relay management HTTP API", () => {
+  it("does not bind until management startup recovery completes", async (t) => {
+    const recovery = deferred();
+    let initialized = false;
+    const management = {
+      async initialize() {
+        await recovery.promise;
+        initialized = true;
+      },
+      async shutdown() {},
+      isHealthy: () => initialized,
+    };
+    const createRelayServer = loadCreateRelayServer();
+    const relay = createRelayServer({
+      bindAddr: "127.0.0.1",
+      port: 0,
+      tokenStore: { current: () => RELAY_TOKEN },
+      management,
+      log() {},
+    });
+    t.after(() => relay.close().catch(() => {}));
+    const listening = relay.listen();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(relay.address(), null);
+    recovery.resolve();
+    await listening;
+    assert.equal(initialized, true);
+    assert.ok(relay.address().port > 0);
+  });
+
   it("returns rollback_failed while management cannot verify recovered old state", async (t) => {
     const fixture = createManagementFixture(t, {
       failAt: "token",

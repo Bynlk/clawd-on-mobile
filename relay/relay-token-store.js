@@ -19,13 +19,36 @@ function createFlockLock({
   timeoutMs = 5000,
   flockCommand = "flock",
   spawnProcess = spawn,
+  expectedUid = typeof process.getuid === "function" ? process.getuid() : null,
 } = {}) {
   if (!Number.isFinite(timeoutMs) || timeoutMs < 0 || typeof flockCommand !== "string" || !flockCommand) {
     throw new Error("invalid lock timing");
   }
-  const descriptor = fs.openSync(lockPath, "a", 0o600);
-  fs.closeSync(descriptor);
-  fs.chmodSync(lockPath, 0o600);
+  let existed = true;
+  try {
+    const before = fs.lstatSync(lockPath);
+    if (!before.isFile() || before.isSymbolicLink()) throw new Error("lock path must be a regular file");
+  } catch (error) {
+    if (!error || error.code !== "ENOENT") throw error;
+    existed = false;
+  }
+  const flags = nodeFs.constants.O_RDWR | nodeFs.constants.O_CREAT |
+    (nodeFs.constants.O_NOFOLLOW || 0);
+  let descriptor = null;
+  try {
+    descriptor = fs.openSync(lockPath, flags, 0o600);
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile()) throw new Error("lock path must be a regular file");
+    if (expectedUid !== null && expectedUid !== undefined && stat.uid !== expectedUid) {
+      throw new Error("lock file owner is invalid");
+    }
+    if (existed && (stat.mode & 0o777) !== 0o600) {
+      throw new Error("lock file mode must be 0600");
+    }
+    if (!existed && typeof fs.fchmodSync === "function") fs.fchmodSync(descriptor, 0o600);
+  } finally {
+    if (descriptor !== null) fs.closeSync(descriptor);
+  }
 
   async function acquire({ signal } = {}) {
     if (signal && signal.aborted) throw signal.reason || codedError("lock_aborted");
