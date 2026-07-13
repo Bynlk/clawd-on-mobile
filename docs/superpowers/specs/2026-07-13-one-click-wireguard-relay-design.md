@@ -408,3 +408,6 @@ POST /api/manage/phone/rotate
 - 实现：公开 profile 迁移为独立 `host`、`sshUsername`、`sshPort` 字段，新 profile 默认密码认证，未知字段和 `password`、配置、Token 均被剥离；合法旧 key-auth profile 保留兼容。
 - 安全存储：每个 profile 的秘密对象经 `safeStorage.encryptString()` 后以 base64 blob 保存；临时文件权限为 `0600`，支持时执行 `fsync`，再原子重命名。不可加密、Linux `basic_text`、损坏 JSON 和非法输入均关闭失败，错误和日志不包含秘密。
 - GREEN：`node --test test/wg-relay-profile.test.js test/settings-actions-wg-relay.test.js test/wg-relay-secret-store.test.js` 退出码 0；45 项全部通过，0 失败、0 跳过。
+- 合规修复 RED：`node --test test/settings-actions-wg-relay.test.js` 退出码 1；20 项中 8 项按预期失败，证明 add、update、remove、applyReadback 会重新提交脏快照字段，并证明 `createdAt`、`serverPubKey`、`pcAddress` 和旧 readback 白名单不符合公开 profile 规范。
+- 合规修复：所有产生 commit 的设置命令先规范化整个快照；update 仅保留 `sshHostFingerprint`、`endpoint`、`relayAddr`、`lastDeployedAt`、`deployVersion`，readback 仅持久化 `endpoint`、`relayAddr` 与部署元数据，最终结果再次经过公开 profile sanitizer。合法旧 key-auth 的 `identityFile` 继续保留。
+- 合规修复 GREEN：`node --test test/wg-relay-profile.test.js test/settings-actions-wg-relay.test.js test/wg-relay-secret-store.test.js` 退出码 0；49 项全部通过，0 失败、0 跳过。

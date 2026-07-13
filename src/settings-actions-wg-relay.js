@@ -15,6 +15,7 @@
 //          managementToken are deliberately absent from that whitelist.
 
 const {
+  normalizeWgRelay,
   sanitizeProfile,
   validateProfile,
   isValidReadbackStr,
@@ -23,8 +24,10 @@ const {
 function _snapshot(deps) {
   const snap = (deps && deps.snapshot) || {};
   const cur = snap.wgRelay && typeof snap.wgRelay === "object" ? snap.wgRelay : {};
-  const profiles = Array.isArray(cur.profiles) ? cur.profiles.slice() : [];
-  return { profiles };
+  // Every command that produces a commit starts from a canonical snapshot.
+  // This prevents old or externally-mutated settings from carrying secrets or
+  // unknown fields forward when an unrelated profile changes.
+  return normalizeWgRelay(cur, { profiles: [] });
 }
 
 // Reject a subnet already claimed by a DIFFERENT profile (D-SUBNET / EX-14).
@@ -73,21 +76,13 @@ function wgRelayUpdateProfile(payload, deps) {
     return { status: "error", message: `wgRelay.update: subnet ${profile.wgSubnet} already in use (EX-14)` };
   }
   const prev = next.profiles[idx];
-  // Preserve migration-era createdAt plus public deployment metadata across
-  // cosmetic edits unless the caller explicitly supplies new values.
-  if (Number.isFinite(prev.createdAt) && !Number.isFinite(payload.createdAt)) {
-    profile.createdAt = prev.createdAt;
-  }
+  // Preserve only canonical public deployment metadata across cosmetic edits.
   for (const f of [
     "sshHostFingerprint",
     "endpoint",
     "relayAddr",
     "lastDeployedAt",
     "deployVersion",
-    // Legacy public readback values remain available until their callers move
-    // to the encrypted config store introduced by this task.
-    "serverPubKey",
-    "pcAddress",
   ]) {
     if (profile[f] === undefined && prev[f] !== undefined) profile[f] = prev[f];
   }
@@ -115,7 +110,7 @@ function wgRelayRemoveProfile(payload, deps) {
 // (deploy can take 30+s; user may have edited meanwhile — lost-update race).
 // CRITICAL SEC-1/SEC-3: only PUBLIC fields are written. pcConfig/phoneConfig,
 // relayToken, managementToken and private keys are intentionally NOT persisted.
-const READBACK_PERSIST_FIELDS = ["serverPubKey", "endpoint", "pcAddress", "relayAddr"];
+const READBACK_PERSIST_FIELDS = ["endpoint", "relayAddr"];
 
 function wgRelayApplyReadback(profileId, readback, deps) {
   if (typeof profileId !== "string" || !profileId) {
@@ -148,8 +143,12 @@ function wgRelayApplyReadback(profileId, readback, deps) {
   if (Number.isInteger(deployVersion) && deployVersion > 0) {
     updated.deployVersion = deployVersion;
   }
+  const canonicalUpdated = sanitizeProfile(updated);
+  if (!canonicalUpdated) {
+    return { status: "error", message: "wgRelay.applyReadback: resulting profile is invalid" };
+  }
   const newProfiles = next.profiles.slice();
-  newProfiles[idx] = updated;
+  newProfiles[idx] = canonicalUpdated;
   return { status: "ok", commit: { wgRelay: { profiles: newProfiles } } };
 }
 

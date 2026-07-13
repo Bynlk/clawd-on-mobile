@@ -29,6 +29,46 @@ function depsWith(profiles) {
   return { snapshot: { wgRelay: { profiles } } };
 }
 
+const CANONICAL_FIELDS = new Set([
+  "id", "label", "host", "sshUsername", "sshPort", "authMethod",
+  "identityFile", // valid legacy key-auth compatibility only
+  "wgPort", "wgSubnet", "sshHostFingerprint", "endpoint", "relayAddr",
+  "lastDeployedAt", "deployVersion",
+]);
+
+const FORBIDDEN_FIELDS = [
+  "createdAt", "serverPubKey", "pcAddress", "password", "pcConfig",
+  "phoneConfig", "relayToken", "managementToken", "unknown",
+];
+
+function dirtyProfile(over = {}) {
+  return keyPayload({
+    createdAt: 111,
+    serverPubKey: "SERVER-PUBLIC-KEY",
+    pcAddress: "10.8.0.2/32",
+    password: "password-secret",
+    pcConfig: "pc-config-secret",
+    phoneConfig: "phone-config-secret",
+    relayToken: "relay-token-secret",
+    managementToken: "management-token-secret",
+    unknown: "unknown-value",
+    endpoint: "1.2.3.4:51820",
+    relayAddr: "ws://10.8.0.1:7891",
+    lastDeployedAt: 999,
+    deployVersion: 1,
+    ...over,
+  });
+}
+
+function assertCanonicalProfile(profile) {
+  for (const key of Object.keys(profile)) {
+    assert.equal(CANONICAL_FIELDS.has(key), true, `noncanonical field survived: ${key}`);
+  }
+  for (const key of FORBIDDEN_FIELDS) {
+    assert.equal(profile[key], undefined, `forbidden field survived: ${key}`);
+  }
+}
+
 // ── add ──
 test("add: valid profile commits", () => {
   const r = wgRelayAddProfile(keyPayload(), depsWith([]));
@@ -42,6 +82,13 @@ test("add: strips password (SEC-1)", () => {
   assert.equal(r.status, "ok");
   assert.equal(r.commit.wgRelay.profiles[0].password, undefined);
   assert.equal(r.commit.wgRelay.profiles[0].phonePrivKey, undefined);
+});
+
+test("add: sanitizes dirty profiles already present in the snapshot", () => {
+  const existing = dirtyProfile({ id: "existing", wgSubnet: "10.9.0.0/24" });
+  const r = wgRelayAddProfile(keyPayload({ id: "new" }), depsWith([existing]));
+  assert.equal(r.status, "ok");
+  for (const profile of r.commit.wgRelay.profiles) assertCanonicalProfile(profile);
 });
 
 test("add: rejects invalid profile", () => {
@@ -63,20 +110,37 @@ test("add: rejects duplicate subnet (EX-14)", () => {
 });
 
 // ── update ──
-test("update: modifies existing, preserves createdAt", () => {
+test("update: modifies existing without preserving noncanonical createdAt", () => {
   const existing = { ...keyPayload(), createdAt: 111 };
   const r = wgRelayUpdateProfile(keyPayload({ label: "renamed" }), depsWith([existing]));
   assert.equal(r.status, "ok");
   assert.equal(r.commit.wgRelay.profiles[0].label, "renamed");
-  assert.equal(r.commit.wgRelay.profiles[0].createdAt, 111);
+  assert.equal(r.commit.wgRelay.profiles[0].createdAt, undefined);
 });
 
-test("update: preserves readback fields when not supplied", () => {
-  const existing = { ...keyPayload(), serverPubKey: "abc=", endpoint: "1.2.3.4:51820", lastDeployedAt: 999 };
+test("update: preserves only canonical deployment metadata when not supplied", () => {
+  const existing = dirtyProfile();
   const r = wgRelayUpdateProfile(keyPayload({ label: "x" }), depsWith([existing]));
   assert.equal(r.status, "ok");
-  assert.equal(r.commit.wgRelay.profiles[0].serverPubKey, "abc=");
-  assert.equal(r.commit.wgRelay.profiles[0].lastDeployedAt, 999);
+  const profile = r.commit.wgRelay.profiles[0];
+  assert.equal(profile.serverPubKey, undefined);
+  assert.equal(profile.pcAddress, undefined);
+  assert.equal(profile.endpoint, "1.2.3.4:51820");
+  assert.equal(profile.relayAddr, "ws://10.8.0.1:7891");
+  assert.equal(profile.lastDeployedAt, 999);
+  assert.equal(profile.deployVersion, 1);
+  assertCanonicalProfile(profile);
+});
+
+test("update: sanitizes dirty sibling profiles before committing", () => {
+  const target = dirtyProfile({ id: "target", wgSubnet: "10.9.0.0/24" });
+  const sibling = dirtyProfile({ id: "sibling", wgSubnet: "10.10.0.0/24" });
+  const r = wgRelayUpdateProfile(
+    keyPayload({ id: "target", label: "updated", wgSubnet: "10.9.0.0/24" }),
+    depsWith([target, sibling]),
+  );
+  assert.equal(r.status, "ok");
+  for (const profile of r.commit.wgRelay.profiles) assertCanonicalProfile(profile);
 });
 
 test("update: not found → error", () => {
@@ -105,6 +169,15 @@ test("remove: deletes by id", () => {
   assert.equal(r.commit.wgRelay.profiles.length, 0);
 });
 
+test("remove: sanitizes dirty profiles that remain in the committed snapshot", () => {
+  const removed = dirtyProfile({ id: "removed", wgSubnet: "10.9.0.0/24" });
+  const remaining = dirtyProfile({ id: "remaining", wgSubnet: "10.10.0.0/24" });
+  const r = wgRelayRemoveProfile("removed", depsWith([removed, remaining]));
+  assert.equal(r.status, "ok");
+  assert.equal(r.commit.wgRelay.profiles.length, 1);
+  assertCanonicalProfile(r.commit.wgRelay.profiles[0]);
+});
+
 test("remove: missing id is noop", () => {
   const r = wgRelayRemoveProfile("ghost", depsWith([keyPayload()]));
   assert.equal(r.status, "ok");
@@ -122,22 +195,48 @@ test("applyReadback: writes ONLY public fields, never conf/private key (SEC-1/3)
     phoneConf: "[Interface]\nPrivateKey = PHONELEAK\n",
     phonePrivKey: "PHONELEAK",
     deployedAt: 1700000000000,
+    schemaVersion: 1,
   }, depsWith([keyPayload()]));
   assert.equal(r.status, "ok");
   const p = r.commit.wgRelay.profiles[0];
-  assert.equal(p.serverPubKey, "SRV=");
+  assert.equal(p.serverPubKey, undefined);
+  assert.equal(p.pcAddress, undefined);
   assert.equal(p.endpoint, "1.2.3.4:51820");
   assert.equal(p.lastDeployedAt, 1700000000000);
+  assert.equal(p.deployVersion, 1);
   // Never persisted:
   assert.equal(p.pcConf, undefined);
   assert.equal(p.phoneConf, undefined);
   assert.equal(p.phonePrivKey, undefined);
+  assertCanonicalProfile(p);
   // Verify serialized form has no private key leak.
   assert.ok(!JSON.stringify(p).includes("LEAK"));
 });
 
 test("applyReadback: whitelist excludes conf blobs", () => {
-  assert.deepEqual(READBACK_PERSIST_FIELDS, ["serverPubKey", "endpoint", "pcAddress", "relayAddr"]);
+  assert.deepEqual(READBACK_PERSIST_FIELDS, ["endpoint", "relayAddr"]);
+});
+
+test("applyReadback: sanitizes dirty target and sibling profiles", () => {
+  const target = dirtyProfile({ id: "target", wgSubnet: "10.9.0.0/24" });
+  const sibling = dirtyProfile({ id: "sibling", wgSubnet: "10.10.0.0/24" });
+  const r = wgRelayApplyReadback("target", {
+    endpoint: "203.0.113.10:51820",
+    relayAddr: "ws://10.9.0.1:7891",
+    serverPubKey: "DO-NOT-PERSIST",
+    pcAddress: "10.9.0.2/32",
+    password: "DO-NOT-PERSIST",
+    pcConfig: "DO-NOT-PERSIST",
+    phoneConfig: "DO-NOT-PERSIST",
+    relayToken: "DO-NOT-PERSIST",
+    managementToken: "DO-NOT-PERSIST",
+    unknown: "DO-NOT-PERSIST",
+    deployedAt: 1700000000000,
+    deployVersion: 2,
+  }, depsWith([target, sibling]));
+  assert.equal(r.status, "ok");
+  for (const profile of r.commit.wgRelay.profiles) assertCanonicalProfile(profile);
+  assert.equal(r.commit.wgRelay.profiles[0].deployVersion, 2);
 });
 
 test("applyReadback: deleted profile → noop", () => {
