@@ -142,6 +142,35 @@ test("pairing model accepts a genuinely parsed bracketed IPv6 endpoint matching 
   assert.equal(payload.wireGuard.endpoint, endpoint);
 });
 
+test("phone INI accepts full-line comments but rejects inline comment pollution", () => {
+  const base = {
+    profile: PROFILE,
+    secrets: {
+      relayUrl: "ws://10.8.0.1:7891",
+      relayToken: RELAY_TOKEN,
+    },
+    issuedAt: 3,
+  };
+  const withComments = phoneConfig()
+    .replace("[Interface]", "# generated phone profile\n[Interface]\n; keep this key private")
+    .replace("[Peer]", "; relay peer\n[Peer]\n# exact topology follows");
+  assert.doesNotThrow(() => buildPairingDeepLink({
+    ...base, secrets: { ...base.secrets, phoneConfig: withComments },
+  }));
+
+  for (const polluted of [
+    phoneConfig().replace("Address = 10.8.0.3/32", "Address = 10.8.0.3/32 # phone"),
+    phoneConfig().replace(`PrivateKey = ${PHONE_PRIVATE_KEY}`, `PrivateKey = ${PHONE_PRIVATE_KEY} ; secret`),
+  ]) {
+    assert.throws(
+      () => buildPairingDeepLink({
+        ...base, secrets: { ...base.secrets, phoneConfig: polluted },
+      }),
+      /pairing data invalid/i,
+    );
+  }
+});
+
 test("createPairingQr uses the existing encoder and returns no raw payload", async () => {
   let encodedText = null;
   const result = await createPairingQr({

@@ -141,7 +141,8 @@ function makeBundleClient(behavior = {}) {
     exec(command, callback) {
       state.operations.push("exec");
       state.commands.push(command);
-      process.nextTick(() => callback(null, new FakeInstallStream()));
+      state.stream = new FakeInstallStream();
+      process.nextTick(() => callback(null, state.stream));
     }
     end() {
       state.ended = true;
@@ -389,6 +390,75 @@ test("deployBundle timeout closes an active install channel", async () => {
   assert.equal(fake.state.streamDestroyed, true);
 });
 
+test("deployBundle aborts a never-ready ssh2 client immediately and removes late work", async () => {
+  const state = { connectCalls: 0, ended: false, destroyed: false, lateCallbacks: 0 };
+  class NeverReadyClient extends EventEmitter {
+    connect() { state.connectCalls += 1; }
+    end() { state.ended = true; }
+    destroy() { state.destroyed = true; }
+  }
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const pending = deployBundle(bundleArgs({
+    signal: controller.signal,
+    timeoutMs: 5000,
+    deps: { Client: NeverReadyClient, remoteRoot: "/tmp/clawd-relay-abort" },
+  }));
+  controller.abort();
+
+  await assert.rejects(pending, (error) => (
+    error.code === "SSH_ABORTED" && error.reason === "aborted"
+  ));
+  assert.ok(Date.now() - startedAt < 500);
+  assert.equal(state.connectCalls, 1);
+  assert.equal(state.ended, true);
+  assert.equal(state.destroyed, true);
+  await wait(20);
+  assert.equal(state.lateCallbacks, 0);
+});
+
+test("deployBundle closes a late SFTP callback after abort and never starts exec", async () => {
+  const fake = makeBundleClient({ sftpDelayMs: 40 });
+  const controller = new AbortController();
+  const pending = deployBundle(bundleArgs({
+    signal: controller.signal,
+    timeoutMs: 5000,
+    confirmHostKey: () => true,
+    deps: {
+      Client: fake.Client,
+      remoteRoot: "/tmp/clawd-relay-abort-sftp",
+      bundleModule: { uploadRelayBundle: async () => {} },
+    },
+  }));
+  await wait(5);
+  controller.abort();
+
+  await assert.rejects(pending, (error) => error.code === "SSH_ABORTED");
+  await wait(60);
+  assert.equal(fake.state.sftpEnded, true);
+  assert.equal(fake.state.commands.length, 0);
+});
+
+test("deployBundle abort settles an active installer and removes stream listeners", async () => {
+  const fake = makeBundleClient({ hangInstall: true });
+  const controller = new AbortController();
+  const pending = deployBundle(bundleArgs({
+    signal: controller.signal,
+    timeoutMs: 5000,
+    confirmHostKey: () => true,
+    deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-abort-install" },
+  }));
+  while (!fake.state.stream) await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+
+  await assert.rejects(pending, (error) => error.code === "SSH_ABORTED");
+  assert.equal(fake.state.streamDestroyed, true);
+  assert.equal(fake.state.stream.listenerCount("data"), 0);
+  assert.equal(fake.state.stream.listenerCount("error"), 0);
+  assert.equal(fake.state.stream.listenerCount("close"), 0);
+  assert.equal(fake.state.stream.stderr.listenerCount("data"), 0);
+});
+
 test("deployBundle maps synchronous TOFU confirmation throws and invokes verifier callback once", async () => {
   const fake = makeBundleClient();
   await assert.rejects(
@@ -579,6 +649,30 @@ test("execScript propagates non-zero exit code", async () => {
     deps: { Client },
   });
   assert.equal(r.code, 13);
+});
+
+test("execScript abort destroys a never-ready compatibility client", async () => {
+  const state = { ended: false, destroyed: false };
+  class NeverReadyClient extends EventEmitter {
+    connect() {}
+    end() { state.ended = true; }
+    destroy() { state.destroyed = true; }
+  }
+  const controller = new AbortController();
+  const pending = execScript({
+    host: "1.2.3.4",
+    password: "pw",
+    hostKeyVerifier: () => true,
+    script: "echo hi",
+    signal: controller.signal,
+    timeoutMs: 5000,
+    deps: { Client: NeverReadyClient },
+  });
+  controller.abort();
+
+  await assert.rejects(pending, (error) => error.code === "SSH_ABORTED");
+  assert.equal(state.ended, true);
+  assert.equal(state.destroyed, true);
 });
 
 test("sha256Fingerprint formats like OpenSSH SHA256:...", () => {

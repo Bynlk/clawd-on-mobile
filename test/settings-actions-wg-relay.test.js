@@ -8,6 +8,7 @@ const {
   wgRelayUpdateProfile,
   wgRelayRemoveProfile,
   wgRelayApplyReadback,
+  wgRelayCommitDeploy,
   READBACK_PERSIST_FIELDS,
 } = require("../src/settings-actions-wg-relay");
 
@@ -260,4 +261,43 @@ test("applyReadback: deleted profile → noop", () => {
 test("applyReadback: rejects control chars in readback", () => {
   const r = wgRelayApplyReadback("wg-1", { endpoint: "1.2.3.4:51820\n" }, depsWith([keyPayload()]));
   assert.equal(r.status, "error");
+});
+
+test("commitDeploy atomically preserves cosmetic edits and patches deployment metadata", () => {
+  const baseProfile = keyPayload({ label: "Original" });
+  const currentProfile = keyPayload({ label: "Edited while deploying" });
+  const deployedProfile = keyPayload({
+    label: "Original",
+    sshHostFingerprint: `SHA256:${Buffer.alloc(32, 9).toString("base64")}`,
+    endpoint: "1.2.3.4:51820",
+    relayAddr: "ws://10.8.0.1:7891",
+    lastDeployedAt: 123,
+    deployVersion: 1,
+  });
+
+  const result = wgRelayCommitDeploy({
+    baseProfile, deployedProfile, allowCreate: false,
+  }, depsWith([currentProfile]));
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.profile.label, "Edited while deploying");
+  assert.equal(result.profile.endpoint, "1.2.3.4:51820");
+  assert.deepEqual(result.commit.wgRelay.profiles, [result.profile]);
+});
+
+test("commitDeploy atomically rejects topology changes and deleted profiles", () => {
+  const baseProfile = keyPayload();
+  const deployedProfile = keyPayload({
+    endpoint: "1.2.3.4:51820", relayAddr: "ws://10.8.0.1:7891",
+    lastDeployedAt: 123, deployVersion: 1,
+  });
+  const changed = wgRelayCommitDeploy({
+    baseProfile, deployedProfile, allowCreate: false,
+  }, depsWith([{ ...baseProfile, host: "8.8.8.8" }]));
+  const deleted = wgRelayCommitDeploy({
+    baseProfile, deployedProfile, allowCreate: false,
+  }, depsWith([]));
+
+  assert.deepEqual(changed, { status: "error", errorCode: "profile_conflict_recovery_required" });
+  assert.deepEqual(deleted, { status: "error", errorCode: "profile_conflict_recovery_required" });
 });

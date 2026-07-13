@@ -1,5 +1,7 @@
 "use strict";
 
+const { isDeepStrictEqual } = require("node:util");
+
 // ── WireGuard relay profile IPC actions ──
 //
 // Standalone, pure-additive module (does NOT touch settings-actions.js). Each
@@ -33,6 +35,17 @@ function _snapshot(deps) {
 // Reject a subnet already claimed by a DIFFERENT profile (D-SUBNET / EX-14).
 function subnetTaken(profiles, subnet, exceptId) {
   return profiles.some((p) => p.wgSubnet === subnet && p.id !== exceptId);
+}
+
+const DEPLOY_TOPOLOGY_FIELDS = [
+  "host", "sshUsername", "sshPort", "authMethod", "identityFile", "wgPort", "wgSubnet",
+];
+const DEPLOY_METADATA_FIELDS = [
+  "sshHostFingerprint", "endpoint", "relayAddr", "lastDeployedAt", "deployVersion",
+];
+
+function sameDeployTopology(left, right) {
+  return DEPLOY_TOPOLOGY_FIELDS.every((field) => isDeepStrictEqual(left[field], right[field]));
 }
 
 function wgRelayAddProfile(payload, deps) {
@@ -106,6 +119,40 @@ function wgRelayRemoveProfile(payload, deps) {
   return { status: "ok", commit: { wgRelay: next } };
 }
 
+function wgRelayCommitDeploy(payload, deps) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { status: "error", errorCode: "profile_conflict_recovery_required" };
+  }
+  const baseProfile = sanitizeProfile(payload.baseProfile);
+  const deployedProfile = sanitizeProfile(payload.deployedProfile);
+  if (!baseProfile || !deployedProfile || baseProfile.id !== deployedProfile.id
+      || typeof payload.allowCreate !== "boolean") {
+    return { status: "error", errorCode: "profile_conflict_recovery_required" };
+  }
+  const next = _snapshot(deps);
+  const index = next.profiles.findIndex((profile) => profile.id === baseProfile.id);
+  if (index === -1) {
+    if (!payload.allowCreate || subnetTaken(next.profiles, deployedProfile.wgSubnet)) {
+      return { status: "error", errorCode: "profile_conflict_recovery_required" };
+    }
+    next.profiles.push(deployedProfile);
+    return { status: "ok", profile: deployedProfile, commit: { wgRelay: next } };
+  }
+  const current = next.profiles[index];
+  if (!sameDeployTopology(baseProfile, current)) {
+    return { status: "error", errorCode: "profile_conflict_recovery_required" };
+  }
+  const candidate = { ...current };
+  for (const field of DEPLOY_METADATA_FIELDS) {
+    if (Object.hasOwn(deployedProfile, field)) candidate[field] = deployedProfile[field];
+    else delete candidate[field];
+  }
+  const merged = sanitizeProfile(candidate);
+  if (!merged) return { status: "error", errorCode: "profile_conflict_recovery_required" };
+  next.profiles[index] = merged;
+  return { status: "ok", profile: merged, commit: { wgRelay: next } };
+}
+
 // Stamp deploy readback onto a profile WITHOUT rewriting the whole profile
 // (deploy can take 30+s; user may have edited meanwhile — lost-update race).
 // CRITICAL SEC-1/SEC-3: only PUBLIC fields are written. pcConfig/phoneConfig,
@@ -156,11 +203,13 @@ wgRelayAddProfile.lockKey = "wgRelay";
 wgRelayUpdateProfile.lockKey = "wgRelay";
 wgRelayRemoveProfile.lockKey = "wgRelay";
 wgRelayApplyReadback.lockKey = "wgRelay";
+wgRelayCommitDeploy.lockKey = "wgRelay";
 
 module.exports = {
   wgRelayAddProfile,
   wgRelayUpdateProfile,
   wgRelayRemoveProfile,
   wgRelayApplyReadback,
+  wgRelayCommitDeploy,
   READBACK_PERSIST_FIELDS,
 };

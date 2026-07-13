@@ -92,7 +92,7 @@ function parsePhoneConfig(config, profile) {
   let active = null;
   for (const sourceLine of config.split(/\r?\n/)) {
     const line = sourceLine.trim();
-    if (!line) continue;
+    if (!line || line.startsWith("#") || line.startsWith(";")) continue;
     const heading = /^\[([^\]]+)\]$/.exec(line);
     if (heading) {
       active = heading[1];

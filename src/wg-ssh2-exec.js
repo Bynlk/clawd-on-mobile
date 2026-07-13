@@ -109,71 +109,100 @@ function executeInstaller(conn, {
   password,
   isAborted,
   onChannel,
+  signal,
 }) {
   return new Promise((resolve, reject) => {
-    conn.exec(command, (error, stream) => {
-      if (error) {
-        reject(error);
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let outputBytes = 0;
+    let activeStream = null;
+    let done = false;
+
+    function cleanupListeners() {
+      if (signal) signal.removeEventListener("abort", onAbort);
+      if (!activeStream) return;
+      activeStream.removeListener("data", onStdout);
+      activeStream.removeListener("error", finishReject);
+      activeStream.removeListener("close", onClose);
+      if (activeStream.stderr) activeStream.stderr.removeListener("data", onStderr);
+    }
+
+    function finishReject(error) {
+      if (done) return;
+      done = true;
+      cleanupListeners();
+      onChannel(null);
+      abortChannel(activeStream);
+      reject(error);
+    }
+
+    function onAbort() {
+      finishReject(transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted"));
+    }
+
+    function appendOutput(chunks, chunk) {
+      if (done) return;
+      const buffer = Buffer.from(chunk);
+      if (outputBytes + buffer.length > MAX_OUTPUT_BYTES) {
+        finishReject(transportError(
+          "OUTPUT_LIMIT",
+          "output_limit",
+          "Remote installer output exceeded the safe limit"
+        ));
         return;
       }
-      if (isAborted()) {
-        abortChannel(stream);
-        reject(transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted"));
-        return;
-      }
-      onChannel(stream);
-      const stdoutChunks = [];
-      const stderrChunks = [];
-      let outputBytes = 0;
-      let done = false;
+      outputBytes += buffer.length;
+      chunks.push(buffer);
+    }
 
-      function finishReject(error) {
-        if (done) return;
-        done = true;
-        onChannel(null);
-        abortChannel(stream);
-        reject(error);
-      }
-
-      function appendOutput(chunks, chunk) {
-        if (done) return;
-        const buffer = Buffer.from(chunk);
-        if (outputBytes + buffer.length > MAX_OUTPUT_BYTES) {
-          finishReject(transportError(
-            "OUTPUT_LIMIT",
-            "output_limit",
-            "Remote installer output exceeded the safe limit"
-          ));
-          return;
-        }
-        outputBytes += buffer.length;
-        chunks.push(buffer);
-      }
-
-      stream.on("data", (chunk) => appendOutput(stdoutChunks, chunk));
-      stream.stderr.on("data", (chunk) => appendOutput(stderrChunks, chunk));
-      stream.on("error", finishReject);
-      stream.on("close", (code) => {
-        if (done) return;
-        done = true;
-        onChannel(null);
-        resolve({
-          code: typeof code === "number" ? code : 0,
-          stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-          stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        });
+    function onStdout(chunk) { appendOutput(stdoutChunks, chunk); }
+    function onStderr(chunk) { appendOutput(stderrChunks, chunk); }
+    function onClose(code) {
+      if (done) return;
+      done = true;
+      cleanupListeners();
+      onChannel(null);
+      resolve({
+        code: typeof code === "number" ? code : 0,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
       });
+    }
 
-      if (isAborted()) {
+    if (signal && signal.aborted) {
+      onAbort();
+      return;
+    }
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
+    conn.exec(command, (error, openedStream) => {
+      if (error) {
+        finishReject(error);
+        return;
+      }
+      if (done || isAborted()) {
+        abortChannel(openedStream);
+        if (!done) {
+          finishReject(transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted"));
+        }
+        return;
+      }
+      activeStream = openedStream;
+      onChannel(activeStream);
+      activeStream.on("data", onStdout);
+      activeStream.stderr.on("data", onStderr);
+      activeStream.on("error", finishReject);
+      activeStream.on("close", onClose);
+
+      if (isAborted() || (signal && signal.aborted)) {
         finishReject(transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted"));
         return;
       }
-      if (username !== "root") stream.write(`${password}\n`);
-      if (isAborted()) {
+      if (username !== "root") activeStream.write(`${password}\n`);
+      if (isAborted() || (signal && signal.aborted)) {
         finishReject(transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted"));
         return;
       }
-      stream.end();
+      activeStream.end();
     });
   });
 }
@@ -188,6 +217,7 @@ async function deployBundle({
   manifest,
   installEnv = {},
   onProgress,
+  signal,
   timeoutMs = 180000,
   deps = {},
 }) {
@@ -216,6 +246,13 @@ async function deployBundle({
     let activeChannel = null;
     let activeVerifier = null;
     let hostKeyFailure = null;
+    let connectionStarted = false;
+
+    const onAbort = () => {
+      const error = transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted");
+      error.remoteCommitted = connectionStarted ? undefined : false;
+      finishReject(error);
+    };
 
     const timer = setTimeout(() => {
       finishReject(transportError(
@@ -230,13 +267,21 @@ async function deployBundle({
     }
     function cleanup() {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
       if (activeVerifier) activeVerifier(false);
       abortChannel(activeChannel);
       activeChannel = null;
       closeSftp(activeSftp);
       activeSftp = null;
       try { conn.end(); } catch { /* ignore cleanup errors */ }
+      try { if (typeof conn.destroy === "function") conn.destroy(); } catch { /* ignore */ }
     }
+
+    if (signal && signal.aborted) {
+      onAbort();
+      return;
+    }
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
     function finishResolve(value) {
       if (settled) return;
       settled = true;
@@ -292,6 +337,7 @@ async function deployBundle({
           password,
           isAborted,
           onChannel: (stream) => { activeChannel = stream; },
+          signal,
         });
         if (isAborted()) return;
         emitProgress(onProgress, "install", result.code === 0 ? "ok" : "fail");
@@ -304,6 +350,7 @@ async function deployBundle({
     });
 
     emitProgress(onProgress, "connect", "start");
+    connectionStarted = true;
     conn.connect({
       host,
       port,
@@ -404,6 +451,7 @@ async function execScript({
   hostKeyVerifier,
   script,
   onProgress,
+  signal,
   timeoutMs = 180000,
   deps = {},
 }) {
@@ -419,6 +467,14 @@ async function execScript({
     const stdoutChunks = [];
     const stderrChunks = [];
     let stderrLineBuf = "";
+    let activeStream = null;
+    let connectionStarted = false;
+
+    const onAbort = () => {
+      const error = transportError("SSH_ABORTED", "aborted", "SSH deployment was aborted");
+      error.remoteCommitted = connectionStarted ? undefined : false;
+      finishReject(error);
+    };
 
     const timer = setTimeout(() => {
       finishReject(new Error(`ssh2 exec timed out after ${timeoutMs}ms`));
@@ -426,8 +482,18 @@ async function execScript({
 
     function cleanup() {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
+      abortChannel(activeStream);
+      activeStream = null;
       try { conn.end(); } catch { /* ignore */ }
+      try { if (typeof conn.destroy === "function") conn.destroy(); } catch { /* ignore */ }
     }
+
+    if (signal && signal.aborted) {
+      onAbort();
+      return;
+    }
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
     function finishResolve(payload) {
       if (settled) return;
       settled = true;
@@ -456,6 +522,8 @@ async function execScript({
     conn.on("ready", () => {
       conn.exec("bash -s", (err, stream) => {
         if (err) { finishReject(err); return; }
+        if (settled) { abortChannel(stream); return; }
+        activeStream = stream;
         stream.on("close", (code /*, signal */) => {
           if (stderrLineBuf && onProgress) {
             try { onProgress(stderrLineBuf); } catch { /* ignore */ }
@@ -488,6 +556,7 @@ async function execScript({
       finishReject(err);
     });
 
+    connectionStarted = true;
     conn.connect({
       host,
       port,

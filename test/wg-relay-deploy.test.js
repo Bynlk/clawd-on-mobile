@@ -459,6 +459,71 @@ test("deploy key path normalizes canonical SSH fields and preserves legacy host 
   assert.equal(buildInputs[1].port, 2200);
 });
 
+test("deploy propagates AbortSignal through password SSH and returns stable deploy_aborted", async () => {
+  const controller = new AbortController();
+  let receivedSignal = null;
+  const pending = deploy({
+    profile: { ...keyProfile(), authMethod: "password" },
+    password: "secret",
+    runtime: {},
+    deps: {
+      signal: controller.signal,
+      runtime: new EventEmitter(),
+      bundleModule: { buildRelayBundleManifest: () => [{ remotePath: "installer", contents: Buffer.from("x") }] },
+      ssh2Module: {
+        deployBundle(args) {
+          receivedSignal = args.signal;
+          return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("AbortSignal missing")), 100);
+            if (args.signal) args.signal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              const error = new Error("aborted");
+              error.code = "SSH_ABORTED";
+              error.reason = "aborted";
+              reject(error);
+            }, { once: true });
+          });
+        },
+      },
+    },
+  });
+  controller.abort();
+
+  await assert.rejects(pending, (error) => error.code === "deploy_aborted");
+  assert.equal(receivedSignal, controller.signal);
+});
+
+test("deploy propagates AbortSignal to key child transport", async () => {
+  const controller = new AbortController();
+  let receivedSignal = null;
+  const pending = deploy({
+    profile: keyProfile(),
+    runtime: {},
+    deps: {
+      signal: controller.signal,
+      runtime: new EventEmitter(),
+      scriptBody: "echo test",
+      runtimeModule: { buildSshArgs: () => [] },
+      deployModule: {
+        spawnAndWait(_spawn, _command, _args, options) {
+          receivedSignal = options.signal;
+          return new Promise((resolve) => {
+            const timer = setTimeout(() => resolve({ code: -1, stdout: "", stderr: "missing", spawnError: true }), 100);
+            if (options.signal) options.signal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              resolve({ code: null, signal: "SIGTERM", stdout: "", stderr: "", aborted: true });
+            }, { once: true });
+          });
+        },
+      },
+    },
+  });
+  controller.abort();
+
+  await assert.rejects(pending, (error) => error.code === "deploy_aborted");
+  assert.equal(receivedSignal, controller.signal);
+});
+
 test("deploy maps non-zero exit code via EXIT_CODE_MAP", async () => {
   const emitter = fakeEmitter();
   const deps = {

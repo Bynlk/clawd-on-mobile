@@ -81,8 +81,12 @@ function resolveHooksDir({ app, isPackaged } = {}) {
 }
 
 function spawnAndWait(spawn, command, args, opts = {}) {
-  const { stdin, env, timeoutMs = 60000, runtime } = opts;
+  const { stdin, env, timeoutMs = 60000, runtime, signal } = opts;
   return new Promise((resolve) => {
+    if (signal && signal.aborted) {
+      resolve({ code: null, signal: "SIGTERM", stdout: "", stderr: "", aborted: true });
+      return;
+    }
     let child;
     try {
       child = spawn(command, args, {
@@ -107,6 +111,7 @@ function spawnAndWait(spawn, command, args, opts = {}) {
     const stdoutChunks = [];
     const stderrChunks = [];
     let done = false;
+    let aborting = false;
     const timer = setTimeout(() => {
       if (done) return;
       try { child.kill(); } catch {}
@@ -116,14 +121,52 @@ function spawnAndWait(spawn, command, args, opts = {}) {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
+      if (child.stdout) child.stdout.removeListener("data", onStdout);
+      if (child.stderr) child.stderr.removeListener("data", onStderr);
+      child.removeListener("error", onError);
+      child.removeListener("exit", onExit);
       if (runtime && typeof runtime.unregisterChild === "function") {
         runtime.unregisterChild(child);
       }
       resolve(payload);
     }
 
-    if (child.stdout) child.stdout.on("data", (d) => { stdoutChunks.push(d); });
-    if (child.stderr) child.stderr.on("data", (d) => { stderrChunks.push(d); });
+    function onStdout(data) { stdoutChunks.push(data); }
+    function onStderr(data) { stderrChunks.push(data); }
+    function abortedPayload() {
+      return {
+        code: null,
+        signal: "SIGTERM",
+        stdout: decodeShellBytes(stdoutChunks),
+        stderr: decodeShellBytes(stderrChunks),
+        aborted: true,
+      };
+    }
+    function onAbort() {
+      if (done) return;
+      aborting = true;
+      try {
+        if (child.stdin && typeof child.stdin.destroy === "function") child.stdin.destroy();
+      } catch {}
+      try { child.kill("SIGTERM"); } catch {}
+      finish(abortedPayload());
+    }
+    function onError(err) {
+      if (aborting) { finish(abortedPayload()); return; }
+      const stdout = decodeShellBytes(stdoutChunks);
+      const stderr = decodeShellBytes(stderrChunks);
+      finish({ code: -1, signal: null, stdout, stderr: stderr || (err && err.message) || "process error", spawnError: true });
+    }
+    function onExit(code, exitSignal) {
+      if (aborting) { finish(abortedPayload()); return; }
+      const stdout = decodeShellBytes(stdoutChunks);
+      const stderr = decodeShellBytes(stderrChunks);
+      finish({ code, signal: exitSignal, stdout, stderr });
+    }
+
+    if (child.stdout) child.stdout.on("data", onStdout);
+    if (child.stderr) child.stderr.on("data", onStderr);
 
     if (stdin != null && child.stdin) {
       try {
@@ -135,16 +178,10 @@ function spawnAndWait(spawn, command, args, opts = {}) {
       try { child.stdin.end(); } catch {}
     }
 
-    child.on("error", (err) => {
-      const stdout = decodeShellBytes(stdoutChunks);
-      const stderr = decodeShellBytes(stderrChunks);
-      finish({ code: -1, signal: null, stdout, stderr: stderr || (err && err.message) || "process error", spawnError: true });
-    });
-    child.on("exit", (code, signal) => {
-      const stdout = decodeShellBytes(stdoutChunks);
-      const stderr = decodeShellBytes(stderrChunks);
-      finish({ code, signal, stdout, stderr });
-    });
+    child.on("error", onError);
+    child.on("exit", onExit);
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
+    if (signal && signal.aborted) onAbort();
   });
 }
 
@@ -393,6 +430,7 @@ function summarizeStderr(text) {
 module.exports = {
   HOOK_FILES,
   resolveHooksDir,
+  spawnAndWait,
   deploy,
   startCodexMonitor,
   stopCodexMonitor,

@@ -10,6 +10,7 @@ const { EventEmitter } = require("events");
 const {
   HOOK_FILES,
   resolveHooksDir,
+  spawnAndWait,
   deploy,
   startCodexMonitor,
   stopCodexMonitor,
@@ -127,6 +128,27 @@ function makeRuntimeStub() {
     events,
   };
 }
+
+test("spawnAndWait abort kills a hung SSH child and ignores late exit", async () => {
+  const child = makeFakeChild();
+  let kills = 0;
+  child.kill = (signal) => { kills += 1; child._killSignal = signal; };
+  const controller = new AbortController();
+  const pending = spawnAndWait(() => child, "ssh", ["host"], {
+    signal: controller.signal,
+    timeoutMs: 5000,
+  });
+  controller.abort();
+
+  const result = await pending;
+  assert.deepEqual(result, {
+    code: null, signal: "SIGTERM", stdout: "", stderr: "", aborted: true,
+  });
+  assert.equal(kills, 1);
+  assert.equal(child._killSignal, "SIGTERM");
+  child.emit("exit", 0, null);
+  assert.equal(kills, 1);
+});
 // Existing happy-path tests pre-date the `remote-shell` step that now runs
 // first inside deploy(). Pass this stub via deps.detectRemoteShell so the
 // recorded spawn handlers still line up call-for-call with mkdir, check-node,

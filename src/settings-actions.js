@@ -101,6 +101,7 @@ const {
   wgRelayUpdateProfile,
   wgRelayRemoveProfile,
   wgRelayApplyReadback,
+  wgRelayCommitDeploy,
 } = require("./settings-actions-wg-relay");
 const {
   ANIMATION_OVERRIDES_EXPORT_VERSION,
@@ -1387,6 +1388,7 @@ const commandRegistry = {
   "wgRelay.update": wgRelayUpdateProfile,
   "wgRelay.remove": wgRelayRemoveProfile,
   "wgRelay.applyReadback": wgRelayApplyReadback,
+  "wgRelay.commitDeploy": wgRelayCommitDeploy,
   "telegramApproval.setToken": telegramApprovalSetToken,
   "telegramApproval.status": telegramApprovalStatus,
   "telegramApproval.tokenInfo": telegramApprovalTokenInfo,

@@ -39,6 +39,13 @@ const DEPLOY_FAILURE_HINTS = new Set([
 ]);
 const RECOVERY_RECORD_VERSION = 1;
 const MAX_RECOVERY_CANDIDATE_BYTES = 48 * 1024;
+const IPC_CHANNELS = Object.freeze([
+  "wgRelay:deploy", "wgRelay:connect", "wgRelay:disconnect", "wgRelay:rotate-phone",
+  "wgRelay:delete-local", "wgRelay:pairing-qr", "wgRelay:status", "wgRelay:list-statuses",
+]);
+const LEGACY_CHANNELS = Object.freeze([
+  "wgRelay:tunnel-up", "wgRelay:tunnel-down", "wgRelay:tunnel-status",
+]);
 
 function requireDependency(value, name) {
   if (!value) throw new Error(`registerWgRelayIpc requires ${name}`);
@@ -199,23 +206,38 @@ function requestPhoneRotation(options = {}) {
   const timeoutMs = options.timeoutMs || 10_000;
   const maxBytes = options.maxBytes || 32 * 1024;
   const requestImpl = options.request || http.request;
+  const signal = options.signal;
 
   return new Promise((resolve, reject) => {
     let settled = false;
     let remoteCommitted = false;
+    let requestStarted = false;
     let request;
+    let timer;
+    const onAbort = () => {
+      const error = codedError("rotate_aborted");
+      error.remoteCommitted = requestStarted ? true : false;
+      finish(error);
+      if (request && typeof request.destroy === "function") request.destroy();
+    };
     const finish = (error, value) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
       if (error) reject(error); else resolve(value);
     };
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       finish(remoteCommitted
         ? committedError("management_timeout")
         : codedError("management_timeout"));
       if (request && typeof request.destroy === "function") request.destroy();
     }, timeoutMs);
+    if (signal && signal.aborted) {
+      onAbort();
+      return;
+    }
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
     try {
       request = requestImpl(url, {
         method: "POST",
@@ -277,6 +299,7 @@ function requestPhoneRotation(options = {}) {
       request.on("error", () => finish(remoteCommitted
         ? committedError("management_request_failed")
         : codedError("management_request_failed")));
+      requestStarted = true;
       request.end(body);
     } catch (_) {
       finish(preCommitError("management_request_failed"));
@@ -308,10 +331,11 @@ function registerWgRelayIpc(options = {}) {
   const disposers = [];
   const operationTails = new Map();
   const deployInflight = new Map();
-  const qrCache = new Map();
   const recoveryBundles = new Map();
+  const durableRecoveryIds = new Set();
   const releaseRequiredProfiles = new Set();
   const activeDeployProfiles = new Set();
+  const longOperationControllers = new Set();
   const deletedProfiles = new Set();
   let recoveryIndexLoadFailed = false;
   let disposed = false;
@@ -369,7 +393,7 @@ function registerWgRelayIpc(options = {}) {
     if (!isDeepStrictEqual(verified, secrets)) throw codedError("secret_store_verification_failed");
   }
 
-  function recoveryRecord(profile, operation, phase, candidate) {
+  function recoveryRecord(profile, operation, phase, candidate, publicProfileExisted) {
     const record = {
       version: RECOVERY_RECORD_VERSION,
       phase,
@@ -377,6 +401,9 @@ function registerWgRelayIpc(options = {}) {
       profile,
     };
     if (candidate) record.candidate = candidate;
+    if (operation === "deploy" && typeof publicProfileExisted === "boolean") {
+      record.publicProfileExisted = publicProfileExisted;
+    }
     return record;
   }
 
@@ -391,6 +418,7 @@ function registerWgRelayIpc(options = {}) {
   function persistRecovery(profileId, record) {
     try {
       secretStore.writeRecovery(profileId, record);
+      durableRecoveryIds.add(profileId);
       return true;
     } catch (_) {
       return false;
@@ -400,6 +428,7 @@ function registerWgRelayIpc(options = {}) {
   function removeDurableRecovery(profileId) {
     try {
       secretStore.removeRecovery(profileId);
+      durableRecoveryIds.delete(profileId);
       return true;
     } catch (_) {
       return false;
@@ -422,12 +451,21 @@ function registerWgRelayIpc(options = {}) {
     });
   }
 
-  async function writePublicProfile(previousProfile, profile) {
-    const result = await settingsController.applyCommand(
-      previousProfile ? "wgRelay.update" : "wgRelay.add",
-      profile,
-    );
-    if (!result || result.status !== "ok") throw codedError("public_profile_write_failed");
+  async function writePublicProfile(baseProfile, profile, allowCreate) {
+    const result = await settingsController.applyCommand("wgRelay.commitDeploy", {
+      baseProfile,
+      deployedProfile: profile,
+      allowCreate,
+    });
+    if (!result || result.status !== "ok") {
+      if (result && result.errorCode === "profile_conflict_recovery_required") {
+        throw codedError(result.errorCode);
+      }
+      throw codedError("public_profile_write_failed");
+    }
+    const committed = sanitizeProfile(result.profile);
+    if (!committed || committed.id !== profile.id) throw codedError("public_profile_write_failed");
+    return committed;
   }
 
   function parseRecoveryRecord(profileId, value) {
@@ -449,6 +487,10 @@ function registerWgRelayIpc(options = {}) {
     const expectedKeys = value.phase === "prepared"
       ? ["operation", "phase", "profile", "version"]
       : ["candidate", "operation", "phase", "profile", "version"];
+    if (value.operation === "deploy" && Object.hasOwn(value, "publicProfileExisted")) {
+      if (typeof value.publicProfileExisted !== "boolean") return null;
+      expectedKeys.push("publicProfileExisted");
+    }
     if (Object.keys(value).sort().join(",") !== expectedKeys.sort().join(",")) return null;
     if (value.phase === "prepared") return { ...value, profile };
     const candidate = boundedCandidate(value.candidate);
@@ -490,6 +532,8 @@ function registerWgRelayIpc(options = {}) {
       profile,
       secrets,
       writePublicProfile: true,
+      baseProfile: record.profile,
+      allowCreate: record.publicProfileExisted === false,
       journalRecord: record,
       candidatePersisted: true,
     };
@@ -543,6 +587,8 @@ function registerWgRelayIpc(options = {}) {
 
   function syncDurableRecovery(profileId) {
     const current = recoveryBundles.get(profileId);
+    const publicProfile = findProfile(settingsController, profileId);
+    const shouldCacheFailure = Boolean(current || publicProfile || durableRecoveryIds.has(profileId));
     const keepUnjournaledCandidate = Boolean(
       current && current.secrets && current.candidatePersisted === false,
     );
@@ -552,7 +598,7 @@ function registerWgRelayIpc(options = {}) {
         errorCode: "remote_commit_recovery_required",
         profile: (current && current.profile) || findProfile(settingsController, profileId),
       };
-      recoveryBundles.set(profileId, blocked);
+      if (shouldCacheFailure) recoveryBundles.set(profileId, blocked);
       return blocked;
     }
     let raw;
@@ -562,16 +608,18 @@ function registerWgRelayIpc(options = {}) {
       const blocked = {
         blocked: true,
         errorCode: "remote_commit_recovery_required",
-        profile: (current && current.profile) || findProfile(settingsController, profileId),
+        profile: (current && current.profile) || publicProfile,
       };
-      recoveryBundles.set(profileId, blocked);
+      if (shouldCacheFailure) recoveryBundles.set(profileId, blocked);
       return blocked;
     }
     if (!raw) {
       recoveryBundles.delete(profileId);
+      durableRecoveryIds.delete(profileId);
       return null;
     }
     if (keepUnjournaledCandidate) return current;
+    durableRecoveryIds.add(profileId);
     const recovered = recoveryFromDurable(profileId, raw);
     if (recovered.deletePending) deletedProfiles.add(profileId);
     recoveryBundles.set(profileId, recovered);
@@ -624,7 +672,6 @@ function registerWgRelayIpc(options = {}) {
       } catch (_) { errors.push("public_profile_remove_failed"); }
     }
 
-    qrCache.delete(profileId);
     releaseRequiredProfiles.delete(profileId);
     try {
       if (typeof wgRelayRuntime.removeStatus === "function") wgRelayRuntime.removeStatus(profileId);
@@ -667,9 +714,20 @@ function registerWgRelayIpc(options = {}) {
     }
     if (recovery.writePublicProfile) {
       try {
-        await writePublicProfile(findProfile(settingsController, profileId), recovery.profile);
-      } catch (_) {
-        return { ok: false, errorCode: "public_profile_retry_required", profile: recovery.profile };
+        recovery.profile = await writePublicProfile(
+          recovery.baseProfile || recovery.profile,
+          recovery.profile,
+          recovery.allowCreate === true,
+        );
+      } catch (error) {
+        const errorCode = error && error.code === "profile_conflict_recovery_required"
+          ? error.code
+          : "public_profile_retry_required";
+        return {
+          ok: false,
+          errorCode,
+          profile: findProfile(settingsController, profileId) || recovery.profile,
+        };
       }
     }
     if (!removeDurableRecovery(profileId)) {
@@ -683,6 +741,7 @@ function registerWgRelayIpc(options = {}) {
   const startupDeleteIds = [];
   try {
     for (const profileId of secretStore.listRecoveryIds()) {
+      durableRecoveryIds.add(profileId);
       const recovery = syncDurableRecovery(profileId);
       if (recovery && recovery.deletePending) startupDeleteIds.push(profileId);
     }
@@ -711,7 +770,6 @@ function registerWgRelayIpc(options = {}) {
       catch (_) { return partialSuccess("local_storage_retry_required", profile); }
     }
     if (!await releaseCommittedConnection(profileId)) {
-      qrCache.delete(profileId);
       return partialSuccess("connection_retry_required", profile);
     }
     let connected;
@@ -719,16 +777,13 @@ function registerWgRelayIpc(options = {}) {
       connected = await connection.connect(profileId);
       if (!connected || connected.status !== "connected") throw codedError("connection_failed");
     } catch (_) {
-      qrCache.delete(profileId);
       return partialSuccess("connection_retry_required", profile);
     }
     try {
       const qr = await encodeQr(profile, secrets);
       if (disposed) throw codedError("ipc_disposed");
-      qrCache.set(profileId, qr);
       return { status: "ok", profile, state: redactState(connected, profileId), qr };
     } catch (_) {
-      qrCache.delete(profileId);
       return partialSuccess("pairing_qr_retry_required", profile, connected);
     }
   }
@@ -818,6 +873,22 @@ function registerWgRelayIpc(options = {}) {
   handle("wgRelay:disconnect", async (_event, payload) => {
     const profileId = profileIdFrom(payload);
     if (!profileId) return { status: "error", errorCode: "invalid_profile_id" };
+    const durableRecovery = syncDurableRecovery(profileId);
+    const publicProfile = profileWithRecovery(profileId);
+    const currentState = redactState(connection.status(profileId), profileId);
+    const hasConnectionState = currentState.status !== "idle" || currentState.generation > 0;
+    if (!publicProfile && durableRecovery && durableRecovery.blocked
+        && !durableRecoveryIds.has(profileId)) {
+      if (typeof wgRelayRuntime.removeStatus === "function") wgRelayRuntime.removeStatus(profileId);
+      return { status: "error", errorCode: "remote_commit_recovery_required" };
+    }
+    if (!publicProfile && !durableRecovery && !hasConnectionState) {
+      if (typeof wgRelayRuntime.removeStatus === "function") wgRelayRuntime.removeStatus(profileId);
+      return {
+        status: "ok",
+        state: { profileId, status: "idle", generation: 0 },
+      };
+    }
     try {
       return await enqueue(profileId, async () => {
         const state = await connection.disconnect(profileId);
@@ -829,13 +900,20 @@ function registerWgRelayIpc(options = {}) {
     }
   });
 
-  async function deployTransaction(profile, previousProfile, password) {
+  async function deployTransaction(profile, previousProfile, password, signal) {
     if (!secretStoreAvailable()) return { status: "error", errorCode: "secure_storage_unavailable" };
     try { secretStore.read(profile.id); }
     catch (_) { return { status: "error", errorCode: "secret_store_read_failed" }; }
     try { preflightSecretStore(); }
     catch (error) { return { status: "error", errorCode: error.code }; }
-    const prepared = recoveryRecord(profile, "deploy", "prepared");
+    const publicProfileExisted = Boolean(previousProfile);
+    const prepared = recoveryRecord(
+      profile,
+      "deploy",
+      "prepared",
+      undefined,
+      publicProfileExisted,
+    );
     if (!persistRecovery(profile.id, prepared)) {
       return { status: "error", errorCode: "remote_commit_recovery_required" };
     }
@@ -847,10 +925,25 @@ function registerWgRelayIpc(options = {}) {
       result = await deployFn({
         profile,
         password,
+        signal,
         runtime: { forcePhoneKey: false },
-        deps: { spawn, runtime: wgRelayRuntime, confirmHostKey },
+        deps: { spawn, runtime: wgRelayRuntime, confirmHostKey, signal },
       });
     } catch (error) {
+      if (error && error.code === "deploy_aborted") {
+        if (error.remoteCommitted === false) removeDurableRecovery(profile.id);
+        else {
+          recoveryBundles.set(profile.id, {
+            blocked: true,
+            errorCode: "remote_commit_recovery_required",
+            profile,
+          });
+          if (wasConnected) {
+            try { await connection.disconnect(profile.id); } catch (_) {}
+          }
+        }
+        return { status: "error", errorCode: "deploy_aborted" };
+      }
       if (error && error.remoteCommitted === false) {
         if (!removeDurableRecovery(profile.id)) {
           return { status: "error", errorCode: "remote_commit_recovery_required" };
@@ -862,7 +955,6 @@ function registerWgRelayIpc(options = {}) {
         errorCode: "remote_commit_recovery_required",
         profile,
       });
-      qrCache.delete(profile.id);
       if (wasConnected) {
         try { await connection.disconnect(profile.id); } catch (_) {}
       }
@@ -883,7 +975,6 @@ function registerWgRelayIpc(options = {}) {
           errorCode: "remote_commit_recovery_required",
           profile,
         });
-        qrCache.delete(profile.id);
         if (wasConnected) {
           try { await connection.disconnect(profile.id); } catch (_) {}
         }
@@ -902,16 +993,20 @@ function registerWgRelayIpc(options = {}) {
         errorCode: "remote_commit_recovery_required",
         profile,
       });
-      qrCache.delete(profile.id);
       if (wasConnected) {
         try { await connection.disconnect(profile.id); } catch (_) {}
       }
       return partialSuccess("remote_commit_recovery_required", profile);
     }
-    const committedRecord = recoveryRecord(profile, "deploy", "remote_committed", candidate);
+    const committedRecord = recoveryRecord(
+      profile,
+      "deploy",
+      "remote_committed",
+      candidate,
+      publicProfileExisted,
+    );
     const candidatePersisted = persistRecovery(profile.id, committedRecord);
     if (!isPlainObject(readback)) {
-      qrCache.delete(profile.id);
       markInvalidRecovery(profile.id, profile, "deploy", candidate);
       if (wasConnected) {
         try { await connection.disconnect(profile.id); } catch (_) {}
@@ -920,7 +1015,6 @@ function registerWgRelayIpc(options = {}) {
     }
     const validatedReadback = validateDeployReadback(readback, { profile });
     if (!validatedReadback.ok) {
-      qrCache.delete(profile.id);
       markInvalidRecovery(profile.id, profile, "deploy", candidate);
       if (wasConnected) {
         try { await connection.disconnect(profile.id); } catch (_) {}
@@ -944,7 +1038,6 @@ function registerWgRelayIpc(options = {}) {
       deployVersion: readback.schemaVersion,
     });
     if (!publicProfile) {
-      qrCache.delete(profile.id);
       markInvalidRecovery(profile.id, profile, "deploy", candidate);
       if (wasConnected) {
         try { await connection.disconnect(profile.id); } catch (_) {}
@@ -952,7 +1045,6 @@ function registerWgRelayIpc(options = {}) {
       return partialSuccess("remote_commit_recovery_required", profile);
     }
 
-    qrCache.delete(profile.id);
     try { validatePairingSecrets(publicProfile, secrets); }
     catch (_) {
       markInvalidRecovery(profile.id, publicProfile, "deploy", candidate);
@@ -965,6 +1057,8 @@ function registerWgRelayIpc(options = {}) {
       profile: publicProfile,
       secrets,
       writePublicProfile: true,
+      baseProfile: profile,
+      allowCreate: !publicProfileExisted,
       journalRecord: committedRecord,
       candidatePersisted,
     });
@@ -991,11 +1085,14 @@ function registerWgRelayIpc(options = {}) {
       const profile = supplied || previousProfile;
       if (!profile) return { status: "error", errorCode: "invalid_profile" };
       if (deployInflight.has(profile.id)) return await deployInflight.get(profile.id);
+      const abortController = new AbortController();
+      longOperationControllers.add(abortController);
       const operation = enqueue(profile.id, () => recoveryBundles.has(profile.id)
         ? finishCommittedDeploy(profile.id)
-        : deployTransaction(profile, previousProfile, password));
+        : deployTransaction(profile, previousProfile, password, abortController.signal));
       deployInflight.set(profile.id, operation);
       const clear = () => {
+        longOperationControllers.delete(abortController);
         if (deployInflight.get(profile.id) === operation) deployInflight.delete(profile.id);
       };
       operation.then(clear, clear);
@@ -1023,12 +1120,10 @@ function registerWgRelayIpc(options = {}) {
         if (!currentProfile || deletedProfiles.has(profileId)) {
           return { status: "error", errorCode: "profile_not_found" };
         }
-        if (qrCache.has(profileId)) return { status: "ok", qr: qrCache.get(profileId) };
         const secrets = secretStore.read(profileId);
         if (!secrets) return { status: "error", errorCode: "secrets_not_found" };
         const qr = await encodeQr(currentProfile, secrets);
         if (disposed) throw codedError("ipc_disposed");
-        qrCache.set(profileId, qr);
         return { status: "ok", qr };
       });
     } catch (_) {
@@ -1043,6 +1138,8 @@ function registerWgRelayIpc(options = {}) {
     if (!requestedProfile && !durableRecovery) {
       return { status: "error", errorCode: "profile_not_found" };
     }
+    const abortController = new AbortController();
+    longOperationControllers.add(abortController);
     try {
       return await enqueue(profileId, async () => {
         const pending = await flushRecovery(profileId);
@@ -1083,10 +1180,22 @@ function registerWgRelayIpc(options = {}) {
               listen: getForwardEndpoint(profileId),
               managementToken: oldSecrets.managementToken,
               profileId,
+              signal: abortController.signal,
             });
           } catch (error) {
+            if (error && error.code === "rotate_aborted") {
+              if (error.remoteCommitted === false) removeDurableRecovery(profileId);
+              else {
+                recoveryBundles.set(profileId, {
+                  blocked: true,
+                  errorCode: "remote_commit_recovery_required",
+                  profile,
+                });
+                try { await connection.disconnect(profileId); } catch (_) {}
+              }
+              return { status: "error", errorCode: "rotate_aborted" };
+            }
             if (!error || error.remoteCommitted !== false) {
-              qrCache.delete(profileId);
               recoveryBundles.set(profileId, {
                 blocked: true,
                 errorCode: "remote_commit_recovery_required",
@@ -1105,7 +1214,6 @@ function registerWgRelayIpc(options = {}) {
           }
           const candidate = boundedCandidate(rawRotation);
           if (!candidate) {
-            qrCache.delete(profileId);
             recoveryBundles.set(profileId, {
               blocked: true,
               errorCode: "remote_commit_recovery_required",
@@ -1119,7 +1227,6 @@ function registerWgRelayIpc(options = {}) {
           let rotated;
           try { rotated = validateRotationResult(rawRotation); }
           catch (_) {
-            qrCache.delete(profileId);
             markInvalidRecovery(profileId, profile, "rotate", candidate);
             try { await connection.disconnect(profileId); } catch (_) {}
             return partialSuccess("remote_commit_recovery_required", profile);
@@ -1129,7 +1236,6 @@ function registerWgRelayIpc(options = {}) {
             phoneConfig: rotated.phoneConfig,
             relayToken: rotated.relayToken,
           };
-          qrCache.delete(profileId);
           try { validatePairingSecrets(profile, newSecrets); }
           catch (_) {
             markInvalidRecovery(profileId, profile, "rotate", candidate);
@@ -1162,10 +1268,8 @@ function registerWgRelayIpc(options = {}) {
           try {
             const qr = await encodeQr(profile, newSecrets);
             if (disposed) throw codedError("ipc_disposed");
-            qrCache.set(profileId, qr);
             return { status: "ok", state: redactState(connected, profileId), qr };
           } catch (_) {
-            qrCache.delete(profileId);
             return partialSuccess("pairing_qr_retry_required", profile, connected);
           }
         } catch (_) {
@@ -1174,6 +1278,8 @@ function registerWgRelayIpc(options = {}) {
       });
     } catch (_) {
       return { status: "error", errorCode: "rotate_failed" };
+    } finally {
+      longOperationControllers.delete(abortController);
     }
   });
 
@@ -1241,6 +1347,9 @@ function registerWgRelayIpc(options = {}) {
   function dispose() {
     if (disposePromise) return disposePromise;
     disposed = true;
+    for (const controller of longOperationControllers) {
+      try { controller.abort(); } catch (_) { /* best effort */ }
+    }
     const pending = Array.from(new Set(operationTails.values()));
     const attempt = Promise.allSettled(pending).then(async () => {
       for (const profileId of Array.from(recoveryBundles.keys())) {
@@ -1251,10 +1360,11 @@ function registerWgRelayIpc(options = {}) {
         const disposer = disposers.pop();
         try { disposer(); } catch (_) {}
       }
-      qrCache.clear();
       recoveryBundles.clear();
+      durableRecoveryIds.clear();
       releaseRequiredProfiles.clear();
       activeDeployProfiles.clear();
+      longOperationControllers.clear();
     });
     disposePromise = attempt.catch((error) => {
       disposed = false;
@@ -1425,6 +1535,8 @@ function createWgRelayMainIntegration(options = {}) {
 module.exports = {
   createWgRelayMainIntegration,
   createWgRelayQuitBarrier,
+  IPC_CHANNELS,
+  LEGACY_CHANNELS,
   registerWgRelayIpc,
   requestPhoneRotation,
 };

@@ -9,11 +9,15 @@ const path = require("node:path");
 const { test } = require("node:test");
 
 const {
+  IPC_CHANNELS,
+  LEGACY_CHANNELS,
   registerWgRelayIpc,
   requestPhoneRotation,
 } = require("../src/wg-relay-ipc");
 const { createWgRelayRuntime } = require("../src/wg-relay-runtime");
 const { createWgRelaySecretStore } = require("../src/wg-relay-secret-store");
+const { deploy: deployRelay } = require("../src/wg-relay-deploy");
+const { wgRelayCommitDeploy } = require("../src/settings-actions-wg-relay");
 
 const PROFILE = {
   id: "wg-1",
@@ -104,6 +108,13 @@ function sharedSettings(initialProfiles) {
   return {
     getSnapshot: () => ({ wgRelay: { profiles: structuredClone(profiles) } }),
     async applyCommand(action, payload) {
+      if (action === "wgRelay.commitDeploy") {
+        const result = wgRelayCommitDeploy(payload, {
+          snapshot: { wgRelay: { profiles: structuredClone(profiles) } },
+        });
+        if (result.commit) profiles = structuredClone(result.commit.wgRelay.profiles);
+        return result;
+      }
       if (action === "wgRelay.add") profiles.push(structuredClone(payload));
       if (action === "wgRelay.update") {
         const index = profiles.findIndex((profile) => profile.id === payload.id);
@@ -155,6 +166,13 @@ function fixture(options = {}) {
       if (options.publicWrite) {
         const result = await options.publicWrite(action, payload, profiles);
         if (result) return result;
+      }
+      if (action === "wgRelay.commitDeploy") {
+        const result = wgRelayCommitDeploy(payload, {
+          snapshot: { wgRelay: { profiles: structuredClone(profiles) } },
+        });
+        if (result.commit) profiles = structuredClone(result.commit.wgRelay.profiles);
+        return result;
       }
       if (action === "wgRelay.add") profiles.push(structuredClone(payload));
       if (action === "wgRelay.update") {
@@ -293,12 +311,18 @@ function assertNoSecrets(value, extra = []) {
   }
 }
 
-test("registers the exact Task 6 contract and dispose removes handlers/listeners", async () => {
+test("registers eight Task 6 channels plus three explicit legacy channels", async () => {
   const fx = fixture({ profiles: [PROFILE] });
-  for (const channel of [
+  assert.deepEqual(IPC_CHANNELS, [
     "wgRelay:deploy", "wgRelay:connect", "wgRelay:disconnect", "wgRelay:rotate-phone",
     "wgRelay:delete-local", "wgRelay:pairing-qr", "wgRelay:status", "wgRelay:list-statuses",
-  ]) assert.equal(fx.ipcMain.handlers.has(channel), true, channel);
+  ]);
+  assert.deepEqual(LEGACY_CHANNELS, [
+    "wgRelay:tunnel-up", "wgRelay:tunnel-down", "wgRelay:tunnel-status",
+  ]);
+  assert.deepEqual(Array.from(fx.ipcMain.handlers.keys()).sort(), [
+    ...IPC_CHANNELS, ...LEGACY_CHANNELS,
+  ].sort());
 
   fx.runtime.setStatus("wg-1", { status: "connected", generation: 1 });
   assert.equal(fx.sent.length, 1);
@@ -607,6 +631,83 @@ test("duplicate deploys for one profile coalesce", async () => {
   assert.equal(Object.hasOwn(secondPayload, "password"), false);
 });
 
+test("deploy CAS preserves a concurrent label edit while patching only deployment metadata", async () => {
+  const gate = deferred();
+  const settingsController = sharedSettings([PROFILE]);
+  const fx = fixture({
+    profiles: [PROFILE], settingsController,
+    async deployFn() {
+      await gate.promise;
+      return { ok: true, readback: readback(), acceptedFingerprint: FINGERPRINT };
+    },
+  });
+
+  const deploying = fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+  await new Promise((resolve) => setImmediate(resolve));
+  await settingsController.applyCommand("wgRelay.update", { ...PROFILE, label: "Edited during deploy" });
+  gate.resolve();
+  const result = await deploying;
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.profile.label, "Edited during deploy");
+  const committed = settingsController.getSnapshot().wgRelay.profiles[0];
+  assert.equal(committed.label, "Edited during deploy");
+  assert.equal(committed.sshHostFingerprint, FINGERPRINT);
+  assert.equal(committed.deployVersion, 1);
+  assert.equal(fx.recovery.has("wg-1"), false);
+  assert.deepEqual(fx.connectionCalls, [["connect", "wg-1"]]);
+});
+
+test("deploy CAS retains recovery and does not connect after a concurrent topology edit", async () => {
+  const gate = deferred();
+  const settingsController = sharedSettings([PROFILE]);
+  const fx = fixture({
+    profiles: [PROFILE], settingsController,
+    async deployFn() {
+      await gate.promise;
+      return { ok: true, readback: readback(), acceptedFingerprint: FINGERPRINT };
+    },
+  });
+
+  const deploying = fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+  await new Promise((resolve) => setImmediate(resolve));
+  await settingsController.applyCommand("wgRelay.update", { ...PROFILE, host: "1.1.1.1" });
+  gate.resolve();
+  const result = await deploying;
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "profile_conflict_recovery_required");
+  assert.equal(settingsController.getSnapshot().wgRelay.profiles[0].host, "1.1.1.1");
+  assert.equal(fx.recovery.get("wg-1").phase, "remote_committed");
+  assert.deepEqual(fx.stored.get("wg-1"), secretValue());
+  assert.deepEqual(fx.connectionCalls, []);
+  assertNoSecrets(result);
+});
+
+test("deploy CAS never resurrects a profile deleted while the remote commit completes", async () => {
+  const gate = deferred();
+  const settingsController = sharedSettings([PROFILE]);
+  const fx = fixture({
+    profiles: [PROFILE], settingsController,
+    async deployFn() {
+      await gate.promise;
+      return { ok: true, readback: readback(), acceptedFingerprint: FINGERPRINT };
+    },
+  });
+
+  const deploying = fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+  await new Promise((resolve) => setImmediate(resolve));
+  await settingsController.applyCommand("wgRelay.remove", { id: "wg-1" });
+  gate.resolve();
+  const result = await deploying;
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "profile_conflict_recovery_required");
+  assert.deepEqual(settingsController.getSnapshot().wgRelay.profiles, []);
+  assert.equal(fx.recovery.get("wg-1").phase, "remote_committed");
+  assert.deepEqual(fx.connectionCalls, []);
+});
+
 test("queued rotate uses the committed public profile instead of its pre-queue snapshot", async () => {
   const gate = deferred();
   const newEndpoint = "relay.example.com:51820";
@@ -617,7 +718,7 @@ test("queued rotate uses the committed public profile instead of its pre-queue s
     phoneConfig: config("10.8.0.3/32", PHONE_KEY, newEndpoint),
   });
   const fx = fixture({
-    profiles: [PROFILE],
+    profiles: [newProfile],
     secrets: { "wg-1": secretValue() },
     states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
     async deployFn() {
@@ -825,6 +926,34 @@ test("one profile recovery read failure does not block an unrelated profile", as
   assert.deepEqual(fx.connectionCalls, [["connect", "wg-2"]]);
 });
 
+test("a real store corrupt recovery blob blocks only that profile in IPC", async (t) => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-ipc-corrupt-entry-"));
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const goodProfile = { ...PROFILE, id: "good", label: "Good", wgSubnet: "10.9.0.0/24" };
+  const badProfile = { ...PROFILE, id: "bad", label: "Bad" };
+  const store = realSecretStore(userDataPath);
+  store.write("good", secretValue());
+  store.write("bad", secretValue());
+  store.writeRecovery("bad", {
+    version: 1, phase: "prepared", operation: "deploy", profile: badProfile,
+  });
+  const storePath = path.join(userDataPath, "wg-relay-secrets.json");
+  const disk = JSON.parse(fs.readFileSync(storePath, "utf8"));
+  disk.recovery.bad = "a";
+  fs.writeFileSync(storePath, JSON.stringify(disk), { mode: 0o600 });
+  const fx = fixture({
+    profiles: [badProfile, goodProfile],
+    settingsController: sharedSettings([badProfile, goodProfile]),
+    secretStore: realSecretStore(userDataPath),
+  });
+
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:connect", { profileId: "bad" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  assert.equal((await fx.ipcMain.invoke("wgRelay:connect", { profileId: "good" })).status, "ok");
+  assert.deepEqual(fx.connectionCalls, [["connect", "good"]]);
+});
+
 test("an invalid committed candidate remains blocked across IPC instances", async (t) => {
   const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "wg-relay-ipc-invalid-"));
   t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
@@ -910,9 +1039,9 @@ test("deploy commitPoint never removes new secrets when public persistence repor
   let failedOnce = false;
   const fx = fixture({
     publicWrite(action, payload, profiles) {
-      if (!failedOnce && action === "wgRelay.add") {
+      if (!failedOnce && action === "wgRelay.commitDeploy") {
         failedOnce = true;
-        profiles.push(structuredClone(payload));
+        profiles.push(structuredClone(payload.deployedProfile));
         return { status: "error" };
       }
       return null;
@@ -925,7 +1054,7 @@ test("deploy commitPoint never removes new secrets when public persistence repor
   assert.equal(result.errorCode, "public_profile_retry_required");
   assert.deepEqual(fx.stored.get("wg-1"), secretValue());
   assert.equal(fx.profiles().length, 1);
-  assert.deepEqual(fx.publicWrites.map((entry) => entry.action), ["wgRelay.add"]);
+  assert.deepEqual(fx.publicWrites.map((entry) => entry.action), ["wgRelay.commitDeploy"]);
   assertNoSecrets(result);
 });
 
@@ -1065,6 +1194,64 @@ test("connect/disconnect/status/list-statuses return only stable redacted Task 5
   assert.equal(disconnected.state.status, "idle");
 });
 
+test("unknown disconnect is allocation-free and remains bounded after 5000 ids", async () => {
+  const fx = fixture({ profiles: [] });
+
+  for (let index = 0; index < 5000; index += 1) {
+    const profileId = `unknown-${index}`;
+    assert.deepEqual(await fx.ipcMain.invoke("wgRelay:disconnect", { profileId }), {
+      status: "ok",
+      state: { profileId, status: "idle", generation: 0 },
+    });
+  }
+
+  assert.deepEqual(fx.connectionCalls, []);
+  assert.equal(fx.states.size, 0);
+  assert.deepEqual(fx.runtime.listStatuses(), []);
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:list-statuses"), { status: "ok", statuses: [] });
+});
+
+test("unknown ids stay allocation-free when recovery reads fail closed", async () => {
+  let recoveryReads = 0;
+  const fx = fixture({
+    profiles: [],
+    recoveryRead() {
+      recoveryReads += 1;
+      throw new Error("store unavailable");
+    },
+  });
+
+  for (let index = 0; index < 200; index += 1) {
+    for (const channel of ["wgRelay:status", "wgRelay:connect", "wgRelay:rotate-phone"]) {
+      assert.deepEqual(await fx.ipcMain.invoke(channel, { profileId: `probe-${channel.length}-${index}` }), {
+        status: "error", errorCode: "remote_commit_recovery_required",
+      });
+    }
+  }
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:disconnect", { profileId: "unknown-disconnect" }), {
+    status: "error", errorCode: "remote_commit_recovery_required",
+  });
+  const readsBeforeDispose = recoveryReads;
+  await fx.ipc.dispose();
+
+  assert.equal(recoveryReads, readsBeforeDispose);
+  assert.deepEqual(fx.connectionCalls, []);
+  assert.equal(fx.states.size, 0);
+  assert.deepEqual(fx.runtime.listStatuses(), []);
+});
+
+test("pairing QR is generated on demand and reflects ordinary secret updates", async () => {
+  const fx = fixture({ profiles: [PROFILE], secrets: { "wg-1": secretValue() } });
+  const first = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+  fx.stored.set("wg-1", secretValue({ relayToken: "44".repeat(32) }));
+  const second = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+
+  assert.equal(first.status, "ok");
+  assert.equal(second.status, "ok");
+  assert.notEqual(first.qr.dataUrl, second.qr.dataUrl);
+  assert.equal(fx.qrCalls.length, 2);
+});
+
 test("status results and broadcasts validate values and expose only the minimal stable schema", async () => {
   const sshPassword = "SSH-PASSWORD-MUST-NOT-LEAK";
   const fx = fixture({
@@ -1194,6 +1381,26 @@ test("requestPhoneRotation returns bounded raw JSON so the handler can journal b
     requestPhoneRotation({ listen: "203.0.113.10:80", managementToken: MANAGEMENT_TOKEN }),
     (error) => error.code === "management_non_loopback",
   );
+});
+
+test("requestPhoneRotation abort destroys a hanging request with a stable code", async () => {
+  const state = { ended: false, destroyed: false };
+  const request = new EventEmitter();
+  request.end = () => { state.ended = true; };
+  request.destroy = () => { state.destroyed = true; };
+  const controller = new AbortController();
+  const pending = requestPhoneRotation({
+    listen: "127.0.0.1:43127",
+    managementToken: MANAGEMENT_TOKEN,
+    signal: controller.signal,
+    timeoutMs: 100,
+    request: () => request,
+  });
+  controller.abort();
+
+  await assert.rejects(pending, (error) => error.code === "rotate_aborted");
+  assert.equal(state.ended, true);
+  assert.equal(state.destroyed, true);
 });
 
 test("rotate-phone reconnects with verified new secrets and replaces QR only after success", async () => {
@@ -1471,6 +1678,84 @@ test("dispose rejects a late pairing QR and does not let it repopulate the cache
   assert.deepEqual(await pairing, { status: "error", errorCode: "pairing_qr_failed" });
   await disposing;
   assert.equal(fx.ipcMain.handlers.size, 0);
+});
+
+test("dispose aborts a never-ready real SSH transport within two seconds", async () => {
+  const transport = { connected: 0, ended: false, destroyed: false };
+  class NeverReadyClient extends EventEmitter {
+    connect() { transport.connected += 1; }
+    end() { transport.ended = true; }
+    destroy() { transport.destroyed = true; }
+  }
+  const fx = fixture({
+    profiles: [PROFILE],
+    deployFn(args) {
+      return deployRelay({
+        profile: args.profile,
+        password: args.password,
+        runtime: args.runtime,
+        deps: {
+          ...args.deps,
+          signal: args.signal,
+          timeoutMs: 150,
+          bundleModule: {
+            buildRelayBundleManifest: () => [{
+              remotePath: "install-wg-relay.sh", contents: Buffer.from("installer"), mode: 0o755,
+            }],
+          },
+          ssh2Deps: { Client: NeverReadyClient, remoteRoot: "/tmp/clawd-relay-ipc-abort" },
+        },
+      });
+    },
+  });
+  const deploying = fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const startedAt = Date.now();
+
+  await fx.ipc.dispose();
+  const result = await deploying;
+
+  assert.ok(Date.now() - startedAt < 100, "dispose must not wait for the SSH timeout");
+  assert.deepEqual(result, { status: "error", errorCode: "deploy_aborted" });
+  assert.equal(fx.recovery.get("wg-1").phase, "prepared");
+  assert.equal(transport.connected, 1);
+  assert.equal(transport.ended, true);
+  assert.equal(transport.destroyed, true);
+  await new Promise((resolve) => setTimeout(resolve, 170));
+  assert.equal(fx.ipcMain.handlers.size, 0);
+});
+
+test("dispose aborts a hanging rotate operation and keeps its prepared journal", async () => {
+  let receivedSignal = null;
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": secretValue() },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    rotatePhoneFn(args) {
+      receivedSignal = args.signal;
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("AbortSignal missing")), 150);
+        if (args.signal) args.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          const error = new Error("rotate aborted");
+          error.code = "rotate_aborted";
+          error.remoteCommitted = true;
+          reject(error);
+        }, { once: true });
+      });
+    },
+  });
+  const rotating = fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const startedAt = Date.now();
+
+  await fx.ipc.dispose();
+  const result = await rotating;
+
+  assert.ok(Date.now() - startedAt < 100);
+  assert.equal(receivedSignal.aborted, true);
+  assert.deepEqual(result, { status: "error", errorCode: "rotate_aborted" });
+  assert.equal(fx.recovery.get("wg-1").phase, "prepared");
 });
 
 test("dispose makes one final recovery flush before releasing IPC state", async () => {

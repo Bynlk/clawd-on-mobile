@@ -409,7 +409,13 @@ async function runKeyPath({ profile, script, onProgress, deps }) {
     stdin: script,
     timeoutMs: deps.timeoutMs || 180000,
     runtime: deps.runtime,
+    signal: deps.signal,
   });
+  if (r.aborted) {
+    const error = new Error("WireGuard relay deployment aborted");
+    error.code = "deploy_aborted";
+    throw error;
+  }
   // Feed combined output through the line tracker post-hoc.
   if (onProgress) {
     for (const line of `${r.stderr}\n${r.stdout}`.split(/\r?\n/)) onProgress(line);
@@ -434,6 +440,7 @@ async function runPasswordPath({ profile, password, runtime, onProgress, deps })
     manifest,
     installEnv: buildInstallEnv(profile, runtime),
     onProgress,
+    signal: deps.signal,
     timeoutMs: deps.timeoutMs || 180000,
     deps: deps.ssh2Deps || {},
   });
@@ -464,6 +471,12 @@ function normalizeSshTarget(profile) {
 
 async function deployInternal({ profile, password, runtime = {}, deps = {} }) {
   if (!profile || !profile.id) throw new Error("deploy: profile.id required");
+  if (deps.signal && deps.signal.aborted) {
+    const error = new Error("WireGuard relay deployment aborted");
+    error.code = "deploy_aborted";
+    error.remoteCommitted = false;
+    throw error;
+  }
   const emitter = deps.runtime && typeof deps.runtime.emit === "function" ? deps.runtime : runtime.emitter;
   function progress(step, status, message, hint) {
     if (emitter && typeof emitter.emit === "function") {
@@ -511,6 +524,12 @@ async function deployInternal({ profile, password, runtime = {}, deps = {} }) {
       result = await runKeyPath({ profile, script, onProgress, deps });
     }
   } catch (e) {
+    if (e && (e.code === "SSH_ABORTED" || e.code === "deploy_aborted")) {
+      const error = new Error("WireGuard relay deployment aborted");
+      error.code = "deploy_aborted";
+      if (e.remoteCommitted === false) error.remoteCommitted = false;
+      throw error;
+    }
     // ssh2 auth / connection errors surface here.
     const msg = (e && e.message) || String(e);
     const transportError = e && TRANSPORT_ERROR_MAP[e.code];
