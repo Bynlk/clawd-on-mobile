@@ -114,7 +114,7 @@ Settings 中保留独立的“远程连接”页，首次状态只显示四个�
 9. 启动 PC 隧道
 10. 生成 Android 配对二维码
 
-SSH 密码只保存在部署调用的内存对象中，成功或失败后立即覆盖并删除。密码不进入 prefs、日志、进度事件、崩溃报告或二维码。
+SSH 密码只作为本次部署调用中的短生命周期引用，无论成功或失败都在 `finally` 中移除本地引用。JavaScript 字符串不可变，因此不承诺能原地覆盖其内存。密码不进入 prefs、日志、进度事件、崩溃报告或二维码。
 
 ### 4.2 SSH 与上传
 
@@ -415,3 +415,14 @@ POST /api/manage/phone/rotate
 - 边界修复：update 仅在 payload 未持有对应字段时恢复旧部署元数据；secret store 使用 null-prototype profile map，并在读取、删除时统一使用 `Object.hasOwn()`，磁盘 JSON 解析后也转换为 null-prototype map。非规范 base64 blob 被判定为损坏；Linux 仍只拒绝 `basic_text`，未知安全后端保持可用。
 - 原子写测试：注入文件系统完整记录 `open → write → chmod → fsync → close → rename`，断言重命名严格发生在同步和关闭之后。
 - 边界修复 GREEN：`node --test test/wg-relay-profile.test.js test/settings-actions-wg-relay.test.js test/wg-relay-secret-store.test.js` 退出码 0；55 项全部通过，0 失败、0 跳过。
+
+### Task 2：单会话 SSH、TOFU 与完整 VPS bundle 上传（2026-07-13）
+
+- bundle RED：`node --test test/wg-relay-bundle.test.js` 退出码 1，按预期出现 `MODULE_NOT_FOUND`；测试先使用临时 `appRoot` 提供假的 `relay-token-store.js` 与 `wg-management.js`，没有创建 Task 3 占位文件。
+- bundle 实现：清单以固定顺序声明安装器、Relay server、pair registry、token store、management 模块，再以稳定代码点顺序递归加入根 `node_modules/ws` 的全部运行时文件。构建与上传均拒绝符号链接，远端路径拒绝绝对路径和 `..`；SFTP 通过 `fs.readFileSync()` 读取 Buffer，目录为 `0755`，安装脚本为 `0755`，其他文件为 `0644`。桌面打包清单加入 `relay/**/*`。
+- ssh2 RED：`node --test test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 1；25 项中原有 21 项通过，新增 4 项按预期因 `deployBundle is not a function` 失败。
+- 单会话实现：一次 `Client.connect()` 完成 SHA-256 TOFU、SFTP 上传和一次安装 exec。已保存指纹精确匹配直接接受；未知指纹调用确认回调；已保存指纹变化直接拒绝且不再次确认。root 直接按上传路径执行安装器，普通用户使用 `sudo -S -p ''`，并先写入 sudo 密码。旧 `execScript` 导出与测试保持兼容。
+- 编排 RED：`node --test test/wg-relay-deploy.test.js` 退出码 1；27 项中 17 项按预期失败，覆盖规范 `host`/`sshUsername`/`sshPort`、旧 `user@host`/`port` 回退、严格 readback 与脱敏错误。
+- 编排实现：密码路径构建完整 bundle 后调用单会话 transport；只接受字段完整且无额外字段的 `schemaVersion=1` 回传，并校验 endpoint、私网 `/24`、同子网 `ws://` Relay URL、两份完整且地址不同的 WireGuard 配置，以及两个各含 64 个十六进制字符（256 bit）的 Token。进度只发出脱敏的 connect、host-key、upload、install、validate 阶段；stdout、stderr、密码和回传秘密不进入进度或错误。部署函数在 `finally` 中移除本地密码引用，不声称覆盖不可变 JavaScript 字符串内存。
+- 边界 RED：两轮边界测试分别以 3 项预期失败证明 `ws` 根符号链接、打包遗漏、上传失败阶段、必需文件父目录符号链接、上传前文件替换和旧进度阶段兼容问题；单独 malformed JSON 用例以 1 项预期失败证明解析器错误细节不应进入返回错误。
+- GREEN：`node --test test/wg-relay-bundle.test.js test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 0；48 项全部通过，0 失败、0 跳过。真实生产清单当前会明确报告缺少 Task 3 的 `relay/relay-token-store.js` 或 `relay/wg-management.js`，这是阶段边界，不以占位文件掩盖。

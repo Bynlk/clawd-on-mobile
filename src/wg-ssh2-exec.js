@@ -7,10 +7,9 @@
 // use the `ssh2` npm library — lazily loaded so key-auth users never pay for
 // it, and so `npm ls`/audit surface only touches installs that use it.
 //
-// execScript() opens ONE connection, runs `bash -s` with the assembled script
-// fed over the exec stream's stdin (mirrors the key path in wg-relay-deploy so
-// the two transports never fork logic), streams stderr lines to onProgress,
-// and resolves { code, stdout, stderr }.
+// deployBundle() opens ONE connection for TOFU verification, SFTP upload and
+// one installer exec. execScript() remains exported for backward compatibility
+// with the original `bash -s` callers.
 //
 // SECURITY:
 //   SEC-6  host key: we NEVER silently accept. `hostKeyVerifier(fingerprint)`
@@ -36,6 +35,189 @@ function loadClient(deps) {
   if (deps && deps.Client) return deps.Client;
   // eslint-disable-next-line global-require
   return require("ssh2").Client;
+}
+
+function emitProgress(onProgress, stage, status) {
+  if (typeof onProgress !== "function") return;
+  try {
+    onProgress({ stage, status });
+  } catch {
+    // Progress observers must not affect deployment.
+  }
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+}
+
+function buildInstallCommand({ username, remoteRoot, installEnv }) {
+  if (!/^\/tmp\/[A-Za-z0-9._-]+$/.test(remoteRoot)) {
+    throw new Error("deployBundle: unsafe remote upload root");
+  }
+  const assignments = Object.keys(installEnv || {}).sort().map((key) => {
+    if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
+      throw new Error("deployBundle: invalid installer environment name");
+    }
+    return `${key}=${shellQuote(installEnv[key])}`;
+  });
+  const envPrefix = assignments.length ? `env ${assignments.join(" ")} ` : "";
+  const installer = `${envPrefix}bash ${remoteRoot}/install-wg-relay.sh`;
+  return username === "root" ? installer : `sudo -S -p '' ${installer}`;
+}
+
+function openSftp(conn) {
+  return new Promise((resolve, reject) => {
+    conn.sftp((error, sftp) => {
+      if (error) reject(error);
+      else resolve(sftp);
+    });
+  });
+}
+
+function executeInstaller(conn, { command, username, password }) {
+  return new Promise((resolve, reject) => {
+    conn.exec(command, (error, stream) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      const stdoutChunks = [];
+      const stderrChunks = [];
+      stream.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+      stream.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+      stream.on("error", reject);
+      stream.on("close", (code) => {
+        resolve({
+          code: typeof code === "number" ? code : 0,
+          stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+          stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        });
+      });
+
+      if (username !== "root") stream.write(`${password}\n`);
+      stream.end();
+    });
+  });
+}
+
+async function deployBundle({
+  host,
+  port = 22,
+  username = "root",
+  password,
+  expectedFingerprint,
+  confirmHostKey,
+  manifest,
+  installEnv = {},
+  onProgress,
+  timeoutMs = 180000,
+  deps = {},
+}) {
+  if (!host) throw new Error("deployBundle: host required");
+  if (!Array.isArray(manifest) || manifest.length === 0) {
+    throw new Error("deployBundle: manifest required");
+  }
+  const Client = loadClient(deps);
+  const { uploadRelayBundle } = deps.bundleModule || require("./wg-relay-bundle");
+  const remoteRoot = deps.remoteRoot || `/tmp/clawd-relay-${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
+  const command = buildInstallCommand({ username, remoteRoot, installEnv });
+
+  return new Promise((resolve, reject) => {
+    const conn = new Client();
+    let settled = false;
+    let acceptedFingerprint = null;
+    let hostKeyError = null;
+
+    const timer = setTimeout(() => {
+      finishReject(new Error(`SSH deployment timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try { conn.end(); } catch { /* ignore cleanup errors */ }
+    }
+    function finishResolve(value) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    }
+    function finishReject(error) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    }
+
+    conn.on("error", (error) => {
+      finishReject(hostKeyError || error);
+    });
+
+    conn.on("ready", async () => {
+      emitProgress(onProgress, "connect", "ok");
+      let activeStage = "upload";
+      try {
+        emitProgress(onProgress, "upload", "start");
+        const sftp = await openSftp(conn);
+        await uploadRelayBundle({ sftp, manifest, remoteRoot });
+        emitProgress(onProgress, "upload", "ok");
+
+        activeStage = "install";
+        emitProgress(onProgress, "install", "start");
+        const result = await executeInstaller(conn, { command, username, password });
+        emitProgress(onProgress, "install", result.code === 0 ? "ok" : "fail");
+        finishResolve({ ...result, acceptedFingerprint });
+      } catch (error) {
+        emitProgress(onProgress, activeStage, "fail");
+        finishReject(error);
+      }
+    });
+
+    emitProgress(onProgress, "connect", "start");
+    conn.connect({
+      host,
+      port,
+      username,
+      password,
+      readyTimeout: Math.min(timeoutMs, 30000),
+      hostVerifier: (keyBuf, callback) => {
+        const fingerprint = sha256Fingerprint(keyBuf);
+        const info = { fingerprint, host, port };
+        emitProgress(onProgress, "host-key", "start");
+
+        if (expectedFingerprint) {
+          if (fingerprint === expectedFingerprint) {
+            acceptedFingerprint = fingerprint;
+            emitProgress(onProgress, "host-key", "ok");
+            callback(true);
+          } else {
+            hostKeyError = new Error("Saved SSH host key has changed; remove the saved fingerprint before confirming a replacement");
+            emitProgress(onProgress, "host-key", "fail");
+            callback(false);
+          }
+          return;
+        }
+
+        Promise.resolve(typeof confirmHostKey === "function" ? confirmHostKey(info) : false)
+          .then((confirmed) => {
+            if (confirmed) {
+              acceptedFingerprint = fingerprint;
+              emitProgress(onProgress, "host-key", "ok");
+              callback(true);
+            } else {
+              hostKeyError = new Error("SSH host key was not confirmed");
+              emitProgress(onProgress, "host-key", "fail");
+              callback(false);
+            }
+          })
+          .catch(() => {
+            hostKeyError = new Error("SSH host key confirmation failed");
+            emitProgress(onProgress, "host-key", "fail");
+            callback(false);
+          });
+      },
+    });
+  });
 }
 
 // hostKeyVerifier: async (info) => boolean, where info = { fingerprint, host, port }.
@@ -162,6 +344,7 @@ async function execScript({
 }
 
 module.exports = {
+  deployBundle,
   execScript,
   sha256Fingerprint,
 };

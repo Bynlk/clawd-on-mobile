@@ -136,6 +136,7 @@
     "files": [
       "NOTICE.md",
       "src/**/*",
+      "relay/**/*",
       "assets/icon.ico",
       "assets/icon.png",
       "assets/icons/**/*",

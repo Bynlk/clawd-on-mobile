@@ -2,24 +2,26 @@
 
 // ── WireGuard relay deploy orchestration ──
 //
-// Single-connection deploy (D-CONN): assemble one idempotent shell script and
-// feed it over stdin in ONE ssh invocation. Two transport paths produce the
-// SAME script and parse the SAME JSON (TDD §3.3) so logic never forks:
+// Relay deployment supports the legacy key-auth transport and the password
+// bundle transport. Both paths parse the same strict schemaVersion=1 readback:
 //
 //   authMethod=key      → system ssh via buildSshArgs + spawnAndWait (stdin)
-//   authMethod=password → wg-ssh2-exec.execScript (ssh2, lazy-loaded)
+//   authMethod=password → one ssh2 connection for TOFU + SFTP + install exec
 //
 // Progress events reuse the remote-ssh shape:
 //   { profileId, step, status:"start"|"ok"|"fail", message?, hint? }
 //
-// The remote script itself is relay/install-wg-relay.sh. We read it from disk
-// and stream it to the remote's `bash -s` over stdin, passing tunables via a
-// leading `export` preamble (values are schema-validated; SEC-5).
+// Key auth retains the original `bash -s` compatibility path. Password auth
+// uploads the complete manifest and executes its installer by remote path.
 
 const fs = require("fs");
+const net = require("net");
 const path = require("path");
 
-const STEPS = ["connect", "detect", "install-wg", "gen-keys", "write-conf", "start-service", "firewall", "readback"];
+const STEPS = [
+  "connect", "host-key", "upload", "install", "validate",
+  "detect", "install-wg", "gen-keys", "write-conf", "start-service", "firewall", "readback",
+];
 
 // Map script exit codes → EX table (TDD §3.4).
 const EXIT_CODE_MAP = {
@@ -54,6 +56,15 @@ function buildEnvPreamble(profile, runtime) {
   ].join("\n");
 }
 
+function buildInstallEnv(profile, runtime) {
+  return {
+    WG_PORT: String(Number(profile.wgPort) || 51820),
+    WG_SUBNET: String(profile.wgSubnet || "10.8.0.0/24"),
+    RELAY_PORT: String(Number((runtime && runtime.relayPort) || 7891)),
+    FORCE_PHONE_KEY: runtime && runtime.forcePhoneKey ? "1" : "0",
+  };
+}
+
 // Assemble the full remote payload: preamble + script, executed by `bash -s`.
 function buildRemoteScript(profile, runtime, deps) {
   const scriptPath = resolveScriptPath(deps);
@@ -63,32 +74,132 @@ function buildRemoteScript(profile, runtime, deps) {
   return buildEnvPreamble(profile, runtime) + body;
 }
 
+function parseIpv4(value) {
+  if (net.isIP(value) !== 4) return null;
+  return value.split(".").map(Number);
+}
+
+function parsePrivate24(value) {
+  const match = /^(\d{1,3}(?:\.\d{1,3}){3})\/24$/.exec(value || "");
+  if (!match) return null;
+  const octets = parseIpv4(match[1]);
+  if (!octets || octets[3] !== 0) return null;
+  const isPrivate = octets[0] === 10
+    || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+    || (octets[0] === 192 && octets[1] === 168);
+  return isPrivate ? octets : null;
+}
+
+function isValidHostname(host) {
+  if (typeof host !== "string" || host.length > 253 || !host) return false;
+  return host.split(".").every((label) => (
+    /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label)
+  ));
+}
+
+function isValidEndpoint(value) {
+  if (typeof value !== "string" || value.length > 512) return false;
+  let host;
+  let portText;
+  const ipv6 = /^\[([^\]]+)]:(\d+)$/.exec(value);
+  if (ipv6) {
+    host = ipv6[1];
+    portText = ipv6[2];
+    if (net.isIP(host) !== 6) return false;
+  } else {
+    const match = /^([^:]+):(\d+)$/.exec(value);
+    if (!match) return false;
+    host = match[1];
+    portText = match[2];
+    if (net.isIP(host) !== 4 && !isValidHostname(host)) return false;
+  }
+  const port = Number(portText);
+  return Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
+function isInternalRelayUrl(value, subnetOctets) {
+  if (typeof value !== "string" || value.length > 512) return false;
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "ws:" || url.username || url.password || url.search || url.hash || url.pathname !== "/" || !url.port) {
+    return false;
+  }
+  const hostOctets = parseIpv4(url.hostname);
+  if (!hostOctets) return false;
+  const sameSubnet = hostOctets.slice(0, 3).every((octet, index) => octet === subnetOctets[index]);
+  return sameSubnet && hostOctets[3] >= 1 && hostOctets[3] <= 254;
+}
+
+function parseCompleteWgConfig(value, { subnet, subnetOctets, endpoint }) {
+  if (typeof value !== "string" || value.length < 1 || value.length > 16384 || value.includes("\0")) return null;
+  const sections = { Interface: Object.create(null), Peer: Object.create(null) };
+  let section = null;
+  for (const rawLine of value.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+    const heading = /^\[([^\]]+)]$/.exec(line);
+    if (heading) {
+      section = Object.hasOwn(sections, heading[1]) ? heading[1] : null;
+      continue;
+    }
+    const assignment = /^([^=]+?)\s*=\s*(.*)$/.exec(line);
+    if (!section || !assignment) continue;
+    sections[section][assignment[1].trim()] = assignment[2].trim();
+  }
+
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(sections.Interface.PrivateKey || "")) return null;
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(sections.Peer.PublicKey || "")) return null;
+  if (sections.Peer.Endpoint !== endpoint) return null;
+  const allowedIps = String(sections.Peer.AllowedIPs || "").split(",").map((item) => item.trim());
+  if (!allowedIps.includes(subnet)) return null;
+
+  const addressMatch = /^(\d{1,3}(?:\.\d{1,3}){3})\/32$/.exec(sections.Interface.Address || "");
+  if (!addressMatch) return null;
+  const addressOctets = parseIpv4(addressMatch[1]);
+  if (!addressOctets) return null;
+  const sameSubnet = addressOctets.slice(0, 3).every((octet, index) => octet === subnetOctets[index]);
+  if (!sameSubnet || addressOctets[3] < 1 || addressOctets[3] > 254) return null;
+  return addressMatch[1];
+}
+
+function invalidReadback(field) {
+  return { ok: false, message: `Invalid readback: ${field} (EX-12)` };
+}
+
 function parseReadback(stdout) {
   const m = JSON_RE.exec(stdout || "");
   if (!m) return { ok: false, message: "No CLAWD_JSON marker found in output (EX-12)" };
   let obj;
   try {
     obj = JSON.parse(m[1].trim());
-  } catch (e) {
-    return { ok: false, message: `Malformed readback JSON: ${e.message} (EX-12)` };
+  } catch {
+    return { ok: false, message: "Malformed readback JSON (EX-12)" };
   }
-  // Decode the base64-wrapped conf blobs (EX-11/EX-12).
-  const out = {
-    serverPubKey: obj.serverPubKey || "",
-    endpoint: obj.endpoint || "",
-    relayAddr: obj.relayAddr || "",
-    pcAddress: obj.pcAddress || "",
-  };
-  try {
-    if (obj.pcConfB64) out.pcConf = Buffer.from(obj.pcConfB64, "base64").toString("utf8");
-    if (obj.phoneConfB64) out.phoneConf = Buffer.from(obj.phoneConfB64, "base64").toString("utf8");
-  } catch (e) {
-    return { ok: false, message: `Failed to decode conf blobs: ${e.message} (EX-12)` };
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return invalidReadback("payload");
+  const requiredFields = [
+    "schemaVersion", "endpoint", "subnet", "relayUrl", "pcConfig",
+    "phoneConfig", "relayToken", "managementToken",
+  ];
+  if (Object.keys(obj).length !== requiredFields.length || requiredFields.some((field) => !Object.hasOwn(obj, field))) {
+    return invalidReadback("fields");
   }
-  if (!out.serverPubKey || !out.endpoint || !out.pcConf || !out.phoneConf) {
-    return { ok: false, message: "Readback JSON missing required fields (EX-12)" };
-  }
-  return { ok: true, readback: out };
+  if (obj.schemaVersion !== 1) return invalidReadback("schemaVersion");
+  if (!isValidEndpoint(obj.endpoint)) return invalidReadback("endpoint");
+  const subnetOctets = parsePrivate24(obj.subnet);
+  if (!subnetOctets) return invalidReadback("subnet");
+  if (!isInternalRelayUrl(obj.relayUrl, subnetOctets)) return invalidReadback("relayUrl");
+  const configContext = { subnet: obj.subnet, subnetOctets, endpoint: obj.endpoint };
+  const pcAddress = parseCompleteWgConfig(obj.pcConfig, configContext);
+  if (!pcAddress) return invalidReadback("pcConfig");
+  const phoneAddress = parseCompleteWgConfig(obj.phoneConfig, configContext);
+  if (!phoneAddress || phoneAddress === pcAddress) return invalidReadback("phoneConfig");
+  if (!/^[0-9a-fA-F]{64}$/.test(obj.relayToken || "")) return invalidReadback("relayToken");
+  if (!/^[0-9a-fA-F]{64}$/.test(obj.managementToken || "")) return invalidReadback("managementToken");
+  return { ok: true, readback: { ...obj } };
 }
 
 // Emit the standard progress-step sequence based on remote log lines. The
@@ -96,7 +207,6 @@ function parseReadback(stdout) {
 // "start" events, and mark the previous step "ok". Any step never reached is
 // left implicit. This keeps UI progress faithful without a second round-trip.
 function makeStepTracker(progress) {
-  const order = ["detect", "install", "gen-keys", "write-conf", "start-service", "relay", "firewall", "readback"];
   // Map raw script step names → public STEPS.
   const toPublic = {
     detect: "detect",
@@ -145,20 +255,33 @@ async function runKeyPath({ profile, script, onProgress, deps }) {
   return { code: r.code, stdout: r.stdout || "", stderr: r.stderr || "" };
 }
 
-async function runPasswordPath({ profile, password, script, onProgress, hostKeyVerifier, deps }) {
-  const { execScript } = deps.ssh2Module || require("./wg-ssh2-exec");
-  const [username, hostOnly] = splitHost(profile.host);
-  const r = await execScript({
+async function runPasswordPath({ profile, password, runtime, onProgress, deps }) {
+  const { deployBundle } = deps.ssh2Module || require("./wg-ssh2-exec");
+  const bundleModule = deps.bundleModule || require("./wg-relay-bundle");
+  const [legacyUsername, hostOnly] = splitHost(profile.host);
+  const username = profile.sshUsername || legacyUsername;
+  const manifest = bundleModule.buildRelayBundleManifest({
+    appRoot: deps.appRoot || path.join(__dirname, ".."),
+  });
+  const r = await deployBundle({
     host: hostOnly,
-    port: profile.port || 22,
+    port: profile.sshPort || profile.port || 22,
     username,
     password,
-    hostKeyVerifier,
-    script,
+    expectedFingerprint: profile.sshHostFingerprint || undefined,
+    confirmHostKey: deps.confirmHostKey || deps.hostKeyVerifier,
+    manifest,
+    installEnv: buildInstallEnv(profile, runtime),
     onProgress,
     timeoutMs: deps.timeoutMs || 180000,
+    deps: deps.ssh2Deps || {},
   });
-  return { code: r.code, stdout: r.stdout || "", stderr: r.stderr || "" };
+  return {
+    code: r.code,
+    stdout: r.stdout || "",
+    stderr: r.stderr || "",
+    acceptedFingerprint: r.acceptedFingerprint || null,
+  };
 }
 
 function splitHost(host) {
@@ -168,7 +291,7 @@ function splitHost(host) {
   return ["root", s];
 }
 
-async function deploy({ profile, password, runtime = {}, deps = {} }) {
+async function deployInternal({ profile, password, runtime = {}, deps = {} }) {
   if (!profile || !profile.id) throw new Error("deploy: profile.id required");
   const emitter = deps.runtime && typeof deps.runtime.emit === "function" ? deps.runtime : runtime.emitter;
   function progress(step, status, message, hint) {
@@ -183,14 +306,16 @@ async function deploy({ profile, password, runtime = {}, deps = {} }) {
     }
   }
 
-  progress("connect", "start");
-
-  let script;
-  try {
-    script = buildRemoteScript(profile, runtime, deps);
-  } catch (e) {
-    progress("connect", "fail", `Cannot read install script: ${e.message}`);
-    return { ok: false, step: "connect", message: `Cannot read install script: ${e.message}` };
+  const passwordAuth = profile.authMethod === "password";
+  let script = null;
+  if (!passwordAuth) {
+    progress("connect", "start");
+    try {
+      script = buildRemoteScript(profile, runtime, deps);
+    } catch (e) {
+      progress("connect", "fail", `Cannot read install script: ${e.message}`);
+      return { ok: false, step: "connect", message: `Cannot read install script: ${e.message}` };
+    }
   }
 
   const tracker = makeStepTracker(progress);
@@ -198,11 +323,16 @@ async function deploy({ profile, password, runtime = {}, deps = {} }) {
 
   let result;
   try {
-    if (profile.authMethod === "password") {
-      progress("connect", "ok");
+    if (passwordAuth) {
       result = await runPasswordPath({
-        profile, password, script, onProgress,
-        hostKeyVerifier: deps.hostKeyVerifier,
+        profile,
+        password,
+        runtime,
+        onProgress: (event) => {
+          if (!event || !["connect", "host-key", "upload", "install"].includes(event.stage)) return;
+          if (!["start", "ok", "fail"].includes(event.status)) return;
+          progress(event.stage, event.status);
+        },
         deps,
       });
     } else {
@@ -218,10 +348,14 @@ async function deploy({ profile, password, runtime = {}, deps = {} }) {
     }
     if (/host key/i.test(msg) || /rejected/i.test(msg)) {
       progress("connect", "fail", "Host key verification failed or was rejected.", "wgErrHostKey");
-      return { ok: false, step: "connect", reason: "host_key", hint: "wgErrHostKey", message: msg };
+      return { ok: false, step: "connect", reason: "host_key", hint: "wgErrHostKey", message: "SSH host key verification failed" };
     }
-    progress("connect", "fail", msg);
-    return { ok: false, step: "connect", message: msg };
+    if (/required relay bundle|relay bundle directory is missing/i.test(msg)) {
+      progress("upload", "fail", msg);
+      return { ok: false, step: "upload", message: msg };
+    }
+    progress("connect", "fail", "SSH deployment failed");
+    return { ok: false, step: "connect", message: "SSH deployment failed" };
   }
 
   // Non-zero exit → map to EX table.
@@ -231,25 +365,35 @@ async function deploy({ profile, password, runtime = {}, deps = {} }) {
       progress(mapped.step, "fail", mapped.message, mapped.hint);
       return { ok: false, step: mapped.step, hint: mapped.hint, message: mapped.message };
     }
-    const tail = summarize(result.stderr) || `remote exited with code ${result.code}`;
-    progress("readback", "fail", tail);
-    return { ok: false, step: "readback", message: tail };
+    const message = `Remote installer exited with code ${result.code}`;
+    progress("install", "fail", message);
+    return { ok: false, step: "install", message };
   }
 
   // Exit 0 → parse readback (tolerate noisy stdout, EX-12).
+  progress("validate", "start");
   const parsed = parseReadback(result.stdout);
   if (!parsed.ok) {
-    progress("readback", "fail", parsed.message);
-    return { ok: false, step: "readback", message: parsed.message };
+    progress("validate", "fail", parsed.message);
+    return { ok: false, step: "validate", message: parsed.message };
   }
-  tracker.finishOk();
-  return { ok: true, readback: parsed.readback };
+  if (!passwordAuth) tracker.finishOk();
+  progress("validate", "ok");
+  return {
+    ok: true,
+    readback: parsed.readback,
+    ...(result.acceptedFingerprint ? { acceptedFingerprint: result.acceptedFingerprint } : {}),
+  };
 }
 
-function summarize(text) {
-  const t = (text || "").toString().trim();
-  if (!t) return null;
-  return t.length > 200 ? t.slice(0, 200) + "..." : t;
+async function deploy({ profile, password, runtime = {}, deps = {} }) {
+  let passwordRef = password;
+  password = undefined;
+  try {
+    return await deployInternal({ profile, password: passwordRef, runtime, deps });
+  } finally {
+    passwordRef = undefined;
+  }
 }
 
 module.exports = {
@@ -259,6 +403,7 @@ module.exports = {
   parseReadback,
   buildRemoteScript,
   buildEnvPreamble,
+  buildInstallEnv,
   makeStepTracker,
   splitHost,
 };
