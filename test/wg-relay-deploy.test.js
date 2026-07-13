@@ -17,23 +17,25 @@ const {
 
 const TOKEN_A = "aA".repeat(32);
 const TOKEN_B = "bB".repeat(32);
-const PRIVATE_KEY = Buffer.alloc(32, 1).toString("base64");
+const PC_PRIVATE_KEY = Buffer.alloc(32, 1).toString("base64");
+const PHONE_PRIVATE_KEY = Buffer.alloc(32, 4).toString("base64");
 const PUBLIC_KEY = Buffer.alloc(32, 2).toString("base64");
 const OTHER_PUBLIC_KEY = Buffer.alloc(32, 3).toString("base64");
 
 function wgConfig(address, over = {}) {
+  const defaultPrivateKey = address.endsWith(".3/32") ? PHONE_PRIVATE_KEY : PC_PRIVATE_KEY;
   const lines = [
     "[Interface]",
-    `PrivateKey = ${over.privateKey || PRIVATE_KEY}`,
+    `PrivateKey = ${over.privateKey || defaultPrivateKey}`,
     `Address = ${address}`,
   ];
-  if (over.duplicatePrivateKey) lines.push(`PrivateKey = ${over.privateKey || PRIVATE_KEY}`);
+  if (over.duplicatePrivateKey) lines.push(`PrivateKey = ${over.privateKey || defaultPrivateKey}`);
   if (over.interfaceExtra) lines.push(over.interfaceExtra);
   lines.push(
     "",
     "[Peer]",
     `PublicKey = ${over.publicKey || PUBLIC_KEY}`,
-    `Endpoint = ${over.endpoint || "1.2.3.4:51820"}`,
+    `Endpoint = ${over.endpoint || "8.8.8.8:51820"}`,
     `AllowedIPs = ${over.allowedIps || "10.8.0.0/24"}`,
     `PersistentKeepalive = ${over.keepalive || "25"}`,
     "",
@@ -42,7 +44,7 @@ function wgConfig(address, over = {}) {
     lines.push(
       "[Peer]",
       `PublicKey = ${over.publicKey || PUBLIC_KEY}`,
-      `Endpoint = ${over.endpoint || "1.2.3.4:51820"}`,
+      `Endpoint = ${over.endpoint || "8.8.8.8:51820"}`,
       `AllowedIPs = ${over.allowedIps || "10.8.0.0/24"}`,
       `PersistentKeepalive = ${over.keepalive || "25"}`,
       ""
@@ -59,7 +61,7 @@ function valueOr(over, key, fallback) {
 function makeReadbackStdout(over = {}) {
   const obj = {
     schemaVersion: valueOr(over, "schemaVersion", 1),
-    endpoint: valueOr(over, "endpoint", "1.2.3.4:51820"),
+    endpoint: valueOr(over, "endpoint", "8.8.8.8:51820"),
     subnet: valueOr(over, "subnet", "10.8.0.0/24"),
     relayUrl: valueOr(over, "relayUrl", "ws://10.8.0.1:7891"),
     pcConfig: valueOr(over, "pcConfig", wgConfig("10.8.0.2/32")),
@@ -74,7 +76,7 @@ function keyProfile(over = {}) {
   return {
     id: "wg-1",
     label: "VPS",
-    host: "root@1.2.3.4",
+    host: "root@8.8.8.8",
     port: 22,
     authMethod: "key",
     identityFile: "/home/u/.ssh/id_ed25519",
@@ -86,15 +88,15 @@ function keyProfile(over = {}) {
 
 function readbackContext(profile = {}, runtime = {}) {
   return {
-    profile: keyProfile({ host: "root@1.2.3.4", ...profile }),
+    profile: keyProfile({ host: "root@8.8.8.8", ...profile }),
     runtime: { relayPort: 7891, ...runtime },
   };
 }
 
 // ── splitHost ──
 test("splitHost splits user@host, defaults root", () => {
-  assert.deepEqual(splitHost("bob@1.2.3.4"), ["bob", "1.2.3.4"]);
-  assert.deepEqual(splitHost("1.2.3.4"), ["root", "1.2.3.4"]);
+  assert.deepEqual(splitHost("bob@8.8.8.8"), ["bob", "8.8.8.8"]);
+  assert.deepEqual(splitHost("8.8.8.8"), ["root", "8.8.8.8"]);
 });
 
 // ── buildEnvPreamble ──
@@ -158,10 +160,10 @@ test("STEPS exposes bundle stages without dropping legacy key-path stages", () =
 test("parseReadback rejects every partial or malformed security field", async (t) => {
   const cases = [
     ["wrong schema", { schemaVersion: 2 }],
-    ["endpoint without port", { endpoint: "1.2.3.4" }],
+    ["endpoint without port", { endpoint: "8.8.8.8" }],
     ["public subnet", { subnet: "8.8.8.0/24" }],
     ["non-/24 subnet", { subnet: "10.8.0.0/16" }],
-    ["public Relay URL", { relayUrl: "ws://1.2.3.4:7891" }],
+    ["public Relay URL", { relayUrl: "ws://8.8.8.8:7891" }],
     ["secure-websocket Relay URL", { relayUrl: "wss://10.8.0.1:7891" }],
     ["incomplete PC config", { pcConfig: "[Interface]\nPrivateKey = value\n" }],
     ["empty phone config", { phoneConfig: "" }],
@@ -178,8 +180,8 @@ test("parseReadback rejects every partial or malformed security field", async (t
 });
 
 test("parseReadback rejects adversarial WireGuard and Relay configurations", async (t) => {
-  const endpoint51999 = "1.2.3.4:51999";
-  const endpointOtherHost = "5.6.7.8:51820";
+  const endpoint51999 = "8.8.8.8:51999";
+  const endpointOtherHost = "9.9.9.9:51820";
   const cases = [
     ["AllowedIPs also routes the public Internet", {
       pcConfig: wgConfig("10.8.0.2/32", { allowedIps: "10.8.0.0/24, 0.0.0.0/0" }),
@@ -211,6 +213,9 @@ test("parseReadback rejects adversarial WireGuard and Relay configurations", asy
     ["PC and phone server public keys differ", {
       phoneConfig: wgConfig("10.8.0.3/32", { publicKey: OTHER_PUBLIC_KEY }),
     }],
+    ["PC and phone private keys are identical", {
+      phoneConfig: wgConfig("10.8.0.3/32", { privateKey: PC_PRIVATE_KEY }),
+    }],
     ["endpoint port differs from profile WireGuard port", {
       endpoint: endpoint51999,
       pcConfig: wgConfig("10.8.0.2/32", { endpoint: endpoint51999 }),
@@ -235,6 +240,98 @@ test("parseReadback rejects adversarial WireGuard and Relay configurations", asy
       assert.equal(result.ok, false);
       assert.match(result.message, /^Invalid readback: [A-Za-z]+ \(EX-12\)$/);
       assert.doesNotMatch(result.message, /expose-secret|PrivateKey|aAaA/);
+    });
+  }
+});
+
+test("parseReadback rejects non-global endpoint IP literals", async (t) => {
+  const invalidHosts = [
+    "0.1.2.3",
+    "10.0.0.1",
+    "100.64.0.1",
+    "127.0.0.1",
+    "169.254.1.1",
+    "172.16.0.1",
+    "192.0.0.1",
+    "192.0.2.1",
+    "192.88.99.1",
+    "192.168.1.1",
+    "198.18.0.1",
+    "198.51.100.1",
+    "203.0.113.1",
+    "224.0.0.1",
+    "240.0.0.1",
+    "::1",
+    "::ffff:127.0.0.1",
+    "fc00::1",
+    "fe80::1",
+    "ff02::1",
+    "2001::1",
+    "2001:db8::1",
+    "2002::1",
+    "3fff::1",
+  ];
+
+  for (const host of invalidHosts) {
+    await t.test(host, () => {
+      const endpoint = host.includes(":") ? `[${host}]:51820` : `${host}:51820`;
+      const result = parseReadback(makeReadbackStdout({
+        endpoint,
+        pcConfig: wgConfig("10.8.0.2/32", { endpoint }),
+        phoneConfig: wgConfig("10.8.0.3/32", { endpoint }),
+      }), readbackContext({ host: "relay.example.com", sshUsername: "deploy" }));
+      assert.equal(result.ok, false);
+      assert.equal(result.message, "Invalid readback: endpoint (EX-12)");
+    });
+  }
+});
+
+test("parseReadback rejects a non-global requested IP even when readback endpoint matches", async (t) => {
+  for (const host of ["127.0.0.1", "203.0.113.10", "::ffff:127.0.0.1", "ff02::1"]) {
+    await t.test(host, () => {
+      const endpoint = host.includes(":") ? `[${host}]:51820` : `${host}:51820`;
+      const result = parseReadback(makeReadbackStdout({
+        endpoint,
+        pcConfig: wgConfig("10.8.0.2/32", { endpoint }),
+        phoneConfig: wgConfig("10.8.0.3/32", { endpoint }),
+      }), readbackContext({ host, sshUsername: "deploy" }));
+      assert.equal(result.ok, false);
+      assert.equal(result.message, "Invalid readback: endpoint (EX-12)");
+    });
+  }
+});
+
+test("parseReadback accepts globally routable IPv4 and IPv6 endpoint literals", async (t) => {
+  for (const [host, endpoint] of [
+    ["8.8.4.4", "8.8.4.4:51820"],
+    ["2606:4700:4700::1111", "[2606:4700:4700::1111]:51820"],
+  ]) {
+    await t.test(host, () => {
+      const result = parseReadback(makeReadbackStdout({
+        endpoint,
+        pcConfig: wgConfig("10.8.0.2/32", { endpoint }),
+        phoneConfig: wgConfig("10.8.0.3/32", { endpoint }),
+      }), readbackContext({ host, sshUsername: "deploy" }));
+      assert.equal(result.ok, true);
+    });
+  }
+});
+
+test("parseReadback requires the exact canonical WireGuard-internal Relay URL", async (t) => {
+  const variants = [
+    "ws://0x0a080001:7891",
+    "ws://168296449:7891",
+    "ws://user@10.8.0.1:7891",
+    "ws://10.8.0.1:7891/",
+    "ws://10.8.0.1:7891/path",
+    "ws://10.8.0.1:7891?query=1",
+    "ws://10.8.0.1:7891#fragment",
+  ];
+  for (const relayUrl of variants) {
+    await t.test(relayUrl, () => {
+      const result = parseReadback(makeReadbackStdout({ relayUrl }), readbackContext());
+      assert.equal(result.ok, false);
+      assert.equal(result.message, "Invalid readback: relayUrl (EX-12)");
     });
   }
 });
@@ -279,7 +376,7 @@ test("deploy key path returns readback on exit 0", async () => {
   const deps = {
     scriptBody: "echo body",
     spawn: fakeSpawn,
-    runtimeModule: { buildSshArgs: () => ["-T", "root@1.2.3.4"] },
+    runtimeModule: { buildSshArgs: () => ["-T", "root@8.8.8.8"] },
     deployModule: {
       spawnAndWait: async () => ({
         code: 0,
@@ -324,18 +421,18 @@ test("deploy key path normalizes canonical SSH fields and preserves legacy host 
     },
   };
   const canonical = keyProfile({
-    host: "203.0.113.10",
+    host: "8.8.4.4",
     port: undefined,
     sshUsername: "deploy",
     sshPort: 2222,
   });
-  const legacy = keyProfile({ host: "legacy@198.51.100.20", port: 2200 });
+  const legacy = keyProfile({ host: "legacy@9.9.9.9", port: 2200 });
 
   assert.equal((await deploy({ profile: canonical, deps })).ok, true);
   assert.equal((await deploy({ profile: legacy, deps })).ok, true);
-  assert.equal(buildInputs[0].host, "deploy@203.0.113.10");
+  assert.equal(buildInputs[0].host, "deploy@8.8.4.4");
   assert.equal(buildInputs[0].port, 2222);
-  assert.equal(buildInputs[1].host, "legacy@198.51.100.20");
+  assert.equal(buildInputs[1].host, "legacy@9.9.9.9");
   assert.equal(buildInputs[1].port, 2200);
 });
 
@@ -344,7 +441,7 @@ test("deploy maps non-zero exit code via EXIT_CODE_MAP", async () => {
   const deps = {
     scriptBody: "echo body",
     spawn: () => {},
-    runtimeModule: { buildSshArgs: () => ["root@1.2.3.4"] },
+    runtimeModule: { buildSshArgs: () => ["root@8.8.8.8"] },
     deployModule: {
       spawnAndWait: async () => ({ code: 13, stdout: "", stderr: "boom" }),
     },
@@ -438,7 +535,7 @@ test("deploy password path falls back to legacy user@host and port", async () =>
     },
   });
   assert.equal(r.ok, true);
-  assert.equal(deployArgs.host, "1.2.3.4");
+  assert.equal(deployArgs.host, "8.8.8.8");
   assert.equal(deployArgs.username, "root");
   assert.equal(deployArgs.port, 22);
 });

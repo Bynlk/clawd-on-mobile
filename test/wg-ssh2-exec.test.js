@@ -108,7 +108,9 @@ function makeBundleClient(behavior = {}) {
         state.verifierValues.push(accepted);
         state.hostAccepted = accepted;
         if (!accepted) {
-          process.nextTick(() => this.emit("error", new Error("Host key rejected")));
+          const emitRejection = () => this.emit("error", new Error("raw synchronous host rejection"));
+          if (behavior.syncErrorOnVerifierReject) emitRejection();
+          else process.nextTick(emitRejection);
           return;
         }
         process.nextTick(() => {
@@ -400,6 +402,55 @@ test("deployBundle maps synchronous TOFU confirmation throws and invokes verifie
   assert.equal(fake.state.verifierCallbackCount, 1);
   assert.deepEqual(fake.state.verifierValues, [false]);
   assert.equal(fake.state.ended, true);
+});
+
+test("deployBundle preserves structured TOFU failures when verifier rejection emits an error synchronously", async (t) => {
+  const cases = [
+    {
+      name: "changed saved fingerprint",
+      args: {
+        expectedFingerprint: sha256Fingerprint(Buffer.from("saved-host-key")),
+        confirmHostKey: () => true,
+      },
+      code: "HOST_KEY_CHANGED",
+      reason: "host_key_changed",
+    },
+    {
+      name: "unknown host rejected by user",
+      args: { confirmHostKey: () => false },
+      code: "HOST_KEY_UNCONFIRMED",
+      reason: "host_key_unconfirmed",
+    },
+    {
+      name: "host confirmation throws synchronously",
+      args: { confirmHostKey: () => { throw new Error("sensitive confirmation detail"); } },
+      code: "HOST_KEY_CONFIRMATION_FAILED",
+      reason: "host_key_confirmation_failed",
+    },
+  ];
+
+  for (const entry of cases) {
+    await t.test(entry.name, async () => {
+      const fake = makeBundleClient({
+        hostKey: Buffer.from("changed-host-key"),
+        syncErrorOnVerifierReject: true,
+      });
+      await assert.rejects(
+        deployBundle(bundleArgs({
+          ...entry.args,
+          deps: { Client: fake.Client, remoteRoot: "/tmp/clawd-relay-sync-reject" },
+        })),
+        (error) => error.code === entry.code
+          && error.reason === entry.reason
+          && !error.message.includes("raw synchronous host rejection")
+          && !error.message.includes("sensitive confirmation detail")
+      );
+      assert.equal(fake.state.verifierCallbackCount, 1);
+      assert.deepEqual(fake.state.verifierValues, [false]);
+      assert.equal(fake.state.ended, true);
+      assert.equal(fake.state.operations.length, 0);
+    });
+  }
 });
 
 test("deployBundle pending TOFU confirmation cannot revive after timeout", async () => {

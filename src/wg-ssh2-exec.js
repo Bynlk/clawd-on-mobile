@@ -215,6 +215,7 @@ async function deployBundle({
     let activeSftp = null;
     let activeChannel = null;
     let activeVerifier = null;
+    let hostKeyFailure = null;
 
     const timer = setTimeout(() => {
       finishReject(transportError(
@@ -251,10 +252,10 @@ async function deployBundle({
     }
 
     conn.on("error", (error) => {
-      finishReject(error);
+      finishReject(hostKeyFailure || error);
     });
     conn.on("close", () => {
-      finishReject(transportError(
+      finishReject(hostKeyFailure || transportError(
         "SSH_CONNECTION_CLOSED",
         "connection_closed",
         "SSH connection closed before deployment completed"
@@ -318,7 +319,7 @@ async function deployBundle({
           try {
             callback(Boolean(accepted) && !isAborted());
           } catch {
-            finishReject(transportError(
+            finishReject(hostKeyFailure || transportError(
               "HOST_KEY_CONFIRMATION_FAILED",
               "host_key_confirmation_failed",
               "SSH host key verification callback failed"
@@ -341,6 +342,7 @@ async function deployBundle({
               "host_key_changed",
               "Saved SSH host key has changed; remove it before confirming a replacement"
             );
+            hostKeyFailure = error;
             emitProgress(onProgress, "host-key", "fail");
             respond(false);
             finishReject(error);
@@ -365,6 +367,7 @@ async function deployBundle({
                 "host_key_unconfirmed",
                 "SSH host key was not confirmed"
               );
+              hostKeyFailure = error;
               emitProgress(onProgress, "host-key", "fail");
               respond(false);
               finishReject(error);
@@ -380,6 +383,7 @@ async function deployBundle({
               "host_key_confirmation_failed",
               "SSH host key confirmation failed"
             );
+            hostKeyFailure = error;
             emitProgress(onProgress, "host-key", "fail");
             respond(false);
             finishReject(error);

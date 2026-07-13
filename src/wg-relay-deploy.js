@@ -119,6 +119,7 @@ function parsePrivate24(value) {
 
 function isValidHostname(host) {
   if (typeof host !== "string" || host.length > 253 || !host) return false;
+  if (/^[0-9.]+$/.test(host)) return false;
   return host.split(".").every((label) => (
     /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label)
   ));
@@ -144,43 +145,88 @@ function parseEndpoint(value) {
   return Number.isInteger(port) && port >= 1 && port <= 65535 ? { host, port } : null;
 }
 
-function isPublicEndpointHost(host) {
+function ipv4ToInt(host) {
+  const octets = parseIpv4(host);
+  if (!octets) return null;
+  return (((octets[0] * 256 + octets[1]) * 256 + octets[2]) * 256 + octets[3]) >>> 0;
+}
+
+function ipv4InCidr(value, base, prefix) {
+  const shift = 32 - prefix;
+  return (value >>> shift) === (ipv4ToInt(base) >>> shift);
+}
+
+function ipv6ToBigInt(host) {
+  if (net.isIP(host) !== 6) return null;
+  let normalized = host.toLowerCase();
+  if (normalized.includes(".")) {
+    const lastColon = normalized.lastIndexOf(":");
+    const ipv4 = parseIpv4(normalized.slice(lastColon + 1));
+    if (!ipv4) return null;
+    const high = ((ipv4[0] << 8) | ipv4[1]).toString(16);
+    const low = ((ipv4[2] << 8) | ipv4[3]).toString(16);
+    normalized = `${normalized.slice(0, lastColon)}:${high}:${low}`;
+  }
+  const halves = normalized.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return null;
+  const groups = [...left, ...Array(missing).fill("0"), ...right];
+  return groups.reduce((value, group) => (value << 16n) | BigInt(`0x${group}`), 0n);
+}
+
+function ipv6InCidr(value, base, prefix) {
+  const shift = BigInt(128 - prefix);
+  return (value >> shift) === (ipv6ToBigInt(base) >> shift);
+}
+
+function isGloballyRoutableIp(host) {
   const ipVersion = net.isIP(host);
   if (ipVersion === 4) {
-    const octets = parseIpv4(host);
-    return !(octets[0] === 0
-      || octets[0] === 10
-      || octets[0] === 127
-      || (octets[0] === 169 && octets[1] === 254)
-      || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
-      || (octets[0] === 192 && octets[1] === 168)
-      || (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127)
-      || octets[0] >= 224);
+    const value = ipv4ToInt(host);
+    const blocked = [
+      ["0.0.0.0", 8],
+      ["10.0.0.0", 8],
+      ["100.64.0.0", 10],
+      ["127.0.0.0", 8],
+      ["169.254.0.0", 16],
+      ["172.16.0.0", 12],
+      ["192.0.0.0", 24],
+      ["192.0.2.0", 24],
+      ["192.88.99.0", 24],
+      ["192.168.0.0", 16],
+      ["198.18.0.0", 15],
+      ["198.51.100.0", 24],
+      ["203.0.113.0", 24],
+      ["224.0.0.0", 4],
+      ["240.0.0.0", 4],
+    ];
+    return !blocked.some(([base, prefix]) => ipv4InCidr(value, base, prefix));
   }
   if (ipVersion === 6) {
-    const normalized = host.toLowerCase();
-    return normalized !== "::" && normalized !== "::1"
-      && !normalized.startsWith("fc") && !normalized.startsWith("fd")
-      && !normalized.startsWith("fe8") && !normalized.startsWith("fe9")
-      && !normalized.startsWith("fea") && !normalized.startsWith("feb");
+    const value = ipv6ToBigInt(host);
+    if (!ipv6InCidr(value, "2000::", 3)) return false;
+    return ![
+      ["2001::", 23],
+      ["2001:db8::", 32],
+      ["2002::", 16],
+      ["3fff::", 20],
+    ].some(([base, prefix]) => ipv6InCidr(value, base, prefix));
   }
-  return isValidHostname(host) && host.toLowerCase() !== "localhost"
-    && !host.toLowerCase().endsWith(".local");
+  return false;
+}
+
+function isPublicEndpointHost(host) {
+  if (net.isIP(host)) return isGloballyRoutableIp(host);
+  const normalized = String(host || "").toLowerCase();
+  return isValidHostname(host) && normalized !== "localhost" && !normalized.endsWith(".local");
 }
 
 function isExpectedRelayUrl(value, subnetOctets, relayPort) {
-  if (typeof value !== "string" || value.length > 512) return false;
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  if (url.protocol !== "ws:" || url.username || url.password || url.search || url.hash || url.pathname !== "/" || !url.port) {
-    return false;
-  }
   const expectedHost = `${subnetOctets[0]}.${subnetOctets[1]}.${subnetOctets[2]}.1`;
-  return url.hostname === expectedHost && Number(url.port) === relayPort;
+  return value === `ws://${expectedHost}:${relayPort}`;
 }
 
 function isWireGuardKey(value) {
@@ -226,7 +272,10 @@ function parseCompleteWgConfig(value, { subnet, subnetOctets, endpoint, clientHo
   if (sections.Peer.PersistentKeepalive !== "25") return null;
   const expectedAddress = `${subnetOctets[0]}.${subnetOctets[1]}.${subnetOctets[2]}.${clientHost}/32`;
   if (sections.Interface.Address !== expectedAddress) return null;
-  return { serverPublicKey: sections.Peer.PublicKey };
+  return {
+    privateKey: sections.Interface.PrivateKey,
+    serverPublicKey: sections.Peer.PublicKey,
+  };
 }
 
 function invalidReadback(field) {
@@ -262,7 +311,9 @@ function parseReadback(stdout, context = {}) {
   if (!endpoint || endpoint.port !== expectedWgPort) return invalidReadback("endpoint");
   const requestedHost = profile.host ? normalizeSshTarget(profile).host : null;
   if (requestedHost && net.isIP(requestedHost)) {
-    if (endpoint.host !== requestedHost) return invalidReadback("endpoint");
+    if (!isGloballyRoutableIp(requestedHost)
+      || !isGloballyRoutableIp(endpoint.host)
+      || endpoint.host !== requestedHost) return invalidReadback("endpoint");
   } else if (!isPublicEndpointHost(endpoint.host)) {
     return invalidReadback("endpoint");
   }
@@ -274,7 +325,9 @@ function parseReadback(stdout, context = {}) {
   const pcConfig = parseCompleteWgConfig(obj.pcConfig, { ...configContext, clientHost: 2 });
   if (!pcConfig) return invalidReadback("pcConfig");
   const phoneConfig = parseCompleteWgConfig(obj.phoneConfig, { ...configContext, clientHost: 3 });
-  if (!phoneConfig || phoneConfig.serverPublicKey !== pcConfig.serverPublicKey) {
+  if (!phoneConfig
+    || phoneConfig.serverPublicKey !== pcConfig.serverPublicKey
+    || phoneConfig.privateKey === pcConfig.privateKey) {
     return invalidReadback("phoneConfig");
   }
   if (!/^[0-9a-fA-F]{64}$/.test(obj.relayToken || "")) return invalidReadback("relayToken");
