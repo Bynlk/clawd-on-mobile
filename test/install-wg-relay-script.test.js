@@ -69,6 +69,15 @@ describe("persistent WireGuard Relay installer source contracts", () => {
     assert.ok(SOURCE.indexOf("\nacquire_lock\ncheckpoint lock-acquired") < SOURCE.indexOf("mktemp -d \"${VAR_TMP_FS}"));
   });
 
+  it("requires the whole production installer to run as root and validates the lock inode", () => {
+    assert.match(SOURCE, /if \[ "\$\{TEST_MODE\}" != "1" \] && \[ "\$\(id -u\)" -ne 0 \]; then\s+die 13/);
+    assert.doesNotMatch(SOURCE, /SUDO=|sudo -n true|\$SUDO/);
+    assert.match(SOURCE, /-L[^\n]*LOCK_FILE_FS|LOCK_FILE_FS[^\n]*-L/);
+    assert.match(SOURCE, /fd_path="\/proc\/self\/fd\/9"[\s\S]*fd_path="\/dev\/fd\/9"/);
+    assert.match(SOURCE, /stat -Lc[^\n]*fd_path/);
+    assert.match(SOURCE, /mode[^\n]*0600|0600[^\n]*mode/i);
+  });
+
   it("stages app and Node together and atomically switches the dedicated current link", () => {
     assert.match(SOURCE, /SCRIPT_DIR=.*dirname/);
     assert.match(SOURCE, /CURRENT=["']?\/opt\/clawd-relay\/current/);
@@ -92,7 +101,8 @@ describe("persistent WireGuard Relay installer source contracts", () => {
     for (const key of [
       "BIND_ADDR", "PC_IP", "PHONE_IP", "WG_SUBNET", "WG_ENDPOINT",
       "WG_INTERFACE", "WG_CONFIG_PATH", "WG_KEY_DIR", "PHONE_PRIVATE_KEY_PATH",
-      "PHONE_PUBLIC_KEY_PATH", "SERVER_PUBLIC_KEY_PATH", "RELAY_ENV_PATH",
+      "PHONE_PUBLIC_KEY_PATH", "SERVER_PUBLIC_KEY_PATH", "PHONE_ROTATION_JOURNAL_PATH",
+      "RELAY_ENV_PATH",
     ]) {
       assert.match(SOURCE, new RegExp(`^${key}=`, "m"));
     }
@@ -107,6 +117,26 @@ describe("persistent WireGuard Relay installer source contracts", () => {
     assert.match(SOURCE, /systemctl is-enabled[^\n]*clawd-relay/);
     assert.match(SOURCE, /systemctl is-active[^\n]*clawd-relay/);
     assert.deepEqual(linesMatching(/systemctl.*\|\|\s*true/), []);
+  });
+
+  it("runs production health and strict-Bearer probes before a stable service window", () => {
+    assert.match(SOURCE, /probe_relay_service/);
+    assert.match(SOURCE, /\/health/);
+    assert.match(SOURCE, /unexpected-response/);
+    assert.match(SOURCE, /Authorization[^\n]*Bearer/);
+    assert.match(SOURCE, /verify_relay_stability/);
+    assert.ok(SOURCE.indexOf("probe_relay_service") < SOURCE.indexOf("COMMITTED=1"));
+  });
+
+  it("sandboxes the Relay while retaining only its required writable paths and capability", () => {
+    for (const setting of [
+      "NoNewPrivileges=true",
+      "PrivateTmp=true",
+      "ProtectHome=true",
+      "ProtectSystem=strict",
+      "ReadWritePaths=/etc/clawd-relay /etc/wireguard /run/lock",
+      "CapabilityBoundingSet=CAP_NET_ADMIN",
+    ]) assert.match(SOURCE, new RegExp(`^${setting}$`, "m"));
   });
 
   it("opens only WireGuard UDP and never Relay TCP", () => {
@@ -170,8 +200,17 @@ function writeExecutable(file, source) {
 function createCommandShims(binDir) {
   const prelude = `#!/usr/bin/env bash\nset -euo pipefail\nSTATE_DIR=\"\${CLAWD_INSTALL_TEST_STATE:?}\"\n`;
   writeExecutable(path.join(binDir, "id"), `#!/usr/bin/env bash\n[ \"\${1:-}\" = -u ] && printf '501\\n'\n`);
-  writeExecutable(path.join(binDir, "sudo"), "#!/usr/bin/env bash\nexit 1\n");
+  writeExecutable(path.join(binDir, "sudo"), `${prelude}printf 'called\\n' >> "$STATE_DIR/sudo-operations"\nexit 1\n`);
   writeExecutable(path.join(binDir, "stat"), `${prelude}
+if [ "\${1:-}" = -Lc ]; then
+  target="\${3}"
+  if [ -n "\${CLAWD_TEST_LOCK_STAT:-}" ] && { [ "$target" = "$CLAWD_INSTALL_ROOT/run/lock/clawd-relay.lock" ] || [ "$target" = /dev/fd/9 ]; }; then
+    "$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'const fs=require("fs");const target=process.argv[1];const s=target==="/dev/fd/9"?fs.fstatSync(9):fs.statSync(target);const forced=process.argv[2].split(":");process.stdout.write(String(s.dev)+":"+String(s.ino)+":"+forced[0]+":"+forced[1]+":regular file\\n")' "$target" "$CLAWD_TEST_LOCK_STAT"
+    exit 0
+  fi
+  "$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'const fs=require("fs");const target=process.argv[1];const s=target==="/dev/fd/9"?fs.fstatSync(9):fs.statSync(target);process.stdout.write(String(s.dev)+":"+String(s.ino)+":"+String(s.uid)+":"+((s.mode&0o777).toString(8))+":"+(s.isFile()?"regular file":"other")+"\\n")' "$target"
+  exit 0
+fi
 if [ "\${1:-}" = -c ] && [ "\${2:-}" = %u:%a ]; then
   "$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'const fs=require("fs");const s=fs.lstatSync(process.argv[1]);process.stdout.write(String(s.uid)+":"+((s.mode&0o777).toString(8))+"\\n")' "\${3}"
   exit 0
@@ -309,7 +348,26 @@ file=\"$STATE_DIR/service-$service\"
 read -r enabled active < \"$file\"
 case \"$command\" in
   is-enabled) [ \"$enabled\" = enabled ] ;;
-  is-active) [ \"$active\" = active ] ;;
+  is-active)
+    if [ \"$service\" = clawd-relay ] && [ \"$active\" = active ] && [ \"\${CLAWD_TEST_CRASH_DURING_STABILITY:-0}\" = 1 ]; then
+      count_file=\"$STATE_DIR/relay-active-check-count\"
+      count=0; [ ! -f \"$count_file\" ] || count=$(cat \"$count_file\")
+      count=$((count + 1)); printf '%s' \"$count\" > \"$count_file\"
+      if [ \"$count\" -ge 2 ]; then
+        printf '1\\n' > \"$STATE_DIR/relay-restarts\"
+      fi
+    fi
+    [ \"$active\" = active ]
+    ;;
+  show)
+    if [ \"$service\" = clawd-relay ]; then
+      printf '%s\\n' \"$(cat \"$STATE_DIR/relay-pid\")\"
+      if [ -f \"$STATE_DIR/relay-restarts\" ]; then cat \"$STATE_DIR/relay-restarts\"; else printf '0\\n'; fi
+    else
+      printf '0\\n0\\n'
+    fi
+    exit 0
+    ;;
   enable) enabled=enabled ;;
   disable) enabled=disabled ;;
   start|restart)
@@ -518,6 +576,8 @@ set -a
 . "$env_file"
 set +a
 port="$("$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'const net=require("net");const s=net.createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close();});')"
+printf '127.0.0.1\n' > "$STATE_DIR/relay-probe-host"
+printf '%s\n' "$port" > "$STATE_DIR/relay-probe-port"
 read -r unit_node unit_app extra <<< "\${CLAWD_INSTALL_TEST_UNIT_EXEC_START:?}"
 [ -z "\${extra:-}" ]
 unit_node="$CLAWD_INSTALL_ROOT$unit_node"
@@ -528,10 +588,18 @@ export RELAY_ENV_PATH="$env_file" RELAY_LOCK_PATH="$CLAWD_INSTALL_ROOT/run/lock/
 export WG_CONFIG_PATH="$CLAWD_INSTALL_ROOT/etc/wireguard/clawd.conf"
 export WG_KEY_DIR="$CLAWD_INSTALL_ROOT/etc/wireguard/clawd"
 export PHONE_PRIVATE_KEY_PATH="$WG_KEY_DIR/phone.key" PHONE_PUBLIC_KEY_PATH="$WG_KEY_DIR/phone.pub" SERVER_PUBLIC_KEY_PATH="$WG_KEY_DIR/server.pub"
-"$unit_node" "$unit_app" 9>&- >"$STATE_DIR/relay.log" 2>&1 &
+if [ "\${CLAWD_TEST_RELAY_PORT_CONFLICT:-0}" = 1 ]; then
+  "$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'require("http").createServer((_q,r)=>r.end("conflict")).listen(Number(process.argv[1]),"127.0.0.1")' "$port" 9>&- >"$STATE_DIR/relay.log" 2>&1 &
+else
+  "$unit_node" "$unit_app" 9>&- >"$STATE_DIR/relay.log" 2>&1 &
+fi
 printf '%s' "$!" > "$pid_file"
-"$CLAWD_INSTALL_TEST_NODE_SOURCE" "${smokeJs}" "$port" "$RELAY_TOKEN" "$current/app/node_modules/ws"
-printf 'health+strict-bearer\n' > "$STATE_DIR/relay-smoke-ok"
+if [ "\${CLAWD_TEST_PROBE_FAILURE:-0}" = 1 ]; then
+  for _ in $(seq 1 100); do grep -q server_started "$STATE_DIR/relay.log" && break; sleep 0.01; done
+  sed 's/^RELAY_TOKEN=.*/RELAY_TOKEN=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff/' "$env_file" > "$env_file.next"
+  mv "$env_file.next" "$env_file"
+  chmod 600 "$env_file"
+fi
 `);
   return control;
 }
@@ -733,6 +801,70 @@ function snapshotTree(root) {
 }
 
 describe("persistent WireGuard Relay installer executable fixture", () => {
+  it("rejects direct non-root production execution before mutation without invoking sudo", (t) => {
+    const fixture = createExecutableFixture(t);
+    const result = fixture.run({ CLAWD_INSTALL_TEST_MODE: "0" });
+    assert.equal(result.status, 13, result.stderr);
+    assert.match(result.stderr, /must run as root/i);
+    assert.equal(fs.existsSync(path.join(fixture.stateDir, "sudo-operations")), false);
+    assert.equal(fs.existsSync(path.join(fixture.root, "etc")), false);
+    assert.equal(fs.existsSync(path.join(fixture.root, "opt")), false);
+  });
+
+  it("rejects unsafe shared lock paths and metadata before installation mutation", async (t) => {
+    await t.test("symlink", (t) => {
+      const fixture = createExecutableFixture(t);
+      const victim = path.join(fixture.root, "lock-victim");
+      const lockPath = path.join(fixture.root, "run", "lock", "clawd-relay.lock");
+      fs.writeFileSync(victim, "sentinel", { mode: 0o644 });
+      fs.symlinkSync(victim, lockPath);
+      const result = fixture.run();
+      assert.notEqual(result.status, 0);
+      assert.equal(fs.readFileSync(victim, "utf8"), "sentinel");
+      assert.equal(fs.statSync(victim).mode & 0o777, 0o644);
+      assert.equal(fs.existsSync(path.join(fixture.root, "etc")), false);
+    });
+    await t.test("mode", (t) => {
+      const fixture = createExecutableFixture(t);
+      const lockPath = path.join(fixture.root, "run", "lock", "clawd-relay.lock");
+      fs.writeFileSync(lockPath, "", { mode: 0o644 });
+      const result = fixture.run();
+      assert.notEqual(result.status, 0);
+      assert.equal(fs.statSync(lockPath).mode & 0o777, 0o644);
+      assert.equal(fs.existsSync(path.join(fixture.root, "etc")), false);
+    });
+    await t.test("owner", (t) => {
+      const fixture = createExecutableFixture(t);
+      const lockPath = path.join(fixture.root, "run", "lock", "clawd-relay.lock");
+      fs.writeFileSync(lockPath, "", { mode: 0o600 });
+      const result = fixture.run({ CLAWD_TEST_LOCK_STAT: "999:600" });
+      assert.notEqual(result.status, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, "etc")), false);
+    });
+    await t.test("non-regular", (t) => {
+      const fixture = createExecutableFixture(t);
+      fs.mkdirSync(path.join(fixture.root, "run", "lock", "clawd-relay.lock"));
+      const result = fixture.run();
+      assert.notEqual(result.status, 0);
+      assert.equal(fs.existsSync(path.join(fixture.root, "etc")), false);
+    });
+  });
+
+  for (const [name, env] of [
+    ["port conflict", { CLAWD_TEST_RELAY_PORT_CONFLICT: "1" }],
+    ["strict auth probe failure", { CLAWD_TEST_PROBE_FAILURE: "1" }],
+    ["crash during stability window", { CLAWD_TEST_CRASH_DURING_STABILITY: "1" }],
+  ]) {
+    it(`rolls back when the production Relay probe detects ${name}`, (t) => {
+      const fixture = createExecutableFixture(t);
+      const result = fixture.run(env);
+      assert.notEqual(result.status, 0, result.stderr);
+      assert.match(result.stderr, name.includes("stability") ? /stability verification/i : /Relay probe failed/i);
+      assert.equal(fs.existsSync(path.join(fixture.root, "etc", "clawd-relay", "relay.env")), false);
+      assert.equal(fs.existsSync(path.join(fixture.root, "opt", "clawd-relay", "current")), false);
+    });
+  }
+
   it("performs a first install, reuses all credentials, and atomically exposes one complete release", (t) => {
     const fixture = createExecutableFixture(t);
     const first = fixture.run();
@@ -996,7 +1128,7 @@ exit 0
   it("fails on flock contention, then succeeds immediately after the holder is killed", async (t) => {
     const fixture = createExecutableFixture(t);
     const lock = path.join(fixture.root, "run", "lock", "clawd-relay.lock");
-    const holder = childProcess.spawn("/bin/bash", ["-c", `exec 9>"$1"; flock -x -w 5 9; printf 'HELD\\n'; while :; do sleep 1; done`, "_", lock], {
+    const holder = childProcess.spawn("/bin/bash", ["-c", `umask 077; exec 9>"$1"; flock -x -w 5 9; printf 'HELD\\n'; while :; do sleep 1; done`, "_", lock], {
       env: fixture.environment,
       stdio: ["ignore", "pipe", "ignore"],
     });
@@ -1033,7 +1165,7 @@ exit 0
       stdio: "ignore",
     });
     const marker = path.join(fixture.stateDir, "pause-lock-acquired");
-    for (let attempt = 0; attempt < 100 && !fs.existsSync(marker); attempt++) {
+    for (let attempt = 0; attempt < 500 && !fs.existsSync(marker); attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(fs.existsSync(marker), true, "installer did not reach lock-acquired pause");
@@ -1250,7 +1382,8 @@ exit 0
   it("stages the actual Relay modules and passes real health plus strict-Bearer smoke", (t) => {
     const fixture = createExecutableFixture(t);
     const result = fixture.run();
-    assert.equal(result.status, 0, result.stderr);
+    const relayLog = path.join(fixture.stateDir, "relay.log");
+    assert.equal(result.status, 0, `${result.stderr}\nrelay log:\n${fs.existsSync(relayLog) ? fs.readFileSync(relayLog, "utf8") : "missing"}`);
     const current = path.join(fixture.root, "opt", "clawd-relay", "current");
     const release = fs.readlinkSync(current);
     for (const name of ["relay-server.js", "pair-registry.js", "relay-token-store.js", "wg-management.js"]) {

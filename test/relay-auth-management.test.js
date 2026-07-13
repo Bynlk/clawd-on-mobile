@@ -564,12 +564,15 @@ describe("Relay strict authentication and single-phone pairing", () => {
     assert.equal(protocolPings, 0);
   });
 
-  it("terminates a silent client after one unanswered application heartbeat", async (t) => {
+  it("terminates and cleans up a silent client after bounded unanswered heartbeats", async (t) => {
     const relay = await startRelay(t, { heartbeatIntervalMs: 10 });
     const phone = connect(relay, "phone", RELAY_TOKEN);
     await opened(phone);
     const result = await closed(phone);
     assert.equal(result.code, 1006);
+    for (let attempt = 0; attempt < 40 && relay.pairs.get(RELAY_TOKEN); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
     assert.equal(relay.pairs.get(RELAY_TOKEN), null);
   });
 
@@ -939,6 +942,20 @@ describe("WireGuard phone rotation transaction", () => {
         assert.equal(recovered.isHealthy(), true);
       });
     }
+  });
+
+  it("does not contend with the installer lock when startup has no recovery journal", async (t) => {
+    let lockAcquisitions = 0;
+    const fixture = createManagementFixture(t, {
+      lock: {
+        async runExclusive(operation) {
+          lockAcquisitions++;
+          return operation();
+        },
+      },
+    });
+    await fixture.management.initialize();
+    assert.equal(lockAcquisitions, 0);
   });
   it("kills and reaps a hung production command at its deadline", async () => {
     const { defaultCommand } = require("../relay/wg-management");

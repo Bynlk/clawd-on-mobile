@@ -522,6 +522,18 @@ function createWgManagement({
 
   function initialize({ lockHeld = false } = {}) {
     if (initializationPromise) return initializationPromise;
+    if (!lockHeld) {
+      try {
+        fs.lstatSync(journalPath);
+      } catch (error) {
+        if (error && error.code === "ENOENT") {
+          initializationPromise = Promise.resolve();
+          return initializationPromise;
+        }
+        initializationPromise = Promise.reject(new ManagementRequestError(503, "rollback_failed"));
+        return initializationPromise;
+      }
+    }
     const recover = async () => {
       let journal;
       try {
