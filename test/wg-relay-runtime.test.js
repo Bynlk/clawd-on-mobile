@@ -66,6 +66,22 @@ test("cleanup drops all secrets, statuses, and listeners", () => {
   assert.equal(fired, 1);
 });
 
+test("removeStatus clears one profile status and pcConfig without disturbing peers", () => {
+  const rt = createWgRelayRuntime();
+  rt.setStatus("wg-1", { status: "connected", generation: 1 });
+  rt.setStatus("wg-2", { status: "connected", generation: 1 });
+  rt.rememberPcConf("wg-1", "secret-one");
+  rt.rememberPcConf("wg-2", "secret-two");
+
+  assert.equal(rt.removeStatus("wg-1"), true);
+
+  assert.deepEqual(rt.getProfileStatus("wg-1"), { profileId: "wg-1", status: "idle", generation: 0 });
+  assert.equal(rt.getPcConf("wg-1"), null);
+  assert.equal(rt.getProfileStatus("wg-2").status, "connected");
+  assert.equal(rt.getPcConf("wg-2"), "secret-two");
+  assert.equal(rt.removeStatus("wg-1"), false);
+});
+
 test("one-click connection states expose only generation and the fixed state set", () => {
   const rt = createWgRelayRuntime();
   const states = [

@@ -53,6 +53,38 @@ test("write/read/remove stores only encrypted profile blobs", (t) => {
   assert.equal(store.read("wg-1"), null);
 });
 
+test("preflight verifies safeStorage roundtrip and the atomic store path without adding a profile", (t) => {
+  const userDataPath = makeTempDir(t);
+  const calls = [];
+  const store = createWgRelaySecretStore({
+    safeStorage: makeSafeStorage({
+      encryptString(plaintext) {
+        calls.push("encrypt");
+        return xor(plaintext);
+      },
+      decryptString(ciphertext) {
+        calls.push("decrypt");
+        return xor(ciphertext).toString("utf8");
+      },
+    }),
+    userDataPath,
+    fs: {
+      ...fs,
+      renameSync(from, to) {
+        calls.push("rename");
+        return fs.renameSync(from, to);
+      },
+    },
+    platform: "darwin",
+  });
+
+  assert.equal(store.preflight(), true);
+  assert.deepEqual(calls, ["encrypt", "decrypt", "rename"]);
+  assert.equal(store.read("wg-1"), null);
+  const disk = JSON.parse(fs.readFileSync(path.join(userDataPath, FILE_NAME), "utf8"));
+  assert.deepEqual(Object.keys(disk.profiles), []);
+});
+
 test("schema-valid Object prototype names can be written, reloaded, and removed", (t) => {
   const userDataPath = makeTempDir(t);
   const options = {

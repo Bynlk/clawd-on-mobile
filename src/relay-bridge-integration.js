@@ -36,6 +36,9 @@ class RelayBridge extends EventEmitter {
     super();
     this.WebSocketImpl = options.WebSocketImpl || WebSocket;
     this.localToken = typeof options.localToken === "string" ? options.localToken : "";
+    this.getLocalToken = typeof options.getLocalToken === "function"
+      ? options.getLocalToken
+      : () => this.localToken;
     this.getLocalPort = typeof options.getLocalPort === "function" ? options.getLocalPort : () => 23334;
     this.log = typeof options.log === "function" ? options.log : () => {};
     this.config = null;
@@ -286,11 +289,25 @@ class RelayBridge extends EventEmitter {
       this._localOpen = false;
       this.closeWs(existing, "local socket replaced");
     }
-    const localUrl = `ws://127.0.0.1:${this.getLocalPort()}/mobile/ws?role=pc`;
+    let localToken;
+    let localPort;
+    try {
+      localToken = this.getLocalToken();
+      localPort = this.getLocalPort();
+    } catch (_) {
+      this._reportFailure("local_connect_failed", generation);
+      return;
+    }
+    if (typeof localToken !== "string" || localToken.length === 0 || localToken.length > 4096
+        || !Number.isInteger(localPort) || localPort < 1 || localPort > 65535) {
+      this._reportFailure("local_connect_failed", generation);
+      return;
+    }
+    const localUrl = `ws://127.0.0.1:${localPort}/mobile/ws?role=pc`;
     let ws;
     try {
       ws = new this.WebSocketImpl(localUrl, {
-        headers: { Authorization: `Bearer ${this.localToken}` },
+        headers: { Authorization: `Bearer ${localToken}` },
       });
     } catch (_) {
       this._reportFailure("local_connect_failed", generation);

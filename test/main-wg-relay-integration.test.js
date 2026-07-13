@@ -3,14 +3,17 @@
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
+const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
+const WebSocket = require("ws");
 
 const {
   createWgRelayMainIntegration,
   createWgRelayQuitBarrier,
 } = require("../src/wg-relay-ipc");
+const { MobileWSServer } = require("../src/mobile-ws-server");
 
 const PC_CONFIG = [
   "[Interface]", `PrivateKey = ${Buffer.alloc(32, 1).toString("base64")}`,
@@ -102,6 +105,28 @@ function makeIntegration(t, overrides = {}) {
   return { events, integration, ipc, sidecarOptions, userDataPath };
 }
 
+async function listen(t, server) {
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    if (!server.listening) return;
+    await new Promise((resolve) => server.close(resolve));
+  });
+  return server.address().port;
+}
+
+function attachWebSocketServer(t, server, onUpgrade) {
+  const wss = new WebSocket.Server({ noServer: true });
+  server.on("upgrade", (request, socket, head) => {
+    if (onUpgrade && !onUpgrade(request, socket)) return;
+    wss.handleUpgrade(request, socket, head, (ws) => wss.emit("connection", ws, request));
+  });
+  t.after(() => {
+    for (const client of wss.clients) client.terminate();
+    wss.close();
+  });
+  return wss;
+}
+
 test("main integration creates secure storage and the packaged sidecar lazily with exact platform paths", async (t) => {
   const fx = makeIntegration(t);
   assert.equal(fx.integration.available, true);
@@ -127,6 +152,81 @@ test("main integration creates secure storage and the packaged sidecar lazily wi
   await fx.integration.dispose();
   assert.equal(fx.integration.getForwardEndpoint("wg-1"), null);
   assert.equal(fx.ipc.handlers.size, 0);
+});
+
+test("main integration uses real RelayBridge with current Mobile token and actual dynamic port", async (t) => {
+  const relayToken = "11".repeat(32);
+  const staleMobileToken = "MOBILE-TOKEN-STALE";
+  const currentMobileToken = "MOBILE-TOKEN-CURRENT";
+  const relayAuthorizations = [];
+  const relayHttp = http.createServer();
+  attachWebSocketServer(t, relayHttp, (request, socket) => {
+    relayAuthorizations.push(request.headers.authorization || "");
+    if (request.headers.authorization !== `Bearer ${relayToken}`) {
+      socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      return false;
+    }
+    return true;
+  });
+  const relayPort = await listen(t, relayHttp);
+
+  let currentPort = null;
+  let currentToken = staleMobileToken;
+  const logs = [];
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-wg-real-bridge-"));
+  t.after(() => fs.rmSync(userDataPath, { recursive: true, force: true }));
+  const integration = createWgRelayMainIntegration({
+    ipcMain: ipcMain(),
+    BrowserWindow: { getAllWindows: () => [] },
+    settingsController: settingsController(),
+    dialog: { showMessageBox: async () => ({ response: 0 }) },
+    safeStorage: safeStorage(),
+    userDataPath,
+    resourcesPath: "/Applications/Clawd.app/Contents/Resources",
+    appRoot: "/workspace/clawd",
+    isPackaged: true,
+    platform: "darwin",
+    arch: "arm64",
+    sidecarFactory(options) {
+      const sidecar = new FakeSidecar(options, []);
+      sidecar.start = async () => ({ listen: `127.0.0.1:${relayPort}`, generation: 1 });
+      return sidecar;
+    },
+    healthProbe: async () => ({ version: 1, status: "ok", uptimeSeconds: 0 }),
+    bridgeTimeoutMs: 500,
+    mobileIntegration: {
+      getMobileToken: () => currentToken,
+      getMobileServerPort: () => currentPort,
+    },
+    log: (...parts) => logs.push(parts.join(" ")),
+  });
+
+  const mobileHttp = http.createServer();
+  const mobileWss = attachWebSocketServer(t, mobileHttp);
+  const mobileServer = new MobileWSServer(mobileHttp, {
+    token: currentMobileToken,
+    maxClients: 4,
+    heartbeatIntervalMs: 60_000,
+  });
+  mobileServer.attachWSS(mobileWss);
+  currentPort = await listen(t, mobileHttp);
+  currentToken = currentMobileToken;
+
+  integration.secretStore.write("wg-1", {
+    pcConfig: PC_CONFIG,
+    relayUrl: `ws://127.0.0.1:${relayPort}`,
+    relayToken,
+    managementToken: "22".repeat(32),
+    phoneConfig: "encrypted-only",
+  });
+
+  const state = await integration.connection.connect("wg-1");
+
+  assert.equal(state.status, "connected");
+  assert.equal(mobileServer.getClientCount(), 1);
+  assert.deepEqual(relayAuthorizations, [`Bearer ${relayToken}`]);
+  assert.doesNotMatch(JSON.stringify(logs), new RegExp(`${relayToken}|${staleMobileToken}|${currentMobileToken}`));
+  await integration.dispose();
 });
 
 test("safeStorage unavailable and Linux basic_text fail closed while IPC remains available", async (t) => {
@@ -197,6 +297,34 @@ test("quit barrier prevents exit until one asynchronous WG Relay disposal comple
   assert.equal(disposeCalls, 1);
 });
 
+test("quit barrier keeps the process alive after recovery persistence failure and allows retry", async () => {
+  let disposeCalls = 0;
+  let quitCalls = 0;
+  const barrier = createWgRelayQuitBarrier({
+    dispose() {
+      disposeCalls += 1;
+      if (disposeCalls === 1) throw Object.assign(new Error("recovery pending"), {
+        code: "recovery_persistence_required",
+      });
+      return Promise.resolve();
+    },
+    quit() { quitCalls += 1; },
+    schedule(callback) { callback(); },
+  });
+  const firstEvent = { prevented: false, preventDefault() { this.prevented = true; } };
+
+  assert.equal(barrier.beforeQuit(firstEvent), true);
+  await assert.rejects(barrier.wait(), (error) => error.code === "recovery_persistence_required");
+  assert.equal(firstEvent.prevented, true);
+  assert.equal(quitCalls, 0);
+
+  const retryEvent = { prevented: false, preventDefault() { this.prevented = true; } };
+  assert.equal(barrier.beforeQuit(retryEvent), true);
+  await barrier.wait();
+  assert.equal(disposeCalls, 2);
+  assert.equal(quitCalls, 1);
+});
+
 test("integration disposal is idempotent and suppresses late sidecar endpoint publication", async (t) => {
   let releaseStart;
   const startGate = new Promise((resolve) => { releaseStart = resolve; });
@@ -265,7 +393,7 @@ test("main.js wires WG Relay only inside app readiness and gates quit on disposa
   for (const fragment of [
     "safeStorage,", 'userDataPath: app.getPath("userData")', "resourcesPath: process.resourcesPath",
     "isPackaged: app.isPackaged", "platform: process.platform", "arch: process.arch",
-    "settingsController: _settingsController", "BrowserWindow", "ipcMain", "dialog",
+    "settingsController: _settingsController", "BrowserWindow", "ipcMain", "dialog", "mobileIntegration",
   ]) assert.ok(source.includes(fragment), fragment);
   assert.match(source, /app\.on\("before-quit"[\s\S]*disposeWgRelayIntegration\(\)/);
   assert.match(source, /app\.on\("before-quit"[\s\S]*_wgRelayQuitBarrier\.beforeQuit\(event\)/);

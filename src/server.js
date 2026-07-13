@@ -373,7 +373,7 @@ module.exports = function initServer(ctx) {
       const { initRelayBridge } = require("./relay-bridge-integration");
       const prefsModule = require("./prefs");
       initRelayBridge(prefsModule, {
-        localToken: getMobileToken(),
+        getLocalToken: () => getMobileToken(),
         getLocalPort: () => mobileIntegration.getMobileServerPort() || 23334,
       });
     } catch (e) {

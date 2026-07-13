@@ -179,6 +179,22 @@ function createWgRelaySecretStore(options = {}) {
     persistStore(store);
   }
 
+  function preflight() {
+    assertAvailable();
+    const probe = '{"version":1,"probe":true}';
+    try {
+      const encrypted = safeStorage.encryptString(probe);
+      if ((!Buffer.isBuffer(encrypted) && !(encrypted instanceof Uint8Array))
+          || safeStorage.decryptString(Buffer.from(encrypted)) !== probe) {
+        throw new Error("invalid safeStorage roundtrip");
+      }
+    } catch (_) {
+      throw new Error("Unable to verify WireGuard relay secret encryption");
+    }
+    persistStore(loadStore());
+    return true;
+  }
+
   function read(profileId) {
     assertProfileId(profileId);
     assertAvailable();
@@ -213,7 +229,7 @@ function createWgRelaySecretStore(options = {}) {
     }
   }
 
-  return { isAvailable, write, read, remove, clear };
+  return { isAvailable, preflight, write, read, remove, clear };
 }
 
 module.exports = {

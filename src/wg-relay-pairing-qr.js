@@ -6,6 +6,7 @@ const MAX_DEEP_LINK_BYTES = 8 * 1024;
 const MAX_QR_DATA_URL_BYTES = 512 * 1024;
 const CONTROL_RE = /[\x00-\x1f\x7f]/;
 const TOKEN_RE = /^[0-9a-fA-F]{64}$/;
+const DOMAIN_LABEL_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
 
 function invalid() {
   const error = new Error("Pairing data invalid");
@@ -35,13 +36,57 @@ function parsePrivateCidr(value, prefix) {
 
 function parseEndpoint(value) {
   if (typeof value !== "string" || value.length > 255 || CONTROL_RE.test(value)) return null;
-  const match = /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+):([1-9]\d{0,4})$/.exec(value);
-  if (!match || Number(match[2]) > 65535 || match[1].startsWith("-")) return null;
-  return value;
+  let host;
+  let portText;
+  let ipv6 = false;
+  if (value.startsWith("[")) {
+    const close = value.indexOf("]");
+    if (close < 2 || value[close + 1] !== ":") return null;
+    host = value.slice(1, close);
+    portText = value.slice(close + 2);
+    if (net.isIP(host) !== 6) return null;
+    ipv6 = true;
+  } else {
+    const separator = value.lastIndexOf(":");
+    if (separator < 1 || value.indexOf(":") !== separator) return null;
+    host = value.slice(0, separator);
+    portText = value.slice(separator + 1);
+    const ipVersion = net.isIP(host);
+    if (ipVersion === 6) return null;
+    if (ipVersion !== 4) {
+      if (host.length > 253 || host.split(".").some((label) => !DOMAIN_LABEL_RE.test(label))) return null;
+      host = host.toLowerCase();
+    }
+  }
+  if (!/^[1-9]\d{0,4}$/.test(portText)) return null;
+  const port = Number(portText);
+  if (port > 65535) return null;
+  if (ipv6) {
+    try { host = new URL(`http://[${host}]:${port}`).hostname.toLowerCase(); }
+    catch (_) { return null; }
+  }
+  return { canonical: `${host}:${port}`, port };
 }
 
-function parseConfig(config) {
+function profileTopology(profile) {
+  const subnetHost = parsePrivateCidr(profile && profile.wgSubnet, 24);
+  if (!subnetHost) throw invalid();
+  const octets = subnetHost.split(".").map(Number);
+  if (octets[3] !== 0) throw invalid();
+  const endpoint = parseEndpoint(profile.endpoint);
+  if (!endpoint) throw invalid();
+  const prefix = octets.slice(0, 3).join(".");
+  return {
+    endpoint,
+    phoneAddress: `${prefix}.3/32`,
+    relayUrl: `ws://${prefix}.1:7891`,
+    subnet: `${prefix}.0/24`,
+  };
+}
+
+function parsePhoneConfig(config, profile) {
   if (typeof config !== "string" || config.length === 0 || config.length > 16 * 1024) throw invalid();
+  const topology = profileTopology(profile);
   const sections = { Interface: Object.create(null), Peer: Object.create(null) };
   const seenSections = new Set();
   let active = null;
@@ -71,16 +116,14 @@ function parseConfig(config) {
   const serverPublicKey = canonicalKey(sections.Peer.PublicKey);
   const address = sections.Interface.Address;
   const allowedIp = sections.Peer.AllowedIPs;
-  const addressHost = parsePrivateCidr(address, 32);
-  const subnetHost = parsePrivateCidr(allowedIp, 24);
-  if (!privateKey || !serverPublicKey || !addressHost || !subnetHost
+  const endpoint = parseEndpoint(sections.Peer.Endpoint);
+  if (!privateKey || !serverPublicKey || privateKey === serverPublicKey
+      || address !== topology.phoneAddress
+      || allowedIp !== topology.subnet
       || sections.Peer.PersistentKeepalive !== "25"
-      || !parseEndpoint(sections.Peer.Endpoint)) {
+      || !endpoint || endpoint.canonical !== topology.endpoint.canonical) {
     throw invalid();
   }
-  const addressParts = addressHost.split(".");
-  const subnetParts = subnetHost.split(".");
-  if (addressParts.slice(0, 3).join(".") !== subnetParts.slice(0, 3).join(".")) throw invalid();
   return {
     privateKey,
     address,
@@ -91,16 +134,24 @@ function parseConfig(config) {
   };
 }
 
-function parseRelay(secrets) {
+function parseRelay(secrets, profile) {
+  const topology = profileTopology(profile);
   let url;
   try { url = new URL(secrets.relayUrl); } catch (_) { throw invalid(); }
   if (url.protocol !== "ws:" || url.username || url.password || url.pathname !== "/"
-      || url.search || url.hash || !privateIpv4(url.hostname)
-      || !url.port || Number(url.port) > 65535
+      || url.search || url.hash
+      || url.href.replace(/\/$/, "") !== topology.relayUrl
       || typeof secrets.relayToken !== "string" || !TOKEN_RE.test(secrets.relayToken)) {
     throw invalid();
   }
   return { url: url.href.replace(/\/$/, ""), token: secrets.relayToken };
+}
+
+function validatePairingSecrets(profile, secrets) {
+  return {
+    wireGuard: parsePhoneConfig(secrets && secrets.phoneConfig, profile),
+    relay: parseRelay(secrets || {}, profile),
+  };
 }
 
 function buildPairingDeepLink(options = {}) {
@@ -112,11 +163,12 @@ function buildPairingDeepLink(options = {}) {
       || !Number.isSafeInteger(issuedAt) || issuedAt <= 0) {
     throw invalid();
   }
+  const validated = validatePairingSecrets(profile, secrets);
   const payload = {
     version: 1,
     name: profile.label,
-    wireGuard: parseConfig(secrets.phoneConfig),
-    relay: parseRelay(secrets),
+    wireGuard: validated.wireGuard,
+    relay: validated.relay,
     issuedAt,
   };
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -153,4 +205,6 @@ module.exports = {
   buildPairingDeepLink,
   createPairingQr,
   MAX_DEEP_LINK_BYTES,
+  parsePhoneConfig,
+  validatePairingSecrets,
 };

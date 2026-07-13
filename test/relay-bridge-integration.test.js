@@ -1,9 +1,17 @@
 "use strict";
 
 const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
+const path = require("node:path");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { RelayBridge } = require("../src/relay-bridge-integration");
+
+test("production server injects a Mobile token provider instead of a startup snapshot", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/server.js"), "utf8");
+  assert.match(source, /initRelayBridge\(prefsModule,\s*\{[\s\S]*?getLocalToken:\s*\(\)\s*=>\s*getMobileToken\(\)/);
+  assert.doesNotMatch(source, /initRelayBridge\(prefsModule,\s*\{[\s\S]*?localToken:\s*getMobileToken\(\)/);
+});
 
 class FakeWebSocket extends EventEmitter {
   static OPEN = 1;
@@ -87,6 +95,27 @@ test("configure/start/wait connect Relay then the authenticated local mobile end
 
   await waiting;
   assert.equal(bridge.status, "connected");
+  await bridge.stop();
+});
+
+test("local connection reads the current Mobile token and port when the socket is created", async () => {
+  let token = "token-before-start";
+  let port = 23334;
+  const { bridge, logs } = fixture({
+    localToken: "stale-constructor-token",
+    getLocalToken: () => token,
+    getLocalPort: () => port,
+  });
+  bridge.configure({ url: "ws://127.0.0.1:43127", token: "relay-secret" }).start();
+  token = "token-at-connect";
+  port = 24444;
+
+  FakeWebSocket.connections[0].open();
+
+  const local = FakeWebSocket.connections[1];
+  assert.equal(local.url, "ws://127.0.0.1:24444/mobile/ws?role=pc");
+  assert.deepEqual(local.options.headers, { Authorization: "Bearer token-at-connect" });
+  assert.doesNotMatch(JSON.stringify(logs), /token-before-start|token-at-connect|stale-constructor-token/);
   await bridge.stop();
 });
 

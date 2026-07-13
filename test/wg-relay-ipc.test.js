@@ -20,6 +20,8 @@ const PROFILE = {
   authMethod: "password",
   wgPort: 51820,
   wgSubnet: "10.8.0.0/24",
+  endpoint: "203.0.113.10:51820",
+  relayAddr: "ws://10.8.0.1:7891",
 };
 const FINGERPRINT = `SHA256:${Buffer.alloc(32, 9).toString("base64")}`;
 const PC_KEY = Buffer.alloc(32, 1).toString("base64");
@@ -28,7 +30,7 @@ const SERVER_KEY = Buffer.alloc(32, 3).toString("base64");
 const RELAY_TOKEN = "11".repeat(32);
 const MANAGEMENT_TOKEN = "22".repeat(32);
 
-function config(address, privateKey) {
+function config(address, privateKey, endpoint = "203.0.113.10:51820") {
   return [
     "[Interface]",
     `PrivateKey = ${privateKey}`,
@@ -36,7 +38,7 @@ function config(address, privateKey) {
     "",
     "[Peer]",
     `PublicKey = ${SERVER_KEY}`,
-    "Endpoint = 203.0.113.10:51820",
+    `Endpoint = ${endpoint}`,
     "AllowedIPs = 10.8.0.0/24",
     "PersistentKeepalive = 25",
     "",
@@ -132,6 +134,12 @@ function fixture(options = {}) {
   const secretCalls = [];
   const secretStore = {
     isAvailable: () => options.secretAvailable !== false,
+    preflight() {
+      secretCalls.push(["preflight"]);
+      if (options.secretPreflight) return options.secretPreflight(stored);
+      if (options.secretAvailable === false) throw new Error("unavailable");
+      return true;
+    },
     write(id, value) {
       secretCalls.push(["write", id, structuredClone(value)]);
       if (options.secretWrite) return options.secretWrite(id, value, stored);
@@ -224,7 +232,7 @@ function assertNoSecrets(value, extra = []) {
 }
 
 test("registers the exact Task 6 contract and dispose removes handlers/listeners", async () => {
-  const fx = fixture();
+  const fx = fixture({ profiles: [PROFILE] });
   for (const channel of [
     "wgRelay:deploy", "wgRelay:connect", "wgRelay:disconnect", "wgRelay:rotate-phone",
     "wgRelay:delete-local", "wgRelay:pairing-qr", "wgRelay:status", "wgRelay:list-statuses",
@@ -247,6 +255,7 @@ test("deploy sanitizes profile, confirms TOFU, persists/reads secrets before pub
     password,
   };
   fx = fixture({
+    secretPreflight() { order.push("secret-preflight"); },
     secretWrite(id, value, stored) { order.push("secret-write"); stored.set(id, structuredClone(value)); },
     secretRead(id, stored) { order.push("secret-read"); return structuredClone(stored.get(id)); },
     publicWrite() { order.push("public-write"); },
@@ -266,7 +275,10 @@ test("deploy sanitizes profile, confirms TOFU, persists/reads secrets before pub
 
   const result = await fx.ipcMain.invoke("wgRelay:deploy", request);
 
-  assert.deepEqual(order, ["secret-read", "ssh-deploy", "secret-write", "secret-read", "public-write", "connect", "qr"]);
+  assert.deepEqual(order, [
+    "secret-read", "secret-preflight", "ssh-deploy", "secret-write", "secret-read",
+    "public-write", "secret-read", "connect", "qr",
+  ]);
   assert.equal(fx.dialogCalls.length, 1);
   assert.match(fx.dialogCalls[0].detail, new RegExp(FINGERPRINT.replace("+", "\\+")));
   assert.equal(result.status, "ok");
@@ -312,7 +324,25 @@ test("TOFU rejection and known-key mismatch are stable and never expose an overr
   assert.equal(Object.hasOwn(mismatchResult, "message"), false);
 });
 
-test("deploy rolls local secret/public/connection/QR state back when QR generation fails", async () => {
+test("deploy failures allowlist structured codes instead of copying secret-like values", async () => {
+  const sshPassword = "SSH-PASSWORD-MUST-NOT-LEAK";
+  const fx = fixture({
+    deployFn: async () => ({
+      ok: false,
+      step: RELAY_TOKEN,
+      reason: sshPassword,
+      hint: RELAY_TOKEN,
+      message: PC_KEY,
+    }),
+  });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: sshPassword });
+
+  assert.deepEqual(result, { status: "error", errorCode: "deploy_failed" });
+  assertNoSecrets({ result, events: fx.sent, logs: fx.logs }, [sshPassword]);
+});
+
+test("deploy commitPoint keeps new secrets/public state and clears old QR when QR generation fails", async () => {
   const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
   const oldProfile = {
     ...PROFILE, sshHostFingerprint: FINGERPRINT,
@@ -333,26 +363,17 @@ test("deploy rolls local secret/public/connection/QR state back when QR generati
 
   const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
 
-  assert.deepEqual(result, { status: "error", errorCode: "deploy_failed" });
-  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
-  assert.deepEqual(fx.profiles(), [oldProfile]);
-  assert.deepEqual(fx.connectionCalls, [
-    ["disconnect", "wg-1"], ["connect", "wg-1"],
-    ["disconnect", "wg-1"], ["connect", "wg-1"],
-  ]);
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "pairing_qr_retry_required");
+  assert.deepEqual(fx.stored.get("wg-1"), secretValue());
+  assert.notDeepEqual(fx.profiles(), [oldProfile]);
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"], ["connect", "wg-1"]]);
   const cached = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
-  assert.equal(cached.qr.dataUrl, "data:image/png;base64,OLD");
+  assert.deepEqual(cached, { status: "error", errorCode: "pairing_qr_failed" });
   assertNoSecrets({ result, events: fx.sent, logs: fx.logs });
 });
 
-test("secret verification failure leaves no public profile and duplicate deploys coalesce", async () => {
-  let badReads = 0;
-  const bad = fixture({ secretRead: () => (++badReads === 1 ? null : { corrupt: true }) });
-  const badResult = await bad.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
-  assert.deepEqual(badResult, { status: "error", errorCode: "deploy_failed" });
-  assert.equal(bad.publicWrites.length, 0);
-  assert.equal(bad.stored.has("wg-1"), false);
-
+test("duplicate deploys for one profile coalesce", async () => {
   const gate = deferred();
   let deployCount = 0;
   const coalesced = fixture({
@@ -374,27 +395,73 @@ test("secret verification failure leaves no public profile and duplicate deploys
   assert.equal(Object.hasOwn(secondPayload, "password"), false);
 });
 
-test("deploy restores existing secrets when write succeeds but verification read throws", async () => {
-  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
-  let reads = 0;
+test("queued rotate uses the committed public profile instead of its pre-queue snapshot", async () => {
+  const gate = deferred();
+  const newEndpoint = "relay.example.com:51820";
+  const newProfile = { ...PROFILE, label: "New VPS" };
+  const newReadback = readback({
+    endpoint: newEndpoint,
+    pcConfig: config("10.8.0.2/32", PC_KEY, newEndpoint),
+    phoneConfig: config("10.8.0.3/32", PHONE_KEY, newEndpoint),
+  });
   const fx = fixture({
     profiles: [PROFILE],
-    secrets: { "wg-1": oldSecrets },
-    secretRead(id, stored) {
-      reads += 1;
-      if (reads === 2) throw new Error("verification unavailable");
-      return stored.has(id) ? structuredClone(stored.get(id)) : null;
+    secrets: { "wg-1": secretValue() },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async deployFn() {
+      await gate.promise;
+      return { ok: true, readback: newReadback, acceptedFingerprint: FINGERPRINT };
+    },
+    async rotatePhoneFn() {
+      return {
+        version: 1,
+        phoneConfig: config("10.8.0.3/32", Buffer.alloc(32, 4).toString("base64"), newEndpoint),
+        relayToken: "44".repeat(32),
+      };
     },
   });
 
-  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+  const deploying = fx.ipcMain.invoke("wgRelay:deploy", { profile: newProfile, password: "secret" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const rotating = fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+  gate.resolve();
 
-  assert.deepEqual(result, { status: "error", errorCode: "deploy_failed" });
-  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
-  assert.equal(fx.publicWrites.length, 0);
+  assert.equal((await deploying).status, "ok");
+  assert.equal((await rotating).status, "ok");
+  assert.equal(fx.stored.get("wg-1").relayToken, "44".repeat(32));
 });
 
-test("deploy rolls public state back when the controller mutates then reports persistence failure", async () => {
+test("deploy commitPoint keeps a failed durable bundle in recovery and retries locally without SSH", async () => {
+  let failVerification = true;
+  let deployCount = 0;
+  const fx = fixture({
+    secretRead(id, stored) {
+      if (failVerification && stored.has(id)) throw new Error("verification unavailable");
+      return stored.has(id) ? structuredClone(stored.get(id)) : null;
+    },
+    async deployFn() {
+      deployCount += 1;
+      return { ok: true, readback: readback(), acceptedFingerprint: FINGERPRINT };
+    },
+  });
+
+  const first = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+  assert.equal(first.status, "partial_success");
+  assert.equal(first.errorCode, "local_storage_retry_required");
+  assert.equal(fx.publicWrites.length, 0);
+  assert.equal(fx.connectionCalls.length, 0);
+  assertNoSecrets(first);
+
+  failVerification = false;
+  const retried = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "unused" });
+  assert.equal(retried.status, "ok");
+  assert.equal(deployCount, 1);
+  assert.deepEqual(fx.stored.get("wg-1"), secretValue());
+  assert.equal(fx.connection.status("wg-1").status, "connected");
+  assertNoSecrets(retried);
+});
+
+test("deploy commitPoint never removes new secrets when public persistence reports failure", async () => {
   let failedOnce = false;
   const fx = fixture({
     publicWrite(action, payload, profiles) {
@@ -409,10 +476,135 @@ test("deploy rolls public state back when the controller mutates then reports pe
 
   const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
 
-  assert.deepEqual(result, { status: "error", errorCode: "deploy_failed" });
-  assert.deepEqual(fx.profiles(), []);
-  assert.equal(fx.stored.has("wg-1"), false);
-  assert.deepEqual(fx.publicWrites.map((entry) => entry.action), ["wgRelay.add", "wgRelay.remove"]);
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "public_profile_retry_required");
+  assert.deepEqual(fx.stored.get("wg-1"), secretValue());
+  assert.equal(fx.profiles().length, 1);
+  assert.deepEqual(fx.publicWrites.map((entry) => entry.action), ["wgRelay.add"]);
+  assertNoSecrets(result);
+});
+
+test("deploy preflight failure preserves old state and never calls SSH", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  let deployCount = 0;
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    secretPreflight() { throw new Error("disk read only"); },
+    async deployFn() { deployCount += 1; return { ok: true, readback: readback() }; },
+  });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.deepEqual(result, { status: "error", errorCode: "secret_store_preflight_failed" });
+  assert.equal(deployCount, 0);
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.deepEqual(fx.profiles(), [PROFILE]);
+  assert.equal(fx.connectionCalls.length, 0);
+});
+
+test("deploy commitPoint connection failure keeps new secrets and pairing retries from them", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    connect() { throw Object.assign(new Error(RELAY_TOKEN), { code: "relay_auth_failed" }); },
+    qrEncoder({ secrets }) {
+      return { version: 1, dataUrl: `data:image/png;base64,${secrets.relayToken.slice(0, 8)}` };
+    },
+  });
+  const oldQr = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "connection_retry_required");
+  assert.deepEqual(fx.stored.get("wg-1"), secretValue());
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"], ["connect", "wg-1"]]);
+  const newQr = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+  assert.notEqual(newQr.qr.dataUrl, oldQr.qr.dataUrl);
+  assertNoSecrets({ result, events: fx.sent, logs: fx.logs });
+});
+
+test("deploy commitPoint blocks old local credentials when successful readback has an invalid phone topology", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async deployFn() {
+      return {
+        ok: true,
+        acceptedFingerprint: FINGERPRINT,
+        readback: readback({ phoneConfig: config("10.8.0.4/32", PHONE_KEY) }),
+      };
+    },
+  });
+  await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_committed_invalid_response",
+  });
+  assertNoSecrets({ result, events: fx.sent, logs: fx.logs });
+});
+
+test("deploy commitPoint blocks old local credentials when readback cannot form a public profile", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async deployFn() {
+      return {
+        ok: true,
+        readback: readback({ endpoint: "not-an-endpoint" }),
+        acceptedFingerprint: FINGERPRINT,
+      };
+    },
+  });
+  await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_committed_invalid_response",
+  });
+});
+
+test("deploy commitPoint tombstones old credentials when canonical public profile sanitization fails", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async deployFn() {
+      return {
+        ok: true,
+        readback: readback({ endpoint: "relay.example.com:51820\nsecret" }),
+        acceptedFingerprint: FINGERPRINT,
+      };
+    },
+  });
+  await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_committed_invalid_response",
+  });
 });
 
 test("connect/disconnect/status/list-statuses return only stable redacted Task 5 snapshots", async () => {
@@ -428,13 +620,19 @@ test("connect/disconnect/status/list-statuses return only stable redacted Task 5
   assert.equal(disconnected.state.status, "idle");
 });
 
-test("status results and broadcasts drop unexpected secret-like fields and messages", async () => {
+test("status results and broadcasts validate values and expose only the minimal stable schema", async () => {
+  const sshPassword = "SSH-PASSWORD-MUST-NOT-LEAK";
   const fx = fixture({
     profiles: [PROFILE],
     connect: async () => ({
-      profileId: "wg-1",
-      status: "connected",
-      generation: 1,
+      profileId: RELAY_TOKEN,
+      status: PHONE_KEY,
+      generation: sshPassword,
+      errorCode: PC_KEY,
+      hint: RELAY_TOKEN,
+      ifName: PHONE_KEY,
+      address: sshPassword,
+      updatedAt: RELAY_TOKEN,
       message: RELAY_TOKEN,
       token: RELAY_TOKEN,
       managementToken: MANAGEMENT_TOKEN,
@@ -442,15 +640,55 @@ test("status results and broadcasts drop unexpected secret-like fields and messa
     }),
   });
   const result = await fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" });
-  fx.runtime.emit("status-changed", {
-    profileId: "wg-1", status: "connected", generation: 2,
-    message: RELAY_TOKEN, relayToken: RELAY_TOKEN,
-  });
+  for (const secret of [RELAY_TOKEN, PC_KEY, sshPassword]) {
+    for (const field of [
+      "profileId", "status", "generation", "errorCode",
+      "hint", "ifName", "address", "updatedAt",
+    ]) {
+      fx.runtime.emit("status-changed", {
+        profileId: "wg-1", status: "connected", generation: 2, [field]: secret,
+      });
+    }
+    for (const field of ["profileId", "step", "status", "hint", "message"]) {
+      fx.runtime.emit("progress", {
+        profileId: "wg-1", step: "install", status: "start", [field]: secret,
+      });
+    }
+  }
   assert.deepEqual(result, {
     status: "ok",
-    state: { profileId: "wg-1", status: "connected", generation: 1 },
+    state: {
+      profileId: "wg-1", status: "idle", generation: 0, errorCode: "connection_failed",
+    },
   });
-  assertNoSecrets({ result, events: fx.sent });
+  for (const entry of fx.sent) {
+    const allowed = entry.channel === "wgRelay:progress"
+      ? ["profileId", "status", "step"]
+      : ["errorCode", "generation", "profileId", "status"];
+    assert.deepEqual(
+      Object.keys(entry.payload).sort(),
+      allowed.filter((key) => Object.hasOwn(entry.payload, key)).sort(),
+    );
+  }
+  assertNoSecrets({ result, events: fx.sent }, [sshPassword]);
+});
+
+test("progress boundary preserves every fixed production deploy stage", () => {
+  const fx = fixture({ profiles: [PROFILE] });
+  const steps = [
+    "connect", "host-key", "upload", "install", "install-wg", "gen-keys",
+    "write-conf", "start-service", "firewall", "readback", "validate",
+  ];
+
+  for (const step of steps) {
+    fx.runtime.emitProgress({ profileId: "wg-1", step, status: "start", message: RELAY_TOKEN });
+  }
+
+  assert.deepEqual(
+    fx.sent.filter((entry) => entry.channel === "wgRelay:progress").map((entry) => entry.payload.step),
+    steps,
+  );
+  assertNoSecrets(fx.sent);
 });
 
 test("requestPhoneRotation sends a bounded loopback-only bearer request and validates strict response schema", async (t) => {
@@ -464,6 +702,7 @@ test("requestPhoneRotation sends a bounded loopback-only bearer request and vali
       if (req.url === "/redirect") { res.statusCode = 302; res.setHeader("location", "http://example.com/"); res.end(); return; }
       if (req.url === "/large") { res.setHeader("content-type", "application/json"); res.end("x".repeat(1024)); return; }
       if (req.url === "/invalid") { res.end(JSON.stringify({ version: 1, phoneConfig: "x", relayToken: RELAY_TOKEN, extra: true })); return; }
+      if (req.url === "/stall") { res.setHeader("content-type", "application/json"); res.flushHeaders(); return; }
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ version: 1, phoneConfig: config("10.8.0.3/32", PHONE_KEY), relayToken: RELAY_TOKEN }));
     });
@@ -500,7 +739,11 @@ test("requestPhoneRotation sends a bounded loopback-only bearer request and vali
   );
   await assert.rejects(
     requestPhoneRotation({ listen, managementToken: MANAGEMENT_TOKEN, path: "/invalid", timeoutMs: 100 }),
-    (error) => error.code === "management_invalid_response",
+    (error) => error.code === "management_invalid_response" && error.remoteCommitted === true,
+  );
+  await assert.rejects(
+    requestPhoneRotation({ listen, managementToken: MANAGEMENT_TOKEN, path: "/stall", timeoutMs: 10 }),
+    (error) => error.code === "management_timeout" && error.remoteCommitted === true,
   );
   await assert.rejects(
     requestPhoneRotation({ listen: "203.0.113.10:80", managementToken: MANAGEMENT_TOKEN }),
@@ -534,7 +777,7 @@ test("rotate-phone reconnects with verified new secrets and replaces QR only aft
   assert.equal(cached.qr.dataUrl, result.qr.dataUrl);
 });
 
-test("rotate-phone failure restores old local secrets/connection/QR and never replaces cache", async () => {
+test("rotate commitPoint connection failure keeps new secrets, clears old QR, and never reconnects old token", async () => {
   const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
   const newToken = "44".repeat(32);
   let connectCount = 0;
@@ -556,25 +799,57 @@ test("rotate-phone failure restores old local secrets/connection/QR and never re
   const oldQr = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
   const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
 
-  assert.deepEqual(result, { status: "error", errorCode: "rotate_failed" });
-  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
-  assert.equal(fx.connection.status("wg-1").status, "connected");
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "connection_retry_required");
+  assert.equal(fx.stored.get("wg-1").relayToken, newToken);
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"], ["connect", "wg-1"]]);
   const cached = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
-  assert.equal(cached.qr.dataUrl, oldQr.qr.dataUrl);
+  assert.notEqual(cached.qr.dataUrl, oldQr.qr.dataUrl);
   assertNoSecrets({ result, events: fx.sent, logs: fx.logs }, [newToken]);
 });
 
-test("rotate-phone restores old secrets when the new secret readback throws", async () => {
+test("rotate retry releases a stale old-token connection before connecting with committed secrets", async () => {
   const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
   const newToken = "44".repeat(32);
-  let reads = 0;
+  let disconnectCount = 0;
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    rotatePhoneFn: async () => ({
+      version: 1,
+      phoneConfig: config("10.8.0.3/32", Buffer.alloc(32, 4).toString("base64")),
+      relayToken: newToken,
+    }),
+    disconnect(id, { setState }) {
+      disconnectCount += 1;
+      if (disconnectCount === 1) throw new Error("old connection still active");
+      return setState(id, "idle");
+    },
+  });
+
+  const rotated = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+  const retried = await fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" });
+
+  assert.equal(rotated.status, "partial_success");
+  assert.equal(rotated.errorCode, "connection_retry_required");
+  assert.equal(retried.status, "ok");
+  assert.deepEqual(fx.connectionCalls, [
+    ["disconnect", "wg-1"], ["disconnect", "wg-1"], ["connect", "wg-1"],
+  ]);
+  assert.equal(fx.stored.get("wg-1").relayToken, newToken);
+});
+
+test("rotate commitPoint retains new bundle in recovery when durable readback fails", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const newToken = "44".repeat(32);
+  let failVerification = true;
   const fx = fixture({
     profiles: [PROFILE],
     secrets: { "wg-1": oldSecrets },
     states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
     secretRead(id, stored) {
-      reads += 1;
-      if (reads === 2) throw new Error("verification unavailable");
+      if (failVerification && stored.get(id)?.relayToken === newToken) throw new Error("verification unavailable");
       return stored.has(id) ? structuredClone(stored.get(id)) : null;
     },
     rotatePhoneFn: async () => ({
@@ -584,11 +859,95 @@ test("rotate-phone restores old secrets when the new secret readback throws", as
     }),
   });
 
+  const oldQr = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
   const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
 
-  assert.deepEqual(result, { status: "error", errorCode: "rotate_failed" });
-  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "local_storage_retry_required");
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
   assertNoSecrets({ result, events: fx.sent, logs: fx.logs }, [newToken]);
+
+  failVerification = false;
+  const retried = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+  assert.equal(retried.status, "ok");
+  assert.notEqual(retried.qr.dataUrl, oldQr.qr.dataUrl);
+  assert.equal(fx.stored.get("wg-1").relayToken, newToken);
+});
+
+test("rotate preflight failure preserves old secret, connection, and QR without management POST", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  let rotateCount = 0;
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    secretPreflight() { throw new Error("disk read only"); },
+    async rotatePhoneFn() { rotateCount += 1; throw new Error("must not run"); },
+  });
+  const oldQr = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+
+  const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+
+  assert.deepEqual(result, { status: "error", errorCode: "secret_store_preflight_failed" });
+  assert.equal(rotateCount, 0);
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.equal(fx.connectionCalls.length, 0);
+  const cached = await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+  assert.equal(cached.qr.dataUrl, oldQr.qr.dataUrl);
+});
+
+test("rotate commitPoint blocks old local credentials when response phone topology is invalid", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const newToken = "44".repeat(32);
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async rotatePhoneFn() {
+      return {
+        version: 1,
+        phoneConfig: config("10.8.0.4/32", Buffer.alloc(32, 4).toString("base64")),
+        relayToken: newToken,
+      };
+    },
+  });
+  await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+
+  const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.deepEqual(fx.stored.get("wg-1"), oldSecrets);
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_committed_invalid_response",
+  });
+  assertNoSecrets({ result, events: fx.sent, logs: fx.logs }, [newToken]);
+});
+
+test("rotate treats a rejected invalid response after HTTP success as a committed tombstone", async () => {
+  const oldSecrets = secretValue({ relayToken: "33".repeat(32) });
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": oldSecrets },
+    states: { "wg-1": { profileId: "wg-1", status: "connected", generation: 1 } },
+    async rotatePhoneFn() {
+      const error = new Error("invalid committed response");
+      error.code = "management_invalid_response";
+      error.remoteCommitted = true;
+      throw error;
+    },
+  });
+  await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+
+  const result = await fx.ipcMain.invoke("wgRelay:rotate-phone", { profileId: "wg-1" });
+
+  assert.equal(result.status, "partial_success");
+  assert.equal(result.errorCode, "remote_committed_invalid_response");
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" }), {
+    status: "error", errorCode: "remote_committed_invalid_response",
+  });
 });
 
 test("dispose rejects a late pairing QR and does not let it repopulate the cache", async () => {
@@ -609,6 +968,25 @@ test("dispose rejects a late pairing QR and does not let it repopulate the cache
 
   assert.deepEqual(await pairing, { status: "error", errorCode: "pairing_qr_failed" });
   await disposing;
+  assert.equal(fx.ipcMain.handlers.size, 0);
+});
+
+test("dispose makes one final recovery flush before releasing IPC state", async () => {
+  let failPersist = true;
+  const fx = fixture({
+    secretWrite(id, value, stored) {
+      if (failPersist) throw new Error("disk unavailable");
+      stored.set(id, structuredClone(value));
+    },
+  });
+  const result = await fx.ipcMain.invoke("wgRelay:deploy", { profile: PROFILE, password: "secret" });
+  assert.equal(result.errorCode, "local_storage_retry_required");
+  assert.equal(fx.stored.has("wg-1"), false);
+
+  failPersist = false;
+  await fx.ipc.dispose();
+
+  assert.deepEqual(fx.stored.get("wg-1"), secretValue());
   assert.equal(fx.ipcMain.handlers.size, 0);
 });
 
@@ -638,7 +1016,7 @@ test("delete-local disconnects first, removes local layers idempotently, and rep
   assertNoSecrets({ partialResult, logs: partial.logs, events: partial.sent });
 });
 
-test("delete-local keeps statuses visible when the public profile removal fails", async () => {
+test("delete-local clears runtime and suppresses statuses even when public profile removal fails", async () => {
   const fx = fixture({
     profiles: [PROFILE],
     secrets: { "wg-1": secretValue() },
@@ -658,8 +1036,35 @@ test("delete-local keeps statuses visible when the public profile removal fails"
     errors: ["public_profile_remove_failed"],
   });
   assert.deepEqual(fx.profiles(), [PROFILE]);
-  assert.equal(statuses.statuses.length, 1);
-  assert.equal(statuses.statuses[0].profileId, "wg-1");
-  assert.equal(statuses.statuses[0].status, "idle");
-  assert.equal(statuses.statuses[0].generation, 2);
+  assert.deepEqual(statuses.statuses, []);
+  assert.deepEqual(fx.runtime.getProfileStatus("wg-1"), {
+    profileId: "wg-1", status: "idle", generation: 0,
+  });
+  fx.runtime.setStatus("wg-1", { status: "failed", generation: 3 });
+  assert.deepEqual(await fx.ipcMain.invoke("wgRelay:list-statuses"), { status: "ok", statuses: [] });
+  assert.deepEqual(fx.runtime.listStatuses(), []);
+});
+
+test("operations queued behind partial delete recheck the tombstone and never reuse old secrets", async () => {
+  const gate = deferred();
+  const fx = fixture({
+    profiles: [PROFILE],
+    secrets: { "wg-1": secretValue({ relayToken: "33".repeat(32) }) },
+    async disconnect(id, { setState }) {
+      await gate.promise;
+      return setState(id, "idle");
+    },
+    secretRemove() { throw new Error("disk unavailable"); },
+  });
+
+  const deleting = fx.ipcMain.invoke("wgRelay:delete-local", { profileId: "wg-1" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const pairing = fx.ipcMain.invoke("wgRelay:pairing-qr", { profileId: "wg-1" });
+  const connecting = fx.ipcMain.invoke("wgRelay:connect", { profileId: "wg-1" });
+  gate.resolve();
+
+  assert.equal((await deleting).status, "partial");
+  assert.deepEqual(await pairing, { status: "error", errorCode: "profile_not_found" });
+  assert.deepEqual(await connecting, { status: "error", errorCode: "profile_not_found" });
+  assert.deepEqual(fx.connectionCalls, [["disconnect", "wg-1"]]);
 });

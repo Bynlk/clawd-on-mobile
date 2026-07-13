@@ -101,6 +101,12 @@ function createWgRelayRuntime(options = {}) {
     pcConfs.delete(profileId);
   }
 
+  function removeStatus(profileId) {
+    const removed = statuses.delete(profileId) || pcConfs.has(profileId);
+    pcConfs.delete(profileId);
+    return removed;
+  }
+
   // Drop all in-memory secrets + state. Called on app quit.
   function cleanup() {
     pcConfs.clear();
@@ -121,6 +127,7 @@ function createWgRelayRuntime(options = {}) {
     rememberPcConf,
     getPcConf,
     forgetPcConf,
+    removeStatus,
     cleanup,
   };
 }

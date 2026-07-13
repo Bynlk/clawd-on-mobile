@@ -3330,10 +3330,13 @@ let _wgRelayDisposePromise = null;
 function disposeWgRelayIntegration() {
   if (_wgRelayDisposePromise) return _wgRelayDisposePromise;
   const integration = _wgRelayIntegration;
-  _wgRelayIntegration = null;
-  _wgRelayDisposePromise = integration && typeof integration.dispose === "function"
-    ? Promise.resolve(integration.dispose()).catch(() => {})
-    : Promise.resolve();
+  if (!integration || typeof integration.dispose !== "function") return Promise.resolve();
+  _wgRelayDisposePromise = Promise.resolve(integration.dispose()).then(() => {
+    if (_wgRelayIntegration === integration) _wgRelayIntegration = null;
+  }, (error) => {
+    _wgRelayDisposePromise = null;
+    throw error;
+  });
   return _wgRelayDisposePromise;
 }
 
@@ -3969,6 +3972,7 @@ if (!gotTheLock) {
         ipcMain,
         BrowserWindow,
         settingsController: _settingsController,
+        mobileIntegration,
         dialog,
         safeStorage,
         userDataPath: app.getPath("userData"),
@@ -4106,7 +4110,7 @@ if (!gotTheLock) {
   });
 
   app.on("will-quit", () => {
-    void disposeWgRelayIntegration();
+    void disposeWgRelayIntegration().catch(() => {});
   });
 
   app.on("window-all-closed", () => {

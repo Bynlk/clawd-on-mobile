@@ -7,7 +7,7 @@ const { isDeepStrictEqual } = require("node:util");
 const { deploy: defaultDeploy } = require("./wg-relay-deploy");
 const { createWgRelayConnection } = require("./wg-relay-connection");
 const { normalizeConnectionErrorCode } = require("./wg-relay-error-codes");
-const { createPairingQr } = require("./wg-relay-pairing-qr");
+const { createPairingQr, validatePairingSecrets } = require("./wg-relay-pairing-qr");
 const { sanitizeProfile } = require("./wg-relay-profile");
 const { createWgRelayRuntime } = require("./wg-relay-runtime");
 const { createWgRelaySecretStore } = require("./wg-relay-secret-store");
@@ -19,11 +19,23 @@ const {
 } = require("./wg-pc-tunnel");
 
 const PROFILE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const SAFE_TEXT_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 const TOKEN_RE = /^[0-9a-fA-F]{64}$/;
-const PUBLIC_STATE_FIELDS = new Set([
-  "profileId", "status", "hint", "ifName", "address",
-  "errorCode", "generation", "updatedAt",
+const PUBLIC_STATUSES = new Set([
+  "idle", "starting_tunnel", "verifying_relay", "connecting_relay",
+  "connected", "disconnecting", "failed",
+]);
+const PUBLIC_PROGRESS_STEPS = new Set([
+  "connect", "host-key", "detect", "upload", "install", "install-wg", "gen-keys",
+  "write-conf", "start-service", "firewall", "readback", "validate",
+]);
+const DEPLOY_FAILURE_REASONS = new Set([
+  "host_key", "host_key_changed", "host_key_confirmation_failed", "host_key_unconfirmed",
+  "output_limit", "password_disabled",
+]);
+const DEPLOY_FAILURE_HINTS = new Set([
+  "wgErrFirewall", "wgErrHostKey", "wgErrHostKeyChanged", "wgErrHostKeyConfirmationFailed",
+  "wgErrHostKeyUnconfirmed", "wgErrKernel", "wgErrNoPkgManager", "wgErrNoSudo",
+  "wgErrOutputLimit", "wgErrPasswordDisabled", "wgErrPortInUse",
 ]);
 
 function requireDependency(value, name) {
@@ -34,6 +46,12 @@ function requireDependency(value, name) {
 function codedError(code) {
   const error = new Error(code);
   error.code = code;
+  return error;
+}
+
+function committedError(code) {
+  const error = codedError(code);
+  error.remoteCommitted = true;
   return error;
 }
 
@@ -57,26 +75,26 @@ function findProfile(settingsController, profileId) {
 
 function redactState(value, fallbackId) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const state = {};
-  for (const [key, item] of Object.entries(source)) {
-    if (PUBLIC_STATE_FIELDS.has(key)) state[key] = item;
+  const state = {
+    status: PUBLIC_STATUSES.has(source.status) ? source.status : "idle",
+    generation: Number.isSafeInteger(source.generation) && source.generation >= 0
+      ? source.generation
+      : 0,
+  };
+  if (PROFILE_ID_RE.test(fallbackId || "")) state.profileId = fallbackId;
+  else if (PROFILE_ID_RE.test(source.profileId || "")) state.profileId = source.profileId;
+  if (source.errorCode !== undefined && source.errorCode !== null) {
+    state.errorCode = normalizeConnectionErrorCode(source.errorCode);
   }
-  if (!PROFILE_ID_RE.test(state.profileId || "") && PROFILE_ID_RE.test(fallbackId || "")) {
-    state.profileId = fallbackId;
-  }
-  if (typeof state.status !== "string") state.status = "idle";
-  if (!Number.isSafeInteger(state.generation) || state.generation < 0) state.generation = 0;
   return state;
 }
 
 function redactProgress(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if (!PROFILE_ID_RE.test(value.profileId || "")
-      || !SAFE_TEXT_RE.test(value.step || "")
+      || !PUBLIC_PROGRESS_STEPS.has(value.step)
       || !["start", "ok", "fail"].includes(value.status)) return null;
-  const result = { profileId: value.profileId, step: value.step, status: value.status };
-  if (SAFE_TEXT_RE.test(value.hint || "")) result.hint = value.hint;
-  return result;
+  return { profileId: value.profileId, step: value.step, status: value.status };
 }
 
 function broadcast(BrowserWindow, channel, payload) {
@@ -93,9 +111,9 @@ function broadcast(BrowserWindow, channel, payload) {
 
 function stableDeployFailure(result) {
   const response = { status: "error", errorCode: "deploy_failed" };
-  for (const key of ["step", "reason", "hint"]) {
-    if (result && SAFE_TEXT_RE.test(result[key] || "")) response[key] = result[key];
-  }
+  if (result && PUBLIC_PROGRESS_STEPS.has(result.step)) response.step = result.step;
+  if (result && DEPLOY_FAILURE_REASONS.has(result.reason)) response.reason = result.reason;
+  if (result && DEPLOY_FAILURE_HINTS.has(result.hint)) response.hint = result.hint;
   return response;
 }
 
@@ -148,6 +166,7 @@ function requestPhoneRotation(options = {}) {
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let remoteCommitted = false;
     let request;
     const finish = (error, value) => {
       if (settled) return;
@@ -156,7 +175,9 @@ function requestPhoneRotation(options = {}) {
       if (error) reject(error); else resolve(value);
     };
     const timer = setTimeout(() => {
-      finish(codedError("management_timeout"));
+      finish(remoteCommitted
+        ? committedError("management_timeout")
+        : codedError("management_timeout"));
       if (request && typeof request.destroy === "function") request.destroy();
     }, timeoutMs);
     try {
@@ -182,11 +203,12 @@ function requestPhoneRotation(options = {}) {
           finish(codedError("management_http_status"));
           return;
         }
+        remoteCommitted = true;
         const contentType = String(response.headers && response.headers["content-type"] || "")
           .split(";", 1)[0].trim().toLowerCase();
         if (contentType !== "application/json") {
           response.resume();
-          finish(codedError("management_invalid_response"));
+          finish(committedError("management_invalid_response"));
           return;
         }
         const chunks = [];
@@ -196,7 +218,7 @@ function requestPhoneRotation(options = {}) {
           const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
           size += data.length;
           if (size > maxBytes) {
-            finish(codedError("management_response_too_large"));
+            finish(committedError("management_response_too_large"));
             if (typeof response.destroy === "function") response.destroy();
             return;
           }
@@ -206,14 +228,16 @@ function requestPhoneRotation(options = {}) {
           if (settled) return;
           let parsed;
           try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
-          catch (_) { finish(codedError("management_invalid_response")); return; }
+          catch (_) { finish(committedError("management_invalid_response")); return; }
           try { finish(null, validateRotationResult(parsed)); }
-          catch (error) { finish(error); }
+          catch (_) { finish(committedError("management_invalid_response")); }
         });
-        response.on("error", () => finish(codedError("management_request_failed")));
-        response.on("aborted", () => finish(codedError("management_request_failed")));
+        response.on("error", () => finish(committedError("management_request_failed")));
+        response.on("aborted", () => finish(committedError("management_request_failed")));
       });
-      request.on("error", () => finish(codedError("management_request_failed")));
+      request.on("error", () => finish(remoteCommitted
+        ? committedError("management_request_failed")
+        : codedError("management_request_failed")));
       request.end(body);
     } catch (_) {
       finish(codedError("management_request_failed"));
@@ -246,6 +270,9 @@ function registerWgRelayIpc(options = {}) {
   const operationTails = new Map();
   const deployInflight = new Map();
   const qrCache = new Map();
+  const recoveryBundles = new Map();
+  const releaseRequiredProfiles = new Set();
+  const activeDeployProfiles = new Set();
   const deletedProfiles = new Set();
   let disposed = false;
   let disposePromise = null;
@@ -276,6 +303,13 @@ function registerWgRelayIpc(options = {}) {
     catch (_) { return false; }
   }
 
+  function preflightSecretStore() {
+    if (!secretStoreAvailable()) throw codedError("secure_storage_unavailable");
+    if (typeof secretStore.preflight !== "function") throw codedError("secret_store_preflight_failed");
+    try { secretStore.preflight(); }
+    catch (_) { throw codedError("secret_store_preflight_failed"); }
+  }
+
   function confirmHostKey(info) {
     if (!dialog || typeof dialog.showMessageBox !== "function") return Promise.resolve(false);
     return Promise.resolve(dialog.showMessageBox({
@@ -295,11 +329,6 @@ function registerWgRelayIpc(options = {}) {
     if (!isDeepStrictEqual(verified, secrets)) throw codedError("secret_store_verification_failed");
   }
 
-  async function restoreSecrets(profileId, previousSecrets) {
-    if (previousSecrets) await writeAndVerifySecrets(profileId, previousSecrets);
-    else secretStore.remove(profileId);
-  }
-
   async function writePublicProfile(previousProfile, profile) {
     const result = await settingsController.applyCommand(
       previousProfile ? "wgRelay.update" : "wgRelay.add",
@@ -308,25 +337,107 @@ function registerWgRelayIpc(options = {}) {
     if (!result || result.status !== "ok") throw codedError("public_profile_write_failed");
   }
 
-  async function restorePublicProfile(previousProfile, profileId) {
-    const result = previousProfile
-      ? await settingsController.applyCommand("wgRelay.update", previousProfile)
-      : await settingsController.applyCommand("wgRelay.remove", { id: profileId });
-    if (!result || result.status !== "ok") throw codedError("public_profile_rollback_failed");
-  }
-
   async function encodeQr(profile, secrets) {
     return normalizeQr(await qrEncoder({ profile, secrets, issuedAt: now() }));
   }
 
+  function profileWithRecovery(profileId) {
+    if (deletedProfiles.has(profileId)) return null;
+    return findProfile(settingsController, profileId)
+      || (recoveryBundles.get(profileId) && recoveryBundles.get(profileId).profile)
+      || null;
+  }
+
+  function partialSuccess(errorCode, profile, state) {
+    return {
+      status: "partial_success",
+      errorCode,
+      retryable: true,
+      ...(profile ? { profile } : {}),
+      ...(state ? { state: redactState(state, profile && profile.id) } : {}),
+    };
+  }
+
+  async function flushRecovery(profileId) {
+    const recovery = recoveryBundles.get(profileId);
+    if (!recovery) return { ok: true, profile: findProfile(settingsController, profileId) };
+    if (recovery.blocked) {
+      return { ok: false, errorCode: recovery.errorCode, profile: recovery.profile };
+    }
+    try { await writeAndVerifySecrets(profileId, recovery.secrets); }
+    catch (_) {
+      return { ok: false, errorCode: "local_storage_retry_required", profile: recovery.profile };
+    }
+    if (recovery.writePublicProfile) {
+      try {
+        await writePublicProfile(findProfile(settingsController, profileId), recovery.profile);
+      } catch (_) {
+        return { ok: false, errorCode: "public_profile_retry_required", profile: recovery.profile };
+      }
+    }
+    recoveryBundles.delete(profileId);
+    deletedProfiles.delete(profileId);
+    return { ok: true, profile: recovery.profile, secrets: recovery.secrets };
+  }
+
+  async function releaseCommittedConnection(profileId) {
+    if (!releaseRequiredProfiles.has(profileId)) return true;
+    try { await connection.disconnect(profileId); }
+    catch (_) { return false; }
+    releaseRequiredProfiles.delete(profileId);
+    return true;
+  }
+
+  async function finishCommittedDeploy(profileId) {
+    const persisted = await flushRecovery(profileId);
+    if (!persisted.ok) return partialSuccess(persisted.errorCode, persisted.profile);
+    const profile = persisted.profile || findProfile(settingsController, profileId);
+    let secrets = persisted.secrets;
+    if (!secrets) {
+      try { secrets = secretStore.read(profileId); }
+      catch (_) { return partialSuccess("local_storage_retry_required", profile); }
+    }
+    if (!await releaseCommittedConnection(profileId)) {
+      qrCache.delete(profileId);
+      return partialSuccess("connection_retry_required", profile);
+    }
+    let connected;
+    try {
+      connected = await connection.connect(profileId);
+      if (!connected || connected.status !== "connected") throw codedError("connection_failed");
+    } catch (_) {
+      qrCache.delete(profileId);
+      return partialSuccess("connection_retry_required", profile);
+    }
+    try {
+      const qr = await encodeQr(profile, secrets);
+      if (disposed) throw codedError("ipc_disposed");
+      qrCache.set(profileId, qr);
+      return { status: "ok", profile, state: redactState(connected, profileId), qr };
+    } catch (_) {
+      qrCache.delete(profileId);
+      return partialSuccess("pairing_qr_retry_required", profile, connected);
+    }
+  }
+
   const onStatusChanged = (state) => {
-    if (disposed || deletedProfiles.has(state && state.profileId)) return;
-    broadcast(BrowserWindow, "wgRelay:status-changed", redactState(state));
+    if (disposed) return;
+    if (deletedProfiles.has(state && state.profileId)) {
+      if (typeof wgRelayRuntime.removeStatus === "function") {
+        wgRelayRuntime.removeStatus(state.profileId);
+      }
+      return;
+    }
+    const profileId = profileIdFrom(state);
+    if (!profileId || !profileWithRecovery(profileId)) return;
+    broadcast(BrowserWindow, "wgRelay:status-changed", redactState(state, profileId));
   };
   const onProgress = (progress) => {
     if (disposed || deletedProfiles.has(progress && progress.profileId)) return;
     const safe = redactProgress(progress);
-    if (safe) broadcast(BrowserWindow, "wgRelay:progress", safe);
+    if (safe && (profileWithRecovery(safe.profileId) || activeDeployProfiles.has(safe.profileId))) {
+      broadcast(BrowserWindow, "wgRelay:progress", safe);
+    }
   };
   wgRelayRuntime.on("status-changed", onStatusChanged);
   wgRelayRuntime.on("progress", onProgress);
@@ -358,13 +469,21 @@ function registerWgRelayIpc(options = {}) {
 
   handle("wgRelay:connect", async (_event, payload) => {
     const profileId = profileIdFrom(payload);
-    if (!profileId || !findProfile(settingsController, profileId)) {
+    if (!profileId || !profileWithRecovery(profileId)) {
       return { status: "error", errorCode: "profile_not_found" };
     }
     try {
       return await enqueue(profileId, async () => {
-        deletedProfiles.delete(profileId);
+        if (deletedProfiles.has(profileId) || !profileWithRecovery(profileId)) {
+          return { status: "error", errorCode: "profile_not_found" };
+        }
+        const recovered = await flushRecovery(profileId);
+        if (!recovered.ok) return { status: "error", errorCode: recovered.errorCode };
+        if (!await releaseCommittedConnection(profileId)) {
+          return { status: "error", errorCode: "connection_retry_required" };
+        }
         const state = await connection.connect(profileId);
+        deletedProfiles.delete(profileId);
         return { status: "ok", state: redactState(state, profileId) };
       });
     } catch (error) {
@@ -376,10 +495,11 @@ function registerWgRelayIpc(options = {}) {
     const profileId = profileIdFrom(payload);
     if (!profileId) return { status: "error", errorCode: "invalid_profile_id" };
     try {
-      return await enqueue(profileId, async () => ({
-        status: "ok",
-        state: redactState(await connection.disconnect(profileId), profileId),
-      }));
+      return await enqueue(profileId, async () => {
+        const state = await connection.disconnect(profileId);
+        releaseRequiredProfiles.delete(profileId);
+        return { status: "ok", state: redactState(state, profileId) };
+      });
     } catch (error) {
       return { status: "error", errorCode: normalizeConnectionErrorCode(error && error.code) };
     }
@@ -387,82 +507,85 @@ function registerWgRelayIpc(options = {}) {
 
   async function deployTransaction(profile, previousProfile, password) {
     if (!secretStoreAvailable()) return { status: "error", errorCode: "secure_storage_unavailable" };
-    let previousSecrets = null;
-    try { previousSecrets = secretStore.read(profile.id); }
+    try { secretStore.read(profile.id); }
     catch (_) { return { status: "error", errorCode: "secret_store_read_failed" }; }
+    try { preflightSecretStore(); }
+    catch (error) { return { status: "error", errorCode: error.code }; }
     const previousState = redactState(connection.status(profile.id), profile.id);
     const wasConnected = previousState.status === "connected";
-    const previousQr = qrCache.get(profile.id);
-    let secretWritten = false;
-    let publicWritten = false;
-    let connectionTouched = false;
+    let result;
+    activeDeployProfiles.add(profile.id);
     try {
-      const result = await deployFn({
+      result = await deployFn({
         profile,
         password,
         runtime: { forcePhoneKey: false },
         deps: { spawn, runtime: wgRelayRuntime, confirmHostKey },
       });
-      if (!result || !result.ok || !result.readback) return stableDeployFailure(result);
-      if (disposed) throw codedError("ipc_disposed");
-      const readback = result.readback;
-      const secrets = {
-        pcConfig: readback.pcConfig,
-        phoneConfig: readback.phoneConfig,
-        relayToken: readback.relayToken,
-        managementToken: readback.managementToken,
-        relayUrl: readback.relayUrl,
-      };
-      secretWritten = true;
-      await writeAndVerifySecrets(profile.id, secrets);
-      const publicProfile = sanitizeProfile({
-        ...profile,
-        ...(result.acceptedFingerprint ? { sshHostFingerprint: result.acceptedFingerprint } : {}),
-        endpoint: readback.endpoint,
-        relayAddr: readback.relayUrl,
-        lastDeployedAt: now(),
-        deployVersion: readback.schemaVersion,
-      });
-      if (!publicProfile) throw codedError("public_profile_invalid");
-      publicWritten = true;
-      await writePublicProfile(previousProfile, publicProfile);
-      deletedProfiles.delete(profile.id);
-      if (wasConnected) {
-        connectionTouched = true;
-        await connection.disconnect(profile.id);
-      }
-      connectionTouched = true;
-      const connected = await connection.connect(profile.id);
-      if (!connected || connected.status !== "connected") throw codedError("connection_failed");
-      const qr = await encodeQr(publicProfile, secrets);
-      if (disposed) throw codedError("ipc_disposed");
-      qrCache.set(profile.id, qr);
-      return {
-        status: "ok",
-        profile: publicProfile,
-        state: redactState(connected, profile.id),
-        qr,
-      };
     } catch (_) {
-      if (connectionTouched) {
+      return { status: "error", errorCode: "deploy_failed" };
+    } finally {
+      activeDeployProfiles.delete(profile.id);
+    }
+    if (!result || !result.ok || !result.readback) return stableDeployFailure(result);
+
+    const readback = result.readback;
+    const secrets = {
+      pcConfig: readback.pcConfig,
+      phoneConfig: readback.phoneConfig,
+      relayToken: readback.relayToken,
+      managementToken: readback.managementToken,
+      relayUrl: readback.relayUrl,
+    };
+    const publicProfile = sanitizeProfile({
+      ...profile,
+      ...(result.acceptedFingerprint ? { sshHostFingerprint: result.acceptedFingerprint } : {}),
+      endpoint: readback.endpoint,
+      relayAddr: readback.relayUrl,
+      lastDeployedAt: now(),
+      deployVersion: readback.schemaVersion,
+    });
+    if (!publicProfile) {
+      qrCache.delete(profile.id);
+      recoveryBundles.set(profile.id, {
+        blocked: true,
+        errorCode: "remote_committed_invalid_response",
+        profile,
+      });
+      if (wasConnected) {
         try { await connection.disconnect(profile.id); } catch (_) {}
       }
-      if (secretWritten) {
-        try { await restoreSecrets(profile.id, previousSecrets); }
-        catch (_) { log("wg-relay deploy rollback failed", profile.id, "secret_store"); }
-      } else if (!previousSecrets) {
-        try { secretStore.remove(profile.id); } catch (_) {}
-      }
-      if (publicWritten) {
-        try { await restorePublicProfile(previousProfile, profile.id); }
-        catch (_) { log("wg-relay deploy rollback failed", profile.id, "public_profile"); }
-      }
-      if (previousQr) qrCache.set(profile.id, previousQr); else qrCache.delete(profile.id);
-      if (wasConnected && previousSecrets) {
-        try { await connection.connect(profile.id); } catch (_) {}
-      }
-      return { status: "error", errorCode: "deploy_failed" };
+      return partialSuccess("remote_committed_invalid_response", profile);
     }
+
+    qrCache.delete(profile.id);
+    try { validatePairingSecrets(publicProfile, secrets); }
+    catch (_) {
+      recoveryBundles.set(profile.id, {
+        blocked: true,
+        errorCode: "remote_committed_invalid_response",
+        profile: publicProfile,
+      });
+      if (wasConnected) {
+        try { await connection.disconnect(profile.id); } catch (_) {}
+      }
+      return partialSuccess("remote_committed_invalid_response", publicProfile);
+    }
+    recoveryBundles.set(profile.id, {
+      profile: publicProfile,
+      secrets,
+      writePublicProfile: true,
+    });
+    if (wasConnected) releaseRequiredProfiles.add(profile.id);
+    const persisted = await flushRecovery(profile.id);
+    if (!persisted.ok) {
+      await releaseCommittedConnection(profile.id);
+      return partialSuccess(persisted.errorCode, publicProfile);
+    }
+    if (!await releaseCommittedConnection(profile.id)) {
+      return partialSuccess("connection_retry_required", publicProfile);
+    }
+    return finishCommittedDeploy(profile.id);
   }
 
   handle("wgRelay:deploy", async (_event, payload) => {
@@ -476,7 +599,9 @@ function registerWgRelayIpc(options = {}) {
       const profile = supplied || previousProfile;
       if (!profile) return { status: "error", errorCode: "invalid_profile" };
       if (deployInflight.has(profile.id)) return await deployInflight.get(profile.id);
-      const operation = enqueue(profile.id, () => deployTransaction(profile, previousProfile, password));
+      const operation = enqueue(profile.id, () => recoveryBundles.has(profile.id)
+        ? finishCommittedDeploy(profile.id)
+        : deployTransaction(profile, previousProfile, password));
       deployInflight.set(profile.id, operation);
       const clear = () => {
         if (deployInflight.get(profile.id) === operation) deployInflight.delete(profile.id);
@@ -495,14 +620,23 @@ function registerWgRelayIpc(options = {}) {
 
   handle("wgRelay:pairing-qr", async (_event, payload) => {
     const profileId = profileIdFrom(payload);
-    const profile = profileId ? findProfile(settingsController, profileId) : null;
+    const profile = profileId ? profileWithRecovery(profileId) : null;
     if (!profile) return { status: "error", errorCode: "profile_not_found" };
     try {
       return await enqueue(profileId, async () => {
+        if (deletedProfiles.has(profileId)) {
+          return { status: "error", errorCode: "profile_not_found" };
+        }
+        const recovered = await flushRecovery(profileId);
+        if (!recovered.ok) return { status: "error", errorCode: recovered.errorCode };
+        const currentProfile = recovered.profile || findProfile(settingsController, profileId);
+        if (!currentProfile || deletedProfiles.has(profileId)) {
+          return { status: "error", errorCode: "profile_not_found" };
+        }
         if (qrCache.has(profileId)) return { status: "ok", qr: qrCache.get(profileId) };
         const secrets = secretStore.read(profileId);
         if (!secrets) return { status: "error", errorCode: "secrets_not_found" };
-        const qr = await encodeQr(profile, secrets);
+        const qr = await encodeQr(currentProfile, secrets);
         if (disposed) throw codedError("ipc_disposed");
         qrCache.set(profileId, qr);
         return { status: "ok", qr };
@@ -514,57 +648,120 @@ function registerWgRelayIpc(options = {}) {
 
   handle("wgRelay:rotate-phone", async (_event, payload) => {
     const profileId = profileIdFrom(payload);
-    const profile = profileId ? findProfile(settingsController, profileId) : null;
-    if (!profile) return { status: "error", errorCode: "profile_not_found" };
+    const requestedProfile = profileId ? findProfile(settingsController, profileId) : null;
+    if (!requestedProfile) return { status: "error", errorCode: "profile_not_found" };
     try {
       return await enqueue(profileId, async () => {
+        if (deletedProfiles.has(profileId)) {
+          return { status: "error", errorCode: "profile_not_found" };
+        }
         if (!secretStoreAvailable()) return { status: "error", errorCode: "secure_storage_unavailable" };
+        const pending = await flushRecovery(profileId);
+        if (!pending.ok) return { status: "error", errorCode: pending.errorCode };
+        const profile = pending.profile || findProfile(settingsController, profileId);
+        if (!profile || deletedProfiles.has(profileId)) {
+          return { status: "error", errorCode: "profile_not_found" };
+        }
         const oldSecrets = secretStore.read(profileId);
         if (!oldSecrets) return { status: "error", errorCode: "secrets_not_found" };
         const oldState = redactState(connection.status(profileId), profileId);
         const wasConnected = oldState.status === "connected";
-        const oldQr = qrCache.get(profileId);
         let ensuredConnection = false;
-        let secretWritten = false;
-        let connectionTouched = false;
         try {
           if (!wasConnected) {
             const state = await connection.connect(profileId);
             if (!state || state.status !== "connected") throw codedError("connection_failed");
             ensuredConnection = true;
           }
-          const rotated = validateRotationResult(await rotatePhoneFn({
-            listen: getForwardEndpoint(profileId),
-            managementToken: oldSecrets.managementToken,
-            profileId,
-          }));
+          try { preflightSecretStore(); }
+          catch (error) {
+            if (ensuredConnection) {
+              try { await connection.disconnect(profileId); } catch (_) {}
+            }
+            return { status: "error", errorCode: error.code };
+          }
+          let rawRotation;
+          try {
+            rawRotation = await rotatePhoneFn({
+              listen: getForwardEndpoint(profileId),
+              managementToken: oldSecrets.managementToken,
+              profileId,
+            });
+          } catch (error) {
+            if (error && error.remoteCommitted === true) {
+              qrCache.delete(profileId);
+              recoveryBundles.set(profileId, {
+                blocked: true,
+                errorCode: "remote_committed_invalid_response",
+                profile,
+              });
+              try { await connection.disconnect(profileId); } catch (_) {}
+              return partialSuccess("remote_committed_invalid_response", profile);
+            }
+            if (ensuredConnection) {
+              try { await connection.disconnect(profileId); } catch (_) {}
+            }
+            return { status: "error", errorCode: "rotate_failed" };
+          }
+          let rotated;
+          try { rotated = validateRotationResult(rawRotation); }
+          catch (_) {
+            qrCache.delete(profileId);
+            recoveryBundles.set(profileId, {
+              blocked: true,
+              errorCode: "remote_committed_invalid_response",
+              profile,
+            });
+            try { await connection.disconnect(profileId); } catch (_) {}
+            return partialSuccess("remote_committed_invalid_response", profile);
+          }
           const newSecrets = {
             ...oldSecrets,
             phoneConfig: rotated.phoneConfig,
             relayToken: rotated.relayToken,
           };
-          secretWritten = true;
-          await writeAndVerifySecrets(profileId, newSecrets);
-          connectionTouched = true;
-          await connection.disconnect(profileId);
-          const connected = await connection.connect(profileId);
-          if (!connected || connected.status !== "connected") throw codedError("connection_failed");
-          const qr = await encodeQr(profile, newSecrets);
-          if (disposed) throw codedError("ipc_disposed");
-          qrCache.set(profileId, qr);
-          return { status: "ok", state: redactState(connected, profileId), qr };
-        } catch (_) {
-          if (connectionTouched || ensuredConnection) {
+          qrCache.delete(profileId);
+          try { validatePairingSecrets(profile, newSecrets); }
+          catch (_) {
+            recoveryBundles.set(profileId, {
+              blocked: true,
+              errorCode: "remote_committed_invalid_response",
+              profile,
+            });
             try { await connection.disconnect(profileId); } catch (_) {}
+            return partialSuccess("remote_committed_invalid_response", profile);
           }
-          if (secretWritten) {
-            try { await writeAndVerifySecrets(profileId, oldSecrets); }
-            catch (_) { log("wg-relay rotate rollback failed", profileId, "secret_store"); }
+          recoveryBundles.set(profileId, {
+            profile,
+            secrets: newSecrets,
+            writePublicProfile: false,
+          });
+          releaseRequiredProfiles.add(profileId);
+          const persisted = await flushRecovery(profileId);
+          if (!persisted.ok) {
+            await releaseCommittedConnection(profileId);
+            return partialSuccess(persisted.errorCode, profile);
           }
-          if (oldQr) qrCache.set(profileId, oldQr); else qrCache.delete(profileId);
-          if (wasConnected) {
-            try { await connection.connect(profileId); } catch (_) {}
+          if (!await releaseCommittedConnection(profileId)) {
+            return partialSuccess("connection_retry_required", profile);
           }
+          let connected;
+          try {
+            connected = await connection.connect(profileId);
+            if (!connected || connected.status !== "connected") throw codedError("connection_failed");
+          } catch (_) {
+            return partialSuccess("connection_retry_required", profile);
+          }
+          try {
+            const qr = await encodeQr(profile, newSecrets);
+            if (disposed) throw codedError("ipc_disposed");
+            qrCache.set(profileId, qr);
+            return { status: "ok", state: redactState(connected, profileId), qr };
+          } catch (_) {
+            qrCache.delete(profileId);
+            return partialSuccess("pairing_qr_retry_required", profile, connected);
+          }
+        } catch (_) {
           return { status: "error", errorCode: "rotate_failed" };
         }
       });
@@ -583,7 +780,11 @@ function registerWgRelayIpc(options = {}) {
         try { await connection.disconnect(profileId); }
         catch (_) { errors.push("disconnect_failed"); }
         let secretsRemoved = false;
-        try { secretsRemoved = secretStore.remove(profileId) === true; }
+        let secretCleanupSucceeded = false;
+        try {
+          secretsRemoved = secretStore.remove(profileId) === true;
+          secretCleanupSucceeded = true;
+        }
         catch (_) { errors.push("secret_remove_failed"); }
         let publicProfileRemoved = false;
         if (previousProfile) {
@@ -594,9 +795,11 @@ function registerWgRelayIpc(options = {}) {
           } catch (_) { errors.push("public_profile_remove_failed"); }
         }
         qrCache.delete(profileId);
-        if (!previousProfile || publicProfileRemoved) deletedProfiles.add(profileId);
-        else deletedProfiles.delete(profileId);
-        if (typeof wgRelayRuntime.forgetPcConf === "function") wgRelayRuntime.forgetPcConf(profileId);
+        if (secretCleanupSucceeded) recoveryBundles.delete(profileId);
+        releaseRequiredProfiles.delete(profileId);
+        deletedProfiles.add(profileId);
+        if (typeof wgRelayRuntime.removeStatus === "function") wgRelayRuntime.removeStatus(profileId);
+        else if (typeof wgRelayRuntime.forgetPcConf === "function") wgRelayRuntime.forgetPcConf(profileId);
         const removed = { publicProfile: publicProfileRemoved, secrets: secretsRemoved };
         return errors.length
           ? { status: "partial", removed, errors }
@@ -647,14 +850,25 @@ function registerWgRelayIpc(options = {}) {
   function dispose() {
     if (disposePromise) return disposePromise;
     disposed = true;
-    while (disposers.length) {
-      const disposer = disposers.pop();
-      try { disposer(); } catch (_) {}
-    }
-    qrCache.clear();
     const pending = Array.from(new Set(operationTails.values()));
-    disposePromise = Promise.allSettled(pending).then(() => {
+    const attempt = Promise.allSettled(pending).then(async () => {
+      for (const profileId of Array.from(recoveryBundles.keys())) {
+        const recovered = await flushRecovery(profileId);
+        if (!recovered.ok) throw codedError("recovery_persistence_required");
+      }
+      while (disposers.length) {
+        const disposer = disposers.pop();
+        try { disposer(); } catch (_) {}
+      }
       qrCache.clear();
+      recoveryBundles.clear();
+      releaseRequiredProfiles.clear();
+      activeDeployProfiles.clear();
+    });
+    disposePromise = attempt.catch((error) => {
+      disposed = false;
+      disposePromise = null;
+      throw error;
     });
     return disposePromise;
   }
@@ -675,13 +889,17 @@ function createWgRelayQuitBarrier(options = {}) {
     if (!pending) {
       let disposal;
       try { disposal = dispose(); }
-      catch (_) { disposal = undefined; }
-      pending = Promise.resolve(disposal)
-        .catch(() => {})
+      catch (error) { disposal = Promise.reject(error); }
+      const attempt = Promise.resolve(disposal)
         .then(() => {
           ready = true;
           schedule(quit);
+        }, (error) => {
+          pending = null;
+          throw error;
         });
+      pending = attempt;
+      void attempt.catch(() => {});
     }
     return true;
   }
@@ -711,6 +929,14 @@ function createWgRelayMainIntegration(options = {}) {
     platform: sidecarOptions.platform,
   });
   const runtime = (options.runtimeFactory || createWgRelayRuntime)({ log: options.log });
+  const mobileIntegration = options.mobileIntegration;
+  const bridgeOptions = {
+    ...(options.bridgeOptions || {}),
+    ...(mobileIntegration ? {
+      getLocalToken: () => mobileIntegration.getMobileToken(),
+      getLocalPort: () => mobileIntegration.getMobileServerPort(),
+    } : {}),
+  };
   const forwardEndpoints = new Map();
   let closed = false;
   let disposePromise = null;
@@ -747,6 +973,7 @@ function createWgRelayMainIntegration(options = {}) {
     secretStore,
     sidecarFactory: makeSidecar,
     bridgeFactory: options.bridgeFactory,
+    bridgeOptions,
     healthProbe: options.healthProbe,
     healthTimeoutMs: options.healthTimeoutMs,
     healthMaxBytes: options.healthMaxBytes,
@@ -779,11 +1006,16 @@ function createWgRelayMainIntegration(options = {}) {
     let connectionDisposal;
     try { connectionDisposal = connection.dispose(); }
     catch (_) { connectionDisposal = undefined; }
-    disposePromise = Promise.allSettled([ipcDisposal, connectionDisposal])
-      .then(() => {
+    const attempt = Promise.allSettled([ipcDisposal, connectionDisposal])
+      .then((results) => {
+        if (results[0].status === "rejected") throw results[0].reason;
         forwardEndpoints.clear();
         if (typeof runtime.cleanup === "function") runtime.cleanup();
       });
+    disposePromise = attempt.catch((error) => {
+      disposePromise = null;
+      throw error;
+    });
     return disposePromise;
   }
 
