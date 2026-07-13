@@ -42,6 +42,7 @@ class RelayBridge extends EventEmitter {
     this.running = false;
     this.relayWs = null;
     this.localWs = null;
+    this._localSockets = new Set();
     this.msgBuffer = [];
     this.relayReconnectTimer = null;
     this.localReconnectTimer = null;
@@ -53,13 +54,18 @@ class RelayBridge extends EventEmitter {
     this._reconnectAttempt = 0;
     this._lastFailure = null;
     this._stopPromise = null;
+    this._disposePromise = null;
+    this._disposed = false;
     this._prefsDisposers = [];
+    this._prefsGeneration = 0;
+    this._prefsState = null;
   }
 
   get status() { return this._status; }
   get peerOnline() { return this._peerOnline; }
 
   configure(input) {
+    if (this._disposed) throw new Error("Relay bridge is disposed");
     const config = normalizeConfig(input);
     if (this.running) {
       if (this.config && this.config.url === config.url && this.config.token === config.token) return this;
@@ -71,13 +77,19 @@ class RelayBridge extends EventEmitter {
   }
 
   init(prefs) {
+    if (this._disposed) throw new Error("Relay bridge is disposed");
     this._clearPrefsListeners();
-    const enabled = Boolean(prefs.get("relayEnabled"));
     const current = {
+      generation: ++this._prefsGeneration,
+      enabled: Boolean(prefs.get("relayEnabled")),
       url: prefs.get("relayUrl") || "",
       token: prefs.get("relayToken") || "",
+      revision: 0,
+      appliedRevision: -1,
+      reconcilePromise: null,
     };
-    if (enabled && current.url && current.token) this.configure(current).start();
+    this._prefsState = current;
+    this._reconcilePrefs(current);
 
     if (prefs && typeof prefs.on === "function") {
       const listen = (name, handler) => {
@@ -87,26 +99,23 @@ class RelayBridge extends EventEmitter {
         });
       };
       listen("relayEnabled", (value) => {
-        if (!value) { void this.stop(); return; }
-        if (!this.running && current.url && current.token) this.configure(current).start();
+        current.enabled = Boolean(value);
+        this._reconcilePrefs(current);
       });
       listen("relayUrl", (value) => {
         current.url = value || "";
-        if (this.running) void this.stop().then(() => {
-          if (current.url && current.token) this.configure(current).start();
-        });
+        this._reconcilePrefs(current);
       });
       listen("relayToken", (value) => {
         current.token = value || "";
-        if (this.running) void this.stop().then(() => {
-          if (current.url && current.token) this.configure(current).start();
-        });
+        this._reconcilePrefs(current);
       });
     }
     return this;
   }
 
   start() {
+    if (this._disposed) throw new Error("Relay bridge is disposed");
     if (this.running) return this;
     if (!this.config) throw new Error("Relay bridge is not configured");
     this.running = true;
@@ -153,14 +162,16 @@ class RelayBridge extends EventEmitter {
     this._peerOnline = false;
     this.clearTimers();
     const relay = this.relayWs;
-    const local = this.localWs;
+    const locals = new Set(this._localSockets);
+    if (this.localWs) locals.add(this.localWs);
     this.relayWs = null;
     this.localWs = null;
+    this._localSockets.clear();
     this.msgBuffer = [];
     this._setStatus("disconnected");
     this.emit("peer", false);
     this.closeWs(relay, "bridge stopped");
-    this.closeWs(local, "bridge stopped");
+    for (const local of locals) this.closeWs(local, "bridge stopped");
     const stopping = Promise.resolve();
     const wrapped = stopping.finally(() => {
       if (this._stopPromise === wrapped) this._stopPromise = null;
@@ -170,9 +181,29 @@ class RelayBridge extends EventEmitter {
   }
 
   destroy() {
-    void this.stop();
+    return this.dispose();
+  }
+
+  clearConfig() {
+    this.config = null;
+    this.msgBuffer = [];
+    this._lastFailure = null;
+    return this;
+  }
+
+  dispose() {
+    if (this._disposePromise) return this._disposePromise;
+    this._disposed = true;
+    const hasActivity = this.running || this.relayWs || this.localWs
+      || this._localSockets.size || this.relayReconnectTimer || this.localReconnectTimer;
+    const stopping = hasActivity ? this.stop() : (this._stopPromise || Promise.resolve());
+    this.clearConfig();
+    this._prefsState = null;
+    this._prefsGeneration += 1;
     this._clearPrefsListeners();
     this.removeAllListeners();
+    this._disposePromise = Promise.resolve(stopping);
+    return this._disposePromise;
   }
 
   connectToRelay(generation = this._generation) {
@@ -241,6 +272,20 @@ class RelayBridge extends EventEmitter {
 
   connectToLocal(generation = this._generation) {
     if (!this._active(generation)) return;
+    const existing = this.localWs;
+    if (existing && (existing.readyState === this.WebSocketImpl.OPEN
+        || existing.readyState === this.WebSocketImpl.CONNECTING)) {
+      this.clearLocalReconnect();
+      this._localOpen = existing.readyState === this.WebSocketImpl.OPEN;
+      this._markConnected(generation);
+      return;
+    }
+    this.clearLocalReconnect();
+    if (existing) {
+      this.localWs = null;
+      this._localOpen = false;
+      this.closeWs(existing, "local socket replaced");
+    }
     const localUrl = `ws://127.0.0.1:${this.getLocalPort()}/mobile/ws?role=pc`;
     let ws;
     try {
@@ -252,6 +297,7 @@ class RelayBridge extends EventEmitter {
       return;
     }
     this.localWs = ws;
+    this._localSockets.add(ws);
     ws.on("open", () => {
       if (!this._activeSocket(generation, "localWs", ws)) return;
       this._localOpen = true;
@@ -263,6 +309,7 @@ class RelayBridge extends EventEmitter {
       if (this._activeSocket(generation, "localWs", ws)) this.forwardToRelay(data);
     });
     ws.on("close", () => {
+      this._localSockets.delete(ws);
       if (!this._activeSocket(generation, "localWs", ws)) return;
       this.localWs = null;
       this._localOpen = false;
@@ -369,6 +416,60 @@ class RelayBridge extends EventEmitter {
     while (this._prefsDisposers.length) {
       try { this._prefsDisposers.pop()(); } catch (_) {}
     }
+  }
+
+  _reconcilePrefs(state) {
+    if (this._prefsState !== state || state.generation !== this._prefsGeneration) {
+      return Promise.resolve();
+    }
+    state.revision += 1;
+    if (state.reconcilePromise) return state.reconcilePromise;
+
+    const reconcile = async () => {
+      while (this._prefsState === state
+          && state.generation === this._prefsGeneration
+          && state.appliedRevision !== state.revision) {
+        const revision = state.revision;
+        let desiredConfig = null;
+        if (state.enabled && state.url && state.token) {
+          try { desiredConfig = normalizeConfig(state); } catch (_) {}
+        }
+
+        if (!desiredConfig) {
+          if (this.running) await this.stop();
+          if (this._prefsState !== state || revision !== state.revision) continue;
+          this.clearConfig();
+          state.appliedRevision = revision;
+          continue;
+        }
+
+        const sameConfig = this.config
+          && this.config.url === desiredConfig.url
+          && this.config.token === desiredConfig.token;
+        if (this.running && sameConfig) {
+          state.appliedRevision = revision;
+          continue;
+        }
+        if (this.running) await this.stop();
+        if (this._prefsState !== state
+            || state.generation !== this._prefsGeneration
+            || revision !== state.revision
+            || !state.enabled || !state.url || !state.token) continue;
+        this.configure(desiredConfig).start();
+        state.appliedRevision = revision;
+      }
+    };
+
+    const promise = reconcile();
+    state.reconcilePromise = promise;
+    const settled = () => {
+      if (state.reconcilePromise === promise) state.reconcilePromise = null;
+      if (this._prefsState === state && state.appliedRevision !== state.revision) {
+        this._reconcilePrefs(state);
+      }
+    };
+    promise.then(settled, settled);
+    return promise;
   }
 }
 

@@ -8,6 +8,89 @@ const path = require("path");
 const SRC_DIR = path.join(__dirname, "..", "src");
 const { SUPPORTED_LANGS } = require("../src/i18n");
 
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.children = [];
+    this.className = "";
+    this.textContent = "";
+    this.disabled = false;
+    this.listeners = new Map();
+    this.classList = { add: (name) => { this.className += ` ${name}`; } };
+  }
+
+  appendChild(child) { this.children.push(child); return child; }
+  addEventListener(name, listener) { this.listeners.set(name, listener); }
+}
+
+function descendants(root) {
+  const found = [];
+  for (const child of root.children || []) {
+    found.push(child, ...descendants(child));
+  }
+  return found;
+}
+
+function renderRuntimeStatus(status) {
+  const code = fs.readFileSync(path.join(SRC_DIR, "settings-tab-wg-relay.js"), "utf8");
+  let statusListener = null;
+  const window = {
+    settingsAPI: {},
+    wgRelay: {
+      deploy() { return Promise.resolve({ status: "error" }); },
+      listStatuses() { return Promise.resolve({ status: "ok", statuses: [] }); },
+      onProgress() {},
+      onStatusChanged(listener) { statusListener = listener; },
+      tunnelDown() {},
+      tunnelUp() {},
+    },
+  };
+  const document = { createElement: (tagName) => new FakeElement(tagName) };
+  const translations = {
+    remoteSshDisconnect: "DISCONNECTING",
+    remoteSshStatus_connected: "CONNECTED",
+    remoteSshStatus_connecting: "CONNECTING",
+    remoteSshStatus_failed: "FAILED",
+    remoteSshStatus_idle: "IDLE",
+    wgRelayDeploy: "DEPLOY",
+    wgRelayRegenPhone: "REGEN",
+    wgRelayTunnelDown: "DOWN",
+    wgRelayTunnelUp: "UP",
+  };
+  const core = {
+    state: {
+      activeTab: "wg-relay",
+      snapshot: {
+        wgRelay: {
+          profiles: [{
+            id: "wg-1",
+            label: "Relay",
+            host: "relay.example",
+            authMethod: "key",
+          }],
+        },
+      },
+    },
+    helpers: { t: (key) => translations[key] || key },
+    ops: { requestRender() {}, showToast() {} },
+    tabs: {},
+  };
+  const sandbox = {};
+  // eslint-disable-next-line no-new-func
+  new Function("globalThis", "crypto", "window", "document", "confirm", code)(
+    sandbox, undefined, window, document, () => true,
+  );
+  sandbox.ClawdSettingsTabWgRelay.init(core);
+  const list = new FakeElement("main");
+  core.tabs["wg-relay"].render(list);
+  const card = descendants(list).find((element) => element.className.includes("wg-relay-card"));
+  card.listeners.get("click")();
+  statusListener({ profileId: "wg-1", status });
+  const detail = new FakeElement("main");
+  core.tabs["wg-relay"].render(detail);
+  return descendants(detail);
+}
+
 // ── settings-tab-wg-relay.js script integrity ──
 
 test("settings-tab-wg-relay.js loads in a sandbox via the same IIFE pattern as siblings", () => {
@@ -159,6 +242,29 @@ test("settings-tab-wg-relay.js translates runtime status hints before raw messag
   assert.match(code, /function\s+statusMessageText\s*\(\s*status\s*\)/);
   assert.match(code, /status\.hint/);
   assert.match(code, /translated\s*!==\s*status\.hint/);
+});
+
+test("settings tab maps the seven runtime states and disables repeated busy actions", () => {
+  const cases = [
+    ["idle", "IDLE", "UP", false],
+    ["starting_tunnel", "CONNECTING", "UP", true],
+    ["verifying_relay", "CONNECTING", "UP", true],
+    ["connecting_relay", "CONNECTING", "UP", true],
+    ["connected", "CONNECTED", "DOWN", false],
+    ["disconnecting", "DISCONNECTING", "DOWN", true],
+    ["failed", "FAILED", "UP", false],
+  ];
+  for (const [status, label, tunnelText, busy] of cases) {
+    const elements = renderRuntimeStatus(status);
+    const badge = elements.find((element) => element.className.includes("wg-relay-status-badge"));
+    const tunnel = elements.find((element) => element.textContent === tunnelText);
+    const deploy = elements.find((element) => element.textContent === "DEPLOY");
+    const regen = elements.find((element) => element.textContent === "REGEN");
+    assert.equal(badge.textContent, label, status);
+    assert.equal(tunnel.disabled, busy, `${status} tunnel busy`);
+    assert.equal(deploy.disabled, busy, `${status} deploy busy`);
+    assert.equal(regen.disabled, busy, `${status} regen busy`);
+  }
 });
 
 // SEC-1 / SEC-3 regression: the tab must never put the SSH password into a

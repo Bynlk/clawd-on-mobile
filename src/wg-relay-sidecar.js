@@ -205,6 +205,7 @@ class WgRelaySidecar extends EventEmitter {
       exitSettled: false,
       exitPromise: null,
       resolveExit: null,
+      terminatePromise: null,
       listeners: null,
     };
     attempt.exitPromise = new Promise((resolve) => { attempt.resolveExit = resolve; });
@@ -407,6 +408,11 @@ class WgRelaySidecar extends EventEmitter {
     attempt.startupTimer = null;
     this._status = "failed";
     const wasReady = attempt.readySeen;
+    let terminatePromise = null;
+    if (options.terminate !== false) {
+      attempt.expectedStop = true;
+      terminatePromise = this._terminate(attempt);
+    }
     if (!attempt.startSettled) {
       attempt.startSettled = true;
       attempt.rejectStart(codedError(stableCode));
@@ -418,17 +424,20 @@ class WgRelaySidecar extends EventEmitter {
     if (options.terminate === false) {
       this._cleanup(attempt);
     } else {
-      attempt.expectedStop = true;
-      void this._terminate(attempt).then(() => this._cleanup(attempt));
+      void terminatePromise.then(() => this._cleanup(attempt));
     }
   }
 
-  async _terminate(attempt) {
-    if (!attempt.child || attempt.exitSettled) return;
-    this.killProcess(attempt.child, false, this.platform);
-    if (await this._waitForExit(attempt, this.stopTimeoutMs)) return;
-    this.killProcess(attempt.child, true, this.platform);
-    await this._waitForExit(attempt, this.forceKillTimeoutMs);
+  _terminate(attempt) {
+    if (attempt.terminatePromise) return attempt.terminatePromise;
+    attempt.terminatePromise = (async () => {
+      if (!attempt.child || attempt.exitSettled) return;
+      this.killProcess(attempt.child, false, this.platform);
+      if (await this._waitForExit(attempt, this.stopTimeoutMs)) return;
+      this.killProcess(attempt.child, true, this.platform);
+      await this._waitForExit(attempt, this.forceKillTimeoutMs);
+    })();
+    return attempt.terminatePromise;
   }
 
   _waitForExit(attempt, timeoutMs) {

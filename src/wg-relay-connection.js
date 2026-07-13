@@ -111,7 +111,8 @@ function probeRelayHealth(options = {}) {
     try {
       request = requestImpl(url, {
         method: "GET",
-        headers: { Accept: "application/json" },
+        agent: false,
+        headers: { Accept: "application/json", Connection: "close" },
       }, (response) => {
         const statusCode = Number(response.statusCode);
         if (statusCode >= 300 && statusCode < 400) {
@@ -170,10 +171,14 @@ function createWgRelayConnection(options = {}) {
   const bridgeTimeoutMs = options.bridgeTimeoutMs || 15_000;
   const log = typeof options.log === "function" ? options.log : () => {};
   const active = new Map();
+  const stopping = new Map();
+  const queuedConnects = new Map();
+  const disconnects = new Map();
   const generations = new Map();
   const allSidecars = new Set();
   const allBridges = new Set();
   let disposed = false;
+  let disposePromise = null;
 
   function nextGeneration(profileId) {
     const generation = (generations.get(profileId) || 0) + 1;
@@ -209,14 +214,48 @@ function createWgRelayConnection(options = {}) {
     if (record.bridge && record.onBridgeFailure) record.bridge.off("failure", record.onBridgeFailure);
   }
 
-  async function rollback(record) {
-    if (record.rollbackPromise) return record.rollbackPromise;
+  function release(record) {
+    if (record.releasePromise) return record.releasePromise;
     detach(record);
-    record.rollbackPromise = (async () => {
-      try { await record.bridge.stop(); } catch (_) {}
-      try { await record.sidecar.stop(); } catch (_) {}
+    record.releasePromise = (async () => {
+      try {
+        try { await record.bridge.stop(); } catch (_) {}
+        try {
+          if (typeof record.bridge.clearConfig === "function") record.bridge.clearConfig();
+        } catch (_) {}
+        try {
+          if (typeof record.bridge.dispose === "function") await record.bridge.dispose();
+          else if (typeof record.bridge.destroy === "function") record.bridge.destroy();
+        } catch (_) {}
+        try { await record.sidecar.stop(); } catch (_) {}
+        try {
+          if (typeof record.sidecar.dispose === "function") await record.sidecar.dispose();
+        } catch (_) {}
+      } finally {
+        allBridges.delete(record.bridge);
+        allSidecars.delete(record.sidecar);
+      }
     })();
-    return record.rollbackPromise;
+    return record.releasePromise;
+  }
+
+  function beginStop(record) {
+    if (record.stopPromise) return record.stopPromise;
+    let resolveStop;
+    let rejectStop;
+    const stopPromise = new Promise((resolve, reject) => {
+      resolveStop = resolve;
+      rejectStop = reject;
+    });
+    record.stopPromise = stopPromise;
+    stopping.set(record.profileId, stopPromise);
+    void Promise.resolve().then(() => release(record)).then(resolveStop, rejectStop);
+    const cleanup = () => {
+      if (active.get(record.profileId) === record) active.delete(record.profileId);
+      if (stopping.get(record.profileId) === stopPromise) stopping.delete(record.profileId);
+    };
+    stopPromise.then(cleanup, cleanup);
+    return stopPromise;
   }
 
   function invalidate(record, rawCode) {
@@ -240,8 +279,9 @@ function createWgRelayConnection(options = {}) {
     const code = record.invalidated ? record.terminalCode : invalidate(record, rawCode);
     if (record.finalizePromise) return record.finalizePromise;
     record.finalizePromise = (async () => {
-      await rollback(record);
-      if (ownsRecord(record) && code !== "connection_cancelled") {
+      await beginStop(record);
+      if (generations.get(record.profileId) === record.generation
+          && code !== "connection_cancelled") {
         runtime.setStatus(record.profileId, {
           status: "failed",
           generation: record.generation,
@@ -267,6 +307,26 @@ function createWgRelayConnection(options = {}) {
 
   function connect(profileId) {
     if (disposed) return Promise.reject(codedError("connection_disposed"));
+    if (queuedConnects.has(profileId)) return queuedConnects.get(profileId);
+    const pendingStop = stopping.get(profileId);
+    if (pendingStop) {
+      let queued;
+      const clearQueued = () => {
+        if (queuedConnects.get(profileId) === queued) queuedConnects.delete(profileId);
+      };
+      queued = pendingStop.then(
+        () => {
+          clearQueued();
+          return connect(profileId);
+        },
+        (error) => {
+          clearQueued();
+          throw error;
+        },
+      );
+      queuedConnects.set(profileId, queued);
+      return queued;
+    }
     const existing = active.get(profileId);
     if (existing && existing.connectPromise) return existing.connectPromise;
     if (existing && runtime.getProfileStatus(profileId).status === "connected") {
@@ -288,7 +348,9 @@ function createWgRelayConnection(options = {}) {
       sidecarGeneration: null,
       onSidecarFailure: null,
       onBridgeFailure: null,
-      rollbackPromise: null,
+      releasePromise: null,
+      stopPromise: null,
+      disconnectPromise: null,
       finalizePromise: null,
       abortController: new AbortController(),
       invalidation,
@@ -336,8 +398,8 @@ function createWgRelayConnection(options = {}) {
         return setState(record, "connected");
       } catch (error) {
         const code = record.terminalCode || normalizeConnectionErrorCode(error && error.code);
-        if (ownsRecord(record)) await finalizeFailure(record, code);
-        else await rollback(record);
+        if (ownsRecord(record) || record.stopPromise) await finalizeFailure(record, code);
+        else await release(record);
         throw codedError(code);
       }
     })();
@@ -346,6 +408,7 @@ function createWgRelayConnection(options = {}) {
   }
 
   function disconnect(profileId) {
+    if (disconnects.has(profileId)) return disconnects.get(profileId);
     const record = active.get(profileId);
     const generation = nextGeneration(profileId);
     if (!record) {
@@ -354,32 +417,41 @@ function createWgRelayConnection(options = {}) {
       }));
     }
     invalidate(record, "connection_cancelled");
-    active.delete(profileId);
     runtime.setStatus(profileId, {
       status: "disconnecting", generation, errorCode: null, message: null, hint: null,
     });
-    return rollback(record).then(() => runtime.setStatus(profileId, {
+    const disconnectPromise = beginStop(record).then(() => runtime.setStatus(profileId, {
       status: "idle", generation, errorCode: null, message: null, hint: null,
     }));
+    record.disconnectPromise = disconnectPromise;
+    disconnects.set(profileId, disconnectPromise);
+    const clearDisconnect = () => {
+      if (disconnects.get(profileId) === disconnectPromise) disconnects.delete(profileId);
+    };
+    disconnectPromise.then(clearDisconnect, clearDisconnect);
+    return disconnectPromise;
   }
 
   function status(profileId) {
     return runtime.getProfileStatus(profileId);
   }
 
-  async function dispose() {
-    if (disposed) return;
+  function dispose() {
+    if (disposePromise) return disposePromise;
     disposed = true;
-    for (const profileId of Array.from(active.keys())) await disconnect(profileId);
-    for (const bridge of allBridges) {
-      try { if (typeof bridge.destroy === "function") bridge.destroy(); } catch (_) {}
-    }
-    for (const sidecar of allSidecars) {
-      try { if (typeof sidecar.dispose === "function") await sidecar.dispose(); } catch (_) {}
-    }
-    active.clear();
-    allBridges.clear();
-    allSidecars.clear();
+    disposePromise = (async () => {
+      for (const profileId of Array.from(active.keys())) await disconnect(profileId);
+      for (const bridge of allBridges) {
+        try { if (typeof bridge.destroy === "function") bridge.destroy(); } catch (_) {}
+      }
+      for (const sidecar of allSidecars) {
+        try { if (typeof sidecar.dispose === "function") await sidecar.dispose(); } catch (_) {}
+      }
+      active.clear();
+      allBridges.clear();
+      allSidecars.clear();
+    })();
+    return disposePromise;
   }
 
   return { connect, disconnect, status, dispose };

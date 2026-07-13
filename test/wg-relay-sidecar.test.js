@@ -412,6 +412,21 @@ test("stop is idempotent, sends SIGTERM, then performs a bounded force kill", as
   assert.equal(fx.sidecar.status, "idle");
 });
 
+test("failure and synchronous upper-layer stop share one bounded termination", async () => {
+  const fx = fixture({ stopTimeoutMs: 5, forceKillTimeoutMs: 5 });
+  const started = fx.sidecar.start(config);
+  emitReady(fx.children[0]);
+  await started;
+
+  let stopping;
+  fx.sidecar.once("failure", () => { stopping = fx.sidecar.stop(); });
+  fx.children[0].stdout.push("not-json\n");
+  await stopping;
+
+  assert.deepEqual(fx.children[0].kills, ["SIGTERM", "SIGKILL"]);
+  assert.equal(fx.sidecar.status, "idle");
+});
+
 test("Windows stop uses the injectable process-tree kill path", async () => {
   const calls = [];
   const fx = fixture({

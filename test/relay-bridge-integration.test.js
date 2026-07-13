@@ -48,6 +48,24 @@ function fixture(overrides = {}) {
   return { bridge, logs };
 }
 
+function fakePrefs(initial) {
+  const values = { ...initial };
+  const listeners = new Map();
+  return {
+    get(name) { return values[name]; },
+    on(name, listener) { listeners.set(name, listener); },
+    off(name, listener) {
+      if (listeners.get(name) === listener) listeners.delete(name);
+    },
+    emit(name, value) {
+      values[name] = value;
+      const listener = listeners.get(name);
+      if (listener) listener(value);
+    },
+    listeners,
+  };
+}
+
 test("configure/start/wait connect Relay then the authenticated local mobile endpoint", async () => {
   const { bridge } = fixture();
   assert.strictEqual(bridge.configure({ url: "ws://127.0.0.1:43127", token: "relay secret" }), bridge);
@@ -132,6 +150,67 @@ test("stop is idempotent and stale sockets cannot reconnect or mutate a new gene
   await bridge.stop();
 });
 
+test("same-generation Relay reopens reuse one healthy local socket and stop closes it", async () => {
+  const { bridge } = fixture();
+  bridge.configure({ url: "ws://127.0.0.1:40001", token: "secret" }).start();
+  const firstRelay = FakeWebSocket.connections[0];
+  firstRelay.open();
+  const local = FakeWebSocket.connections[1];
+  local.open();
+
+  firstRelay.emit("close", 1006, "relay restart");
+  bridge.connectToRelay(bridge._generation);
+  const secondRelay = FakeWebSocket.connections[2];
+  secondRelay.open();
+  secondRelay.emit("close", 1006, "relay restart again");
+  bridge.connectToRelay(bridge._generation);
+  const thirdRelay = FakeWebSocket.connections.at(-1);
+  thirdRelay.open();
+
+  const localConnections = FakeWebSocket.connections.filter((socket) => socket.url.includes("127.0.0.1:23335"));
+  assert.deepEqual(localConnections, [local]);
+  await bridge.stop();
+  assert.equal(local.closed.length, 1);
+});
+
+test("Relay reopen also reuses a still-connecting local socket", async () => {
+  const { bridge } = fixture();
+  bridge.configure({ url: "ws://127.0.0.1:40001", token: "secret" }).start();
+  const firstRelay = FakeWebSocket.connections[0];
+  firstRelay.open();
+  const connectingLocal = FakeWebSocket.connections[1];
+
+  firstRelay.emit("close", 1006, "relay restart");
+  bridge.connectToRelay(bridge._generation);
+  FakeWebSocket.connections[2].open();
+
+  const localConnections = FakeWebSocket.connections.filter((socket) => socket.url.includes("127.0.0.1:23335"));
+  assert.deepEqual(localConnections, [connectingLocal]);
+  assert.deepEqual(connectingLocal.closed, []);
+  await bridge.stop();
+});
+
+test("replacing an unhealthy local socket closes it and cancels its reconnect timer", async () => {
+  const { bridge } = fixture();
+  bridge.configure({ url: "ws://127.0.0.1:40001", token: "secret" }).start();
+  const firstRelay = FakeWebSocket.connections[0];
+  firstRelay.open();
+  const oldLocal = FakeWebSocket.connections[1];
+  oldLocal.readyState = 3;
+  bridge.scheduleLocalReconnect(bridge._generation);
+
+  firstRelay.emit("close", 1006, "relay restart");
+  bridge.connectToRelay(bridge._generation);
+  FakeWebSocket.connections[2].open();
+
+  assert.equal(oldLocal.closed.length, 1);
+  assert.equal(bridge.localReconnectTimer, null);
+  await bridge.stop();
+  const localConnections = FakeWebSocket.connections.filter((socket) => socket.url.includes("127.0.0.1:23335"));
+  assert.equal(oldLocal.closed.length, 2);
+  assert.ok(localConnections.every((socket) => socket.closed.length >= 1));
+});
+
 test("Relay token never appears in bridge logs or public failures", async () => {
   const secret = "RELAY-TOKEN-NEVER-LOG";
   const { bridge, logs } = fixture();
@@ -161,4 +240,90 @@ test("legacy init(prefs) remains supported", async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(bridge.status, "disconnected");
   bridge.destroy();
+});
+
+test("legacy init starts when enabled config becomes complete after initialization", async () => {
+  const prefs = fakePrefs({ relayEnabled: true, relayUrl: "", relayToken: "" });
+  const { bridge } = fixture();
+  bridge.init(prefs);
+  assert.equal(FakeWebSocket.connections.length, 0);
+
+  prefs.emit("relayUrl", "ws://127.0.0.1:40001");
+  prefs.emit("relayToken", "late-token");
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(FakeWebSocket.connections.length, 1);
+  assert.equal(bridge.running, true);
+  bridge.destroy();
+});
+
+test("legacy disable wins an in-flight config restart and cannot resurrect the bridge", async () => {
+  const prefs = fakePrefs({
+    relayEnabled: true,
+    relayUrl: "ws://127.0.0.1:40001",
+    relayToken: "first-token",
+  });
+  const { bridge } = fixture();
+  bridge.init(prefs);
+  assert.equal(FakeWebSocket.connections.length, 1);
+
+  prefs.emit("relayToken", "second-token");
+  prefs.emit("relayEnabled", false);
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(bridge.running, false);
+  assert.equal(FakeWebSocket.connections.length, 1);
+  bridge.destroy();
+});
+
+test("legacy config change performs one stop then starts the latest complete config", async () => {
+  const prefs = fakePrefs({
+    relayEnabled: true,
+    relayUrl: "ws://127.0.0.1:40001",
+    relayToken: "first-token",
+  });
+  const { bridge } = fixture();
+  bridge.init(prefs);
+  const oldRelay = FakeWebSocket.connections[0];
+
+  prefs.emit("relayUrl", "ws://127.0.0.1:40002");
+  prefs.emit("relayToken", "latest-token");
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(FakeWebSocket.connections.length, 2);
+  assert.equal(oldRelay.closed.length, 1);
+  assert.equal(FakeWebSocket.connections[1].url, "ws://127.0.0.1:40002/mobile/ws?role=pc");
+  assert.deepEqual(FakeWebSocket.connections[1].options.headers, {
+    Authorization: "Bearer latest-token",
+  });
+  bridge.destroy();
+});
+
+test("clearConfig and dispose scrub credentials, sockets, timers, prefs, and listeners", async () => {
+  const prefs = fakePrefs({
+    relayEnabled: true,
+    relayUrl: "ws://127.0.0.1:40001",
+    relayToken: "secret-to-clear",
+  });
+  const { bridge } = fixture();
+  bridge.on("failure", () => {});
+  bridge.init(prefs);
+  FakeWebSocket.connections[0].open();
+  bridge.scheduleLocalReconnect(bridge._generation);
+
+  await bridge.stop();
+  const stoppedGeneration = bridge._generation;
+  assert.strictEqual(bridge.clearConfig(), bridge);
+  await bridge.dispose();
+
+  assert.equal(bridge.config, null);
+  assert.equal(bridge.relayWs, null);
+  assert.equal(bridge.localWs, null);
+  assert.equal(bridge.relayReconnectTimer, null);
+  assert.equal(bridge.localReconnectTimer, null);
+  assert.equal(prefs.listeners.size, 0);
+  assert.equal(bridge.listenerCount("failure"), 0);
+  assert.equal(bridge._generation, stoppedGeneration);
 });

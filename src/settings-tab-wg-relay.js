@@ -52,6 +52,15 @@
     "connect", "detect", "install-wg", "gen-keys",
     "write-conf", "start-service", "firewall", "readback",
   ];
+  const STATUS_UI = Object.freeze({
+    idle: Object.freeze({ badge: "idle", busy: false, labelKey: "remoteSshStatus_idle", tunnelDown: false }),
+    starting_tunnel: Object.freeze({ badge: "connecting", busy: true, labelKey: "remoteSshStatus_connecting", tunnelDown: false }),
+    verifying_relay: Object.freeze({ badge: "connecting", busy: true, labelKey: "remoteSshStatus_connecting", tunnelDown: false }),
+    connecting_relay: Object.freeze({ badge: "connecting", busy: true, labelKey: "remoteSshStatus_connecting", tunnelDown: false }),
+    connected: Object.freeze({ badge: "connected", busy: false, labelKey: "remoteSshStatus_connected", tunnelDown: true }),
+    disconnecting: Object.freeze({ badge: "connecting", busy: true, labelKey: "remoteSshDisconnect", tunnelDown: true }),
+    failed: Object.freeze({ badge: "failed", busy: false, labelKey: "remoteSshStatus_failed", tunnelDown: false }),
+  });
 
   function t(key) {
     return helpers.t(key);
@@ -117,18 +126,13 @@
   }
 
   function statusBadgeClass(status) {
-    switch (status) {
-      case "connected": return "wg-relay-status-connected";
-      case "connecting":
-      case "reconnecting": return "wg-relay-status-connecting";
-      case "deploying": return "wg-relay-status-deploying";
-      case "failed": return "wg-relay-status-failed";
-      default: return "wg-relay-status-idle";
-    }
+    const viewState = STATUS_UI[status];
+    return `wg-relay-status-${viewState ? viewState.badge : "idle"}`;
   }
 
   function statusLabel(status) {
-    return t("wgRelayStatus_" + status) || status;
+    const viewState = STATUS_UI[status];
+    return viewState ? t(viewState.labelKey) : status;
   }
 
   function statusMessageText(status) {
@@ -364,19 +368,19 @@
     actions.className = "wg-relay-actions";
 
     const isDeploying = view.deployingProfileIds.has(profile.id);
+    const statusUi = STATUS_UI[status.status] || STATUS_UI.idle;
     const deployBtn = document.createElement("button");
     deployBtn.className = "soft-btn accent";
     deployBtn.textContent = isDeploying ? t("wgRelayDeploying") : t("wgRelayDeploy");
-    deployBtn.disabled = isDeploying || !window.wgRelay;
+    deployBtn.disabled = isDeploying || statusUi.busy || !window.wgRelay;
     deployBtn.addEventListener("click", () => runDeploy(profile, {}));
     actions.appendChild(deployBtn);
 
     // Tunnel up/down toggles the local (PC) side once a deploy readback exists.
-    const tunnelUp = status.status === "connected" || status.status === "connecting" || status.status === "reconnecting";
     const tunnelBtn = document.createElement("button");
     tunnelBtn.className = "soft-btn";
-    tunnelBtn.disabled = !window.wgRelay;
-    if (tunnelUp) {
+    tunnelBtn.disabled = statusUi.busy || !window.wgRelay;
+    if (statusUi.tunnelDown) {
       tunnelBtn.textContent = t("wgRelayTunnelDown");
       tunnelBtn.addEventListener("click", () => {
         if (window.wgRelay && typeof window.wgRelay.tunnelDown === "function") {
@@ -397,7 +401,7 @@
     const regenBtn = document.createElement("button");
     regenBtn.className = "soft-btn";
     regenBtn.textContent = t("wgRelayRegenPhone");
-    regenBtn.disabled = !window.wgRelay;
+    regenBtn.disabled = statusUi.busy || !window.wgRelay;
     regenBtn.addEventListener("click", () => runDeploy(profile, { regenPhoneOnly: true }));
     actions.appendChild(regenBtn);
 

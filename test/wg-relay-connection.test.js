@@ -47,6 +47,7 @@ class FakeSidecar extends EventEmitter {
     this.events = events;
     this.startResult = startResult;
     this.config = null;
+    this.disposeCount = 0;
   }
 
   start(config) {
@@ -60,6 +61,7 @@ class FakeSidecar extends EventEmitter {
   }
 
   async dispose() {
+    this.disposeCount++;
     this.events.push(`${this.profileId}:sidecar-dispose`);
     this.removeAllListeners();
   }
@@ -72,6 +74,8 @@ class FakeBridge extends EventEmitter {
     this.events = events;
     this.waitResult = waitResult;
     this.config = null;
+    this.disposeCount = 0;
+    this.destroyCount = 0;
   }
 
   configure(config) {
@@ -94,7 +98,19 @@ class FakeBridge extends EventEmitter {
     this.events.push(`${this.profileId}:bridge-stop`);
   }
 
+  clearConfig() {
+    this.config = null;
+    return this;
+  }
+
+  async dispose() {
+    this.disposeCount++;
+    this.config = null;
+    this.removeAllListeners();
+  }
+
   destroy() {
+    this.destroyCount++;
     this.removeAllListeners();
   }
 }
@@ -105,6 +121,8 @@ function fixture(overrides = {}) {
   const runtime = createWgRelayRuntime();
   const sidecars = new Map();
   const bridges = new Map();
+  const sidecarInstances = [];
+  const bridgeInstances = [];
   const secretStore = overrides.secretStore || {
     read(profileId) {
       events.push(`${profileId}:secret-read`);
@@ -119,6 +137,7 @@ function fixture(overrides = {}) {
         ? overrides.sidecarFactory(profileId, events)
         : new FakeSidecar(profileId, events);
       sidecars.set(profileId, sidecar);
+      sidecarInstances.push(sidecar);
       return sidecar;
     },
     bridgeFactory(profileId) {
@@ -126,6 +145,7 @@ function fixture(overrides = {}) {
         ? overrides.bridgeFactory(profileId, events)
         : new FakeBridge(profileId, events);
       bridges.set(profileId, bridge);
+      bridgeInstances.push(bridge);
       return bridge;
     },
     async healthProbe(options) {
@@ -137,7 +157,24 @@ function fixture(overrides = {}) {
     bridgeTimeoutMs: 25,
     log: (...parts) => logs.push(parts.join(" ")),
   });
-  return { bridges, connection, events, logs, runtime, sidecars };
+  return {
+    bridgeInstances,
+    bridges,
+    connection,
+    events,
+    logs,
+    runtime,
+    sidecarInstances,
+    sidecars,
+  };
+}
+
+function assertReleaseOrder(events, profileId) {
+  const bridgeStop = events.lastIndexOf(`${profileId}:bridge-stop`);
+  const sidecarStop = events.lastIndexOf(`${profileId}:sidecar-stop`);
+  const sidecarDispose = events.lastIndexOf(`${profileId}:sidecar-dispose`);
+  assert.ok(bridgeStop >= 0 && bridgeStop < sidecarStop);
+  assert.ok(sidecarStop < sidecarDispose);
 }
 
 test("connect follows secret → sidecar → health → bridge configure/start/wait", async () => {
@@ -258,7 +295,7 @@ test("failure paths rollback bridge before sidecar and expose only stable codes"
     await assert.rejects(fx.connection.connect("alpha"), (failure) => (
       failure.code === "sidecar_spawn_failed" && failure.message === "sidecar_spawn_failed"
     ));
-    assert.deepEqual(fx.events.slice(-2), ["alpha:bridge-stop", "alpha:sidecar-stop"]);
+    assertReleaseOrder(fx.events, "alpha");
     assert.equal(fx.connection.status("alpha").errorCode, "sidecar_spawn_failed");
   });
 
@@ -266,7 +303,7 @@ test("failure paths rollback bridge before sidecar and expose only stable codes"
     await t.test(code, async () => {
       const fx = fixture({ healthProbe: async () => { throw Object.assign(new Error("secret"), { code }); } });
       await assert.rejects(fx.connection.connect("alpha"), (failure) => failure.code === code);
-      assert.deepEqual(fx.events.slice(-2), ["alpha:bridge-stop", "alpha:sidecar-stop"]);
+      assertReleaseOrder(fx.events, "alpha");
     });
   }
 
@@ -274,7 +311,7 @@ test("failure paths rollback bridge before sidecar and expose only stable codes"
     const error = Object.assign(new Error("RELAY-TOKEN-SECRET"), { code: "relay_auth_failed" });
     const fx = fixture({ bridgeFactory: (id, events) => new FakeBridge(id, events, Promise.reject(error)) });
     await assert.rejects(fx.connection.connect("alpha"), (failure) => failure.code === "relay_auth_failed");
-    assert.deepEqual(fx.events.slice(-2), ["alpha:bridge-stop", "alpha:sidecar-stop"]);
+    assertReleaseOrder(fx.events, "alpha");
   });
 });
 
@@ -370,6 +407,70 @@ test("probeRelayHealth maps loopback forward endpoints to /health and validates 
   );
 });
 
+test("probeRelayHealth disables pooling and closes sockets after success, failure, and abort", async (t) => {
+  const sockets = new Set();
+  const server = http.createServer((req, res) => {
+    if (req.url === "/failure") {
+      res.statusCode = 503;
+      res.end("unavailable");
+      return;
+    }
+    if (req.url === "/slow") return;
+    res.end(JSON.stringify({ version: 1, status: "ok", uptimeSeconds: 0 }));
+  });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    for (const socket of sockets) socket.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  let requestOptions = null;
+  await probeRelayHealth({
+    listen: `127.0.0.1:${server.address().port}`,
+    timeoutMs: 250,
+    request(url, options, callback) {
+      requestOptions = options;
+      return http.request(url, options, callback);
+    },
+  });
+  for (let index = 0; index < 20 && sockets.size; index++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  assert.equal(requestOptions.agent, false);
+  assert.equal(requestOptions.headers.Connection, "close");
+  assert.equal(sockets.size, 0);
+
+  await assert.rejects(probeRelayHealth({
+    listen: `127.0.0.1:${server.address().port}`,
+    path: "/failure",
+    timeoutMs: 250,
+  }), (error) => error.code === "health_http_status");
+  for (let index = 0; index < 20 && sockets.size; index++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(sockets.size, 0);
+
+  const controller = new AbortController();
+  const aborted = probeRelayHealth({
+    listen: `127.0.0.1:${server.address().port}`,
+    path: "/slow",
+    signal: controller.signal,
+    timeoutMs: 250,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  await assert.rejects(aborted, (error) => error.code === "connection_cancelled");
+  for (let index = 0; index < 20 && sockets.size; index++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(sockets.size, 0);
+});
+
 test("duplicate connect calls coalesce without duplicate work", async () => {
   const gate = deferred();
   const fx = fixture({ sidecarFactory: (id, events) => new FakeSidecar(id, events, gate.promise) });
@@ -391,7 +492,73 @@ test("disconnect wins a connect race and stale completion cannot restart the bri
   await assert.rejects(connecting, (error) => error.code === "connection_cancelled");
   assert.equal(fx.events.includes("alpha:health"), false);
   assert.equal(fx.events.includes("alpha:bridge-start"), false);
-  assert.deepEqual(fx.events.slice(-2), ["alpha:bridge-stop", "alpha:sidecar-stop"]);
+  assertReleaseOrder(fx.events, "alpha");
+});
+
+test("same-profile reconnect waits for old release without blocking another profile", async () => {
+  const oldStop = deferred();
+  let alphaCount = 0;
+  const fx = fixture({
+    sidecarFactory(id, events) {
+      const sidecar = new FakeSidecar(id, events);
+      if (id !== "alpha") return sidecar;
+      alphaCount++;
+      if (alphaCount === 1) {
+        sidecar.start = async (config) => {
+          sidecar.config = config;
+          events.push("alpha:old-start");
+          return { listen: "127.0.0.1:43127", generation: 1 };
+        };
+        sidecar.stop = async () => {
+          events.push("alpha:old-stop-begin");
+          await oldStop.promise;
+          events.push("alpha:old-stop-complete");
+        };
+      } else {
+        sidecar.start = async (config) => {
+          sidecar.config = config;
+          events.push("alpha:new-start");
+          return { listen: "127.0.0.1:43128", generation: 1 };
+        };
+      }
+      return sidecar;
+    },
+  });
+  await fx.connection.connect("alpha");
+  const disconnecting = fx.connection.disconnect("alpha");
+  const reconnecting = fx.connection.connect("alpha");
+  const beta = await fx.connection.connect("beta");
+  assert.equal(beta.status, "connected");
+  await new Promise((resolve) => setImmediate(resolve));
+  oldStop.resolve();
+  await Promise.all([disconnecting, reconnecting]);
+
+  assert.ok(fx.events.indexOf("alpha:old-stop-complete") < fx.events.indexOf("alpha:new-start"));
+});
+
+test("duplicate disconnect and dispose calls coalesce", async () => {
+  const stopGate = deferred();
+  const fx = fixture({
+    sidecarFactory(id, events) {
+      const sidecar = new FakeSidecar(id, events);
+      sidecar.stop = async () => {
+        events.push(`${id}:sidecar-stop`);
+        await stopGate.promise;
+      };
+      return sidecar;
+    },
+  });
+  await fx.connection.connect("alpha");
+  const firstDisconnect = fx.connection.disconnect("alpha");
+  const duplicateDisconnect = fx.connection.disconnect("alpha");
+  stopGate.resolve();
+  await Promise.all([firstDisconnect, duplicateDisconnect]);
+  assert.strictEqual(duplicateDisconnect, firstDisconnect);
+
+  const firstDispose = fx.connection.dispose();
+  const duplicateDispose = fx.connection.dispose();
+  await Promise.all([firstDispose, duplicateDispose]);
+  assert.strictEqual(duplicateDispose, firstDispose);
 });
 
 test("a newer connect attempt is immune to late events from the old attempt", async () => {
@@ -425,7 +592,7 @@ test("unexpected active sidecar exit fails the profile and stops bridge before s
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(fx.connection.status("alpha").status, "failed");
   assert.equal(fx.connection.status("alpha").errorCode, "sidecar_unexpected_exit");
-  assert.deepEqual(fx.events.slice(-2), ["alpha:bridge-stop", "alpha:sidecar-stop"]);
+  assertReleaseOrder(fx.events, "alpha");
 });
 
 test("profiles are isolated and createWgRelayConnection never auto-starts", async () => {
@@ -464,9 +631,54 @@ test("dispose disconnects every profile in bridge → sidecar order", async () =
   fx.events.length = 0;
   await fx.connection.dispose();
   assert.deepEqual(fx.events, [
-    "alpha:bridge-stop", "alpha:sidecar-stop",
-    "beta:bridge-stop", "beta:sidecar-stop",
-    "alpha:sidecar-dispose", "beta:sidecar-dispose",
+    "alpha:bridge-stop", "alpha:sidecar-stop", "alpha:sidecar-dispose",
+    "beta:bridge-stop", "beta:sidecar-stop", "beta:sidecar-dispose",
   ]);
   await assert.rejects(fx.connection.connect("alpha"), (error) => error.code === "connection_disposed");
+});
+
+test("record release scrubs resources and does not retain 100 disconnected attempts", async () => {
+  const fx = fixture();
+  for (let index = 0; index < 100; index++) {
+    await fx.connection.connect("alpha");
+    await fx.connection.disconnect("alpha");
+  }
+
+  assert.equal(fx.bridgeInstances.length, 100);
+  assert.equal(fx.sidecarInstances.length, 100);
+  assert.ok(fx.bridgeInstances.every((bridge) => (
+    bridge.config === null
+    && bridge.disposeCount === 1
+    && bridge.destroyCount === 0
+    && bridge.listenerCount("failure") === 0
+  )));
+  assert.ok(fx.sidecarInstances.every((sidecar) => (
+    sidecar.disposeCount === 1 && sidecar.listenerCount("failure") === 0
+  )));
+  const disposeEvents = fx.events.filter((event) => event === "alpha:sidecar-dispose").length;
+  assert.equal(disposeEvents, 100);
+
+  await fx.connection.dispose();
+  assert.equal(fx.events.filter((event) => event === "alpha:sidecar-dispose").length, disposeEvents);
+  assert.ok(fx.bridgeInstances.every((bridge) => bridge.destroyCount === 0));
+});
+
+test("failed records release resources and do not remain active", async () => {
+  let healthAttempts = 0;
+  const fx = fixture({
+    healthProbe: async () => {
+      healthAttempts++;
+      if (healthAttempts === 1) throw Object.assign(new Error("redacted"), { code: "health_timeout" });
+      return { version: 1, status: "ok", uptimeSeconds: 1 };
+    },
+  });
+  await assert.rejects(fx.connection.connect("alpha"), (error) => error.code === "health_timeout");
+  assert.equal(fx.bridgeInstances[0].disposeCount, 1);
+  assert.equal(fx.sidecarInstances[0].disposeCount, 1);
+  assert.equal(fx.connection.status("alpha").status, "failed");
+
+  const reconnected = await fx.connection.connect("alpha");
+  assert.equal(reconnected.status, "connected");
+  assert.equal(reconnected.generation, 2);
+  await fx.connection.disconnect("alpha");
 });
