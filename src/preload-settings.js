@@ -24,6 +24,20 @@
 
 const { contextBridge, ipcRenderer } = require("electron");
 
+function cloneIpcBoundary(value) {
+  if (value === undefined || value === null || typeof value !== "object") return value;
+  if (typeof structuredClone === "function") return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+function invokeCloned(channel, payload) {
+  const request = cloneIpcBoundary(payload);
+  const invoked = payload === undefined
+    ? ipcRenderer.invoke(channel)
+    : ipcRenderer.invoke(channel, request);
+  return Promise.resolve(invoked).then(cloneIpcBoundary);
+}
+
 // A sandboxed preload (Electron's default since 20) may only require "electron"
 // plus a few Node builtins — never an app module. The "is a default Discord App
 // ID baked in?" flag is therefore injected by value from main, via
@@ -69,12 +83,12 @@ ipcRenderer.on("remoteSsh:progress", (_event, payload) => {
 });
 ipcRenderer.on("wgRelay:status-changed", (_event, payload) => {
   for (const cb of wgRelayStatusListeners) {
-    try { cb(payload); } catch (err) { console.warn("wgRelay status listener threw:", err); }
+    try { cb(cloneIpcBoundary(payload)); } catch (err) { console.warn("wgRelay status listener threw:", err); }
   }
 });
 ipcRenderer.on("wgRelay:progress", (_event, payload) => {
   for (const cb of wgRelayProgressListeners) {
-    try { cb(payload); } catch (err) { console.warn("wgRelay progress listener threw:", err); }
+    try { cb(cloneIpcBoundary(payload)); } catch (err) { console.warn("wgRelay progress listener threw:", err); }
   }
 });
 ipcRenderer.on("remoteApproval:status-changed", (_event, payload) => {
@@ -215,32 +229,31 @@ contextBridge.exposeInMainWorld("remoteSsh", {
   },
 });
 
-// ── WireGuard relay (Phase 3) ──
+// ── WireGuard relay ──
 //
 // Surface: window.wgRelay
 //
 //   listStatuses()                 Promise<{ status, statuses: Array<state> }>
 //   status(profileId)              Promise<{ status, state }>
-//   deploy({ profileId, regenPhoneOnly?, password? })
-//                                  Promise<{ status:"ok", readback } | { status:"error", ... }>
-//   tunnelUp(profileId)            Promise<{ status, ifName?, address? }>
-//   tunnelDown(profileId)          Promise<{ status }>
-//   tunnelStatus(profileId)        Promise<{ status, tunnel }>
+//   deploy({ profile, password? }) Promise<{ status, profile?, state?, qr? }>
+//   connect/disconnect(profileId)  Promise<{ status, state? }>
+//   rotatePhone(profileId)         Promise<{ status, state?, qr? }>
+//   pairingQr(profileId)           Promise<{ status, qr? }>
+//   deleteLocal(profileId)         Promise<{ status, removed? }>
 //   onStatusChanged(cb)            cb({ profileId, status, ... })
 //   onProgress(cb)                 cb({ profileId, step, status, message? })
 //
-// Profile CRUD goes through settingsAPI.command (wgRelay.add / .update /
-// .remove / .applyReadback) so all writes flow through settings-controller as
-// the single source of truth. SEC-1: the SSH password is passed ONLY inside
-// the deploy() payload (from the renderer's in-memory store) — it is never
-// stored here or persisted.
+// The bridge exposes fixed operations rather than ipcRenderer/channel access.
+// Every argument, result, and event crosses an explicit clone boundary.
 contextBridge.exposeInMainWorld("wgRelay", {
-  listStatuses: () => ipcRenderer.invoke("wgRelay:list-statuses"),
-  status: (profileId) => ipcRenderer.invoke("wgRelay:status", profileId),
-  deploy: (req) => ipcRenderer.invoke("wgRelay:deploy", req),
-  tunnelUp: (profileId) => ipcRenderer.invoke("wgRelay:tunnel-up", profileId),
-  tunnelDown: (profileId) => ipcRenderer.invoke("wgRelay:tunnel-down", profileId),
-  tunnelStatus: (profileId) => ipcRenderer.invoke("wgRelay:tunnel-status", profileId),
+  listStatuses: () => invokeCloned("wgRelay:list-statuses"),
+  status: (profileId) => invokeCloned("wgRelay:status", { profileId }),
+  deploy: (request) => invokeCloned("wgRelay:deploy", request),
+  connect: (profileId) => invokeCloned("wgRelay:connect", { profileId }),
+  disconnect: (profileId) => invokeCloned("wgRelay:disconnect", { profileId }),
+  rotatePhone: (profileId) => invokeCloned("wgRelay:rotate-phone", { profileId }),
+  deleteLocal: (profileId) => invokeCloned("wgRelay:delete-local", { profileId }),
+  pairingQr: (profileId) => invokeCloned("wgRelay:pairing-qr", { profileId }),
   onStatusChanged: (cb) => {
     if (typeof cb !== "function") return () => {};
     wgRelayStatusListeners.add(cb);

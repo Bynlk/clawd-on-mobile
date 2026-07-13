@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, powerMonitor, clipboard } = require("electron");
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, nativeTheme, dialog, shell, nativeImage, powerSaveBlocker, powerMonitor, clipboard, safeStorage } = require("electron");
 // ── Linux/Wayland: relaunch under XWayland so the pet is draggable (issue #441) ──
 // Native Wayland ignores client-side window positioning and blocks global cursor
 // queries, so the pet spawns centered, can't be dragged, and has no tracking;
@@ -82,6 +82,10 @@ const {
   createSettingsSizePreviewSession,
 } = require("./settings-size-preview-session");
 const { registerSettingsIpc } = require("./settings-ipc");
+const {
+  createWgRelayMainIntegration,
+  createWgRelayQuitBarrier,
+} = require("./wg-relay-ipc");
 const createSettingsEffectRouter = require("./settings-effect-router");
 const { registerSessionIpc } = require("./session-ipc");
 const { registerPetInteractionIpc } = require("./pet-interaction-ipc");
@@ -3320,6 +3324,25 @@ const _remoteSshIpc = registerRemoteSshIpc({
   isPackaged: app.isPackaged,
 });
 
+let _wgRelayIntegration = null;
+let _wgRelayDisposePromise = null;
+
+function disposeWgRelayIntegration() {
+  if (_wgRelayDisposePromise) return _wgRelayDisposePromise;
+  const integration = _wgRelayIntegration;
+  _wgRelayIntegration = null;
+  _wgRelayDisposePromise = integration && typeof integration.dispose === "function"
+    ? Promise.resolve(integration.dispose()).catch(() => {})
+    : Promise.resolve();
+  return _wgRelayDisposePromise;
+}
+
+const _wgRelayQuitBarrier = createWgRelayQuitBarrier({
+  dispose: disposeWgRelayIntegration,
+  quit: () => app.quit(),
+});
+let _shutdownCleanupStarted = false;
+
 // ── Settings panel window ──
 //
 // Single-instance, non-modal, system-titlebar BrowserWindow that hosts the
@@ -3941,6 +3964,24 @@ if (!gotTheLock) {
     updateDebugLog = path.join(app.getPath("userData"), "update-debug.log");
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
     focusDebugLog = path.join(app.getPath("userData"), "focus-debug.log");
+    try {
+      _wgRelayIntegration = createWgRelayMainIntegration({
+        ipcMain,
+        BrowserWindow,
+        settingsController: _settingsController,
+        dialog,
+        safeStorage,
+        userDataPath: app.getPath("userData"),
+        resourcesPath: process.resourcesPath,
+        appRoot: app.getAppPath(),
+        isPackaged: app.isPackaged,
+        platform: process.platform,
+        arch: process.arch,
+        log: (...parts) => console.warn("Clawd wg-relay:", ...parts),
+      });
+    } catch (err) {
+      console.warn("Clawd: WireGuard relay integration unavailable:", err && err.message);
+    }
     initTelegramMigrationController().catch((err) => {
       console.warn("Clawd: migration controller init failed:", err && err.message);
     });
@@ -4031,8 +4072,11 @@ if (!gotTheLock) {
     if (codexHookNudgeTimer && typeof codexHookNudgeTimer.unref === "function") codexHookNudgeTimer.unref();
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     isQuitting = true;
+    _wgRelayQuitBarrier.beforeQuit(event);
+    if (_shutdownCleanupStarted) return;
+    _shutdownCleanupStarted = true;
     if (systemWakeRecovery) systemWakeRecovery.dispose();
     try { stopUpdateScheduler(); } catch {}
     releasePowerSaveBlocker();
@@ -4059,6 +4103,10 @@ if (!gotTheLock) {
     try { _remoteSshIpc.dispose(); } catch {}
     try { _remoteSshRuntime.cleanup(); } catch {}
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
+  });
+
+  app.on("will-quit", () => {
+    void disposeWgRelayIntegration();
   });
 
   app.on("window-all-closed", () => {

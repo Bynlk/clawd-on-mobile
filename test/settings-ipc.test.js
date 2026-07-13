@@ -303,6 +303,14 @@ test("settings IPC delegates controller and size preview handlers", async () => 
   assert.deepStrictEqual(await ipcMain.invoke("settings:command", { action: "resizePet", payload: "P:30" }), {
     status: "ok",
   });
+  const wgRelayPublicProfile = {
+    id: "wg-1", label: "VPS", host: "203.0.113.10", sshUsername: "root",
+    sshPort: 22, authMethod: "password", wgPort: 51820, wgSubnet: "10.8.0.0/24",
+  };
+  assert.deepStrictEqual(await ipcMain.invoke("settings:command", {
+    action: "wgRelay.update",
+    payload: wgRelayPublicProfile,
+  }), { status: "ok" });
   assert.deepStrictEqual(await ipcMain.invoke("settings:begin-size-preview"), {
     status: "ok",
     phase: "begin",
@@ -321,6 +329,7 @@ test("settings IPC delegates controller and size preview handlers", async () => 
   assert.deepStrictEqual(calls, [
     ["applyUpdate", "size", "P:20"],
     ["applyCommand", "resizePet", "P:30"],
+    ["applyCommand", "wgRelay.update", wgRelayPublicProfile],
     ["sizeBegin"],
     ["sizePreview", "P:35"],
     ["sizeEnd", "P:35"],
