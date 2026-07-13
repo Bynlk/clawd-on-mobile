@@ -14,8 +14,24 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
+function createProfileMap(entries = []) {
+  const profiles = Object.create(null);
+  for (const [profileId, blob] of entries) profiles[profileId] = blob;
+  return profiles;
+}
+
+function isCanonicalBase64(value) {
+  if (typeof value !== "string"
+      || value.length === 0
+      || value.length % 4 !== 0
+      || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    return false;
+  }
+  return Buffer.from(value, "base64").toString("base64") === value;
+}
+
 function createEmptyStore() {
-  return { version: STORE_VERSION, profiles: {} };
+  return { version: STORE_VERSION, profiles: createProfileMap() };
 }
 
 function createWgRelaySecretStore(options = {}) {
@@ -89,15 +105,14 @@ function createWgRelaySecretStore(options = {}) {
         || !isPlainObject(parsed.profiles)) {
       throw new Error("Corrupt secret store");
     }
-    for (const [profileId, blob] of Object.entries(parsed.profiles)) {
+    const entries = Object.entries(parsed.profiles);
+    for (const [profileId, blob] of entries) {
       if (!PROFILE_ID_RE.test(profileId)
-          || typeof blob !== "string"
-          || blob.length === 0
-          || !/^[A-Za-z0-9+/]+={0,2}$/.test(blob)) {
+          || !isCanonicalBase64(blob)) {
         throw new Error("Corrupt secret store");
       }
     }
-    return parsed;
+    return { version: STORE_VERSION, profiles: createProfileMap(entries) };
   }
 
   function loadStore() {
@@ -168,8 +183,8 @@ function createWgRelaySecretStore(options = {}) {
     assertProfileId(profileId);
     assertAvailable();
     const store = loadStore();
+    if (!Object.hasOwn(store.profiles, profileId)) return null;
     const blob = store.profiles[profileId];
-    if (blob === undefined) return null;
     try {
       const plaintext = safeStorage.decryptString(Buffer.from(blob, "base64"));
       const secrets = JSON.parse(plaintext);
@@ -183,7 +198,7 @@ function createWgRelaySecretStore(options = {}) {
   function remove(profileId) {
     assertProfileId(profileId);
     const store = loadStore();
-    if (store.profiles[profileId] === undefined) return false;
+    if (!Object.hasOwn(store.profiles, profileId)) return false;
     delete store.profiles[profileId];
     persistStore(store);
     return true;

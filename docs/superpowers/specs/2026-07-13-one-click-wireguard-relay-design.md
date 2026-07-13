@@ -411,3 +411,7 @@ POST /api/manage/phone/rotate
 - 合规修复 RED：`node --test test/settings-actions-wg-relay.test.js` 退出码 1；20 项中 8 项按预期失败，证明 add、update、remove、applyReadback 会重新提交脏快照字段，并证明 `createdAt`、`serverPubKey`、`pcAddress` 和旧 readback 白名单不符合公开 profile 规范。
 - 合规修复：所有产生 commit 的设置命令先规范化整个快照；update 仅保留 `sshHostFingerprint`、`endpoint`、`relayAddr`、`lastDeployedAt`、`deployVersion`，readback 仅持久化 `endpoint`、`relayAddr` 与部署元数据，最终结果再次经过公开 profile sanitizer。合法旧 key-auth 的 `identityFile` 继续保留。
 - 合规修复 GREEN：`node --test test/wg-relay-profile.test.js test/settings-actions-wg-relay.test.js test/wg-relay-secret-store.test.js` 退出码 0；49 项全部通过，0 失败、0 跳过。
+- 边界修复 RED：`node --test test/settings-actions-wg-relay.test.js` 退出码 1；21 项中 1 项按预期失败，证明显式空 `sshHostFingerprint` 被错误恢复。`node --test test/wg-relay-secret-store.test.js` 首次退出码 1，10 项中 2 项按预期失败，证明 `__proto__`、`constructor`、`toString` 与普通对象原型冲突；加入损坏 blob 用例后再次退出码 1，13 项中 1 项按预期失败。
+- 边界修复：update 仅在 payload 未持有对应字段时恢复旧部署元数据；secret store 使用 null-prototype profile map，并在读取、删除时统一使用 `Object.hasOwn()`，磁盘 JSON 解析后也转换为 null-prototype map。非规范 base64 blob 被判定为损坏；Linux 仍只拒绝 `basic_text`，未知安全后端保持可用。
+- 原子写测试：注入文件系统完整记录 `open → write → chmod → fsync → close → rename`，断言重命名严格发生在同步和关闭之后。
+- 边界修复 GREEN：`node --test test/wg-relay-profile.test.js test/settings-actions-wg-relay.test.js test/wg-relay-secret-store.test.js` 退出码 0；55 项全部通过，0 失败、0 跳过。

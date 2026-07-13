@@ -53,11 +53,50 @@ test("write/read/remove stores only encrypted profile blobs", (t) => {
   assert.equal(store.read("wg-1"), null);
 });
 
+test("schema-valid Object prototype names can be written, reloaded, and removed", (t) => {
+  const userDataPath = makeTempDir(t);
+  const options = {
+    safeStorage: makeSafeStorage(), userDataPath, fs, platform: "darwin",
+  };
+  const store = createWgRelaySecretStore(options);
+  const ids = ["__proto__", "constructor", "toString"];
+
+  for (const profileId of ids) {
+    store.write(profileId, { relayToken: `secret-for-${profileId}` });
+  }
+
+  const reloaded = createWgRelaySecretStore(options);
+  for (const profileId of ids) {
+    assert.deepEqual(reloaded.read(profileId), { relayToken: `secret-for-${profileId}` });
+    assert.equal(reloaded.remove(profileId), true);
+    assert.equal(reloaded.read(profileId), null);
+  }
+});
+
+test("missing Object prototype name IDs return null and false", (t) => {
+  const store = createWgRelaySecretStore({
+    safeStorage: makeSafeStorage(), userDataPath: makeTempDir(t), fs, platform: "darwin",
+  });
+
+  for (const profileId of ["__proto__", "constructor", "toString"]) {
+    assert.equal(store.read(profileId), null);
+    assert.equal(store.remove(profileId), false);
+  }
+});
+
 test("writes through a chmodded, fsynced temp file and renames atomically", (t) => {
   const userDataPath = makeTempDir(t);
   const calls = [];
   const trackedFs = {
     ...fs,
+    openSync(file, flags, mode) {
+      calls.push(["open", file, flags, mode]);
+      return fs.openSync(file, flags, mode);
+    },
+    writeFileSync(file, data, options) {
+      calls.push(["write"]);
+      return fs.writeFileSync(file, data, options);
+    },
     chmodSync(file, mode) {
       calls.push(["chmod", file, mode]);
       return fs.chmodSync(file, mode);
@@ -65,6 +104,10 @@ test("writes through a chmodded, fsynced temp file and renames atomically", (t) 
     fsyncSync(fd) {
       calls.push(["fsync"]);
       return fs.fsyncSync(fd);
+    },
+    closeSync(fd) {
+      calls.push(["close"]);
+      return fs.closeSync(fd);
     },
     renameSync(from, to) {
       calls.push(["rename", from, to]);
@@ -82,9 +125,12 @@ test("writes through a chmodded, fsynced temp file and renames atomically", (t) 
 
   const target = path.join(userDataPath, FILE_NAME);
   const temp = `${target}.tmp`;
-  assert.ok(calls.some(([name, file, mode]) => name === "chmod" && file === temp && mode === 0o600));
-  assert.ok(calls.some(([name]) => name === "fsync"));
-  assert.ok(calls.some(([name, from, to]) => name === "rename" && from === temp && to === target));
+  assert.deepEqual(calls.map(([name]) => name), [
+    "open", "write", "chmod", "fsync", "close", "rename",
+  ]);
+  assert.deepEqual(calls[0].slice(1), [temp, "w", 0o600]);
+  assert.deepEqual(calls[2].slice(1), [temp, 0o600]);
+  assert.deepEqual(calls[5].slice(1), [temp, target]);
   assert.equal(fs.statSync(target).mode & 0o777, 0o600);
   assert.equal(fs.existsSync(temp), false);
 });
@@ -115,6 +161,41 @@ test("corrupt store JSON fails closed", (t) => {
   assert.throws(() => store.write("wg-1", { relayToken: "new" }), /corrupt secret store/i);
 });
 
+test("malformed encrypted profile blob fails as corrupt store data", (t) => {
+  const userDataPath = makeTempDir(t);
+  fs.writeFileSync(path.join(userDataPath, FILE_NAME), JSON.stringify({
+    version: 1,
+    profiles: { "wg-1": "a" },
+  }), { mode: 0o600 });
+  const store = createWgRelaySecretStore({
+    safeStorage: makeSafeStorage(), userDataPath, fs, platform: "darwin",
+  });
+
+  assert.throws(() => store.read("wg-1"), /corrupt secret store/i);
+});
+
+test("safeStorage decryption failures stay generic", (t) => {
+  const userDataPath = makeTempDir(t);
+  createWgRelaySecretStore({
+    safeStorage: makeSafeStorage(), userDataPath, fs, platform: "darwin",
+  }).write("wg-1", { relayToken: "never-log-this" });
+  const store = createWgRelaySecretStore({
+    safeStorage: makeSafeStorage({
+      decryptString() {
+        throw new Error("backend-specific decryption details");
+      },
+    }),
+    userDataPath,
+    fs,
+    platform: "darwin",
+  });
+
+  assert.throws(
+    () => store.read("wg-1"),
+    (error) => error.message === "Unable to decrypt WireGuard relay secrets",
+  );
+});
+
 test("unavailable safeStorage rejects reads and writes", (t) => {
   const store = createWgRelaySecretStore({
     safeStorage: makeSafeStorage({ isEncryptionAvailable: () => false }),
@@ -138,6 +219,17 @@ test("Linux basic_text backend is rejected", (t) => {
 
   assert.equal(store.isAvailable(), false);
   assert.throws(() => store.write("wg-1", { relayToken: "secret" }), /encryption unavailable/i);
+});
+
+test("future secure Linux safeStorage backends remain available", (t) => {
+  const store = createWgRelaySecretStore({
+    safeStorage: makeSafeStorage({ getSelectedStorageBackend: () => "future_secure_backend" }),
+    userDataPath: makeTempDir(t),
+    fs,
+    platform: "linux",
+  });
+
+  assert.equal(store.isAvailable(), true);
 });
 
 test("rejects invalid ids and non-object secret payloads", (t) => {

@@ -84,7 +84,7 @@ function wgRelayUpdateProfile(payload, deps) {
     "lastDeployedAt",
     "deployVersion",
   ]) {
-    if (profile[f] === undefined && prev[f] !== undefined) profile[f] = prev[f];
+    if (!Object.hasOwn(payload, f) && prev[f] !== undefined) profile[f] = prev[f];
   }
   next.profiles[idx] = profile;
   return { status: "ok", commit: { wgRelay: next } };

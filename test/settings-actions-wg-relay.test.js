@@ -132,6 +132,18 @@ test("update: preserves only canonical deployment metadata when not supplied", (
   assertCanonicalProfile(profile);
 });
 
+test("update: explicit empty SSH fingerprint clears the saved fingerprint", () => {
+  const existing = keyPayload({
+    sshHostFingerprint: "SHA256:AbCdEf0123456789+/AbCdEf0123456789+/AbCdEf0",
+  });
+  const r = wgRelayUpdateProfile(
+    keyPayload({ sshHostFingerprint: "" }),
+    depsWith([existing]),
+  );
+  assert.equal(r.status, "ok");
+  assert.equal(r.commit.wgRelay.profiles[0].sshHostFingerprint, undefined);
+});
+
 test("update: sanitizes dirty sibling profiles before committing", () => {
   const target = dirtyProfile({ id: "target", wgSubnet: "10.9.0.0/24" });
   const sibling = dirtyProfile({ id: "sibling", wgSubnet: "10.10.0.0/24" });
