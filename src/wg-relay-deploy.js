@@ -241,7 +241,13 @@ async function runKeyPath({ profile, script, onProgress, deps }) {
   const spawn = deps.spawn || childProcess.spawn;
   const { buildSshArgs } = deps.runtimeModule || require("./remote-ssh-runtime");
   const { spawnAndWait } = deps.deployModule || require("./remote-ssh-deploy");
-  const args = buildSshArgs(profile).concat(["bash -s"]);
+  const target = normalizeSshTarget(profile);
+  const sshProfile = {
+    ...profile,
+    host: `${target.username}@${target.host}`,
+    port: target.port,
+  };
+  const args = buildSshArgs(sshProfile).concat(["bash -s"]);
   // spawnAndWait accumulates stdout/stderr; stream lines for progress too.
   const r = await spawnAndWait(spawn, "ssh", args, {
     stdin: script,
@@ -258,15 +264,14 @@ async function runKeyPath({ profile, script, onProgress, deps }) {
 async function runPasswordPath({ profile, password, runtime, onProgress, deps }) {
   const { deployBundle } = deps.ssh2Module || require("./wg-ssh2-exec");
   const bundleModule = deps.bundleModule || require("./wg-relay-bundle");
-  const [legacyUsername, hostOnly] = splitHost(profile.host);
-  const username = profile.sshUsername || legacyUsername;
+  const target = normalizeSshTarget(profile);
   const manifest = bundleModule.buildRelayBundleManifest({
     appRoot: deps.appRoot || path.join(__dirname, ".."),
   });
   const r = await deployBundle({
-    host: hostOnly,
-    port: profile.sshPort || profile.port || 22,
-    username,
+    host: target.host,
+    port: target.port,
+    username: target.username,
     password,
     expectedFingerprint: profile.sshHostFingerprint || undefined,
     confirmHostKey: deps.confirmHostKey || deps.hostKeyVerifier,
@@ -289,6 +294,16 @@ function splitHost(host) {
   const at = s.indexOf("@");
   if (at >= 0) return [s.slice(0, at), s.slice(at + 1)];
   return ["root", s];
+}
+
+function normalizeSshTarget(profile) {
+  const source = profile || {};
+  const [legacyUsername, host] = splitHost(source.host);
+  return {
+    host,
+    username: source.sshUsername || legacyUsername,
+    port: source.sshPort || source.port || 22,
+  };
 }
 
 async function deployInternal({ profile, password, runtime = {}, deps = {} }) {

@@ -202,6 +202,41 @@ test("deploy key path returns readback on exit 0", async () => {
   assert.ok(emitter.events.some((e) => e.step === "connect" && e.status === "ok"));
 });
 
+test("deploy key path normalizes canonical SSH fields and preserves legacy host fields", async () => {
+  const buildInputs = [];
+  const deps = {
+    scriptBody: "echo body",
+    spawn: () => {},
+    runtimeModule: {
+      buildSshArgs: (profile) => {
+        buildInputs.push(profile);
+        return [profile.host];
+      },
+    },
+    deployModule: {
+      spawnAndWait: async () => ({
+        code: 0,
+        stdout: makeReadbackStdout(),
+        stderr: "",
+      }),
+    },
+  };
+  const canonical = keyProfile({
+    host: "203.0.113.10",
+    port: undefined,
+    sshUsername: "deploy",
+    sshPort: 2222,
+  });
+  const legacy = keyProfile({ host: "legacy@198.51.100.20", port: 2200 });
+
+  assert.equal((await deploy({ profile: canonical, deps })).ok, true);
+  assert.equal((await deploy({ profile: legacy, deps })).ok, true);
+  assert.equal(buildInputs[0].host, "deploy@203.0.113.10");
+  assert.equal(buildInputs[0].port, 2222);
+  assert.equal(buildInputs[1].host, "legacy@198.51.100.20");
+  assert.equal(buildInputs[1].port, 2200);
+});
+
 test("deploy maps non-zero exit code via EXIT_CODE_MAP", async () => {
   const emitter = fakeEmitter();
   const deps = {

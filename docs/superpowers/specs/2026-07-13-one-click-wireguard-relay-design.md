@@ -426,3 +426,6 @@ POST /api/manage/phone/rotate
 - 编排实现：密码路径构建完整 bundle 后调用单会话 transport；只接受字段完整且无额外字段的 `schemaVersion=1` 回传，并校验 endpoint、私网 `/24`、同子网 `ws://` Relay URL、两份完整且地址不同的 WireGuard 配置，以及两个各含 64 个十六进制字符（256 bit）的 Token。进度只发出脱敏的 connect、host-key、upload、install、validate 阶段；stdout、stderr、密码和回传秘密不进入进度或错误。部署函数在 `finally` 中移除本地密码引用，不声称覆盖不可变 JavaScript 字符串内存。
 - 边界 RED：两轮边界测试分别以 3 项预期失败证明 `ws` 根符号链接、打包遗漏、上传失败阶段、必需文件父目录符号链接、上传前文件替换和旧进度阶段兼容问题；单独 malformed JSON 用例以 1 项预期失败证明解析器错误细节不应进入返回错误。
 - GREEN：`node --test test/wg-relay-bundle.test.js test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 0；48 项全部通过，0 失败、0 跳过。真实生产清单当前会明确报告缺少 Task 3 的 `relay/relay-token-store.js` 或 `relay/wg-management.js`，这是阶段边界，不以占位文件掩盖。
+- 密钥部署兼容性审查 RED：`node --test --test-name-pattern="normalizes canonical SSH fields" test/wg-relay-deploy.test.js` 退出码 1；实际传给旧 `buildSshArgs` 的 host 为裸 `203.0.113.10`，而不是规范字段要求的 `deploy@203.0.113.10`。
+- 密钥部署兼容性修复：key 与 password transport 共用一个基于既有 `splitHost()` 的 SSH target normalizer；规范 `host`/`sshUsername`/`sshPort` 转换为旧 builder 所需的 `user@host`/`port`，旧 `user@host`/`port` 输入保持原值。
+- 密钥部署兼容性 GREEN：`node --test test/wg-relay-bundle.test.js test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 0；49 项全部通过，0 失败、0 跳过。
