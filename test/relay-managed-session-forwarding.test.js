@@ -21,65 +21,65 @@ function socket(name) {
     sent: [],
     closed: false,
     send(data) { this.sent.push(data); },
-    close() { this.closed = true; this.readyState = 3; },
+    close(code, reason) {
+      this.closed = true;
+      this.closeCode = code;
+      this.closeReason = reason;
+      this.readyState = 3;
+    },
   };
 }
 
 describe("RelayPairRegistry", () => {
-  it("forwards PC frames to every phone and each phone frame to the PC", () => {
+  it("forwards frames between exactly one PC and one phone", () => {
     const pairs = new RelayPairRegistry();
     const pc = socket("pc");
-    const phoneA = socket("phone-a");
-    const phoneB = socket("phone-b");
+    const phone = socket("phone");
     pairs.add("token", "pc", pc);
-    pairs.add("token", "phone", phoneA);
-    pairs.add("token", "phone", phoneB);
+    pairs.add("token", "phone", phone);
 
     pairs.forward("token", "pc", "from-pc");
-    assert.deepEqual(phoneA.sent, ["from-pc"]);
-    assert.deepEqual(phoneB.sent, ["from-pc"]);
-    pairs.forward("token", "phone", "from-phone");
-    assert.deepEqual(pc.sent, ["from-phone"]);
+    assert.deepEqual(phone.sent, ["from-pc"]);
+    pairs.forward("token", "phone", "from-phone", phone);
+    const inbound = JSON.parse(pc.sent[0]);
+    assert.equal(inbound.payload, "from-phone");
   });
 
-  it("wraps phone frames with source identity and routes targeted PC replies to one phone", () => {
+  it("wraps phone frames with source identity and routes targeted PC replies", () => {
     const pairs = new RelayPairRegistry();
     const pc = socket("pc");
-    const phoneA = socket("phone-a");
-    const phoneB = socket("phone-b");
+    const phone = socket("phone");
     pairs.add("token", "pc", pc);
-    pairs.add("token", "phone", phoneA);
-    pairs.add("token", "phone", phoneB);
+    pairs.add("token", "phone", phone);
 
-    pairs.forward("token", "phone", "from-a", phoneA);
+    pairs.forward("token", "phone", "from-phone", phone);
     const inbound = JSON.parse(pc.sent.at(-1));
     assert.equal(inbound.type, "relay_forward");
-    assert.equal(inbound.payload, "from-a");
+    assert.equal(inbound.payload, "from-phone");
     assert.ok(inbound.sourceClientId);
 
     pairs.forward("token", "pc", JSON.stringify({
       type: "relay_forward",
       targetClientId: inbound.sourceClientId,
-      payload: "only-a",
+      payload: "only-phone",
     }), pc);
-    assert.deepEqual(phoneA.sent, ["only-a"]);
-    assert.deepEqual(phoneB.sent, []);
+    assert.deepEqual(phone.sent, ["only-phone"]);
   });
 
-  it("disconnects one phone without replacing or closing the other", () => {
+  it("replaces the prior phone and keeps only the replacement", () => {
     const pairs = new RelayPairRegistry();
     const pc = socket("pc");
-    const phoneA = socket("phone-a");
-    const phoneB = socket("phone-b");
+    const first = socket("first");
+    const replacement = socket("replacement");
     pairs.add("token", "pc", pc);
-    pairs.add("token", "phone", phoneA);
-    pairs.add("token", "phone", phoneB);
-    pairs.remove("token", "phone", phoneA);
+    pairs.add("token", "phone", first);
+    pairs.add("token", "phone", replacement);
 
     pairs.forward("token", "pc", "next");
-    assert.deepEqual(phoneA.sent, []);
-    assert.deepEqual(phoneB.sent, ["next"]);
-    assert.equal(phoneB.closed, false);
+    assert.equal(first.closed, true);
+    assert.deepEqual(first.sent, []);
+    assert.deepEqual(replacement.sent, ["next"]);
+    assert.equal(pairs.get("token").phone, replacement);
     assert.deepEqual(pairs.countConnections(), { pc: 1, phone: 1 });
   });
 
@@ -146,12 +146,9 @@ function setupRelayTopology() {
     headers: {},
     socket: { remoteAddress: "127.0.0.1" },
   });
-  const phoneA = new TopologySocket();
-  const phoneB = new TopologySocket();
-  pairs.add("token", "phone", phoneA);
-  pairs.add("token", "phone", phoneB);
-  phoneA.sent.length = 0;
-  phoneB.sent.length = 0;
+  const phone = new TopologySocket();
+  pairs.add("token", "phone", phone);
+  phone.sent.length = 0;
 
   const sendFromPhone = (phone, payload) => {
     pairs.forward("token", "phone", JSON.stringify(payload), phone);
@@ -164,88 +161,85 @@ function setupRelayTopology() {
   };
   return {
     pairs, mobile, runtime, bridge, relayPc, desktopTransport,
-    phoneA, phoneB, sendFromPhone, disconnectPhone,
+    phone, sendFromPhone, disconnectPhone,
   };
 }
 
 describe("managed console over a real Relay topology", () => {
-  it("keeps A enabled when B disables sync and routes deltas only to A", (t) => {
+  it("routes managed-session deltas to the single Relay phone", (t) => {
     const topology = setupRelayTopology();
     t.after(() => { topology.bridge.dispose(); topology.mobile.close(); });
-    const { runtime, phoneA, phoneB, sendFromPhone } = topology;
+    const { runtime, phone, sendFromPhone } = topology;
 
-    sendFromPhone(phoneA, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-a" });
-    sendFromPhone(phoneB, { type: "managed_content_sync_set", enabled: false, deviceId: "phone-b" });
-    phoneA.sent.length = 0;
-    phoneB.sent.length = 0;
+    sendFromPhone(phone, { type: "managed_content_sync_set", enabled: true, deviceId: "phone" });
+    phone.sent.length = 0;
 
     runtime.emit("delta", { sessionId: "s1", sequence: 1, kind: "terminal_delta", text: "private" });
 
-    assert.ok(phoneA.sent.some((raw) => JSON.parse(raw).type === "managed_session_delta"));
-    assert.equal(phoneB.sent.some((raw) => JSON.parse(raw).type === "managed_session_delta"), false);
+    assert.ok(phone.sent.some((raw) => JSON.parse(raw).type === "managed_session_delta"));
   });
 
-  it("does not let B disabling sync release A's input lease", (t) => {
+  it("releases the single phone's lease when it disables sync and lets it reacquire", (t) => {
     const topology = setupRelayTopology();
     t.after(() => { topology.bridge.dispose(); topology.mobile.close(); });
-    const { phoneA, phoneB, sendFromPhone } = topology;
-    sendFromPhone(phoneA, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-a" });
-    sendFromPhone(phoneA, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-a" });
-    sendFromPhone(phoneB, { type: "managed_content_sync_set", enabled: false, deviceId: "phone-b" });
-    sendFromPhone(phoneB, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-b" });
-    phoneB.sent.length = 0;
+    const { phone, sendFromPhone } = topology;
+    sendFromPhone(phone, { type: "managed_content_sync_set", enabled: true, deviceId: "phone" });
+    sendFromPhone(phone, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone" });
+    sendFromPhone(phone, { type: "managed_content_sync_set", enabled: false, deviceId: "phone" });
+    sendFromPhone(phone, { type: "managed_content_sync_set", enabled: true, deviceId: "phone" });
+    phone.sent.length = 0;
 
-    sendFromPhone(phoneB, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-b" });
+    sendFromPhone(phone, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone" });
 
-    const result = phoneB.sent.map((raw) => JSON.parse(raw)).find((message) =>
-      message.type === "managed_session_input_lease_changed" && message.granted === false
+    const result = phone.sent.map((raw) => JSON.parse(raw)).find((message) =>
+      message.type === "managed_session_input_lease_changed" && message.granted === true
     );
-    assert.equal(result.owner, "phone-a");
+    assert.equal(result.owner, "phone");
+    assert.equal(result.granted, true);
   });
 
-  it("releases only the disconnected logical phone subscription and lease", (t) => {
+  it("releases the disconnected phone subscription and lease for its replacement", (t) => {
     const topology = setupRelayTopology();
     t.after(() => { topology.bridge.dispose(); topology.mobile.close(); });
-    const { runtime, phoneA, phoneB, sendFromPhone, disconnectPhone } = topology;
-    sendFromPhone(phoneA, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-a" });
-    sendFromPhone(phoneB, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-b" });
-    sendFromPhone(phoneA, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-a" });
+    const { runtime, phone, pairs, sendFromPhone, disconnectPhone } = topology;
+    sendFromPhone(phone, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-old" });
+    sendFromPhone(phone, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-old" });
 
-    disconnectPhone(phoneA);
-    phoneB.sent.length = 0;
-    sendFromPhone(phoneB, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-b" });
+    disconnectPhone(phone);
+    const replacement = new TopologySocket();
+    pairs.add("token", "phone", replacement);
+    sendFromPhone(replacement, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-new" });
+    replacement.sent.length = 0;
+    sendFromPhone(replacement, { type: "managed_session_input_lease_acquire", sessionId: "s1", deviceId: "phone-new" });
     runtime.emit("delta", { sessionId: "s1", sequence: 3, kind: "terminal_delta", text: "still-live" });
 
-    const messages = phoneB.sent.map((raw) => JSON.parse(raw));
+    const messages = replacement.sent.map((raw) => JSON.parse(raw));
     assert.ok(messages.some((message) =>
       message.type === "managed_session_input_lease_changed" && message.granted === true
     ));
     assert.ok(messages.some((message) => message.type === "managed_session_delta"));
   });
 
-  it("rate limits one logical phone without disconnecting the shared Relay transport", (t) => {
+  it("rate limits the logical phone without disconnecting the Relay transport", (t) => {
     const topology = setupRelayTopology();
     t.after(() => { topology.bridge.dispose(); topology.mobile.close(); });
-    const { runtime, phoneA, phoneB, sendFromPhone, desktopTransport } = topology;
-    sendFromPhone(phoneA, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-a" });
-    sendFromPhone(phoneB, { type: "managed_content_sync_set", enabled: true, deviceId: "phone-b" });
-    phoneA.sent.length = 0;
-    phoneB.sent.length = 0;
+    const { runtime, phone, sendFromPhone, desktopTransport } = topology;
+    sendFromPhone(phone, { type: "managed_content_sync_set", enabled: true, deviceId: "phone" });
+    phone.sent.length = 0;
 
     for (let index = 0; index < 65; index++) {
-      sendFromPhone(phoneB, { type: "managed_sessions_request", deviceId: "phone-b" });
+      sendFromPhone(phone, { type: "managed_sessions_request", deviceId: "phone" });
     }
-    runtime.emit("delta", { sessionId: "s1", sequence: 4, kind: "terminal_delta", text: "for-a" });
+    runtime.emit("delta", { sessionId: "s1", sequence: 4, kind: "terminal_delta", text: "still-connected" });
 
     assert.equal(desktopTransport.readyState, 1);
-    assert.ok(phoneA.sent.some((raw) => JSON.parse(raw).type === "managed_session_delta"));
-    assert.ok(phoneB.sent.some((raw) => {
+    assert.ok(phone.sent.some((raw) => {
       const message = JSON.parse(raw);
       return message.type === "managed_session_error" && message.code === "rate_limit_exceeded";
     }));
   });
 
-  it("routes approval_result back to only the logical Relay phone", (t) => {
+  it("routes approval_result back to the single logical Relay phone", (t) => {
     const pairs = new RelayPairRegistry();
     const integration = initMobileServer({ getDataDir: () => "/tmp" }, {
       createHttpServer: () => ({ listen() {}, on() {} }),
@@ -261,22 +255,18 @@ describe("managed console over a real Relay topology", () => {
       headers: {},
       socket: { remoteAddress: "127.0.0.1" },
     });
-    const phoneA = new TopologySocket();
-    const phoneB = new TopologySocket();
-    pairs.add("token", "phone", phoneA);
-    pairs.add("token", "phone", phoneB);
-    phoneA.sent.length = 0;
-    phoneB.sent.length = 0;
+    const phone = new TopologySocket();
+    pairs.add("token", "phone", phone);
+    phone.sent.length = 0;
     t.after(() => { integration.stopMobileServer(); mobile.close(); });
 
     pairs.forward("token", "phone", JSON.stringify({
       type: "permission_response",
       id: "unknown-approval",
       decision: "allow",
-    }), phoneA);
+    }), phone);
 
-    assert.ok(phoneA.sent.some((raw) => JSON.parse(raw).type === "approval_result"));
-    assert.equal(phoneB.sent.some((raw) => JSON.parse(raw).type === "approval_result"), false);
+    assert.ok(phone.sent.some((raw) => JSON.parse(raw).type === "approval_result"));
   });
 });
 
@@ -291,9 +281,11 @@ function reservePort() {
   });
 }
 
-function openSocket(url) {
+function openSocket(url, token) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     ws.once("open", () => resolve(ws));
     ws.once("error", reject);
   });
@@ -325,8 +317,9 @@ async function terminateChild(child) {
 
 it("production relay forwards more than 120 paired data frames without silent loss", async (t) => {
   const port = await reservePort();
+  const token = "33".repeat(32);
   const child = spawn(process.execPath, [path.join(__dirname, "..", "relay", "relay-server.js")], {
-    env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", TOKEN: "rate-test" },
+    env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token },
     stdio: ["ignore", "pipe", "pipe"],
   });
   t.after(() => terminateChild(child));
@@ -341,8 +334,8 @@ it("production relay forwards more than 120 paired data frames without silent lo
     child.once("exit", (code) => reject(new Error(`relay exited early: ${code}`)));
   });
 
-  const pc = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=pc`);
-  const phone = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`);
+  const pc = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=pc`, token);
+  const phone = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, token);
   t.after(async () => {
     const closes = [waitForClose(pc, 250), waitForClose(phone, 250)];
     pc.close();
@@ -370,8 +363,9 @@ it("production relay forwards more than 120 paired data frames without silent lo
 
 it("production relay retains handshake abuse limits across disconnects", async (t) => {
   const port = await reservePort();
+  const token = "44".repeat(32);
   const child = spawn(process.execPath, [path.join(__dirname, "..", "relay", "relay-server.js")], {
-    env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", TOKEN: "handshake-test" },
+    env: { ...process.env, PORT: String(port), BIND_ADDR: "127.0.0.1", RELAY_TOKEN: token },
     stdio: ["ignore", "pipe", "pipe"],
   });
   t.after(() => terminateChild(child));
@@ -387,7 +381,7 @@ it("production relay retains handshake abuse limits across disconnects", async (
 
   let finalCode = null;
   for (let index = 0; index < 121; index++) {
-    const ws = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`);
+    const ws = await openSocket(`ws://127.0.0.1:${port}/mobile/ws?role=phone`, token);
     const closed = waitForClose(ws);
     if (index < 120) ws.close();
     finalCode = await closed;
@@ -395,12 +389,10 @@ it("production relay retains handshake abuse limits across disconnects", async (
   assert.equal(finalCode, 4008);
 });
 
-it("both relay entry points use the multi-phone registry", () => {
-  for (const relative of ["relay/relay-server.js", "relay-server.js"]) {
-    const source = fs.readFileSync(path.join(__dirname, "..", relative), "utf8");
-    assert.match(source, /RelayPairRegistry/);
-    assert.match(source, /pairs\.forward\(token, role, data, ws\)/);
-    assert.match(source, /relay_client_disconnected/);
-    assert.doesNotMatch(source, /pair\.phone\b/);
-  }
+it("production Relay uses the single-phone registry and managed-session envelope", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "relay/relay-server.js"), "utf8");
+  assert.match(source, /RelayPairRegistry/);
+  assert.match(source, /pairs\.forward\([^,]+, role, data, ws\)/);
+  assert.match(source, /relay_client_disconnected/);
+  assert.doesNotMatch(source, /pair\.phones\b/);
 });

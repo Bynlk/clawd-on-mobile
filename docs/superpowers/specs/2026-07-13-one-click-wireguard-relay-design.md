@@ -438,3 +438,18 @@ POST /api/manage/phone/rotate
 - 指纹失败顺序 RED：`node --test --test-name-pattern='preserves structured TOFU failures' test/wg-ssh2-exec.test.js` 退出码 1；changed、unknown reject、确认函数同步抛错 3 个子用例均证明 verifier 的 `callback(false)` 同步触发连接错误时，原始 ssh2 错误会抢先覆盖结构化 TOFU 原因。严格回传筛选命令退出码 1；60 项中 24 项按预期失败，覆盖非全局 IPv4/IPv6、非法 profile IP 字面量、相同客户端私钥及非规范 Relay URL。
 - 指纹失败顺序修复：在调用 verifier 拒绝回调前保存结构化 host-key failure，连接 `error`/`close` 优先使用该失败；回调仍严格至多一次，清理和 promise 结算保持幂等。endpoint 仅接受全局可路由 IP 或合规域名；profile 为 IP 字面量时自身也必须全局可路由并与 endpoint 精确相同。WireGuard PC/phone 私钥必须不同，Relay URL 必须逐字等于 profile 子网 `.1` 与 runtime relay port 派生的 `ws://<host>:<port>`，不接受数字别名、凭据、斜杠、路径、查询或 fragment。
 - 指纹失败顺序 GREEN：同步 verifier 回归命令退出码 0，4/4 项通过；严格回传筛选命令退出码 0，60/60 项通过；完整聚焦命令 `node --test test/wg-relay-bundle.test.js test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 0，128/128 项通过，0 失败、0 跳过。
+
+### Task 3：持久 VPS 服务、严格 Relay 认证与手机轮换（2026-07-13）
+
+- Relay RED：`node --test test/relay-auth-management.test.js test/relay-server-bind.test.js test/relay-managed-session-forwarding.test.js` 退出码 1；20 项中 11 项按预期失败，覆盖缺失 factory、错误默认绑定、Bearer 未严格验证和多手机 registry。
+- Relay 实现：`createRelayServer({ bindAddr, port, tokenStore, management, log, now, remoteAddressOf })` 负责同端口 HTTP/WS、64 KiB WS 上限、Bearer 哈希后 timing-safe 比较、健康检查、握手滥用限制和可测试生命周期；CLI 仅在 `require.main === module` 下启动。registry 只保留一个 PC 和一个 phone，相同 role 新连接关闭旧连接，同时保留 `relay_forward` managed-session envelope，不持久化 payload。
+- Relay GREEN：严格认证、单手机、managed-session、生产 spawn 和绑定测试 20/20 通过；补齐持久 token store/management CLI 接线后，Task 3 Relay 聚焦套件 37/37 通过。
+- 管理事务 RED：`node --test test/relay-auth-management.test.js` 退出码 1；21 项中已有 5 项 Relay 测试通过，新增 16 项按预期因 token store/management 模块缺失而失败，覆盖 PC 源地址、管理 Bearer、body 类型/版本/大小、事务顺序和三个 rollback 阶段。
+- 管理事务实现：`relay-token-store.js` 验证两个不同的 64-hex token，保留原始大小写用于 Bearer 精确比较，以 `0600` 临时文件、`fsync` 和同目录 rename 更新 `relay.env`，并保留管理 token 和全部运行环境字段。`wg-management.js` 按“生成候选 → 原子持久 WG/key 文件 → 更新 live peer → 持久 Relay token → 关闭旧 pair”提交；文件、live peer 或 token 阶段失败会恢复旧文件、旧 peer 和旧 token，响应只返回版本 1 的完整 phone config 与新 Relay token。
+- 管理 API GREEN：只接受精确 `10.8.0.2` 或其规范 IPv4-mapped 地址，管理 token 使用 timing-safe 比较；`GET /api/manage/status` 和 `POST /api/manage/phone/rotate` 共用 Relay 私网端口，POST 仅接受小型版本 1 JSON，旧 `/api/start`、`/api/stop` 返回 404。管理与 token 测试 21/21 通过。
+- Installer RED：`node --test test/install-wg-relay-script.test.js` 退出码 1；9 项中 7 项按预期失败，证明旧脚本会静默跳过 systemd/Relay、没有 Node 校验安装、未安装完整 bundle、未写严格 env 和未验证服务。自审再以 3/3 预期失败锁定可执行位、OpenSSL 依赖和 readback 构造前过早提交。
+- Installer 实现：systemd、上传 app、bundled `node_modules/ws`、WireGuard 和 Node >=18 均为硬前置；Node 缺失或过旧时下载固定 Node 22 archive 并以官方 SHA-256 清单校验。Relay app 安装到 `/opt/clawd-relay/app`，env、WG 配置和 key 文件均为 `0600`；unit 使用 `/etc/clawd-relay/relay.env` 并提供 PC/phone IP、WG/密钥路径和 endpoint。只开放 WireGuard UDP，两个服务均执行 enable/restart/is-enabled/is-active 硬验证，失败恢复旧 app/config/unit/service 状态。
+- Installer GREEN：`bash -n relay/install-wg-relay.sh` 退出码 0；installer source/fixture 12/12 通过。固定 Node archive URL 以 HTTP 200 实际验证存在。
+- mixed-case Token 回归 RED/GREEN：Task 2 明确保留 mixed-case hex token；新增 token-store 用例先观察 lowercasing 失败，再改为保留原 token 字节、仅在“两个 token 是否同值”判断时忽略 hex 大小写，筛选测试 2/2 通过。
+- 邻近回归：`bash -n relay/install-wg-relay.sh && node --test test/relay-auth-management.test.js test/relay-server-bind.test.js test/relay-managed-session-forwarding.test.js test/install-wg-relay-script.test.js test/wg-relay-bundle.test.js test/wg-ssh2-exec.test.js test/wg-relay-deploy.test.js` 退出码 0；178 项全部通过，0 失败、0 跳过；`git diff --check` 退出码 0。
+- 全量基线：`npm test` 退出码 1；失败集中在本 Task owned files 之外的既有 permission sanitizer、README 多语言文件缺失、HTTP server/settings renderer/update bubble 等测试。Task 3 与直接邻近 178 项均独立全绿，不以基线失败掩盖新增回归，也不越界修改无关文件。

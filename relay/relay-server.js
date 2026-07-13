@@ -1,362 +1,356 @@
 #!/usr/bin/env node
-// relay/relay-server.js — 生产级 WebSocket 中继服务器
-// 用法: node relay-server.js
-// 环境变量:
-//   PORT (默认 7891)
-//   TOKEN — 连接 token（可选，不设则用 URL 参数）
-//   ADMIN_TOKEN — REST API 管理 token（可选）
-//   TLS_CERT — TLS 证书文件路径（可选）
-//   TLS_KEY — TLS 私钥文件路径（可选）
+"use strict";
 
-const http = require("http");
-const https = require("https");
-const fs = require("fs");
+const crypto = require("node:crypto");
+const nodeFs = require("node:fs");
+const http = require("node:http");
 const { WebSocketServer } = require("ws");
 const { RelayPairRegistry } = require("./pair-registry");
+const { createRelayTokenStore } = require("./relay-token-store");
+const { createWgManagement } = require("./wg-management");
 
-// --- 配置 ---
-const PORT = process.env.PORT || 7891;
-const BIND_ADDR = process.env.BIND_ADDR || "0.0.0.0"; // 默认全网卡,向后兼容;隧道内可设为 wg server IP (SEC-4)
-const FIXED_TOKEN = process.env.TOKEN || null;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || null;
-const TLS_CERT = process.env.TLS_CERT || null;
-const TLS_KEY = process.env.TLS_KEY || null;
+const MAX_WS_PAYLOAD = 64 * 1024;
+const RATE_LIMIT_ATTEMPTS = 120;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const MAX_MANAGEMENT_BODY = 4096;
 
-// 限制参数
-const MAX_MSG_SIZE = 64 * 1024;           // 64KB 单条消息上限
-const RATE_LIMIT_MSGS = 120;               // 每 token 每分钟连接尝试数
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;    // 1 分钟窗口
-const REST_RATE_LIMIT = 10;                // REST API 每 IP 每分钟认证尝试
-const REST_LOCKOUT_THRESHOLD = 5;          // 连续失败锁定阈值
-const REST_LOCKOUT_MS = 5 * 60 * 1000;     // 锁定时长 5 分钟
-const HEARTBEAT_INTERVAL_MS = 30 * 1000;   // 心跳间隔
-
-// --- 状态 ---
-const pairs = new RelayPairRegistry(); // token → one PC + multiple phones; payloads are never retained
-const rateLimits = new Map();      // token → connection attempts { count, resetTime }
-const restAttempts = new Map();    // ip → { fails, lockoutUntil }
-let running = true;
-let startTime = Date.now();
-
-// --- 日志 ---
-function log(event, data = {}) {
-  console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...data }));
+function defaultLog(event, fields = {}) {
+  console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...fields }));
 }
 
-// --- 速率限制 ---
-function checkConnectionRateLimit(token) {
-  const now = Date.now();
-  let rl = rateLimits.get(token);
-  if (!rl || now > rl.resetTime) {
-    rl = { count: 0, resetTime: now + RATE_LIMIT_WINDOW_MS };
-    rateLimits.set(token, rl);
+function bearerToken(header) {
+  if (typeof header !== "string") return null;
+  const match = /^Bearer ([^\s]+)$/.exec(header);
+  return match ? match[1] : null;
+}
+
+function timingSafeStringEqual(submitted, expected) {
+  if (typeof submitted !== "string" || typeof expected !== "string") return false;
+  const left = crypto.createHash("sha256").update(submitted, "utf8").digest();
+  const right = crypto.createHash("sha256").update(expected, "utf8").digest();
+  return crypto.timingSafeEqual(left, right);
+}
+
+function createRelayServer({
+  bindAddr,
+  port,
+  tokenStore,
+  management = null,
+  log = defaultLog,
+  now = Date.now,
+  remoteAddressOf = (req) => req.socket.remoteAddress || "",
+} = {}) {
+  if (typeof bindAddr !== "string" || !bindAddr) throw new Error("bindAddr is required");
+  if (!Number.isInteger(Number(port)) || Number(port) < 0 || Number(port) > 65535) {
+    throw new Error("valid port is required");
   }
-  rl.count++;
-  return rl.count <= RATE_LIMIT_MSGS;
-}
-
-function checkRestRateLimit(ip) {
-  const now = Date.now();
-  let ra = restAttempts.get(ip);
-  if (!ra) {
-    ra = { fails: 0, lockoutUntil: 0 };
-    restAttempts.set(ip, ra);
+  if (!tokenStore || typeof tokenStore.current !== "function") throw new Error("tokenStore is required");
+  if (typeof log !== "function" || typeof now !== "function" || typeof remoteAddressOf !== "function") {
+    throw new Error("invalid Relay dependency");
   }
-  if (ra.lockoutUntil > now) return false;
-  return true;
-}
 
-function recordRestFail(ip) {
-  const now = Date.now();
-  let ra = restAttempts.get(ip);
-  if (!ra) {
-    ra = { fails: 0, lockoutUntil: 0 };
-    restAttempts.set(ip, ra);
+  const pairs = new RelayPairRegistry();
+  const startedAt = now();
+  let attempts = 0;
+  let attemptsResetAt = startedAt + RATE_LIMIT_WINDOW_MS;
+  let heartbeatTimer = null;
+  let listening = false;
+  let closing = null;
+
+  function json(res, statusCode, body) {
+    const encoded = JSON.stringify(body);
+    res.writeHead(statusCode, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Length": Buffer.byteLength(encoded),
+      "Cache-Control": "no-store",
+    });
+    res.end(encoded);
   }
-  ra.fails++;
-  if (ra.fails >= REST_LOCKOUT_THRESHOLD) {
-    ra.lockoutUntil = now + REST_LOCKOUT_MS;
-    ra.fails = 0;
-  }
-}
 
-function recordRestSuccess(ip) {
-  const ra = restAttempts.get(ip);
-  if (ra) ra.fails = 0;
-}
-
-// --- Token 验证 ---
-function verifyAdminToken(req) {
-  if (!ADMIN_TOKEN) return false; // 未设置 admin token 则拒绝管理接口访问
-  const authHeader = req.headers["authorization"] || "";
-  if (authHeader.startsWith("Bearer ")) {
-    return authHeader.slice(7) === ADMIN_TOKEN;
-  }
-  // 也支持 body 中的 token（需要先读 body）
-  return false;
-}
-
-function extractToken(url, req) {
-  if (FIXED_TOKEN) return FIXED_TOKEN;
-  let token = url.searchParams.get("token");
-  if (!token) {
-    const authHeader = req.headers["authorization"] || "";
-    if (authHeader.startsWith("Bearer ")) {
-      token = authHeader.slice(7);
+  function handleHttp(req, res) {
+    const url = new URL(req.url, "http://relay.internal");
+    if (req.method === "GET" && url.pathname === "/health") {
+      json(res, 200, {
+        version: 1,
+        status: "ok",
+        uptimeSeconds: Math.max(0, Math.floor((now() - startedAt) / 1000)),
+      });
+      return;
     }
-  }
-  return token;
-}
-
-function extractRole(url) {
-  let role = url.searchParams.get("role");
-  if (!role) {
-    if (url.pathname === "/mobile/ws" || url.pathname === "/mobile/stream") {
-      role = "phone";
+    if (management && req.method === "GET" && url.pathname === "/api/manage/status") {
+      Promise.resolve().then(() => management.status({
+        remoteAddress: remoteAddressOf(req),
+        authorization: req.headers.authorization,
+      })).then((result) => json(res, 200, result), (error) => {
+        json(res, Number.isInteger(error.statusCode) ? error.statusCode : 500, {
+          error: error.code || "management_failed",
+        });
+      });
+      return;
     }
-  }
-  return role;
-}
-
-// --- REST API ---
-function handleRestRequest(req, res) {
-  const url = new URL(req.url, "http://localhost");
-  const ip = req.socket.remoteAddress || "unknown";
-
-  // 健康检查（无需认证）
-  if (req.method === "GET" && url.pathname === "/health") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({
-      status: "ok",
-      uptime: Math.floor((Date.now() - startTime) / 1000),
-      pairs: pairs.size,
-    }));
-    return;
-  }
-
-  // 速率限制检查
-  if (!checkRestRateLimit(ip)) {
-    res.writeHead(429, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "请求过于频繁，请稍后再试" }));
-    return;
+    if (management && req.method === "POST" && url.pathname === "/api/manage/phone/rotate") {
+      const contentType = String(req.headers["content-type"] || "").split(";", 1)[0].trim().toLowerCase();
+      if (contentType !== "application/json") {
+        json(res, 415, { error: "unsupported_media_type" });
+        req.resume();
+        return;
+      }
+      readJsonBody(req).then((body) => management.rotatePhone({
+        remoteAddress: remoteAddressOf(req),
+        authorization: req.headers.authorization,
+        body,
+      })).then((result) => json(res, 200, result), (error) => {
+        json(res, Number.isInteger(error.statusCode) ? error.statusCode : 500, {
+          error: error.code || (error.message === "request_too_large" ? "request_too_large" : "management_failed"),
+        });
+      });
+      return;
+    }
+    json(res, 404, { error: "not_found" });
   }
 
-  // 状态查询
-  if (req.method === "GET" && url.pathname === "/api/status") {
-    let pcCount = 0, phoneCount = 0;
-    ({ pc: pcCount, phone: phoneCount } = pairs.countConnections());
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({
-      status: running ? "running" : "stopped",
-      uptime: Math.floor((Date.now() - startTime) / 1000),
-      pairs: pairs.size,
-      connections: { pc: pcCount, phone: phoneCount },
-    }));
-    recordRestSuccess(ip);
-    return;
-  }
-
-  // 停止/启动（需要 admin token）
-  if (req.method === "POST" && (url.pathname === "/api/stop" || url.pathname === "/api/start")) {
-    let body = "";
-    req.on("data", (chunk) => { body += chunk; });
-    req.on("end", () => {
-      try {
-        const parsed = JSON.parse(body);
-        if (ADMIN_TOKEN && parsed.token !== ADMIN_TOKEN) {
-          recordRestFail(ip);
-          res.writeHead(401, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "认证失败" }));
+  function readJsonBody(req) {
+    return new Promise((resolve, reject) => {
+      const declaredLength = Number(req.headers["content-length"] || 0);
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_MANAGEMENT_BODY) {
+        const error = new Error("request_too_large");
+        error.statusCode = 413;
+        error.code = "request_too_large";
+        req.resume();
+        reject(error);
+        return;
+      }
+      let size = 0;
+      const chunks = [];
+      let settled = false;
+      req.on("data", (chunk) => {
+        if (settled) return;
+        size += chunk.length;
+        if (size > MAX_MANAGEMENT_BODY) {
+          settled = true;
+          const error = new Error("request_too_large");
+          error.statusCode = 413;
+          error.code = "request_too_large";
+          reject(error);
           return;
         }
-        if (url.pathname === "/api/stop") {
-          running = false;
-          // 断开所有客户端
-          pairs.closeAll(1001, "服务器暂停");
-          log("server_stopped", { by: "api" });
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ status: "stopped" }));
-        } else {
-          running = true;
-          log("server_started", { by: "api" });
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ status: "running" }));
+        chunks.push(chunk);
+      });
+      req.on("end", () => {
+        if (settled) return;
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        } catch {
+          const error = new Error("invalid_json");
+          error.statusCode = 400;
+          error.code = "invalid_json";
+          reject(error);
         }
-        recordRestSuccess(ip);
-      } catch {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "无效的 JSON body" }));
-      }
+      });
+      req.once("error", reject);
     });
-    return;
   }
 
-  res.writeHead(404, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "未找到" }));
-}
+  const server = http.createServer(handleHttp);
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_PAYLOAD });
 
-// --- HTTP/HTTPS 服务器 ---
-let server;
-if (TLS_CERT && TLS_KEY) {
-  server = https.createServer({
-    cert: fs.readFileSync(TLS_CERT),
-    key: fs.readFileSync(TLS_KEY),
-  }, handleRestRequest);
-  log("tls_enabled", { cert: TLS_CERT });
-} else {
-  server = http.createServer(handleRestRequest);
-  log("tls_disabled", { warning: "生产环境建议启用 TLS" });
-}
-
-// --- WebSocket 服务器 ---
-const wss = new WebSocketServer({ noServer: true });
-
-server.on("upgrade", (req, socket, head) => {
-  if (!running) {
-    socket.destroy();
-    return;
-  }
-  const url = new URL(req.url, "http://localhost");
-  // 仅允许 /mobile/ws 和 /ws 路径升级
-  if (url.pathname === "/mobile/ws" || url.pathname === "/ws") {
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, req);
-    });
-  } else {
-    socket.destroy();
-  }
-});
-
-wss.on("connection", (ws, req) => {
-  if (!running) {
-    ws.close(1001, "服务器暂停");
-    return;
+  function withinConnectionLimit() {
+    const timestamp = now();
+    if (timestamp >= attemptsResetAt) {
+      attempts = 0;
+      attemptsResetAt = timestamp + RATE_LIMIT_WINDOW_MS;
+    }
+    attempts++;
+    return attempts <= RATE_LIMIT_ATTEMPTS;
   }
 
-  const url = new URL(req.url, "http://localhost");
-  const ip = req.socket.remoteAddress || "unknown";
+  server.on("upgrade", (req, socket, head) => {
+    let url;
+    try {
+      url = new URL(req.url, "http://relay.internal");
+    } catch {
+      socket.destroy();
+      return;
+    }
+    if (url.pathname !== "/mobile/ws" && url.pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+  });
 
-  // 心跳标记
-  ws.isAlive = true;
-  ws.on("pong", () => { ws.isAlive = true; });
+  wss.on("connection", (ws, req) => {
+    const url = new URL(req.url, "http://relay.internal");
+    const role = url.searchParams.get("role") || (url.pathname === "/mobile/ws" ? "phone" : null);
+    const submittedToken = bearerToken(req.headers.authorization);
+    const currentToken = tokenStore.current();
 
-  // 提取 token 和 role
-  const token = extractToken(url, req);
-  const role = extractRole(url);
-
-  if (!token || !["pc", "phone"].includes(role)) {
-    ws.close(4000, "需要 token 和 role 参数");
-    log("connection_rejected", { reason: "missing_token_or_role", path: url.pathname, ip });
-    return;
-  }
-
-  if (!checkConnectionRateLimit(token)) {
-    ws.close(4008, "连接过于频繁");
-    log("connection_rate_limited", { role, token: token.slice(0, 8), ip });
-    return;
-  }
-
-  // 消息大小限制
-  ws._maxPayload = MAX_MSG_SIZE;
-
-  const { pair, replaced } = pairs.add(token, role, ws);
-  if (replaced) {
-    log("connection_replaced", { role, token: token.slice(0, 8) });
-  }
-  ws._token = token;
-  ws._role = role;
-
-  log("connection_established", { role, token: token.slice(0, 8), pc: !!pair.pc, phones: pair.phones.size });
-
-  // 通知对端已连接
-  for (const peerWsOnConnect of pairs.peers(token, role)) {
-    peerWsOnConnect.send(JSON.stringify({ type: "peer_connected", role }));
-  }
-
-  // 转发消息
-  ws.on("message", (data) => {
-    if (!running) return;
-    ws.isAlive = true;
-
-    // 消息大小检查
-    if (data.length > MAX_MSG_SIZE) {
-      log("message_too_large", { size: data.length, max: MAX_MSG_SIZE, role, token: token.slice(0, 8) });
+    if (!timingSafeStringEqual(submittedToken, currentToken)) {
+      ws.close(4001, "authentication_failed");
+      log("connection_rejected", { reason: "authentication_failed", remoteAddress: remoteAddressOf(req) });
+      return;
+    }
+    if (role !== "pc" && role !== "phone") {
+      ws.close(4000, "invalid_role");
+      log("connection_rejected", { reason: "invalid_role", remoteAddress: remoteAddressOf(req) });
+      return;
+    }
+    if (!withinConnectionLimit()) {
+      ws.close(4008, "rate_limited");
+      log("connection_rejected", { reason: "rate_limited", role, remoteAddress: remoteAddressOf(req) });
       return;
     }
 
-    pairs.forward(token, role, data, ws);
-  });
+    ws.isAlive = true;
+    ws.on("pong", () => { ws.isAlive = true; });
+    const { pair, replaced } = pairs.add(currentToken, role, ws);
+    ws._token = currentToken;
+    ws._role = role;
+    log(replaced ? "connection_replaced" : "connection_established", {
+      role,
+      pcConnected: !!pair.pc,
+      phoneConnected: !!pair.phone,
+      remoteAddress: remoteAddressOf(req),
+    });
 
-  // 断开清理
-  ws.on("close", () => {
-    const relayClientId = role === "phone" ? pairs.clientIdFor(ws) : null;
-    pairs.remove(token, role, ws);
-    log("connection_closed", { role, token: token.slice(0, 8), pc: !!pair.pc, phones: pair.phones.size });
-
-    for (const peerWsOnClose of pairs.peers(token, role)) {
-      if (relayClientId) {
-        peerWsOnClose.send(JSON.stringify({
-          type: "relay_client_disconnected",
-          sourceClientId: relayClientId,
-        }));
-      }
-      peerWsOnClose.send(JSON.stringify({ type: "peer_disconnected", role }));
+    for (const peer of pairs.peers(currentToken, role)) {
+      peer.send(JSON.stringify({ type: "peer_connected", role }));
     }
-  });
 
-  ws.on("error", (err) => {
-    log("connection_error", { role, token: token.slice(0, 8), error: err.message });
-  });
-});
+    ws.on("message", (data) => {
+      ws.isAlive = true;
+      if (data.length <= MAX_WS_PAYLOAD) pairs.forward(currentToken, role, data, ws);
+    });
 
-// --- 心跳检测 ---
-const heartbeatTimer = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) return ws.terminate();
-    ws.isAlive = false;
-    try {
-      ws.send(JSON.stringify({ type: "ping", timestamp: Date.now() }));
-    } catch {}
-  });
-}, HEARTBEAT_INTERVAL_MS);
+    ws.on("close", () => {
+      const relayClientId = role === "phone" ? pairs.clientIdFor(ws) : null;
+      pairs.remove(currentToken, role, ws);
+      for (const peer of pairs.peers(currentToken, role)) {
+        if (relayClientId) {
+          peer.send(JSON.stringify({ type: "relay_client_disconnected", sourceClientId: relayClientId }));
+        }
+        peer.send(JSON.stringify({ type: "peer_disconnected", role }));
+      }
+      log("connection_closed", { role, remoteAddress: remoteAddressOf(req) });
+    });
 
-// --- 优雅关闭 ---
-function gracefulShutdown(signal) {
-  log("shutdown_initiated", { signal });
-  running = false;
-  clearInterval(heartbeatTimer);
-
-  // 通知所有客户端断开
-  pairs.closeAll(1001, "服务器关闭");
-
-  wss.close(() => {
-    server.close(() => {
-      log("shutdown_complete");
-      process.exit(0);
+    ws.on("error", (error) => {
+      log("connection_error", { role, error: error && error.message ? error.message : "websocket_error" });
     });
   });
 
-  // 强制退出超时
-  setTimeout(() => {
-    log("shutdown_forced");
-    process.exit(1);
-  }, 5000);
+  function listen() {
+    if (listening) return Promise.resolve(api.address());
+    return new Promise((resolve, reject) => {
+      const onError = (error) => reject(error);
+      server.once("error", onError);
+      server.listen(Number(port), bindAddr, () => {
+        server.off("error", onError);
+        listening = true;
+        heartbeatTimer = setInterval(() => {
+          for (const ws of wss.clients) {
+            if (ws.isAlive === false) {
+              ws.terminate();
+              continue;
+            }
+            ws.isAlive = false;
+            try { ws.ping(); } catch {}
+          }
+        }, HEARTBEAT_INTERVAL_MS);
+        resolve(api.address());
+      });
+    });
+  }
+
+  function close() {
+    if (closing) return closing;
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    pairs.closeAll(1001, "server_shutdown");
+    for (const ws of wss.clients) ws.terminate();
+    if (!listening) return Promise.resolve();
+    closing = new Promise((resolve, reject) => {
+      wss.close(() => {
+        server.close((error) => {
+          listening = false;
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    });
+    return closing;
+  }
+
+  const api = {
+    listen,
+    close,
+    address: () => server.address(),
+    pairs,
+  };
+  return api;
 }
 
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+function createCliRelay(env = process.env) {
+  const bindAddr = env.BIND_ADDR || "10.8.0.1";
+  const port = Number(env.PORT || 7891);
+  const envPath = env.RELAY_ENV_PATH || "/etc/clawd-relay/relay.env";
+  let tokenStore;
+  let management = null;
+  let managementTarget = null;
 
-// --- 启动 ---
-server.listen(PORT, BIND_ADDR, () => {
-  const protocol = TLS_CERT ? "wss" : "ws";
-  log("server_started", {
-    port: PORT,
-    bindAddr: BIND_ADDR,
-    protocol,
-    fixedToken: !!FIXED_TOKEN,
-    adminToken: !!ADMIN_TOKEN,
+  if (nodeFs.existsSync(envPath)) {
+    tokenStore = createRelayTokenStore({ envPath });
+    management = Object.freeze({
+      status(context) { return managementTarget.status(context); },
+      rotatePhone(context) { return managementTarget.rotatePhone(context); },
+    });
+  } else if (/^[0-9a-fA-F]{64}$/.test(env.RELAY_TOKEN || "")) {
+    tokenStore = Object.freeze({ current() { return env.RELAY_TOKEN; } });
+  } else {
+    throw new Error("persistent Relay environment is unavailable");
+  }
+
+  const relay = createRelayServer({ bindAddr, port, tokenStore, management });
+  if (management) {
+    const keyDirectory = env.WG_KEY_DIR || "/etc/wireguard/clawd";
+    managementTarget = createWgManagement({
+      tokenStore,
+      pairs: relay.pairs,
+      paths: {
+        wgConfigPath: env.WG_CONFIG_PATH || "/etc/wireguard/clawd.conf",
+        phonePrivateKeyPath: env.PHONE_PRIVATE_KEY_PATH || `${keyDirectory}/phone.key`,
+        phonePublicKeyPath: env.PHONE_PUBLIC_KEY_PATH || `${keyDirectory}/phone.pub`,
+        serverPublicKeyPath: env.SERVER_PUBLIC_KEY_PATH || `${keyDirectory}/server.pub`,
+      },
+      wgInterface: env.WG_INTERFACE || "clawd",
+      pcIp: env.PC_IP,
+      phoneIp: env.PHONE_IP,
+      subnet: env.WG_SUBNET,
+      endpoint: env.WG_ENDPOINT,
+    });
+  }
+  return relay;
+}
+
+module.exports = { createRelayServer, createCliRelay, bearerToken, timingSafeStringEqual };
+
+if (require.main === module) {
+  const BIND_ADDR = process.env.BIND_ADDR || "10.8.0.1";
+  const relay = createCliRelay(process.env);
+
+  relay.listen().then(() => {
+    defaultLog("server_started", { bindAddr: BIND_ADDR, port: relay.address().port });
+    console.log(`[relay] 中继服务器启动在端口 ${relay.address().port} (ws://)`);
+  }).catch((error) => {
+    defaultLog("server_start_failed", { error: error.message });
+    process.exitCode = 1;
   });
-  console.log(`[relay] 中继服务器启动在端口 ${PORT} (${protocol}://)`);
-  if (FIXED_TOKEN) console.log(`[relay] 固定 token: ${FIXED_TOKEN.slice(0, 4)}…`);
-  if (ADMIN_TOKEN) console.log(`[relay] Admin API 已启用`);
-});
+
+  const shutdown = (signal) => {
+    defaultLog("shutdown_initiated", { signal });
+    relay.close().then(() => process.exit(0), () => process.exit(1));
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
+}

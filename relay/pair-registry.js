@@ -18,37 +18,31 @@ class RelayPairRegistry {
   add(token, role, ws) {
     let pair = this.pairs.get(token);
     if (!pair) {
-      pair = { pc: null, phones: new Set() };
+      pair = { pc: null, phone: null };
       this.pairs.set(token, pair);
     }
     if (!this.clientIds.has(ws)) this.clientIds.set(ws, `relay-${this.nextClientId++}`);
-    if (role === "pc") {
-      const replaced = isOpen(pair.pc) && pair.pc !== ws ? pair.pc : null;
-      if (replaced) replaced.close(4001, "被新连接替换");
-      pair.pc = ws;
-      return { pair, replaced };
-    }
-    pair.phones.add(ws);
-    return { pair, replaced: null };
+
+    const current = pair[role];
+    const replaced = isOpen(current) && current !== ws ? current : null;
+    if (replaced) replaced.close(4002, "replaced");
+    pair[role] = ws;
+    return { pair, replaced };
   }
 
   remove(token, role, ws) {
     const pair = this.pairs.get(token);
     if (!pair) return null;
-    if (role === "pc") {
-      if (pair.pc === ws) pair.pc = null;
-    } else {
-      pair.phones.delete(ws);
-    }
-    if (!pair.pc && pair.phones.size === 0) this.pairs.delete(token);
+    if (pair[role] === ws) pair[role] = null;
+    if (!pair.pc && !pair.phone) this.pairs.delete(token);
     return pair;
   }
 
   peers(token, role) {
     const pair = this.pairs.get(token);
     if (!pair) return [];
-    if (role === "pc") return [...pair.phones].filter(isOpen);
-    return isOpen(pair.pc) ? [pair.pc] : [];
+    const peer = role === "pc" ? pair.phone : pair.pc;
+    return isOpen(peer) ? [peer] : [];
   }
 
   clientIdFor(ws) {
@@ -78,24 +72,22 @@ class RelayPairRegistry {
         if (envelope.type === "relay_forward" && typeof envelope.targetClientId === "string" &&
             typeof envelope.payload === "string") {
           const pair = this.pairs.get(token);
-          const target = pair && [...pair.phones].find((phone) =>
-            isOpen(phone) && this.clientIdFor(phone) === envelope.targetClientId
-          );
-          if (!target) return 0;
+          const target = pair && pair.phone;
+          if (!isOpen(target) || this.clientIdFor(target) !== envelope.targetClientId) return 0;
           target.send(envelope.payload);
           return 1;
         }
       } catch {}
     }
 
-    let delivered = 0;
-    for (const peer of this.peers(token, role)) {
-      try {
-        peer.send(data);
-        delivered++;
-      } catch {}
+    const peer = this.peers(token, role)[0];
+    if (!peer) return 0;
+    try {
+      peer.send(data);
+      return 1;
+    } catch {
+      return 0;
     }
-    return delivered;
   }
 
   countConnections() {
@@ -103,21 +95,26 @@ class RelayPairRegistry {
     let phone = 0;
     for (const pair of this.pairs.values()) {
       if (isOpen(pair.pc)) pc++;
-      phone += [...pair.phones].filter(isOpen).length;
+      if (isOpen(pair.phone)) phone++;
     }
     return { pc, phone };
   }
 
-  get size() {
-    return this.pairs.size;
+  closeToken(token, code, reason) {
+    const pair = this.pairs.get(token);
+    if (!pair) return false;
+    this.pairs.delete(token);
+    if (pair.pc) pair.pc.close(code, reason);
+    if (pair.phone) pair.phone.close(code, reason);
+    return true;
   }
 
   closeAll(code, reason) {
-    for (const pair of this.pairs.values()) {
-      if (pair.pc) pair.pc.close(code, reason);
-      for (const phone of pair.phones) phone.close(code, reason);
-    }
-    this.pairs.clear();
+    for (const token of [...this.pairs.keys()]) this.closeToken(token, code, reason);
+  }
+
+  get size() {
+    return this.pairs.size;
   }
 }
 
