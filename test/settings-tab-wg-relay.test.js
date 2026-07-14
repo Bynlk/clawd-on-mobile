@@ -1298,6 +1298,11 @@ test("source and CSS include password/a11y/responsive/reduced-motion security ho
   assert.match(css, /\.wg-relay-domain-row\[data-state="connected"\]/);
   assert.match(css, /\.wg-relay-domain-row\[data-state="repair-required"\]/);
   assert.match(css, /\.wg-relay-domain-row\[data-state="unavailable"\]/);
+  assert.match(
+    css,
+    /\.wg-relay-domain-row\[data-state="repair-required"\][\s\S]*var\(--wg-relay-danger-text\)[\s\S]*var\(--wg-relay-danger-bg\)/,
+  );
+  assert.doesNotMatch(css, /var\(--wg-relay-error-/);
   assert.doesNotMatch(css, /\.wg-relay-domain-row\[data-domain="vps"\][\s\S]{0,120}\.wg-relay-domain-marker/);
   assert.doesNotMatch(css, /\.wg-relay-domain-row\[data-domain="android"\][\s\S]{0,120}\.wg-relay-domain-marker/);
   assert.match(css, /\.wg-relay-action-callout/);

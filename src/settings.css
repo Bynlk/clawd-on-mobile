@@ -3525,8 +3525,8 @@ html, body {
 
 .wg-relay-domain-row[data-state="repair-required"] .wg-relay-domain-marker,
 .wg-relay-domain-row[data-state="failed"] .wg-relay-domain-marker {
-  background: var(--wg-relay-error-text);
-  box-shadow: 0 0 0 3px var(--wg-relay-error-bg);
+  background: var(--wg-relay-danger-text);
+  box-shadow: 0 0 0 3px var(--wg-relay-danger-bg);
 }
 
 .wg-relay-domain-row[data-state="unavailable"] .wg-relay-domain-marker {
