@@ -20,6 +20,16 @@
   --toast-bg: #18181b;
   --toast-text: #f5f5f7;
   --toast-error: #b91c1c;
+  --wg-relay-neutral-text: #52525b;
+  --wg-relay-neutral-bg: rgba(113, 113, 122, 0.12);
+  --wg-relay-warning-text: #7a4b00;
+  --wg-relay-warning-bg: rgba(217, 119, 6, 0.14);
+  --wg-relay-success-text: #116536;
+  --wg-relay-success-bg: rgba(22, 163, 74, 0.13);
+  --wg-relay-danger-text: #a51d1d;
+  --wg-relay-danger-bg: rgba(220, 38, 38, 0.11);
+  --wg-relay-current-text: #9a3f23;
+  --wg-relay-progress-bg: rgba(128, 128, 128, 0.07);
   --scroll-thumb: rgba(0, 0, 0, 0.15);
   --scroll-thumb-hover: rgba(0, 0, 0, 0.25);
 }
@@ -40,6 +50,16 @@
     --switch-knob: #f4f4f5;
     --scroll-thumb: rgba(255, 255, 255, 0.1);
     --scroll-thumb-hover: rgba(255, 255, 255, 0.2);
+    --wg-relay-neutral-text: #c4c4cc;
+    --wg-relay-neutral-bg: rgba(161, 161, 170, 0.14);
+    --wg-relay-warning-text: #f8c56a;
+    --wg-relay-warning-bg: rgba(245, 158, 11, 0.18);
+    --wg-relay-success-text: #72d89b;
+    --wg-relay-success-bg: rgba(34, 197, 94, 0.16);
+    --wg-relay-danger-text: #ff9a9a;
+    --wg-relay-danger-bg: rgba(248, 113, 113, 0.16);
+    --wg-relay-current-text: #ffad91;
+    --wg-relay-progress-bg: rgba(128, 128, 128, 0.07);
   }
 }
 
@@ -3405,7 +3425,7 @@ html, body {
 }
 
 .wg-relay-password-hint {
-  color: var(--warning-text, #9a6800);
+  color: var(--wg-relay-warning-text);
 }
 
 .wg-relay-field {
@@ -3472,23 +3492,23 @@ html, body {
 }
 
 .wg-relay-status-idle {
-  color: var(--text-secondary);
-  background: rgba(128, 128, 128, 0.15);
+  color: var(--wg-relay-neutral-text);
+  background: var(--wg-relay-neutral-bg);
 }
 
 .wg-relay-status-connecting {
-  color: var(--warning-text, #9a6800);
-  background: rgba(255, 176, 32, 0.16);
+  color: var(--wg-relay-warning-text);
+  background: var(--wg-relay-warning-bg);
 }
 
 .wg-relay-status-connected {
-  color: var(--success-text, #187a40);
-  background: rgba(46, 179, 105, 0.16);
+  color: var(--wg-relay-success-text);
+  background: var(--wg-relay-success-bg);
 }
 
 .wg-relay-status-failed {
-  color: var(--danger-text, #b83232);
-  background: rgba(224, 64, 64, 0.14);
+  color: var(--wg-relay-danger-text);
+  background: var(--wg-relay-danger-bg);
 }
 
 .wg-relay-secondary-actions,
@@ -3499,7 +3519,7 @@ html, body {
 }
 
 .wg-relay-danger-action {
-  color: var(--danger-text, #b83232);
+  color: var(--wg-relay-danger-text);
 }
 
 .wg-relay-error,
@@ -3512,13 +3532,13 @@ html, body {
 }
 
 .wg-relay-error {
-  color: var(--danger-text, #b83232);
-  background: rgba(224, 64, 64, 0.11);
+  color: var(--wg-relay-danger-text);
+  background: var(--wg-relay-danger-bg);
 }
 
 .wg-relay-recovery {
-  color: var(--warning-text, #9a6800);
-  background: rgba(255, 176, 32, 0.12);
+  color: var(--wg-relay-warning-text);
+  background: var(--wg-relay-warning-bg);
 }
 
 .wg-relay-progress {
@@ -3526,7 +3546,7 @@ html, body {
   gap: 5px;
   padding: 10px;
   border-radius: 9px;
-  background: rgba(128, 128, 128, 0.07);
+  background: var(--wg-relay-progress-bg);
 }
 
 .wg-relay-progress-stage {
@@ -3550,20 +3570,20 @@ html, body {
 }
 
 .wg-relay-progress-state {
-  opacity: 0.72;
+  opacity: 1;
 }
 
 .wg-relay-progress-stage.is-current {
-  color: var(--accent);
+  color: var(--wg-relay-current-text);
   font-weight: 600;
 }
 
 .wg-relay-progress-stage.is-complete {
-  color: var(--success-text, #187a40);
+  color: var(--wg-relay-success-text);
 }
 
 .wg-relay-progress-stage.is-failed {
-  color: var(--danger-text, #b83232);
+  color: var(--wg-relay-danger-text);
 }
 
 .wg-relay-qr-backdrop {
@@ -3602,7 +3622,7 @@ html, body {
 }
 
 .wg-relay-qr-warning {
-  color: var(--warning-text, #9a6800);
+  color: var(--wg-relay-warning-text);
   font-size: 12px;
   line-height: 1.55;
   text-align: center;

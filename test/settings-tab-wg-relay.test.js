@@ -25,6 +25,54 @@ async function flushPromises() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+function parseCssColor(value) {
+  const text = String(value || "").trim();
+  if (/^#[0-9a-f]{6}$/i.test(text)) {
+    return {
+      red: Number.parseInt(text.slice(1, 3), 16),
+      green: Number.parseInt(text.slice(3, 5), 16),
+      blue: Number.parseInt(text.slice(5, 7), 16),
+      alpha: 1,
+    };
+  }
+  const rgba = text.match(/^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/i);
+  if (!rgba) throw new Error(`Unsupported CSS color: ${text}`);
+  return {
+    red: Number(rgba[1]), green: Number(rgba[2]), blue: Number(rgba[3]), alpha: Number(rgba[4]),
+  };
+}
+
+function compositeCssColor(foreground, background) {
+  const alpha = foreground.alpha + background.alpha * (1 - foreground.alpha);
+  const channel = (key) => (
+    foreground[key] * foreground.alpha
+      + background[key] * background.alpha * (1 - foreground.alpha)
+  ) / alpha;
+  return { red: channel("red"), green: channel("green"), blue: channel("blue"), alpha };
+}
+
+function contrastRatio(first, second) {
+  const linear = (channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = (color) => (
+    0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
+  );
+  const firstLuminance = luminance(first);
+  const secondLuminance = luminance(second);
+  return (Math.max(firstLuminance, secondLuminance) + 0.05)
+    / (Math.min(firstLuminance, secondLuminance) + 0.05);
+}
+
+function cssVariables(block) {
+  const values = new Map();
+  for (const match of String(block).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
+    values.set(match[1], match[2].trim());
+  }
+  return values;
+}
+
 class FakeClassList {
   constructor(element) { this.element = element; }
   values() { return new Set(String(this.element.className || "").split(/\s+/).filter(Boolean)); }
@@ -56,6 +104,9 @@ class FakeElement {
     this.type = "";
     this.disabled = false;
     this.readOnly = false;
+    this.hidden = false;
+    this.inert = false;
+    this.tabIndex = 0;
     this.src = "";
     this.alt = "";
     this.classList = new FakeClassList(this);
@@ -71,6 +122,11 @@ class FakeElement {
     if (index >= 0) this.parentNode.children.splice(index, 1);
     this.parentNode = null;
   }
+  contains(node) {
+    if (node === this) return true;
+    return this.children.some((child) => child.contains(node));
+  }
+  get isConnected() { return Boolean(this.ownerDocument && this.ownerDocument.body.contains(this)); }
   set innerHTML(_value) {
     for (const child of this.children) child.parentNode = null;
     this.children = [];
@@ -83,6 +139,7 @@ class FakeElement {
     if (name === "class") this.className = text;
     if (name === "type") this.type = text;
     if (name === "src") this.src = text;
+    if (name === "inert") this.inert = true;
     if (name.startsWith("data-")) {
       const key = name.slice(5).replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase());
       this.dataset[key] = text;
@@ -92,10 +149,17 @@ class FakeElement {
   removeAttribute(name) {
     delete this.attributes[name];
     if (name === "src") this.src = "";
+    if (name === "inert") this.inert = false;
   }
   addEventListener(type, listener) {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
     this.listeners.get(type).push(listener);
+  }
+  removeEventListener(type, listener) {
+    const listeners = this.listeners.get(type);
+    if (!listeners) return;
+    const index = listeners.indexOf(listener);
+    if (index >= 0) listeners.splice(index, 1);
   }
   dispatchEvent(event) {
     const value = event || {};
@@ -111,7 +175,12 @@ class FakeElement {
     return !value.defaultPrevented;
   }
   focus() {
-    if (this.ownerDocument) this.ownerDocument.activeElement = this;
+    let current = this;
+    while (current) {
+      if (current.inert || current.disabled || current.hidden) return;
+      current = current.parentNode;
+    }
+    if (this.ownerDocument && this.isConnected) this.ownerDocument.activeElement = this;
   }
   _matches(selector) {
     if (selector.startsWith(".")) return this.classList.contains(selector.slice(1));
@@ -153,15 +222,26 @@ class FakeDocument {
     this.activeElement = null;
   }
   createElement(tagName) { return new FakeElement(tagName, this); }
-  getElementById(id) { return id === "modalRoot" ? this.modalRoot : null; }
+  getElementById(id) {
+    if (id === "modalRoot") return this.modalRoot;
+    return this.body.querySelector(`#${id}`);
+  }
   addEventListener(type, listener) {
     if (!this.listeners.has(type)) this.listeners.set(type, new Set());
     this.listeners.get(type).add(listener);
   }
   removeEventListener(type, listener) { this.listeners.get(type)?.delete(listener); }
   emit(type, event = {}) {
-    for (const listener of [...(this.listeners.get(type) || [])]) listener({ type, ...event });
+    const value = {
+      type,
+      ...event,
+      preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() { this.cancelBubble = true; },
+    };
+    for (const listener of [...(this.listeners.get(type) || [])]) listener(value);
+    return value;
   }
+  listenerCount(type) { return this.listeners.get(type)?.size || 0; }
 }
 
 const TRANSLATIONS = {
@@ -189,6 +269,10 @@ const TRANSLATIONS = {
   wgRelayError_deploy_failed: "SAFE_DEPLOY_ERROR",
   wgRelayError_remote_commit_recovery_required: "SAFE_RECOVERY_ERROR",
   wgRelayError_profile_conflict_recovery_required: "SAFE_CONFLICT_ERROR",
+  wgRelayError_secure_storage_unavailable: "SAFE_STORAGE_ERROR",
+  wgRelayError_secret_store_read_failed: "SAFE_STORAGE_READ_ERROR",
+  wgRelayError_secrets_not_found: "SAFE_SECRETS_MISSING_ERROR",
+  wgRelayError_profile_not_found: "SAFE_PROFILE_MISSING_ERROR",
   wgRelayError_health_failed: "SAFE_HEALTH_ERROR",
   wgRelayError_unknown: "SAFE_UNKNOWN_ERROR",
 };
@@ -208,13 +292,13 @@ const DEPLOYED_PROFILE = Object.freeze({
   deployVersion: 1,
 });
 
-function createHarness({ profile = null, api = {}, confirmResult = "confirm", runtimeAvailable = true } = {}) {
+function createHarness({ profile = null, api = {}, runtimeAvailable = true } = {}) {
   const document = new FakeDocument();
   const content = new FakeElement("main", document);
   document.body.appendChild(content);
   const calls = {
-    deploy: [], connect: [], disconnect: [], pairingQr: [], rotatePhone: [], deleteLocal: [],
-    confirms: [], toasts: [], renders: 0, statusUnsubscribed: 0, progressUnsubscribed: 0,
+    deploy: [], connect: [], disconnect: [], pairingQr: [], rotatePhone: [], deleteLocal: [], status: [],
+    toasts: [], renders: 0, statusUnsubscribed: 0, progressUnsubscribed: 0,
   };
   const statusListeners = new Set();
   const progressListeners = new Set();
@@ -244,7 +328,10 @@ function createHarness({ profile = null, api = {}, confirmResult = "confirm", ru
       return merged[method](...args);
     };
   }
-  wgRelay.status = (...args) => merged.status(...args);
+  wgRelay.status = (...args) => {
+    calls.status.push(args);
+    return merged.status(...args);
+  };
   wgRelay.listStatuses = (...args) => merged.listStatuses(...args);
   wgRelay.onStatusChanged = (listener) => {
     statusListeners.add(listener);
@@ -263,10 +350,6 @@ function createHarness({ profile = null, api = {}, confirmResult = "confirm", ru
     state,
     helpers: {
       t: (key) => TRANSLATIONS[key] || `translated:${key}`,
-      showSettingsConfirmModal: async (options) => {
-        calls.confirms.push(options);
-        return typeof confirmResult === "function" ? confirmResult(options) : confirmResult;
-      },
     },
     ops: {
       requestRender(options) {
@@ -282,6 +365,13 @@ function createHarness({ profile = null, api = {}, confirmResult = "confirm", ru
     document,
     window: runtimeAvailable ? { wgRelay } : {},
     confirm: () => true,
+    setTimeout: (callback, delay) => {
+      const timer = { callback, delay, cancelled: false };
+      context.timers.push(timer);
+      return timer;
+    },
+    clearTimeout: (timer) => { if (timer) timer.cancelled = true; },
+    timers: [],
     globalThis: null,
   };
   context.globalThis = context;
@@ -301,6 +391,10 @@ function createHarness({ profile = null, api = {}, confirmResult = "confirm", ru
     emitStatus(value) { for (const listener of [...statusListeners]) listener(value); },
     emitProgress(value) { for (const listener of [...progressListeners]) listener(value); },
     listenerCounts: () => ({ status: statusListeners.size, progress: progressListeners.size }),
+    runTimers() {
+      const pending = context.timers.splice(0);
+      for (const timer of pending) if (!timer.cancelled) timer.callback();
+    },
     render,
   };
 }
@@ -419,6 +513,43 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   assert.equal(rows[9].classList.contains("is-pending"), true);
   pending.resolve({ status: "error", errorCode: "deploy_failed" });
   await flushPromises();
+
+  const successfulDeploy = deferred();
+  const successful = createHarness({ api: { deploy: () => successfulDeploy.promise } });
+  setInput(successful.content.querySelector("#wg-relay-host"), "relay.example.test");
+  setInput(successful.content.querySelector("#wg-relay-password"), "unit-test-only");
+  buttonByText(successful.content, "ONE_CLICK_DEPLOY").dispatchEvent({ type: "click", bubbles: false });
+  successful.emitProgress({ profileId: "wg-0000000000004", step: "validate", status: "ok" });
+  let successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
+  assert.equal(successfulRows[6].classList.contains("is-complete"), true);
+  assert.equal(successfulRows[7].classList.contains("is-pending"), true, "save is not fabricated before IPC evidence");
+
+  successful.emitStatus({ profileId: "wg-0000000000004", status: "disconnecting", generation: 1 });
+  successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
+  assert.equal(successfulRows[7].classList.contains("is-pending"), true, "old connection release is not PC connect evidence");
+  assert.equal(successfulRows[8].classList.contains("is-pending"), true);
+
+  successful.emitStatus({ profileId: "wg-0000000000004", status: "starting_tunnel", generation: 1 });
+  successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
+  assert.equal(successfulRows[7].classList.contains("is-complete"), true);
+  assert.equal(successfulRows[8].classList.contains("is-current"), true);
+  assert.equal(successfulRows[9].classList.contains("is-pending"), true);
+
+  successful.emitStatus({ profileId: "wg-0000000000004", status: "connected", generation: 2 });
+  successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
+  assert.equal(successfulRows[8].classList.contains("is-complete"), true);
+  assert.equal(successfulRows[9].classList.contains("is-current"), true);
+
+  successfulDeploy.resolve({
+    status: "ok",
+    profile: DEPLOYED_PROFILE,
+    state: { profileId: "wg-test", status: "connected", generation: 2 },
+    qr: { version: 1, dataUrl: "data:image/png;base64,ZGVwbG95" },
+  });
+  await flushPromises();
+  successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
+  assert.equal(successfulRows.length, 10);
+  assert.ok(successfulRows.every((row) => row.classList.contains("is-complete")));
 });
 
 test("deployed card localizes all seven states and uses only connect/disconnect as its primary action", async () => {
@@ -479,6 +610,68 @@ test("a late initial status rejection cannot add an error after a newer status e
   await flushPromises();
   assert.equal(harness.content.querySelector(".wg-relay-status-badge").textContent, "CONNECTED");
   assert.equal(harness.content.querySelector(".wg-relay-error"), null);
+
+  let attempts = 0;
+  const transient = createHarness({
+    profile: DEPLOYED_PROFILE,
+    api: {
+      status: (profileId) => {
+        attempts++;
+        if (attempts === 1) throw new Error("unit-test-only transient status failure");
+        return Promise.resolve({ status: "ok", state: { profileId, status: "connected", generation: 2 } });
+      },
+    },
+  });
+  await flushPromises();
+  assert.equal(transient.calls.status.length, 1);
+  transient.runTimers();
+  await flushPromises();
+  assert.equal(transient.calls.status.length, 2);
+  assert.equal(transient.content.querySelector(".wg-relay-status-badge").textContent, "CONNECTED");
+  transient.render();
+  assert.equal(transient.calls.status.length, 2, "a settled successful identity is not duplicated");
+
+  let malformedAttempts = 0;
+  const malformed = createHarness({
+    profile: DEPLOYED_PROFILE,
+    api: {
+      status: async (profileId) => {
+        malformedAttempts++;
+        return malformedAttempts === 1
+          ? null
+          : { status: "ok", state: { profileId, status: "connected", generation: 2 } };
+      },
+    },
+  });
+  await flushPromises();
+  malformed.runTimers();
+  await flushPromises();
+  assert.equal(malformed.calls.status.length, 2);
+  assert.equal(malformed.content.querySelector(".wg-relay-status-badge").textContent, "CONNECTED");
+
+  const bounded = createHarness({
+    profile: DEPLOYED_PROFILE,
+    api: { status: async () => { throw new Error("unit-test-only persistent status failure"); } },
+  });
+  await flushPromises();
+  bounded.runTimers();
+  await flushPromises();
+  bounded.runTimers();
+  await flushPromises();
+  bounded.runTimers();
+  await flushPromises();
+  assert.equal(bounded.calls.status.length, 3, "status backoff must stop after its bounded attempts");
+
+  const cancelled = createHarness({
+    profile: DEPLOYED_PROFILE,
+    api: { status: async () => { throw new Error("unit-test-only transient status failure"); } },
+  });
+  await flushPromises();
+  cancelled.core.state.activeTab = "general";
+  cancelled.core.tabs["wg-relay"].onExit();
+  cancelled.runTimers();
+  await flushPromises();
+  assert.equal(cancelled.calls.status.length, 1, "epoch changes must cancel a scheduled retry");
 });
 
 test("missing runtime bridge disables every deployed-card action", () => {
@@ -505,15 +698,29 @@ test("busy state blocks duplicate/destructive actions and connect/disconnect cal
 });
 
 test("recovery status requires repair and never attempts an automatic connection", async () => {
-  const harness = createHarness({
-    profile: DEPLOYED_PROFILE,
-    api: { status: async () => ({ status: "error", errorCode: "remote_commit_recovery_required" }) },
-  });
-  await flushPromises();
-  assert.equal(harness.content.querySelector(".wg-relay-recovery").textContent.includes("REPAIR_REQUIRED"), true);
-  assert.equal(buttonByText(harness.content, "CONNECT").disabled, true);
-  assert.equal(harness.calls.connect.length, 0);
-  assert.equal(harness.content.querySelector(".wg-relay-error").textContent, "SAFE_RECOVERY_ERROR");
+  for (const [errorCode, errorText] of [
+    ["remote_commit_recovery_required", "SAFE_RECOVERY_ERROR"],
+    ["profile_conflict_recovery_required", "SAFE_CONFLICT_ERROR"],
+    ["secure_storage_unavailable", "SAFE_STORAGE_ERROR"],
+    ["secret_store_read_failed", "SAFE_STORAGE_READ_ERROR"],
+    ["secret_store_preflight_failed", "SAFE_STORAGE_ERROR"],
+    ["secret_store_verification_failed", "SAFE_STORAGE_ERROR"],
+    ["secrets_not_found", "SAFE_SECRETS_MISSING_ERROR"],
+    ["profile_not_found", "SAFE_PROFILE_MISSING_ERROR"],
+  ]) {
+    const harness = createHarness({
+      profile: DEPLOYED_PROFILE,
+      api: { status: async () => ({ status: "error", errorCode }) },
+    });
+    await flushPromises();
+    assert.equal(harness.content.querySelector(".wg-relay-recovery").textContent.includes("REPAIR_REQUIRED"), true, errorCode);
+    assert.ok(buttonByText(harness.content, "CONNECT") === null, errorCode);
+    const primary = harness.content.querySelector(".wg-relay-primary-action");
+    assert.equal(primary.textContent, "REPAIR", errorCode);
+    assert.equal(primary.disabled, false, errorCode);
+    assert.equal(harness.calls.connect.length, 0, errorCode);
+    assert.equal(harness.content.querySelector(".wg-relay-error").textContent, errorText, errorCode);
+  }
 });
 
 test("recovery codes are accepted from status or errorCode and clear after a healthy status", async () => {
@@ -521,7 +728,8 @@ test("recovery codes are accepted from status or errorCode and clear after a hea
   await flushPromises();
   harness.emitStatus({ profileId: "wg-test", status: "remote_commit_recovery_required" });
   assert.ok(harness.content.querySelector(".wg-relay-recovery"));
-  assert.equal(buttonByText(harness.content, "CONNECT").disabled, true);
+  assert.equal(harness.content.querySelector(".wg-relay-primary-action").textContent, "REPAIR");
+  assert.equal(buttonByText(harness.content, "CONNECT"), null);
   harness.emitStatus({ profileId: "wg-test", status: "idle", generation: 2 });
   assert.equal(harness.content.querySelector(".wg-relay-recovery"), null);
   assert.equal(harness.content.querySelector(".wg-relay-error"), null);
@@ -547,19 +755,44 @@ test("repair asks for a new password, exposes advanced defaults, and does not re
   assert.equal(repair.querySelector("#wg-relay-repair-wg-port").value, "51820");
   assert.equal(repair.querySelector("#wg-relay-repair-subnet").value, "10.8.0.0/24");
   assert.equal(repair.querySelector("#wg-relay-repair-relay-port").value, "7891");
-  setInput(repair.querySelector("#wg-relay-repair-password"), "unit-test-only-new");
+  const host = repair.querySelector("#wg-relay-repair-host");
+  const sshPort = repair.querySelector("#wg-relay-repair-ssh-port");
+  const subnet = repair.querySelector("#wg-relay-repair-subnet");
+  const password = repair.querySelector("#wg-relay-repair-password");
+  setInput(host, "draft-relay.example.test");
+  setInput(sshPort, "2222");
+  setInput(subnet, "10.27.0.0/24");
+  setInput(password, "unit-test-only-new");
+  password.focus();
+
+  harness.emitStatus({ profileId: "wg-test", status: "connected", generation: 3 });
+  const patchedRepair = harness.content.querySelector(".wg-relay-repair-card");
+  assert.ok(patchedRepair === repair, "status updates must patch without replacing the active repair form");
+  assert.ok(patchedRepair.querySelector("#wg-relay-repair-host") === host);
+  assert.ok(patchedRepair.querySelector("#wg-relay-repair-password") === password);
+  assert.equal(host.value, "draft-relay.example.test");
+  assert.equal(sshPort.value, "2222");
+  assert.equal(subnet.value, "10.27.0.0/24");
+  assert.equal(password.value, "unit-test-only-new");
+  assert.equal(harness.document.activeElement, password);
+
   buttonByText(repair, "REPAIR_DEPLOY").dispatchEvent({ type: "click", bubbles: false });
   assert.equal(harness.calls.deploy.length, 1);
   assert.equal(harness.calls.deploy[0][0].password, "unit-test-only-new");
+  assert.equal(harness.calls.deploy[0][0].profile.host, "draft-relay.example.test");
+  assert.equal(harness.calls.deploy[0][0].profile.sshPort, 2222);
+  assert.equal(harness.calls.deploy[0][0].profile.wgSubnet, "10.27.0.0/24");
   assert.equal(Object.hasOwn(harness.calls.deploy[0][0].profile, "password"), false);
-  assert.equal(repair.querySelector("#wg-relay-repair-password").value, "");
+  assert.equal(password.value, "");
 });
 
 test("pairing QR is fetched on demand and closing it scrubs the image source and references", async () => {
   const harness = createHarness({ profile: DEPLOYED_PROFILE });
   await flushPromises();
   assert.equal(harness.calls.pairingQr.length, 0);
-  buttonByText(harness.content, "SHOW_QR").dispatchEvent({ type: "click", bubbles: false });
+  const trigger = buttonByText(harness.content, "SHOW_QR");
+  trigger.focus();
+  trigger.dispatchEvent({ type: "click", bubbles: false });
   await flushPromises();
   assert.deepEqual(harness.calls.pairingQr[0], ["wg-test"]);
   const dialog = harness.document.modalRoot.querySelector(".wg-relay-qr-dialog");
@@ -570,34 +803,162 @@ test("pairing QR is fetched on demand and closing it scrubs the image source and
   assert.match(image.src, /^data:image\/png;base64,/);
   assert.ok(image.alt);
   assert.ok(dialog.querySelector(".wg-relay-qr-warning"));
-  buttonByText(dialog, "CLOSE_QR").dispatchEvent({ type: "click", bubbles: false });
+  const close = buttonByText(dialog, "CLOSE_QR");
+  assert.equal(harness.document.activeElement, close);
+  assert.equal(harness.content.inert, true);
+  assert.equal(harness.content.getAttribute("aria-hidden"), "true");
+  assert.equal(harness.document.listenerCount("keydown"), 1);
+  const tab = harness.document.emit("keydown", { key: "Tab", shiftKey: false });
+  assert.equal(tab.defaultPrevented, true);
+  assert.equal(harness.document.activeElement, close, "Tab wraps within the QR dialog");
+  const shiftTab = harness.document.emit("keydown", { key: "Tab", shiftKey: true });
+  assert.equal(shiftTab.defaultPrevented, true);
+  assert.equal(harness.document.activeElement, close, "Shift+Tab wraps within the QR dialog");
+  harness.document.emit("keydown", { key: "Escape" });
   assert.equal(image.src, "");
   assert.equal(image.getAttribute("src"), undefined);
   assert.equal(harness.document.modalRoot.children.length, 0);
+  assert.equal(harness.content.inert, false);
+  assert.equal(harness.content.getAttribute("aria-hidden"), undefined);
+  assert.equal(harness.document.listenerCount("keydown"), 0);
+  assert.equal(harness.document.activeElement, trigger);
+
+  trigger.dispatchEvent({ type: "click", bubbles: false });
+  await flushPromises();
+  const rerenderImage = harness.document.modalRoot.querySelector("img");
+  assert.ok(rerenderImage);
+  harness.render();
+  assert.equal(rerenderImage.src, "");
+  assert.equal(harness.document.modalRoot.children.length, 0);
+  assert.equal(harness.document.listenerCount("keydown"), 0);
+  assert.equal(harness.content.inert, false);
+  assert.ok(harness.document.activeElement === buttonByText(harness.content, "SHOW_QR"));
+
+  const disposed = createHarness({ profile: DEPLOYED_PROFILE });
+  await flushPromises();
+  const disposedTrigger = buttonByText(disposed.content, "SHOW_QR");
+  disposedTrigger.focus();
+  disposedTrigger.dispatchEvent({ type: "click", bubbles: false });
+  await flushPromises();
+  const disposedImage = disposed.document.modalRoot.querySelector("img");
+  disposed.core.tabs["wg-relay"].dispose();
+  assert.equal(disposedImage.src, "");
+  assert.equal(disposed.document.modalRoot.children.length, 0);
+  assert.equal(disposed.document.listenerCount("keydown"), 0);
+  assert.equal(disposed.content.inert, false);
+  assert.equal(disposed.document.activeElement, disposedTrigger);
 });
 
 test("rotate and delete require explicit localized confirmations; rotate replaces QR and delete explains VPS stays running", async () => {
-  let confirm = null;
+  const rotateResult = deferred();
   const harness = createHarness({
     profile: DEPLOYED_PROFILE,
-    confirmResult: () => confirm,
+    api: {
+      rotatePhone: () => rotateResult.promise,
+    },
   });
   await flushPromises();
-  buttonByText(harness.content, "ROTATE_PHONE").dispatchEvent({ type: "click", bubbles: false });
+  let rotate = buttonByText(harness.content, "ROTATE_PHONE");
+  rotate.focus();
+  rotate.dispatchEvent({ type: "click", bubbles: false });
+  rotate.dispatchEvent({ type: "click", bubbles: false });
+  let confirmDialog = harness.document.modalRoot.querySelector(".settings-confirm-modal");
+  assert.ok(confirmDialog);
+  assert.equal(confirmDialog.getAttribute("role"), "dialog");
+  assert.equal(confirmDialog.getAttribute("aria-modal"), "true");
+  assert.equal(confirmDialog.getAttribute("aria-labelledby"), "wg-relay-confirm-title");
+  assert.equal(harness.document.getElementById("wg-relay-confirm-title").tagName, "H2");
+  assert.equal(harness.content.inert, true);
+  assert.equal(harness.content.getAttribute("aria-hidden"), "true");
+  assert.equal(harness.document.modalRoot.children.length, 1, "double click owns one confirm modal");
+  assert.equal(harness.calls.rotatePhone.length, 0);
+  assert.equal(harness.content.querySelectorAll("button").every((button) => button.disabled), true);
+  assert.equal(harness.document.activeElement, buttonByText(confirmDialog, "CANCEL"));
+  const confirmTab = harness.document.emit("keydown", { key: "Tab", shiftKey: false });
+  assert.equal(confirmTab.defaultPrevented, true);
+  assert.equal(harness.document.activeElement, buttonByText(confirmDialog, "CONFIRM_ROTATE"));
+  harness.document.emit("keydown", { key: "Tab", shiftKey: false });
+  assert.equal(harness.document.activeElement, buttonByText(confirmDialog, "CANCEL"));
+  harness.document.emit("keydown", { key: "Tab", shiftKey: true });
+  assert.equal(harness.document.activeElement, buttonByText(confirmDialog, "CONFIRM_ROTATE"));
+
+  const cancelledConfirm = buttonByText(confirmDialog, "CONFIRM_ROTATE");
+  harness.render();
+  await flushPromises();
+  cancelledConfirm.dispatchEvent({ type: "click", bubbles: false });
   await flushPromises();
   assert.equal(harness.calls.rotatePhone.length, 0);
-  confirm = "confirm";
-  buttonByText(harness.content, "ROTATE_PHONE").dispatchEvent({ type: "click", bubbles: false });
+  assert.equal(harness.document.modalRoot.children.length, 0);
+  assert.equal(harness.document.listenerCount("keydown"), 0);
+
+  rotate = buttonByText(harness.content, "ROTATE_PHONE");
+  rotate.dispatchEvent({ type: "click", bubbles: false });
+  confirmDialog = harness.document.modalRoot.querySelector(".settings-confirm-modal");
+  const staleConfirm = buttonByText(confirmDialog, "CONFIRM_ROTATE");
+  harness.emitStatus({ profileId: "wg-test", status: "connected", generation: 4 });
+  staleConfirm.dispatchEvent({ type: "click", bubbles: false });
+  await flushPromises();
+  assert.equal(harness.calls.rotatePhone.length, 0, "a changed status revision invalidates the confirmation owner");
+
+  rotate = buttonByText(harness.content, "ROTATE_PHONE");
+  rotate.dispatchEvent({ type: "click", bubbles: false });
+  confirmDialog = harness.document.modalRoot.querySelector(".settings-confirm-modal");
+  buttonByText(confirmDialog, "CONFIRM_ROTATE").dispatchEvent({ type: "click", bubbles: false });
   await flushPromises();
   assert.deepEqual(harness.calls.rotatePhone[0], ["wg-test"]);
+  rotateResult.resolve({
+    status: "ok",
+    state: { profileId: "wg-test", status: "connected", generation: 5 },
+    qr: { version: 1, dataUrl: "data:image/png;base64,cm90YXRlZA==" },
+  });
+  await flushPromises();
   assert.match(harness.document.modalRoot.querySelector("img").src, /cm90YXRlZA==$/);
-  assert.ok(harness.calls.confirms[0].detail.includes("translated:wgRelayRotateConfirmDetail"));
+  const oldQrImage = harness.document.modalRoot.querySelector("img");
+  const oldQrClose = buttonByText(harness.document.modalRoot, "CLOSE_QR");
 
-  buttonByText(harness.content, "DELETE").dispatchEvent({ type: "click", bubbles: false });
+  let deleteButton = buttonByText(harness.content, "DELETE");
+  deleteButton.dispatchEvent({ type: "click", bubbles: false });
+  confirmDialog = harness.document.modalRoot.querySelector(".settings-confirm-modal");
+  assert.ok(confirmDialog);
+  assert.equal(oldQrImage.src, "", "a new confirm owner scrubs the replaced QR");
+  oldQrClose.dispatchEvent({ type: "click", bubbles: false });
+  assert.equal(harness.document.modalRoot.querySelector(".settings-confirm-modal"), confirmDialog, "stale QR close cannot clear a newer owner");
+  assert.equal(harness.document.activeElement, buttonByText(confirmDialog, "CANCEL"));
+  buttonByText(confirmDialog, "CANCEL").dispatchEvent({ type: "click", bubbles: false });
+  await flushPromises();
+
+  deleteButton = buttonByText(harness.content, "DELETE");
+  deleteButton.dispatchEvent({ type: "click", bubbles: false });
+  const exitedConfirm = buttonByText(harness.document.modalRoot, "CONFIRM_DELETE");
+  harness.core.state.activeTab = "general";
+  harness.core.tabs["wg-relay"].onExit();
+  exitedConfirm.dispatchEvent({ type: "click", bubbles: false });
+  await flushPromises();
+  assert.equal(harness.calls.deleteLocal.length, 0);
+  assert.equal(harness.document.modalRoot.children.length, 0);
+  assert.equal(harness.document.listenerCount("keydown"), 0);
+  harness.core.state.activeTab = "wg-relay";
+  harness.render();
+
+  deleteButton = buttonByText(harness.content, "DELETE");
+  deleteButton.dispatchEvent({ type: "click", bubbles: false });
+  deleteButton.dispatchEvent({ type: "click", bubbles: false });
+  confirmDialog = harness.document.modalRoot.querySelector(".settings-confirm-modal");
+  assert.equal(confirmDialog.querySelector("p").textContent, "translated:wgRelayDeleteConfirmDetail");
+  buttonByText(confirmDialog, "CONFIRM_DELETE").dispatchEvent({ type: "click", bubbles: false });
   await flushPromises();
   assert.deepEqual(harness.calls.deleteLocal[0], ["wg-test"]);
-  const deleteConfirm = harness.calls.confirms.at(-1);
-  assert.ok(deleteConfirm.detail.includes("translated:wgRelayDeleteConfirmDetail"));
+  assert.equal(harness.calls.deleteLocal.length, 1);
+
+  const disposed = createHarness({ profile: DEPLOYED_PROFILE });
+  await flushPromises();
+  buttonByText(disposed.content, "DELETE").dispatchEvent({ type: "click", bubbles: false });
+  const disposedConfirm = buttonByText(disposed.document.modalRoot, "CONFIRM_DELETE");
+  disposed.core.tabs["wg-relay"].dispose();
+  disposedConfirm.dispatchEvent({ type: "click", bubbles: false });
+  await flushPromises();
+  assert.equal(disposed.calls.deleteLocal.length, 0);
+  assert.equal(disposed.document.listenerCount("keydown"), 0);
 });
 
 test("late deploy completion after tab exit cannot mutate the view", async () => {
@@ -683,4 +1044,51 @@ test("source and CSS include password/a11y/responsive/reduced-motion security ho
   assert.match(css, /\.wg-relay-[^{]*:focus-visible/);
   assert.match(css, /overflow-wrap:\s*anywhere/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /\.wg-relay-progress-state\s*\{[^}]*opacity:\s*1;/);
+
+  const lightRoot = css.match(/:root\s*\{([^}]*)\}/);
+  const darkRoot = css.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}/);
+  assert.ok(lightRoot && darkRoot, "light and dark theme roots must be explicit");
+  const light = cssVariables(lightRoot[1]);
+  const dark = new Map([...light, ...cssVariables(darkRoot[1])]);
+  for (const [themeName, tokens] of [["light", light], ["dark", dark]]) {
+    const panel = parseCssColor(tokens.get("--panel-bg"));
+    for (const semantic of ["neutral", "warning", "success", "danger"]) {
+      const textToken = tokens.get(`--wg-relay-${semantic}-text`);
+      const backgroundToken = tokens.get(`--wg-relay-${semantic}-bg`);
+      assert.equal(typeof textToken, "string", `${themeName} ${semantic} text token`);
+      assert.equal(typeof backgroundToken, "string", `${themeName} ${semantic} background token`);
+      const foreground = parseCssColor(textToken);
+      const background = compositeCssColor(
+        parseCssColor(backgroundToken),
+        panel,
+      );
+      assert.ok(
+        contrastRatio(foreground, background) >= 4.5,
+        `${themeName} ${semantic} small text must meet WCAG AA`,
+      );
+    }
+    const progressBackground = compositeCssColor(
+      parseCssColor(tokens.get("--wg-relay-progress-bg")),
+      panel,
+    );
+    for (const [stateName, tokenName] of [
+      ["pending", "--text-secondary"],
+      ["current", "--wg-relay-current-text"],
+      ["complete", "--wg-relay-success-text"],
+      ["failed", "--wg-relay-danger-text"],
+    ]) {
+      assert.ok(
+        contrastRatio(parseCssColor(tokens.get(tokenName)), progressBackground) >= 4.5,
+        `${themeName} ${stateName} progress text must meet WCAG AA`,
+      );
+    }
+  }
+  for (const token of [
+    "--wg-relay-warning-text", "--wg-relay-warning-bg",
+    "--wg-relay-success-text", "--wg-relay-success-bg",
+    "--wg-relay-danger-text", "--wg-relay-danger-bg",
+  ]) {
+    assert.ok(css.includes(`var(${token})`), `${token} must style the actual WG Relay UI`);
+  }
 });
