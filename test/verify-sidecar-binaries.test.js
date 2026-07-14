@@ -83,15 +83,20 @@ test("verifySidecarBinaries passes when all required files exist", () => {
 test("package build scripts use the sidecar verification command", () => {
   const pkg = require("../package.json");
   assert.equal(pkg.scripts["verify:sidecars"], VERIFY_COMMAND);
-  for (const name of [
-    "prebuild",
-    "prebuild:win:x64",
-    "prebuild:win:arm64",
-    "prebuild:win:all",
-    "prebuild:mac",
-    "prebuild:linux",
-    "prebuild:all",
-  ]) {
-    assert.equal(pkg.scripts[name], VERIFY_COMMAND, `${name} should verify bundled sidecars before packaging`);
+  const relayTargets = {
+    prebuild: "win32-x64,win32-arm64",
+    "prebuild:win:x64": "win32-x64",
+    "prebuild:win:arm64": "win32-arm64",
+    "prebuild:win:all": "win32-x64,win32-arm64",
+    "prebuild:mac": "darwin-x64,darwin-arm64",
+    "prebuild:linux": "linux-x64",
+    "prebuild:all": "win32-x64,win32-arm64,darwin-x64,darwin-arm64,linux-x64,linux-arm64",
+  };
+  for (const [name, targets] of Object.entries(relayTargets)) {
+    assert.equal(
+      pkg.scripts[name],
+      `${VERIFY_COMMAND} && node scripts/verify-wg-relay-sidecars.js --target ${targets}`,
+      `${name} should verify both bundled sidecar families before packaging`,
+    );
   }
 });
