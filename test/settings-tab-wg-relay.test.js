@@ -271,7 +271,9 @@ const TRANSLATIONS = {
   wgRelayDeploying: "DEPLOYING",
   wgRelayTryDeployAgain: "TRY_DEPLOY_AGAIN",
   wgRelayConnect: "CONNECT",
+  wgRelayConnecting: "CONNECTING",
   wgRelayDisconnect: "DISCONNECT",
+  wgRelayDisconnecting: "DISCONNECTING_ACTION",
   wgRelayShowQr: "SHOW_QR",
   wgRelayRotatePhone: "ROTATE_PHONE",
   wgRelayRepair: "REPAIR",
@@ -281,6 +283,13 @@ const TRANSLATIONS = {
   wgRelayQrClose: "CLOSE_QR",
   wgRelayRotateConfirmAction: "CONFIRM_ROTATE",
   wgRelayDeleteConfirmAction: "CONFIRM_DELETE",
+  wgRelayVpsRow: "VPS_RELAY",
+  wgRelayComputerRow: "THIS_COMPUTER",
+  wgRelayAndroidRow: "ANDROID",
+  wgRelayVpsConfigured: "VPS_CONFIGURED",
+  wgRelayAndroidPairingAvailable: "ANDROID_READY",
+  wgRelayAndroidUnavailable: "ANDROID_UNAVAILABLE",
+  wgRelayAdvancedManagement: "ADVANCED_MANAGEMENT",
   wgRelayStatus_idle: "IDLE",
   wgRelayStatus_starting_tunnel: "STARTING_TUNNEL",
   wgRelayStatus_verifying_relay: "VERIFYING_RELAY",
@@ -430,6 +439,13 @@ function createHarness({ profile = null, api = {}, runtimeAvailable = true } = {
 
 function buttons(root) { return Array.from(root.querySelectorAll("button")); }
 function buttonByText(root, text) { return buttons(root).find((button) => button.textContent === text) || null; }
+function computerStatusText(root) {
+  const row = Array.from(root.querySelectorAll(".wg-relay-domain-row"))
+    .find((item) => item.dataset.domain === "computer");
+  return row && row.querySelector(".wg-relay-domain-status")
+    ? row.querySelector(".wg-relay-domain-status").textContent
+    : null;
+}
 function setInput(input, value) {
   assert.ok(input, "expected input to exist");
   input.value = value;
@@ -683,14 +699,14 @@ test("deployment failure without progress never renders ten pending rows", async
   assert.equal(rows.filter((row) => row.classList.contains("is-pending")).length, 0);
 });
 
-test("deployed card localizes all seven states and uses only connect/disconnect as its primary action", async () => {
+test("deployed daily card renders three domain rows, one primary action, and advanced management", async () => {
   const cases = [
     ["idle", "IDLE", "CONNECT"],
-    ["starting_tunnel", "STARTING_TUNNEL", "CONNECT"],
-    ["verifying_relay", "VERIFYING_RELAY", "CONNECT"],
-    ["connecting_relay", "CONNECTING_RELAY", "CONNECT"],
+    ["starting_tunnel", "STARTING_TUNNEL", "CONNECTING"],
+    ["verifying_relay", "VERIFYING_RELAY", "CONNECTING"],
+    ["connecting_relay", "CONNECTING_RELAY", "CONNECTING"],
     ["connected", "CONNECTED", "DISCONNECT"],
-    ["disconnecting", "DISCONNECTING", "DISCONNECT"],
+    ["disconnecting", "DISCONNECTING", "DISCONNECTING_ACTION"],
     ["failed", "FAILED", "CONNECT"],
   ];
   for (const [status, label, primary] of cases) {
@@ -701,11 +717,28 @@ test("deployed card localizes all seven states and uses only connect/disconnect 
     await flushPromises();
     const card = harness.content.querySelector(".wg-relay-status-card");
     assert.ok(card, status);
-    assert.equal(card.querySelector(".wg-relay-status-badge").textContent, label, status);
-    assert.ok(buttonByText(card, primary), `${status} primary action`);
-    for (const secondary of ["SHOW_QR", "ROTATE_PHONE", "REPAIR", "DELETE"]) {
-      assert.ok(buttonByText(card, secondary), `${status} ${secondary}`);
-    }
+    const rows = Array.from(card.querySelectorAll(".wg-relay-domain-row"));
+    assert.deepEqual(rows.map((row) => row.dataset.domain), ["vps", "computer", "android"]);
+    assert.equal(rows[0].querySelector(".wg-relay-domain-name").textContent, "VPS_RELAY");
+    assert.equal(rows[0].querySelector(".wg-relay-domain-status").textContent, "VPS_CONFIGURED");
+    assert.equal(rows[0].querySelector(".wg-relay-domain-supporting").textContent, "relay.example.test");
+    assert.equal(rows[1].querySelector(".wg-relay-domain-name").textContent, "THIS_COMPUTER");
+    assert.equal(rows[1].querySelector(".wg-relay-domain-status").textContent, label, status);
+    assert.equal(rows[2].querySelector(".wg-relay-domain-name").textContent, "ANDROID");
+    const primaryButton = buttonByText(card, primary);
+    assert.ok(primaryButton, `${status} primary action`);
+    assert.ok(primaryButton.classList.contains("accent"));
+    assert.equal(card.querySelectorAll(".accent").length, 1);
+    const qr = buttonByText(rows[2], "SHOW_QR");
+    assert.ok(qr, `${status} android QR action`);
+    assert.equal(qr.classList.contains("accent"), false);
+    const advanced = card.querySelector(".wg-relay-advanced-management");
+    assert.ok(advanced);
+    assert.equal(advanced.open, false);
+    assert.deepEqual(buttons(advanced).map((button) => button.textContent), [
+      "ROTATE_PHONE", "REPAIR", "DELETE",
+    ]);
+    assert.equal(card.querySelector(".wg-relay-progress"), null);
   }
 
   const sourceCalls = [".connect(", ".disconnect(", ".pairingQr(", ".rotatePhone(", ".deleteLocal("];
@@ -727,7 +760,7 @@ test("a late initial status response cannot overwrite a newer status event", asy
     state: { profileId: "wg-test", status: "idle", generation: 2 },
   });
   await flushPromises();
-  assert.equal(harness.content.querySelector(".wg-relay-status-badge").textContent, "CONNECTED");
+  assert.equal(computerStatusText(harness.content), "CONNECTED");
 });
 
 test("a late initial status rejection cannot add an error after a newer status event", async () => {
@@ -739,7 +772,7 @@ test("a late initial status rejection cannot add an error after a newer status e
   harness.emitStatus({ profileId: "wg-test", status: "connected", generation: 3 });
   pendingStatus.reject(new Error("unit-test-only transport detail"));
   await flushPromises();
-  assert.equal(harness.content.querySelector(".wg-relay-status-badge").textContent, "CONNECTED");
+  assert.equal(computerStatusText(harness.content), "CONNECTED");
   assert.equal(harness.content.querySelector(".wg-relay-error"), null);
 
   let attempts = 0;
@@ -758,7 +791,7 @@ test("a late initial status rejection cannot add an error after a newer status e
   transient.runTimers();
   await flushPromises();
   assert.equal(transient.calls.status.length, 2);
-  assert.equal(transient.content.querySelector(".wg-relay-status-badge").textContent, "CONNECTED");
+  assert.equal(computerStatusText(transient.content), "CONNECTED");
   transient.render();
   assert.equal(transient.calls.status.length, 2, "a settled successful identity is not duplicated");
 
@@ -778,7 +811,7 @@ test("a late initial status rejection cannot add an error after a newer status e
   malformed.runTimers();
   await flushPromises();
   assert.equal(malformed.calls.status.length, 2);
-  assert.equal(malformed.content.querySelector(".wg-relay-status-badge").textContent, "CONNECTED");
+  assert.equal(computerStatusText(malformed.content), "CONNECTED");
 
   const bounded = createHarness({
     profile: DEPLOYED_PROFILE,
@@ -844,13 +877,23 @@ test("recovery status requires repair and never attempts an automatic connection
       api: { status: async () => ({ status: "error", errorCode }) },
     });
     await flushPromises();
-    assert.equal(harness.content.querySelector(".wg-relay-recovery").textContent.includes("REPAIR_REQUIRED"), true, errorCode);
+    const card = harness.content.querySelector(".wg-relay-status-card");
+    assert.equal(card.querySelectorAll(".wg-relay-action-callout").length, 1, errorCode);
+    const callout = card.querySelector(".wg-relay-action-callout");
+    assert.equal(callout.getAttribute("role"), "alert", errorCode);
+    assert.equal(callout.textContent, errorText, errorCode);
+    assert.equal(card.querySelectorAll(".wg-relay-error").length, 0, errorCode);
+    assert.equal(card.querySelectorAll(".wg-relay-recovery").length, 0, errorCode);
     assert.ok(buttonByText(harness.content, "CONNECT") === null, errorCode);
     const primary = harness.content.querySelector(".wg-relay-primary-action");
     assert.equal(primary.textContent, "REPAIR", errorCode);
+    assert.equal(primary.classList.contains("accent"), true, errorCode);
     assert.equal(primary.disabled, false, errorCode);
+    assert.equal(card.querySelectorAll(".accent").length, 1, errorCode);
+    assert.equal(buttonByText(card, "SHOW_QR"), null, errorCode);
+    assert.equal(buttonByText(card, "ROTATE_PHONE"), null, errorCode);
+    assert.ok(buttonByText(card, "DELETE"), errorCode);
     assert.equal(harness.calls.connect.length, 0, errorCode);
-    assert.equal(harness.content.querySelector(".wg-relay-error").textContent, errorText, errorCode);
   }
 });
 
@@ -858,12 +901,11 @@ test("recovery codes are accepted from status or errorCode and clear after a hea
   const harness = createHarness({ profile: DEPLOYED_PROFILE });
   await flushPromises();
   harness.emitStatus({ profileId: "wg-test", status: "remote_commit_recovery_required" });
-  assert.ok(harness.content.querySelector(".wg-relay-recovery"));
+  assert.ok(harness.content.querySelector(".wg-relay-action-callout"));
   assert.equal(harness.content.querySelector(".wg-relay-primary-action").textContent, "REPAIR");
   assert.equal(buttonByText(harness.content, "CONNECT"), null);
   harness.emitStatus({ profileId: "wg-test", status: "idle", generation: 2 });
-  assert.equal(harness.content.querySelector(".wg-relay-recovery"), null);
-  assert.equal(harness.content.querySelector(".wg-relay-error"), null);
+  assert.equal(harness.content.querySelector(".wg-relay-action-callout"), null);
   assert.equal(buttonByText(harness.content, "CONNECT").disabled, false);
 });
 
@@ -871,7 +913,7 @@ test("stable connection subcodes map to localized safe categories without raw de
   const harness = createHarness({ profile: DEPLOYED_PROFILE });
   await flushPromises();
   harness.emitStatus({ profileId: "wg-test", status: "failed", errorCode: "health_timeout" });
-  const error = harness.content.querySelector(".wg-relay-error");
+  const error = harness.content.querySelector(".wg-relay-action-callout");
   assert.equal(error.textContent, "SAFE_HEALTH_ERROR");
   assert.equal(error.textContent.includes("health_timeout"), false);
 });

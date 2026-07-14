@@ -593,7 +593,7 @@ Immediately confirm local and origin branch HEADs match.
 - Modify: `src/settings-tab-wg-relay.js`
 - Modify: `docs/superpowers/plans/2026-07-14-remote-connection-tab-redesign.md`
 
-- [ ] **Step 1: Write failing daily three-row and one-primary-action tests**
+- [x] **Step 1: Write failing daily three-row and one-primary-action tests**
 
 For every safe runtime state (`idle`, three connecting states, `connected`, `disconnecting`, and `failed`), assert the configured page has exactly three domain rows in order and one accent action:
 
@@ -614,13 +614,13 @@ assert.deepEqual(buttons(advanced).map((button) => button.textContent), [
 
 Verify the VPS row supporting text is the host, the computer row owns Connect/Disconnect as the only primary page action, the Android QR action is not accent styled, and normal daily pages contain no deployment progress nodes.
 
-- [ ] **Step 2: Run daily layout tests and verify RED**
+- [x] **Step 2: Run daily layout tests and verify RED**
 
 Run: `node --test --test-name-pattern='deployed|daily|three|primary|advanced' test/settings-tab-wg-relay.test.js`
 
 Expected: FAIL because the current status card mixes one badge and four peer secondary buttons without domain rows or disclosure.
 
-- [ ] **Step 3: Write failing Repair-required matrix tests**
+- [x] **Step 3: Write failing Repair-required matrix tests**
 
 For each repair code, assert one callout and one recommended action, with no duplicate failed badge/error/recovery blocks and no secret-dependent phone actions:
 
@@ -638,7 +638,7 @@ assert.ok(buttonByText(card, "DELETE"));
 
 Click Repair and prove the inline repair form becomes the only accent action, exposes the current advanced network defaults, submits on `submit`, and retains the existing status-patch invariant: a pushed status event must not replace or clear the live password input.
 
-- [ ] **Step 4: Write failing action-availability and busy-state tests**
+- [x] **Step 4: Write failing action-availability and busy-state tests**
 
 Cover these exact rules:
 
@@ -651,13 +651,13 @@ Cover these exact rules:
 - repair-required and deployment-failure modes each expose only their recommended primary action;
 - QR and confirmation focus traps, Escape cleanup, source scrubbing, stale-owner protection, and destructive confirmation text remain unchanged.
 
-- [ ] **Step 5: Run repair/action tests and verify RED**
+- [x] **Step 5: Run repair/action tests and verify RED**
 
 Run: `node --test --test-name-pattern='recovery|repair|busy|pairing|rotate|delete|focus' test/settings-tab-wg-relay.test.js`
 
 Expected: FAIL on duplicate repair messaging, visible secret-dependent actions, and peer-level maintenance controls.
 
-- [ ] **Step 6: Implement the daily rows and repair rendering from the view-model**
+- [x] **Step 6: Implement the daily rows and repair rendering from the view-model**
 
 Replace `renderStatusCard` with `renderDailyPage(parent, profile, model)`. Build rows from `model.rows`, store only the minimal live nodes needed by `updateStatusMount`, and apply later status events through a fresh `pageModel(profile)` without replacing an open repair form. Use this DOM outline:
 
@@ -679,7 +679,7 @@ Replace `renderStatusCard` with `renderDailyPage(parent, profile, model)`. Build
 
 Each row must include an `aria-hidden="true"` shape marker plus explicit localized status text. Render at most one `role="alert"` callout from `model.error`, omit QR/rotation nodes when absent from the model, keep Delete destructive but secondary, and remove the old `wg-relay-status-badge`, `wg-relay-recovery`, and stacked-error inference.
 
-- [ ] **Step 7: Run GREEN DOM, race, focus, and lifecycle tests**
+- [x] **Step 7: Run GREEN DOM, race, focus, and lifecycle tests**
 
 Run:
 
@@ -690,7 +690,7 @@ node --test test/wg-relay-preload.test.js test/wg-relay-runtime.test.js test/wg-
 
 Expected: all selected tests pass; initial status response/rejection races still cannot overwrite a newer pushed status, and dialog/listener cleanup remains bounded.
 
-- [ ] **Step 8: Review scope, commit, and immediately push**
+- [x] **Step 8: Review scope, commit, and immediately push**
 
 After diff/remote/branch verification, run:
 

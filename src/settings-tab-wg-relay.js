@@ -308,6 +308,7 @@
         shouldRetry = request.attempt <= STATUS_RETRY_DELAYS_MS.length;
         if (!shouldRetry) {
           view.errorCode = "unknown";
+          view.statusLoadedByProfile.add(profile.id);
           shouldUpdate = true;
         }
       }
@@ -318,6 +319,7 @@
         shouldRetry = request.attempt <= STATUS_RETRY_DELAYS_MS.length;
         if (!shouldRetry) {
           view.errorCode = "unknown";
+          view.statusLoadedByProfile.add(profile.id);
           shouldUpdate = true;
         }
       }
@@ -420,6 +422,7 @@
       if (needsRender) requestContentRender();
       else {
         updateBusyControls();
+        if (view.overlay || view.qrDialog) return;
         const profile = currentProfile();
         if (profile && isDeployed(profile)) updateStatusView(profile);
       }
@@ -1099,31 +1102,10 @@
   function updateStatusMount(profile) {
     const mount = view.statusMount;
     if (!mount || mount.profileId !== profile.id || !mount.card.isConnected) return false;
-    const status = statusFor(profile);
-    const repairCode = repairRequiredCode(status);
-    const runtimeUnavailable = !window.wgRelay;
-    const busy = runtimeUnavailable || Boolean(view.busy) || RUNTIME_BUSY_STATUSES.has(status.status);
-    mount.badge.className = "wg-relay-status-badge wg-relay-status-" + statusClass(status.status);
-    mount.badge.textContent = t("wgRelayStatus_" + status.status);
-    mount.messages.innerHTML = "";
-    if (repairCode) {
-      const recoveryNode = document.createElement("div");
-      recoveryNode.className = "wg-relay-recovery";
-      recoveryNode.setAttribute("role", "status");
-      recoveryNode.textContent = t("wgRelayRecoveryRequired");
-      mount.messages.appendChild(recoveryNode);
-      view.errorCode = repairCode;
+    if (view.repairOpen && view.renderRoot && view.renderRoot.querySelector(".wg-relay-repair-card")) {
+      return true;
     }
-    renderError(mount.messages);
-    mount.primary.textContent = repairCode
-      ? t("wgRelayRepair")
-      : t(status.status === "connected" || status.status === "disconnecting"
-        ? "wgRelayDisconnect"
-        : "wgRelayConnect");
-    mount.primary.disabled = busy;
-    for (const button of mount.secondaryButtons) button.disabled = busy;
-    mount.repairButton.hidden = Boolean(repairCode);
-    return true;
+    return false;
   }
 
   function updateStatusView(profile) {
@@ -1146,6 +1128,12 @@
       for (const input of Array.from(setup.querySelectorAll("input"))) input.disabled = disabled || !window.wgRelay;
       for (const button of Array.from(setup.querySelectorAll("button"))) button.disabled = disabled || !window.wgRelay;
     }
+    const daily = rootNode.querySelector(".wg-relay-daily-card");
+    if (daily) {
+      for (const button of Array.from(daily.querySelectorAll("button"))) {
+        button.disabled = disabled || !window.wgRelay;
+      }
+    }
   }
 
   function runPrimaryAction(profile) {
@@ -1165,59 +1153,103 @@
     }
   }
 
-  function renderStatusCard(parent, profile) {
+  function appendDomainRow(list, rowModel, profile) {
+    const row = document.createElement("div");
+    row.className = "wg-relay-domain-row";
+    row.dataset.domain = rowModel.kind;
+    row.setAttribute("data-domain", rowModel.kind);
+    const marker = document.createElement("span");
+    marker.className = "wg-relay-domain-marker";
+    marker.setAttribute("aria-hidden", "true");
+    marker.textContent = "";
+    const body = document.createElement("div");
+    body.className = "wg-relay-domain-body";
+    const name = document.createElement("div");
+    name.className = "wg-relay-domain-name";
+    name.textContent = t(rowModel.labelKey);
+    const status = document.createElement("div");
+    status.className = "wg-relay-domain-status";
+    status.textContent = t(rowModel.statusKey);
+    body.appendChild(name);
+    body.appendChild(status);
+    if (rowModel.supportingText) {
+      const supporting = document.createElement("div");
+      supporting.className = "wg-relay-domain-supporting";
+      supporting.textContent = rowModel.supportingText;
+      body.appendChild(supporting);
+    }
+    row.appendChild(marker);
+    row.appendChild(body);
+    if (rowModel.action && rowModel.action.kind === "show-pairing-qr") {
+      row.appendChild(createButton(rowModel.action.labelKey, "soft-btn", (event) => {
+        showPairingQr(profile, event.currentTarget);
+      }, rowModel.action.disabled));
+    }
+    list.appendChild(row);
+  }
+
+  function appendSecondaryAction(parent, action, profile) {
+    if (action.kind === "rotate-phone") {
+      parent.appendChild(createButton(action.labelKey, "soft-btn", (event) => {
+        rotatePhone(profile, event.currentTarget);
+      }, action.disabled));
+    } else if (action.kind === "repair") {
+      parent.appendChild(createButton(action.labelKey, "soft-btn", () => openRepair(profile), action.disabled));
+    } else if (action.kind === "delete-local") {
+      parent.appendChild(createButton(action.labelKey, "soft-btn wg-relay-danger-action", (event) => {
+        deleteProfile(profile, event.currentTarget);
+      }, action.disabled));
+    }
+  }
+
+  function renderDailyPage(parent, profile, model) {
     const card = document.createElement("section");
-    card.className = "section wg-relay-status-card";
-    const header = document.createElement("div");
-    header.className = "wg-relay-status-header";
-    const identity = document.createElement("div");
-    identity.className = "wg-relay-server-identity";
-    const name = document.createElement("h2");
-    name.className = "wg-relay-server-name";
-    name.textContent = profile.label;
-    const host = document.createElement("div");
-    host.className = "wg-relay-server-host";
-    host.textContent = profile.host;
-    identity.appendChild(name);
-    identity.appendChild(host);
-    const badge = document.createElement("span");
-    header.appendChild(identity);
-    header.appendChild(badge);
-    card.appendChild(header);
-    const messages = document.createElement("div");
-    messages.className = "wg-relay-status-messages";
-    card.appendChild(messages);
-    renderProgress(card);
-    const primary = createButton("wgRelayConnect", "soft-btn accent wg-relay-primary-action", () => {
-      runPrimaryAction(profile);
-    }, false);
-    card.appendChild(primary);
-    const secondary = document.createElement("div");
-    secondary.className = "wg-relay-secondary-actions";
-    const showQr = createButton("wgRelayShowQr", "soft-btn", (event) => {
-      showPairingQr(profile, event.currentTarget);
-    }, false);
-    const rotate = createButton("wgRelayRotatePhone", "soft-btn", (event) => {
-      rotatePhone(profile, event.currentTarget);
-    }, false);
-    const repair = createButton("wgRelayRepair", "soft-btn", () => openRepair(profile), false);
-    const remove = createButton("wgRelayDelete", "soft-btn wg-relay-danger-action", (event) => {
-      deleteProfile(profile, event.currentTarget);
-    }, false);
-    const secondaryButtons = [showQr, rotate, repair, remove];
-    for (const button of secondaryButtons) secondary.appendChild(button);
-    card.appendChild(secondary);
+    card.className = "section wg-relay-status-card wg-relay-daily-card";
+    const list = document.createElement("div");
+    list.className = "wg-relay-domain-list";
+    for (const row of model.rows) appendDomainRow(list, row, profile);
+    card.appendChild(list);
+
+    const calloutMount = document.createElement("div");
+    calloutMount.className = "wg-relay-callout-mount";
+    if (model.error) {
+      const callout = document.createElement("div");
+      callout.className = "wg-relay-action-callout";
+      callout.setAttribute("role", "alert");
+      callout.setAttribute("aria-live", "assertive");
+      callout.textContent = localizedError(model.error.safeCode);
+      calloutMount.appendChild(callout);
+    }
+    card.appendChild(calloutMount);
+
+    const primaryMount = document.createElement("div");
+    primaryMount.className = "wg-relay-primary-mount";
+    if (model.primaryAction) {
+      const primary = createButton(model.primaryAction.labelKey, "soft-btn accent wg-relay-primary-action", () => {
+        runPrimaryAction(profile);
+      }, model.primaryAction.disabled);
+      primaryMount.appendChild(primary);
+    }
+    card.appendChild(primaryMount);
+
+    if (model.secondaryActions.length > 0) {
+      const advanced = document.createElement("details");
+      advanced.className = "wg-relay-advanced-management";
+      const summary = document.createElement("summary");
+      summary.textContent = t("wgRelayAdvancedManagement");
+      advanced.appendChild(summary);
+      const secondary = document.createElement("div");
+      secondary.className = "wg-relay-secondary-actions";
+      for (const action of model.secondaryActions) appendSecondaryAction(secondary, action, profile);
+      advanced.appendChild(secondary);
+      card.appendChild(advanced);
+    }
+
     parent.appendChild(card);
     view.statusMount = {
       profileId: profile.id,
       card,
-      badge,
-      messages,
-      primary,
-      secondaryButtons,
-      repairButton: repair,
     };
-    updateStatusMount(profile);
     if (view.repairOpen) renderRepair(parent, profile);
     refreshStatus(profile);
   }
@@ -1247,7 +1279,7 @@
     } else if (!isDeployed(profile)) {
       renderSetup(parent, profile);
     } else {
-      renderStatusCard(parent, profile);
+      renderDailyPage(parent, profile, model);
     }
     restorePendingFocus();
   }
