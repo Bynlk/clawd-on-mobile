@@ -507,8 +507,10 @@
     const surface = document.createElement("section");
     surface.className = "section " + className;
 
+    const currentId = "wg-relay-current-step";
     const current = document.createElement("p");
     current.className = "wg-relay-current-step";
+    current.id = currentId;
     current.textContent = t("wgRelayStep_" + model.progress.currentStage);
     surface.appendChild(current);
 
@@ -518,11 +520,18 @@
     bar.setAttribute("value", String(model.progress.completedCount));
     bar.setAttribute("max", String(model.progress.total));
     bar.setAttribute("aria-label", t("wgRelayProgressLabel"));
+    bar.setAttribute("aria-describedby", currentId);
     surface.appendChild(bar);
+
+    const overall = document.createElement("p");
+    overall.className = "wg-relay-progress-overall";
+    overall.textContent = t("wgRelayProgressOverall") + ": "
+      + String(model.progress.completedCount) + " / " + String(model.progress.total);
+    surface.appendChild(overall);
 
     const details = document.createElement("details");
     const summary = document.createElement("summary");
-    summary.textContent = t("wgRelayProgressLabel");
+    summary.textContent = t("wgRelayShowDetails");
     details.appendChild(summary);
     renderProgress(details, model.progress);
     surface.appendChild(details);
@@ -544,12 +553,15 @@
 
   function renderDeploymentFailure(parent, model) {
     const surface = renderDeploymentProgressSurface(parent, model, "wg-relay-deployment-failure");
+    const heading = document.createElement("h2");
+    heading.textContent = t("wgRelayDeploymentFailedTitle");
+    surface.insertBefore(heading, surface.children[0] || null);
     const alert = document.createElement("div");
     alert.className = "wg-relay-action-callout";
     alert.setAttribute("role", "alert");
     alert.setAttribute("aria-live", "assertive");
     alert.textContent = localizedError(model.error ? model.error.safeCode : "deploy_failed");
-    surface.insertBefore(alert, surface.children[0] || null);
+    surface.insertBefore(alert, heading.nextSibling || null);
     const retry = createButton("wgRelayTryDeployAgain", "soft-btn accent wg-relay-primary-action", () => {
       view.deploymentFailure = null;
       view.errorCode = null;

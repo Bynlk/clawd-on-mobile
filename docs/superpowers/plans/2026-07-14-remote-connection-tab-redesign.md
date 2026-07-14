@@ -711,7 +711,7 @@ Immediately confirm local and origin branch HEADs match.
 - Modify: `src/settings-i18n.js`
 - Modify: `docs/superpowers/plans/2026-07-14-remote-connection-tab-redesign.md`
 
-- [ ] **Step 1: Write failing all-language key coverage tests**
+- [x] **Step 1: Write failing all-language key coverage tests**
 
 Require every language in `SUPPORTED_LANGS` to define nonempty, non-key fallbacks for these new/updated concepts:
 
@@ -737,13 +737,13 @@ assert.equal(strings.en.wgRelayAdvancedManagement, "Advanced management");
 assert.equal(strings.zh.wgRelayAdvancedManagement, "高级管理");
 ```
 
-- [ ] **Step 2: Run localization tests and verify RED**
+- [x] **Step 2: Run localization tests and verify RED**
 
 Run: `node --test --test-name-pattern='languages|localization' test/settings-tab-wg-relay.test.js test/settings-wg-relay-view-model.test.js`
 
 Expected: FAIL because the new daily/progress/disclosure keys are absent and the old primary copy says `One-click deploy`.
 
-- [ ] **Step 3: Add complete copy for all five desktop languages**
+- [x] **Step 3: Add complete copy for all five desktop languages**
 
 Update `WG_RELAY_STRINGS.en`, `.zh`, `["zh-TW"]`, `.ko`, and `.ja` together. Use concise product language, preserve existing safe error translations, and translate these behaviors consistently:
 
@@ -755,7 +755,7 @@ Update `WG_RELAY_STRINGS.en`, `.zh`, `["zh-TW"]`, `.ko`, and `.ja` together. Use
 - Repair required and one recommended action;
 - destructive and QR security confirmations already present.
 
-- [ ] **Step 4: Write failing CSS, structure, and accessibility tests**
+- [x] **Step 4: Write failing CSS, structure, and accessibility tests**
 
 Extend source/CSS assertions to require:
 
@@ -775,13 +775,13 @@ assert.match(css, /prefers-reduced-motion:\s*reduce/);
 
 At runtime assert labels point to inputs, one callout uses `role="alert"`, progress exposes an accessible label/value, disclosure summaries are keyboard-native, every visible button has text, statuses include text plus an aria-hidden shape marker, and each rendered mode contains at most one `.accent` action. Retain the existing WCAG AA calculations for light/dark neutral, warning, success, danger, current, complete, and failed text.
 
-- [ ] **Step 5: Run style/accessibility tests and verify RED**
+- [x] **Step 5: Run style/accessibility tests and verify RED**
 
 Run: `node --test --test-name-pattern='accessibility|a11y|CSS|contrast|primary' test/settings-tab-wg-relay.test.js`
 
 Expected: FAIL because the old CSS targets status badges, peer actions, and an always-visible ten-row grid.
 
-- [ ] **Step 6: Replace the Remote Connection CSS block**
+- [x] **Step 6: Replace the Remote Connection CSS block**
 
 Keep the existing semantic color tokens and implement these concrete layout behaviors:
 
@@ -797,7 +797,7 @@ Keep the existing semantic color tokens and implement these concrete layout beha
 
 Remove obsolete `.wg-relay-status-badge`, `.wg-relay-recovery`, and daily use of the persistent progress-grid selectors while retaining stage styles inside deployment disclosures.
 
-- [ ] **Step 7: Run GREEN localization, DOM, contrast, text-scale, and reduced-motion tests**
+- [x] **Step 7: Run GREEN localization, DOM, contrast, text-scale, and reduced-motion tests**
 
 Run:
 
@@ -807,6 +807,22 @@ node --test test/settings-renderer-browser-env.test.js test/settings-window.test
 ```
 
 Expected: all selected tests pass with no naked localization key, contrast below 4.5:1, duplicate accent action, or stale progress row.
+
+Verification evidence:
+
+```text
+node --test --test-name-pattern='languages|localization' test/settings-tab-wg-relay.test.js test/settings-wg-relay-view-model.test.js
+PASS: 2/2
+
+node --test --test-name-pattern='accessibility|a11y|CSS|contrast|primary' test/settings-tab-wg-relay.test.js
+PASS: 2/2
+
+node --test test/settings-wg-relay-view-model.test.js test/settings-tab-wg-relay.test.js test/i18n.test.js test/text-scale.test.js
+PASS: 67/67
+
+node --test test/settings-renderer-browser-env.test.js test/settings-window.test.js
+PASS: 153/153
+```
 
 - [ ] **Step 8: Review scope, commit, and immediately push**
 

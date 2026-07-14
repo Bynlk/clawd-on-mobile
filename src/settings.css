@@ -3417,7 +3417,31 @@ html, body {
 }
 
 .wg-relay-card-description,
-.wg-relay-password-hint {
+.wg-relay-setup-card,
+.wg-relay-daily-card,
+.wg-relay-deployment-surface,
+.wg-relay-deployment-failure,
+.wg-relay-repair-card {
+  box-sizing: border-box;
+  width: min(100%, 680px);
+  max-width: 100%;
+}
+
+.wg-relay-card-description,
+.wg-relay-password-hint,
+.wg-relay-domain-supporting,
+.wg-relay-progress-name,
+.wg-relay-action-callout,
+.wg-relay-current-step,
+.wg-relay-progress-overall {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.wg-relay-card-description,
+.wg-relay-password-hint,
+.wg-relay-domain-supporting,
+.wg-relay-progress-overall {
   margin: 0;
   color: var(--text-secondary);
   font-size: 12px;
@@ -3453,97 +3477,140 @@ html, body {
   justify-content: center;
 }
 
-.wg-relay-status-header {
+.wg-relay-domain-list {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.wg-relay-domain-row {
   min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--row-border);
 }
 
-.wg-relay-server-identity {
+.wg-relay-domain-row:last-child {
+  border-bottom: none;
+}
+
+.wg-relay-domain-marker {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--wg-relay-neutral-text);
+  box-shadow: 0 0 0 3px var(--wg-relay-neutral-bg);
+}
+
+.wg-relay-domain-row[data-domain="vps"] .wg-relay-domain-marker,
+.wg-relay-domain-row[data-domain="android"] .wg-relay-domain-marker {
+  background: var(--wg-relay-success-text);
+  box-shadow: 0 0 0 3px var(--wg-relay-success-bg);
+}
+
+.wg-relay-domain-row[data-domain="computer"] .wg-relay-domain-marker {
+  background: var(--wg-relay-current-text);
+  box-shadow: 0 0 0 3px var(--wg-relay-warning-bg);
+}
+
+.wg-relay-domain-body {
   min-width: 0;
 }
 
-.wg-relay-server-name {
-  margin: 0 0 3px;
-}
-
-.wg-relay-server-host,
-.wg-relay-error,
-.wg-relay-recovery,
-.wg-relay-progress-name {
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.wg-relay-server-host {
-  color: var(--text-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-}
-
-.wg-relay-status-badge {
-  flex: 0 0 auto;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 12px;
+.wg-relay-domain-name {
+  color: var(--text-primary);
   font-weight: 650;
 }
 
-.wg-relay-status-idle {
-  color: var(--wg-relay-neutral-text);
-  background: var(--wg-relay-neutral-bg);
+.wg-relay-domain-status {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
-.wg-relay-status-connecting {
+.wg-relay-callout-mount:empty,
+.wg-relay-primary-mount:empty {
+  display: none;
+}
+
+.wg-relay-primary-mount {
+  display: flex;
+  margin-top: 14px;
+}
+
+.wg-relay-action-callout {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--wg-relay-warning-bg);
+  border-radius: 10px;
   color: var(--wg-relay-warning-text);
   background: var(--wg-relay-warning-bg);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
-.wg-relay-status-connected {
-  color: var(--wg-relay-success-text);
-  background: var(--wg-relay-success-bg);
-}
-
-.wg-relay-status-failed {
+.wg-relay-deployment-failure .wg-relay-action-callout {
+  border-color: var(--wg-relay-danger-bg);
   color: var(--wg-relay-danger-text);
   background: var(--wg-relay-danger-bg);
 }
 
+.wg-relay-advanced-management {
+  margin-top: 14px;
+}
+
+.wg-relay-advanced-management summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 650;
+}
+
 .wg-relay-secondary-actions,
 .wg-relay-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
   gap: 8px;
+  margin-top: 10px;
 }
 
 .wg-relay-danger-action {
   color: var(--wg-relay-danger-text);
 }
 
-.wg-relay-error,
-.wg-relay-recovery {
-  padding: 9px 11px;
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+.wg-relay-deployment-surface,
+.wg-relay-deployment-failure {
+  display: grid;
+  gap: 12px;
 }
 
-.wg-relay-error {
-  color: var(--wg-relay-danger-text);
-  background: var(--wg-relay-danger-bg);
+.wg-relay-current-step {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
 }
 
-.wg-relay-recovery {
-  color: var(--wg-relay-warning-text);
-  background: var(--wg-relay-warning-bg);
+.wg-relay-deployment-surface progress,
+.wg-relay-deployment-failure progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent);
 }
 
 .wg-relay-progress {
   display: grid;
   gap: 5px;
+  margin-top: 10px;
   padding: 10px;
   border-radius: 9px;
   background: var(--wg-relay-progress-bg);
@@ -3632,7 +3699,12 @@ html, body {
 .wg-relay-setup-card input:focus-visible,
 .wg-relay-repair-card input:focus-visible,
 .wg-relay-setup-card button:focus-visible,
+.wg-relay-deployment-surface button:focus-visible,
+.wg-relay-deployment-surface summary:focus-visible,
+.wg-relay-deployment-failure button:focus-visible,
+.wg-relay-deployment-failure summary:focus-visible,
 .wg-relay-status-card button:focus-visible,
+.wg-relay-status-card summary:focus-visible,
 .wg-relay-repair-card button:focus-visible,
 .wg-relay-qr-dialog button:focus-visible {
   outline: 2px solid var(--accent);
@@ -3642,13 +3714,22 @@ html, body {
 @media (max-width: 420px) {
   .wg-relay-setup-card,
   .wg-relay-status-card,
+  .wg-relay-daily-card,
+  .wg-relay-deployment-surface,
+  .wg-relay-deployment-failure,
   .wg-relay-repair-card {
     width: 100%;
     padding: 12px;
   }
 
-  .wg-relay-status-header {
-    flex-direction: column;
+  .wg-relay-domain-row {
+    grid-template-columns: 16px minmax(0, 1fr);
+    align-items: flex-start;
+  }
+
+  .wg-relay-domain-row .soft-btn {
+    grid-column: 2;
+    width: 100%;
   }
 
   .wg-relay-primary-action,
@@ -3677,6 +3758,9 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .wg-relay-setup-card *,
   .wg-relay-status-card *,
+  .wg-relay-daily-card *,
+  .wg-relay-deployment-surface *,
+  .wg-relay-deployment-failure *,
   .wg-relay-repair-card *,
   .wg-relay-qr-dialog * {
     animation-duration: 0.01ms !important;

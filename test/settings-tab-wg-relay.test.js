@@ -270,6 +270,9 @@ const TRANSLATIONS = {
   wgRelayDeploy: "ONE_CLICK_DEPLOY",
   wgRelayDeploying: "DEPLOYING",
   wgRelayTryDeployAgain: "TRY_DEPLOY_AGAIN",
+  wgRelayDeploymentFailedTitle: "DEPLOYMENT_FAILED_TITLE",
+  wgRelayShowDetails: "SHOW_DETAILS",
+  wgRelayProgressOverall: "OVERALL_PROGRESS",
   wgRelayConnect: "CONNECT",
   wgRelayConnecting: "CONNECTING",
   wgRelayDisconnect: "DISCONNECT",
@@ -748,6 +751,56 @@ test("deployed daily card renders three domain rows, one primary action, and adv
   }
 });
 
+test("rendered modes keep accessible controls, native progress, and a single accent action", async () => {
+  const setup = createHarness();
+  const form = setup.content.querySelector(".wg-relay-setup-form");
+  assert.ok(form);
+  for (const label of Array.from(form.querySelectorAll("label"))) {
+    assert.ok(label.getAttribute("for"));
+    assert.ok(setup.document.getElementById(label.getAttribute("for")));
+  }
+  assert.equal(form.querySelector("#wg-relay-password").getAttribute("aria-describedby"), "wg-relay-password-hint");
+  assert.equal(form.querySelectorAll(".accent").length, 1);
+
+  const deployingPromise = deferred();
+  const deploying = createHarness({ api: { deploy: () => deployingPromise.promise } });
+  setInput(deploying.content.querySelector("#wg-relay-host"), "relay.example.test");
+  setInput(deploying.content.querySelector("#wg-relay-password"), "unit-test-only");
+  deploying.content.querySelector(".wg-relay-setup-form").dispatchEvent({ type: "submit", bubbles: false });
+  const progress = deploying.content.querySelector("progress");
+  assert.ok(progress);
+  assert.equal(progress.getAttribute("aria-label"), "DEPLOY_PROGRESS");
+  assert.equal(progress.value, 0);
+  assert.equal(progress.max, 10);
+  assert.ok(deploying.content.querySelector("summary"));
+  assert.equal(deploying.content.querySelector("details").open, false);
+  assert.equal(deploying.content.querySelectorAll(".accent").length, 1);
+
+  deployingPromise.resolve({ status: "error", errorCode: "deploy_failed" });
+  await flushPromises();
+  const failure = deploying.content.querySelector(".wg-relay-deployment-failure");
+  assert.equal(
+    Array.from(failure.querySelectorAll("div"))
+      .filter((node) => node.getAttribute("role") === "alert").length,
+    1,
+  );
+  assert.equal(failure.querySelectorAll(".accent").length, 1);
+
+  const daily = createHarness({ profile: DEPLOYED_PROFILE });
+  await flushPromises();
+  const card = daily.content.querySelector(".wg-relay-status-card");
+  assert.equal(card.querySelectorAll(".accent").length, 1);
+  const advanced = card.querySelector(".wg-relay-advanced-management");
+  assert.equal(advanced.querySelector("summary").tagName, "SUMMARY");
+  for (const button of buttons(card)) {
+    assert.ok(button.textContent.trim(), "visible buttons must have text");
+  }
+  for (const row of Array.from(card.querySelectorAll(".wg-relay-domain-row"))) {
+    assert.ok(row.querySelector(".wg-relay-domain-status").textContent.trim());
+    assert.equal(row.querySelector(".wg-relay-domain-marker").getAttribute("aria-hidden"), "true");
+  }
+});
+
 test("a late initial status response cannot overwrite a newer status event", async () => {
   const pendingStatus = deferred();
   const harness = createHarness({
@@ -1168,18 +1221,24 @@ test("rerender and disposal unsubscribe status/progress listeners without accumu
   assert.deepEqual(harness.listenerCounts(), { status: 0, progress: 0 });
 });
 
-test("all desktop languages contain every Task 7 key and never fall back to a naked key", () => {
+test("all desktop languages contain every Task 4 localization key and never fall back to a naked key", () => {
   const context = { globalThis: null };
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(SRC_DIR, "settings-i18n.js"), "utf8"), context);
   const strings = context.ClawdSettingsI18n.STRINGS;
   const required = [
-    "sidebarWgRelay", "wgRelayTitle", "wgRelaySubtitle", "wgRelayDeploy", "wgRelayDeploying",
+    "sidebarWgRelay", "wgRelayTitle", "wgRelaySubtitle",
+    "wgRelayDeploy", "wgRelayDeploying", "wgRelayTryDeployAgain",
+    "wgRelayDeploymentFailedTitle", "wgRelayShowDetails", "wgRelayProgressOverall",
     "wgRelayFieldHost", "wgRelayFieldSshUsername", "wgRelayFieldSshPort", "wgRelayFieldPassword",
     "wgRelayStatus_idle", "wgRelayStatus_starting_tunnel", "wgRelayStatus_verifying_relay",
     "wgRelayStatus_connecting_relay", "wgRelayStatus_connected", "wgRelayStatus_disconnecting",
     "wgRelayStatus_failed", "wgRelayConnect", "wgRelayDisconnect", "wgRelayShowQr",
+    "wgRelayConnecting", "wgRelayDisconnecting",
+    "wgRelayVpsRow", "wgRelayComputerRow", "wgRelayAndroidRow",
+    "wgRelayVpsConfigured", "wgRelayAndroidPairingAvailable", "wgRelayAndroidUnavailable",
+    "wgRelayAdvancedManagement", "wgRelayRepairRequiredTitle",
     "wgRelayRotatePhone", "wgRelayRepair", "wgRelayDelete", "wgRelayRecoveryRequired",
     "wgRelayStep_connect", "wgRelayStep_fingerprint", "wgRelayStep_upload", "wgRelayStep_dependencies",
     "wgRelayStep_wireguard", "wgRelayStep_relay", "wgRelayStep_verify", "wgRelayStep_save",
@@ -1201,18 +1260,30 @@ test("all desktop languages contain every Task 7 key and never fall back to a na
   }
   assert.equal(strings.en.sidebarWgRelay, "Remote Connection");
   assert.equal(strings.zh.sidebarWgRelay, "远程连接");
-  assert.equal(strings.en.wgRelayDeploy, "One-click deploy");
-  assert.equal(strings.zh.wgRelayDeploy, "一键部署");
+  assert.equal(strings.en.wgRelayDeploy, "Deploy remote connection");
+  assert.equal(strings.zh.wgRelayDeploy, "部署远程连接");
+  assert.equal(strings.en.wgRelayVpsRow, "VPS Relay");
+  assert.equal(strings.zh.wgRelayComputerRow, "这台电脑");
+  assert.equal(strings.en.wgRelayAdvancedManagement, "Advanced management");
+  assert.equal(strings.zh.wgRelayAdvancedManagement, "高级管理");
 });
 
 test("source and CSS include password/a11y/responsive/reduced-motion security hooks", () => {
   const css = fs.readFileSync(path.join(SRC_DIR, "settings.css"), "utf8");
+  assert.match(TAB_SOURCE, /createElement\("form"\)/);
+  assert.match(TAB_SOURCE, /createElement\("details"\)/);
+  assert.match(TAB_SOURCE, /createElement\("summary"\)/);
+  assert.match(TAB_SOURCE, /createElement\("progress"\)/);
+  assert.match(TAB_SOURCE, /aria-describedby/);
   assert.match(TAB_SOURCE, /autocomplete[\s\S]*new-password/);
   assert.match(TAB_SOURCE, /aria-live/);
   assert.match(TAB_SOURCE, /aria-modal/);
   assert.match(TAB_SOURCE, /Escape/);
   assert.doesNotMatch(TAB_SOURCE, /dataset\.[A-Za-z]*password/i);
   assert.doesNotMatch(TAB_SOURCE, /manualUrl|manualToken|relayToken/);
+  assert.match(css, /\.wg-relay-domain-row/);
+  assert.match(css, /\.wg-relay-action-callout/);
+  assert.match(css, /\.wg-relay-advanced-management/);
   assert.match(css, /@media\s*\(max-width:\s*420px\)[\s\S]*\.wg-relay-/);
   assert.match(css, /\.wg-relay-[^{]*:focus-visible/);
   assert.match(css, /overflow-wrap:\s*anywhere/);
