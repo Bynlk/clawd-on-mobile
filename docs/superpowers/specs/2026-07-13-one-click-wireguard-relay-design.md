@@ -1,6 +1,6 @@
 # 一键 WireGuard Relay 设计
 
-> 状态：实施中（Task 1-11 已实现，Task 12 验收中）
+> 状态：代码与自动验收完成；Android 真机蜂窝/分应用路由和 VPS 重启验收待执行
 > 日期：2026-07-13
 > 分支：`codex/one-click-wireguard-relay`
 
@@ -643,7 +643,7 @@ POST /api/manage/phone/rotate
 - 健康检查与回传契约：Android 对固定 `http://10.8.0.1:7891/health` 使用 5 秒 IO timeout、禁止 redirect、最多读取 1024 bytes；只接受 2xx、`version=1`、`status=ok` 及设计允许的非负 `uptimeSeconds`，拒绝 malformed、错误类型、未知字段、非 2xx 与超限正文，错误不回显正文。先以缺少 validator 编译 RED；又以真实 VPS `uptimeSeconds` schema 运行时 RED 捕获跨端冲突，修复后定向 GREEN。
 - 设置刷新与删除：NavGraph 把已消费的非敏感配对 request id 作为单调 refresh revision 传入 Settings；`RelayPairingSnapshotLoader` 只在 revision 改变时重新从加密 prefs 读取，因此停留设置页重新扫码也会刷新。loader 测试先缺符号 RED 后 GREEN。删除严格等待本次新断开终态后才清配对；初始旧 `FAILED` 不再被误当本次结果，该竞态测试先缺 helper RED 后 GREEN。
 - Service 销毁：正常显式 stop 在 `stopSelf()` 前等待远程逆序清理；onDestroy fallback 改为由 Service 自身 scope 持有、`UNDISPATCHED` 启动的 cleanup job，完成 disconnect 后才销毁 Relay、清状态并取消 scope，不再创建立即失去所有权的临时 scope。所有权测试先缺 helper RED 后 GREEN。
-- 最终 Android 验证：`./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug --rerun-tasks` 退出码 0，XML 汇总 39 suites、687/687、0 failure/error/skipped；lint 与 debug APK 均构建成功。无 Android 真机或 emulator system image，蜂窝漫游、系统 VPN 授权和其他 App 出口保持不变仍必须由真机完成，不以 JVM 测试冒充。
+- 最终 Android 验证：`./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug --rerun-tasks` 退出码 0，XML 汇总 39 suites、688/688、0 failure/error/skipped；lint 与 debug APK 均构建成功。无 Android 真机或 emulator system image，蜂窝漫游、系统 VPN 授权和其他 App 出口保持不变仍必须由真机完成，不以 JVM 测试冒充。
 - 独立质量复审：首轮为 0 Critical、2 Important。有效项指出 `NonCancellable` cleanup 的 Relay/VPN I/O 可无界挂起；新增每步默认 5 秒 timeout，并在 `finally` 必然完成共享 cleanup result，hung cleanup 测试先因缺参数 RED 后 GREEN，且 Relay 超时后仍继续尝试 VPN stop。另一项建议 REMOTE_DISCONNECT 后 stop foreground Service；结合 `ServiceManager.initialize()` 始终持有同一 LAN client 复核后撤销，因为释放共享 locks/stopSelf 会破坏 LAN 与当前 UI 生命周期。复审最终为 0 Critical、0 Important。
 
 ### Task 11：sidecar 打包、CI 与 VPS smoke（2026-07-14）
@@ -664,3 +664,13 @@ POST /api/manage/phone/rotate
 - macOS Bash 3.2 systemd 检查 RED/GREEN：两次幂等部署均成功后，旧 `REMOTE_CHECK_COMMAND="$(cat <<'REMOTE_CHECKS' ...)"` 会在本机展开 heredoc 内的远端 `$(wg ...)`，导致 smoke 在 systemd 检查阶段退出。源合同先锁定禁止 command substitution；改为 Bash 3.2 可用的 `IFS= read -r -d '' ... || true` literal heredoc 后，聚焦 smoke 合同 1/1 与 `bash -n` 均通过，远端命令只在 VPS 执行。
 - macOS Bash 3.2 shell quoting RED/GREEN：真实 smoke 再次稳定复现 systemd 检查远端 `bash -c` 在首个 `sed -n '...'` 处语法失败；最小复现确认旧 `${value//...}` 在 Bash 3.2 生成带反斜杠的 `\\'\"\\'\"\\'`，而不是合法单引号边界。新增测试直接提取生产 `shell_quote`，以含 multiline、command substitution、single-quoted sed/awk 的固定命令执行双层 Bash 语法检查并先 RED；改用 Bash 3.2 原生 `printf '%q'` 后，三项 smoke 聚焦测试与 `bash -n` 全部通过。
 - 真实 VPS smoke GREEN：在用户明确授权的 Debian 12 VPS 上，当前脚本完整退出 0；两次幂等部署、WireGuard/Relay systemd enabled+active、Relay 仅私网监听且公网 TCP 拒绝、当前 macOS arm64 sidecar 经 WireGuard 访问 `/health`、手机轮换后旧 WireGuard key 与旧 Relay token 均拒绝、新 key/token 可用，全部显示 `[PASS]`。输出只含固定阶段和脱敏 checklist；此前 root-only 手动诊断文件及临时 staging 已删除，未重启 VPS、未改动其他业务服务、未记录地址或任何秘密。
+
+### Task 12：全量验证、审查与完成审计（2026-07-14）
+
+- Node 功能范围：WG Relay、installer、Relay server/bridge、managed-session forwarding、设置页、打包与 sidecar 邻接共 711 项中 710 通过、0 失败、1 项为 marker/nonce 保护的 privileged disposable-VPS skip。整仓 `npm test` 仍有功能前已记录的缺 Electron 安装体、缺 `hardware-buddy-settings.js`、旧 permission sanitizer、缺本地化 README、`server-start-http` 等基线失败；全并发下唯一 WG installer rollback fixture 抖动，随后单独复跑 1/1 通过，不作为新回归。
+- Go sidecar：`go test ./...`、`go test -race ./...`、`go vet ./...`、`go mod verify` 全部退出 0；Windows x64/ARM64、macOS x64/ARM64、Linux x64/ARM64 六目标均重新 build 并逐目标 verify 成功。
+- Android：最终 `testDebugUnitTest lintDebug assembleDebug --rerun-tasks` 退出 0，39 suites、688/688；GitHub Android Build run `29323644826` 在当前 `28c7db9` 上的 lint、unit tests、debug APK 均为 success。
+- 真实 VPS：脱敏 smoke 完整退出 0，证明首次/重复部署、长期 systemd enable+active、私网 Relay、公网 7891 拒绝、PC sidecar health、手机 key/token 轮换与旧凭据拒绝；未重启 VPS，未动其他业务服务。
+- 秘密与范围：当前 commit 的 tracked files 不含真实 VPS 地址/凭据 marker；无 `git push upstream`、无 Relay TCP 7891 firewall rule；Android WireGuard 配置只有 `IncludedApplications=com.clawd.mobile`，network security 仅给 `10.8.0.1` 放行 cleartext。所有提交均推送到 `origin=https://github.com/Bynlk/clawd-on-mobile.git` 的 `codex/one-click-wireguard-relay`，未 merge、未 push upstream。
+- 最终审查：Task 10 独立质量审查首轮 0 Critical/2 Important，修复无界 cleanup 后复审为 0/0；foreground Service 项结合共享 LAN 生命周期后撤销。最终 PC 分片审查为 0/0；Android/打包分片初报“六个 Electron 安装包”后，依据计划只要求六目标 WireGuard sidecar build/verify 且 Linux ARM64 Electron app 不在既有 release 架构中，复核撤销为 0/0。VPS 核心此前已完成多轮事务/installer 安全审查并以真实 smoke 复验；本轮额外分片未完整读完，不伪称新的完整 VPS 审查。
+- 尚缺直接证据：没有可用 Android 真机，因此系统 VPN 首次授权、蜂窝连接、Wi-Fi↔蜂窝漫游和“其他 App 出口不变”未执行；依照既定约束也未重启用户 VPS。代码、自动测试、CI 与非重启真实 VPS smoke 均已完成，但第 12.2 节对应真机/重启条目保持待人工验收。
