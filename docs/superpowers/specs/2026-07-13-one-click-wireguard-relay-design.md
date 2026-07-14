@@ -1,6 +1,6 @@
 # 一键 WireGuard Relay 设计
 
-> 状态：实施中（Task 1-8 实现待双审查）
+> 状态：实施中（Task 1-11 已实现，Task 12 验收中）
 > 日期：2026-07-13
 > 分支：`codex/one-click-wireguard-relay`
 
@@ -634,6 +634,16 @@ POST /api/manage/phone/rotate
 - TDD 证据：配置与控制器测试分别先因目标类型不存在而 RED；实现后 `./gradlew testDebugUnitTest --tests '*WireGuard*' --rerun-tasks` 为 10/10 通过、0 failure/error。
 - Manifest 与主流程复验：`:app:processDebugMainManifest --rerun-tasks` 通过；合并 Manifest 中唯一官方 `GoBackend$VpnService` 为 `exported=false` 且受 `android.permission.BIND_VPN_SERVICE` 保护。主流程使用已有 JDK 17 复跑 `./gradlew --no-daemon testDebugUnitTest --tests '*WireGuard*' :app:processDebugMainManifest`，退出码 0、BUILD SUCCESSFUL。
 - 未访问 VPS、未读取或使用真实凭据；真机 VPN 授权、握手及仅本 App 路由的运行时验收统一留到 Task 12。
+
+### Task 10：Android 一键远程连接、回滚与设置界面（2026-07-14）
+
+- 一键事务：`RemoteConnectionCoordinator` 严格执行 `VPN start → 私网 /health → Relay connect`，断开与所有失败路径严格执行 `Relay disconnect → VPN stop`；15 秒总连接超时、重复 connect/disconnect 合并、连接中取消、generation 防迟到完成及仅在用户连接意图仍有效时的网络切换重试均有协程测试。
+- LAN/Relay 独立：Service 只在显式 `REMOTE_CONNECT` 时启动远程事务，系统重启只恢复既有 LAN 行为，不自动打开远程隧道；Relay 使用独立 client 与 `SessionMerger` tag，断开远程不清 LAN。内网 cleartext 仅允许固定 `10.8.0.1`，其他目标继续由 base config 拒绝。
+- VPN 权限：`VpnService.prepare(applicationContext)` 由 Service 判断，因此 VPN 已授权后的后台网络重试不依赖 Activity；Activity host 只保留 `ActivityResultLauncher`。launcher 经可注入的 main dispatcher 投递，并在 Activity recreation 后只允许当前 host 接收。两项原测试分别先以接口多余 `prepare` 和缺少 dispatcher RED，修复后 `WsConnectionServiceTest` 12/12 GREEN。
+- 健康检查与回传契约：Android 对固定 `http://10.8.0.1:7891/health` 使用 5 秒 IO timeout、禁止 redirect、最多读取 1024 bytes；只接受 2xx、`version=1`、`status=ok` 及设计允许的非负 `uptimeSeconds`，拒绝 malformed、错误类型、未知字段、非 2xx 与超限正文，错误不回显正文。先以缺少 validator 编译 RED；又以真实 VPS `uptimeSeconds` schema 运行时 RED 捕获跨端冲突，修复后定向 GREEN。
+- 设置刷新与删除：NavGraph 把已消费的非敏感配对 request id 作为单调 refresh revision 传入 Settings；`RelayPairingSnapshotLoader` 只在 revision 改变时重新从加密 prefs 读取，因此停留设置页重新扫码也会刷新。loader 测试先缺符号 RED 后 GREEN。删除严格等待本次新断开终态后才清配对；初始旧 `FAILED` 不再被误当本次结果，该竞态测试先缺 helper RED 后 GREEN。
+- Service 销毁：正常显式 stop 在 `stopSelf()` 前等待远程逆序清理；onDestroy fallback 改为由 Service 自身 scope 持有、`UNDISPATCHED` 启动的 cleanup job，完成 disconnect 后才销毁 Relay、清状态并取消 scope，不再创建立即失去所有权的临时 scope。所有权测试先缺 helper RED 后 GREEN。
+- 最终 Android 验证：`./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug --rerun-tasks` 退出码 0，XML 汇总 39 suites、687/687、0 failure/error/skipped；lint 与 debug APK 均构建成功。无 Android 真机或 emulator system image，蜂窝漫游、系统 VPN 授权和其他 App 出口保持不变仍必须由真机完成，不以 JVM 测试冒充。
 
 ### Task 11：sidecar 打包、CI 与 VPS smoke（2026-07-14）
 

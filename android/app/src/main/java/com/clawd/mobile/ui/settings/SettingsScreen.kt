@@ -19,16 +19,19 @@ import com.clawd.mobile.ui.components.ClawdIcons
 import com.clawd.mobile.ui.theme.*
 import com.clawd.mobile.ws.StreamingClient
 import com.clawd.mobile.ws.ConnectionState
+import com.clawd.mobile.service.WsConnectionService
 
 @Composable
 fun SettingsScreen(
     navController: NavController,
     streamingClient: StreamingClient,
     prefsStore: PrefsStore,
+    relayPairingRefreshRevision: Int = 0,
     snackbarHostState: SnackbarHostState? = null
 ) {
     val connectionState by streamingClient.connectionState.collectAsState()
     val isConnected = connectionState == ConnectionState.CONNECTED
+    val remoteState by WsConnectionService.remoteConnectionState.collectAsState()
 
     Scaffold(
         containerColor = ClawdBackgroundDark,
@@ -82,7 +85,11 @@ fun SettingsScreen(
                 icon = ClawdIcons.Activity,
                 defaultExpanded = false
             ) {
-                RelaySettings(prefsStore = prefsStore, streamingClient = streamingClient)
+                RelaySettings(
+                    prefsStore = prefsStore,
+                    remoteState = remoteState,
+                    pairingRefreshRevision = relayPairingRefreshRevision,
+                )
             }
 
             AccordionSection(

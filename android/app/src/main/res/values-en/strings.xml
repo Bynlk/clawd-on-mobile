@@ -301,4 +301,25 @@
     <string name="relay_status_disconnected">Relay disconnected</string>
     <string name="relay_status_circuit_open">Relay paused</string>
     <string name="relay_status_unknown">Relay status unknown</string>
+    <string name="remote_scan_prompt">Not paired. Scan the remote pairing QR code shown on your computer.</string>
+    <string name="remote_endpoint">Endpoint: %1$s</string>
+    <string name="remote_connect">Remote connect</string>
+    <string name="remote_disconnect">Disconnect remote</string>
+    <string name="remote_delete_pairing">Delete pairing</string>
+    <string name="remote_delete_failed">Disconnect failed; pairing was not deleted</string>
+    <string name="remote_status_unpaired">Not paired</string>
+    <string name="remote_status_disconnected">Remote disconnected</string>
+    <string name="remote_status_starting_vpn">Starting secure tunnel…</string>
+    <string name="remote_status_checking_health">Checking remote service…</string>
+    <string name="remote_status_connecting_relay">Connecting remote Relay…</string>
+    <string name="remote_status_connected">Remote connected</string>
+    <string name="remote_status_disconnecting">Disconnecting remote…</string>
+    <string name="remote_error_vpn_permission">VPN permission was not granted</string>
+    <string name="remote_error_vpn_start">Secure tunnel failed to start</string>
+    <string name="remote_error_health">Remote service health check failed</string>
+    <string name="remote_error_relay_auth">Relay authentication failed; pair again</string>
+    <string name="remote_error_relay_connect">Relay connection failed</string>
+    <string name="remote_error_timeout">Remote connection timed out</string>
+    <string name="remote_error_relay_disconnect">Relay failed to disconnect</string>
+    <string name="remote_error_vpn_stop">Secure tunnel failed to stop</string>
 </resources>

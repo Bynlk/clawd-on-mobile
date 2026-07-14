@@ -45,6 +45,7 @@ import com.clawd.mobile.ui.scan.RelayPairingAcceptance
 import com.clawd.mobile.ui.scan.RelayPairingReceiver
 import com.clawd.mobile.ui.scan.ScanPayloadResult
 import com.clawd.mobile.ui.scan.parseScannedPayload
+import com.clawd.mobile.service.VpnPermissionHost
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+
+internal class VpnPermissionResultRelay(
+    private val deliver: (Boolean) -> Unit,
+) {
+    fun onActivityResult(resultCode: Int) {
+        deliver(resultCode == android.app.Activity.RESULT_OK)
+    }
+}
 
 internal data class RelayPairingStoredState(
     val pairing: RelayPairingConfig? = null,
@@ -326,7 +335,7 @@ internal class RelayDeepLinkRouter(
 }
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity(), RelayPairingReceiver {
+class MainActivity : ComponentActivity(), RelayPairingReceiver, VpnPermissionHost {
 
     companion object {
         private const val STATE_RELAY_PAIRING_NEXT_REQUEST_ID = "relay_pairing_next_request_id"
@@ -350,6 +359,7 @@ class MainActivity : ComponentActivity(), RelayPairingReceiver {
     private lateinit var pairingConfirmationState: RelayPairingConfirmationViewModel
     private lateinit var relayPairingCoordinator: RelayPairingCoordinator
     private lateinit var relayDeepLinkRouter: RelayDeepLinkRouter
+    private lateinit var vpnPermissionResults: VpnPermissionResultRelay
 
     data class PermissionRequest(
         val permission: String,
@@ -376,9 +386,17 @@ class MainActivity : ComponentActivity(), RelayPairingReceiver {
         setupContent()
     }
 
+    private val vpnPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        vpnPermissionResults.onActivityResult(result.resultCode)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        vpnPermissionResults = VpnPermissionResultRelay(WsConnectionService::onVpnPermissionResult)
+        WsConnectionService.attachVpnPermissionHost(this)
         settingsNavigationRequest = savedInstanceState
             ?.getInt(STATE_RELAY_PAIRING_PENDING_REQUEST_ID, 0)
             ?.coerceAtLeast(0)
@@ -451,6 +469,15 @@ class MainActivity : ComponentActivity(), RelayPairingReceiver {
         Log.d("MainActivity", "onNewIntent action=${intent.action}")
         handleApprovalIntent(intent)
         handleDeepLink(intent)
+    }
+
+    override fun launchVpnPermission(intent: Intent) {
+        vpnPermissionLauncher.launch(intent)
+    }
+
+    override fun onDestroy() {
+        WsConnectionService.detachVpnPermissionHost(this)
+        super.onDestroy()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

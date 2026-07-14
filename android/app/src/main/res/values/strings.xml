@@ -301,4 +301,25 @@
     <string name="relay_status_disconnected">Relay 已断开</string>
     <string name="relay_status_circuit_open">Relay 连接暂停</string>
     <string name="relay_status_unknown">Relay 状态未知</string>
+    <string name="remote_scan_prompt">尚未配对。请扫描电脑端的远程配对二维码。</string>
+    <string name="remote_endpoint">Endpoint：%1$s</string>
+    <string name="remote_connect">远程连接</string>
+    <string name="remote_disconnect">断开远程连接</string>
+    <string name="remote_delete_pairing">删除配对</string>
+    <string name="remote_delete_failed">断开失败，配对未删除</string>
+    <string name="remote_status_unpaired">未配对</string>
+    <string name="remote_status_disconnected">远程未连接</string>
+    <string name="remote_status_starting_vpn">正在启动安全隧道…</string>
+    <string name="remote_status_checking_health">正在验证远程服务…</string>
+    <string name="remote_status_connecting_relay">正在连接远程 Relay…</string>
+    <string name="remote_status_connected">远程已连接</string>
+    <string name="remote_status_disconnecting">正在断开远程连接…</string>
+    <string name="remote_error_vpn_permission">VPN 权限未授予</string>
+    <string name="remote_error_vpn_start">安全隧道启动失败</string>
+    <string name="remote_error_health">远程服务健康检查失败</string>
+    <string name="remote_error_relay_auth">Relay 认证失败，请重新配对</string>
+    <string name="remote_error_relay_connect">Relay 连接失败</string>
+    <string name="remote_error_timeout">远程连接超时</string>
+    <string name="remote_error_relay_disconnect">Relay 断开失败</string>
+    <string name="remote_error_vpn_stop">安全隧道停止失败</string>
 </resources>

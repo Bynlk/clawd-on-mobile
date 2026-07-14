@@ -9,8 +9,11 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.VpnService
 import android.net.wifi.WifiManager
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.clawd.mobile.ClawdApp
@@ -29,9 +32,70 @@ import com.clawd.mobile.ws.SessionMerger
 import com.clawd.mobile.ws.TaggedSession
 import com.clawd.mobile.util.SafeExecutor
 import com.clawd.mobile.console.bootstrapConsoleConnection
+import com.clawd.mobile.vpn.RemoteTunnelState
+import com.clawd.mobile.vpn.GoBackendAdapter
+import com.clawd.mobile.vpn.WireGuardController
+import java.lang.ref.WeakReference
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
+
+interface VpnPermissionHost {
+    fun launchVpnPermission(intent: Intent)
+}
+
+internal class VpnPermissionHostRegistry(
+    private val dispatchToMain: ((() -> Unit) -> Unit) = { action ->
+        Handler(Looper.getMainLooper()).post(action)
+        Unit
+    },
+) {
+    private val lock = Any()
+    private var host = WeakReference<VpnPermissionHost>(null)
+
+    fun attach(value: VpnPermissionHost) = synchronized(lock) {
+        host = WeakReference(value)
+    }
+
+    fun detach(value: VpnPermissionHost) = synchronized(lock) {
+        if (host.get() === value) host.clear()
+    }
+
+    fun launch(intent: Intent) {
+        val target = current()
+        dispatchToMain {
+            val stillAttached = synchronized(lock) { host.get() === target }
+            if (stillAttached) target.launchVpnPermission(intent)
+        }
+    }
+
+    private fun current(): VpnPermissionHost = synchronized(lock) {
+        host.get() ?: throw IllegalStateException("vpn_permission_host_unavailable")
+    }
+}
+
+internal fun launchConnectionStateCollectors(
+    scope: CoroutineScope,
+    lan: StateFlow<ConnectionState>?,
+    relay: StateFlow<ConnectionState>?,
+    onLan: suspend (ConnectionState) -> Unit,
+    onRelay: suspend (ConnectionState) -> Unit,
+): List<Job> = listOfNotNull(
+    lan?.let { states -> scope.launch { states.collect(onLan) } },
+    relay?.let { states -> scope.launch { states.collect(onRelay) } },
+)
+
+internal fun launchRemoteServiceCleanup(
+    scope: CoroutineScope,
+    disconnect: suspend () -> Unit,
+    finalize: () -> Unit,
+): Job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+    try {
+        disconnect()
+    } finally {
+        finalize()
+    }
+}
 
 /**
  * Foreground service managing the WebSocket connection to Clawd server.
@@ -69,12 +133,21 @@ class WsConnectionService : Service() {
         const val NOTIFICATION_ID = 9999
         const val ACTION_CONNECT = "com.clawd.mobile.CONNECT"
         const val ACTION_DISCONNECT = "com.clawd.mobile.DISCONNECT"
+        const val ACTION_REMOTE_CONNECT = "com.clawd.mobile.REMOTE_CONNECT"
+        const val ACTION_REMOTE_DISCONNECT = "com.clawd.mobile.REMOTE_DISCONNECT"
 
         private const val WAKELOCK_TIMEOUT_MS = 60 * 60 * 1000L       // 1 hour
         private const val WAKELOCK_RENEWAL_INTERVAL_MS = 25 * 60 * 1000L  // 25 minutes (< 1h timeout to prevent expiry gap)
 
         @Volatile
         private var instance: WsConnectionService? = null
+
+        private val vpnPermissionHosts = VpnPermissionHostRegistry()
+
+        private val _remoteConnectionState =
+            MutableStateFlow<RemoteConnectionState>(RemoteConnectionState.DISCONNECTED)
+        val remoteConnectionState: StateFlow<RemoteConnectionState> =
+            _remoteConnectionState.asStateFlow()
 
         private val _clientReady = Channel<StreamingClient>(Channel.CONFLATED)
 
@@ -118,6 +191,31 @@ class WsConnectionService : Service() {
             })
         }
 
+        /** Explicit remote actions carry no pairing material or token extras. */
+        fun connectRemote(context: Context) {
+            context.startForegroundService(Intent(context, WsConnectionService::class.java).apply {
+                action = ACTION_REMOTE_CONNECT
+            })
+        }
+
+        fun disconnectRemote(context: Context) {
+            context.startForegroundService(Intent(context, WsConnectionService::class.java).apply {
+                action = ACTION_REMOTE_DISCONNECT
+            })
+        }
+
+        internal fun shouldStartRelay(action: String?): Boolean = action == ACTION_REMOTE_CONNECT
+
+        internal fun shouldDisconnectRemote(action: String?): Boolean = action == ACTION_DISCONNECT
+
+        fun attachVpnPermissionHost(host: VpnPermissionHost) = vpnPermissionHosts.attach(host)
+
+        fun detachVpnPermissionHost(host: VpnPermissionHost) = vpnPermissionHosts.detach(host)
+
+        fun onVpnPermissionResult(granted: Boolean) {
+            instance?.wireGuardController?.onPermissionResult(granted)
+        }
+
         /**
          * Shared flow for signaling approval completion across UI paths.
          * Emits requestId when an approval is completed (from notification or overlay).
@@ -143,6 +241,10 @@ class WsConnectionService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var sessionMerger: SessionMerger? = null
     private var stateCollectorJob: Job? = null
+    private var remoteStateCollectorJob: Job? = null
+    private var shutdownJob: Job? = null
+    private var remoteCoordinator: RemoteConnectionCoordinator? = null
+    private var wireGuardController: WireGuardController? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -160,18 +262,14 @@ class WsConnectionService : Service() {
         val merger = SessionMerger(scope)
         sessionMerger = merger
         merger.register(ConnectionTag.LAN, lanClient.sessions)
-
-        // 创建 relay client（如果配置了 relay）
-        val config = try { prefsStore.loadConfig() } catch (e: Exception) {
-            android.util.Log.e("WsConnectionService", "Failed to load config: ${e.message}")
-            null
-        }
-        if (config?.useRelay == true && !config.relayUrl.isNullOrBlank()) {
-            val relay = WsClient(prefsStore, RelayConnectionStrategy())
-            relayClient = relay
-            _clientReady.trySend(relay)
-            merger.register(ConnectionTag.RELAY, relay.sessions)
-        }
+        val controller = WireGuardController(
+            backend = GoBackendAdapter(applicationContext),
+            scope = scope,
+            permissionIntentProvider = { VpnService.prepare(applicationContext) },
+            permissionLauncher = vpnPermissionHosts::launch,
+        )
+        wireGuardController = controller
+        configureRemoteCoordinator(controller)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -184,32 +282,38 @@ class WsConnectionService : Service() {
                     val config = prefsStore.loadConfig()
                     if (config != null) {
                         streamingClient?.connect(config)
-                        // 连接 relay client（如果配置了）
-                        if (config.useRelay && !config.relayUrl.isNullOrBlank() && relayClient != null) {
-                            relayClient?.connect(config)
-                        }
                     } else {
                         streamingClient?.reconnect()
                     }
                 } else {
                     streamingClient?.reconnect()
-                    relayClient?.reconnect()
                 }
                 startStateCollector()
             }
             ACTION_DISCONNECT -> {
-                streamingClient?.disconnect()
-                relayClient?.disconnect()
-                releaseLocks()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                scope.launch {
+                    remoteCoordinator?.disconnect()
+                    streamingClient?.disconnect()
+                    releaseLocks()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }
+            ACTION_REMOTE_CONNECT -> {
+                startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.relay_status_connecting)))
+                acquireLocks()
+                startStateCollector()
+                scope.launch { remoteCoordinator?.connect() }
+            }
+            ACTION_REMOTE_DISCONNECT -> {
+                startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.relay_status_disconnected)))
+                scope.launch { remoteCoordinator?.disconnect() }
             }
             else -> {
                 // Service restarted by system
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.status_disconnected)))
                 acquireLocks()
                 streamingClient?.reconnect()
-                relayClient?.reconnect()
                 startStateCollector()
             }
         }
@@ -257,7 +361,7 @@ class WsConnectionService : Service() {
                 }
             }
 
-            streamingClient?.connectionState?.collect { state ->
+            suspend fun handleLanState(state: ConnectionState) {
                 val status = when (state) {
                     ConnectionState.CONNECTED -> getString(R.string.status_connected_to, streamingClient?.currentHost ?: "")
                     ConnectionState.CONNECTING -> getString(R.string.status_connecting)
@@ -310,7 +414,7 @@ class WsConnectionService : Service() {
             }
 
             // Relay client state collector
-            relayClient?.connectionState?.collect { state ->
+            suspend fun handleRelayState(state: ConnectionState) {
                 val relayStatus = when (state) {
                     ConnectionState.CONNECTED -> getString(R.string.relay_status_connected)
                     ConnectionState.CONNECTING -> getString(R.string.relay_status_connecting)
@@ -329,6 +433,14 @@ class WsConnectionService : Service() {
                     }
                 }
             }
+
+            launchConnectionStateCollectors(
+                scope = this,
+                lan = streamingClient?.connectionState,
+                relay = relayClient?.connectionState,
+                onLan = ::handleLanState,
+                onRelay = ::handleRelayState,
+            )
         }
     }
 
@@ -373,7 +485,7 @@ class WsConnectionService : Service() {
                     lastNetworkReconnectMs = now
                     android.util.Log.d("WsConnectionService", "Network available — triggering reconnect")
                     (streamingClient as? com.clawd.mobile.ws.WsClient)?.reconnectOnNetworkChange()
-                    (relayClient as? com.clawd.mobile.ws.WsClient)?.reconnectOnNetworkChange()
+                    remoteCoordinator?.onNetworkChanged()
                 }
             }
             networkCallback = callback
@@ -439,16 +551,98 @@ class WsConnectionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        val coordinator = remoteCoordinator
         stateCollectorJob?.cancel()
+        remoteStateCollectorJob?.cancel()
         sessionMerger?.clear()
         sessionMerger = null
         releaseLocks()
-        scope.cancel()
         streamingClient?.destroy()
-        relayClient?.destroy()
-        relayClient = null
         streamingClient = null
         instance = null
+        shutdownJob = launchRemoteServiceCleanup(
+            scope = scope,
+            disconnect = { coordinator?.disconnect() },
+            finalize = {
+                relayClient?.destroy()
+                relayClient = null
+                remoteCoordinator = null
+                wireGuardController = null
+                _remoteConnectionState.value = RemoteConnectionState.DISCONNECTED
+                scope.cancel()
+            },
+        )
         super.onDestroy()
+    }
+
+    private fun configureRemoteCoordinator(controller: WireGuardController) {
+        remoteStateCollectorJob?.cancel()
+        val coordinator = RemoteConnectionCoordinator(
+            scope = scope,
+            pairingProvider = prefsStore::loadRelayPairing,
+            vpn = object : RemoteVpnConnectionAdapter {
+                override suspend fun start(pairing: com.clawd.mobile.data.RelayPairingConfig): RemoteVpnStartResult =
+                    when (controller.start(pairing)) {
+                        RemoteTunnelState.UP -> RemoteVpnStartResult.UP
+                        RemoteTunnelState.DOWN -> RemoteVpnStartResult.PERMISSION_DENIED
+                        else -> RemoteVpnStartResult.FAILED
+                    }
+
+                override suspend fun stop(): Boolean = when (controller.stop()) {
+                    RemoteTunnelState.DOWN, RemoteTunnelState.UNPAIRED -> true
+                    else -> false
+                }
+            },
+            health = FixedRelayHealthCheckAdapter(),
+            relay = object : RemoteRelayConnectionAdapter {
+                override suspend fun connect(
+                    config: com.clawd.mobile.data.RelayConnectionConfig,
+                ): RemoteRelayConnectResult {
+                    val client = ensureRelayClient()
+                    client.connect(
+                        ConnectionConfig(
+                            host = "10.8.0.1",
+                            port = 7891,
+                            token = "relay",
+                            relayUrl = config.url,
+                            relayToken = config.token,
+                            useRelay = false,
+                        )
+                    )
+                    return when (client.connectionState.first { state ->
+                        state == ConnectionState.CONNECTED ||
+                            state == ConnectionState.AUTH_FAILED ||
+                            state == ConnectionState.CIRCUIT_OPEN ||
+                            state == ConnectionState.DISCONNECTED
+                    }) {
+                        ConnectionState.CONNECTED -> RemoteRelayConnectResult.CONNECTED
+                        ConnectionState.AUTH_FAILED -> RemoteRelayConnectResult.AUTH_FAILED
+                        else -> RemoteRelayConnectResult.FAILED
+                    }
+                }
+
+                override suspend fun disconnect(): Boolean {
+                    val client = relayClient ?: return true
+                    client.disconnect()
+                    client.destroy()
+                    relayClient = null
+                    sessionMerger?.unregister(ConnectionTag.RELAY)
+                    return true
+                }
+            },
+        )
+        remoteCoordinator = coordinator
+        remoteStateCollectorJob = scope.launch {
+            coordinator.state.collect { _remoteConnectionState.value = it }
+        }
+    }
+
+    private fun ensureRelayClient(): StreamingClient {
+        relayClient?.let { return it }
+        return WsClient(prefsStore, RelayConnectionStrategy()).also { relay ->
+            relayClient = relay
+            sessionMerger?.register(ConnectionTag.RELAY, relay.sessions)
+            startStateCollector()
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.clawd.mobile.ws
 import com.clawd.mobile.data.ConnectionConfig
 import org.junit.Test
 import org.junit.Assert.*
+import java.io.File
 
 class ConnectionStrategyTest {
 
@@ -136,5 +137,25 @@ class ConnectionStrategyTest {
     @Test
     fun `ConnectionTag RELAY name is RELAY`() {
         assertEquals("RELAY", ConnectionTag.RELAY.name)
+    }
+
+    @Test
+    fun `network security permits cleartext only for fixed WireGuard gateway`() {
+        var root = File(System.getProperty("user.dir")).canonicalFile
+        while (!File(root, "android/app/src/main/res/xml/network_security_config.xml").isFile) {
+            root = root.parentFile ?: error("repository root not found")
+        }
+        val xml = File(root, "android/app/src/main/res/xml/network_security_config.xml").readText()
+
+        assertTrue(xml.contains("<base-config cleartextTrafficPermitted=\"false\""))
+        val cleartextBlocks = Regex(
+            """<domain-config\s+cleartextTrafficPermitted="true">([\s\S]*?)</domain-config>"""
+        ).findAll(xml).toList()
+        assertEquals(1, cleartextBlocks.size)
+        val permittedDomains = Regex("""<domain\s+includeSubdomains="false">([^<]+)</domain>""")
+            .findAll(cleartextBlocks.single().groupValues[1])
+            .map { it.groupValues[1] }
+            .toList()
+        assertEquals(listOf("10.8.0.1"), permittedDomains)
     }
 }

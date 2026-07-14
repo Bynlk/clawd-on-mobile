@@ -25,8 +25,20 @@ import com.clawd.mobile.ui.manual.ManualScreen
 import com.clawd.mobile.ui.settings.SettingsScreen
 import com.clawd.mobile.ui.console.ConsoleScreen
 import com.clawd.mobile.ui.console.ConsoleViewModel
+import com.clawd.mobile.service.RemoteConnectionState
+import com.clawd.mobile.service.WsConnectionService
+import com.clawd.mobile.ws.ConnectionTag
 
 internal const val CLAWD_DEFAULT_START_DESTINATION = "sessions"
+
+internal fun selectActiveConnectionTag(
+    remoteState: RemoteConnectionState,
+    relayAvailable: Boolean,
+): ConnectionTag = if (remoteState == RemoteConnectionState.CONNECTED && relayAvailable) {
+    ConnectionTag.RELAY
+} else {
+    ConnectionTag.LAN
+}
 
 internal data class RelayPairingNavigationDecision(
     val consumedRequestId: Int,
@@ -116,11 +128,15 @@ fun ClawdNavGraph(
             clearRequest = onRelayPairingNavigationConsumed,
         )
     }
-    val activeClient = if (prefsStore.loadConfig()?.useRelay == true) {
-        com.clawd.mobile.service.WsConnectionService.getClientByTag(
-            com.clawd.mobile.ws.ConnectionTag.RELAY
-        ) ?: ws
-    } else ws
+    val remoteState by WsConnectionService.remoteConnectionState.collectAsState()
+    val relayClient = WsConnectionService.getClientByTag(ConnectionTag.RELAY)
+    val activeClient = if (
+        selectActiveConnectionTag(remoteState, relayClient != null) == ConnectionTag.RELAY
+    ) {
+        relayClient ?: ws
+    } else {
+        ws
+    }
 
     val approvalViewModel: ApprovalViewModel = viewModel(
         viewModelStoreOwner = context as ComponentActivity,
@@ -220,6 +236,7 @@ fun ClawdNavGraph(
                     navController = navController,
                     streamingClient = activeClient,
                     prefsStore = prefsStore,
+                    relayPairingRefreshRevision = lastConsumedRelayPairingRequest,
                     snackbarHostState = snackbarHostState
                 )
             }
