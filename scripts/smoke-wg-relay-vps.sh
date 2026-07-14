@@ -59,7 +59,17 @@ SECOND_STDOUT="${TEMP_ROOT}/deploy-2.stdout"
 SECOND_STDERR="${TEMP_ROOT}/deploy-2.stderr"
 PHASE="initialization"
 CONTROL_READY=0
+FAILURE_REPORTED=0
 VPS_PASSWORD="${CLAWD_TEST_VPS_PASSWORD-}"
+
+report_error() {
+  local status=$?
+  trap - ERR
+  FAILURE_REPORTED=1
+  printf '[FAIL] phase=%s exit=%s (diagnostics suppressed; secrets redacted)\n' \
+    "${PHASE}" "${status}" >&2
+  return "${status}"
+}
 
 cleanup() {
   local status=$?
@@ -72,12 +82,14 @@ cleanup() {
   unset CLAWD_SMOKE_ASKPASS_SECRET CLAWD_TEST_VPS_PASSWORD
   rm -rf "${TEMP_ROOT}"
   rm -rf "${CONTROL_ROOT}"
-  if [ "${status}" -ne 0 ]; then
-    printf '[FAIL] %s (diagnostics suppressed; secrets redacted)\n' "${PHASE}" >&2
+  if [ "${status}" -ne 0 ] && [ "${FAILURE_REPORTED}" -ne 1 ]; then
+    printf '[FAIL] phase=%s exit=%s (diagnostics suppressed; secrets redacted)\n' \
+      "${PHASE}" "${status}" >&2
   fi
   exit "${status}"
 }
 trap cleanup EXIT
+trap report_error ERR
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
