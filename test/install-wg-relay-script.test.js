@@ -75,6 +75,8 @@ describe("persistent WireGuard Relay installer source contracts", () => {
     assert.match(SOURCE, /-L[^\n]*LOCK_FILE_FS|LOCK_FILE_FS[^\n]*-L/);
     assert.match(SOURCE, /fd_path="\/proc\/self\/fd\/9"[\s\S]*fd_path="\/dev\/fd\/9"/);
     assert.match(SOURCE, /stat -Lc[^\n]*fd_path/);
+    assert.doesNotMatch(SOURCE, /stat -Lc[^\n]*%F/);
+    assert.match(SOURCE, /-f[^\n]*fd_path|fd_path[^\n]*-f/);
     assert.match(SOURCE, /mode[^\n]*0600|0600[^\n]*mode/i);
   });
 
@@ -205,10 +207,10 @@ function createCommandShims(binDir) {
 if [ "\${1:-}" = -Lc ]; then
   target="\${3}"
   if [ -n "\${CLAWD_TEST_LOCK_STAT:-}" ] && { [ "$target" = "$CLAWD_INSTALL_ROOT/run/lock/clawd-relay.lock" ] || [ "$target" = /dev/fd/9 ]; }; then
-    "$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'const fs=require("fs");const target=process.argv[1];const s=target==="/dev/fd/9"?fs.fstatSync(9):fs.statSync(target);const forced=process.argv[2].split(":");process.stdout.write(String(s.dev)+":"+String(s.ino)+":"+forced[0]+":"+forced[1]+":regular file\\n")' "$target" "$CLAWD_TEST_LOCK_STAT"
+    "$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'const fs=require("fs");const target=process.argv[1];const s=target==="/dev/fd/9"?fs.fstatSync(9):fs.statSync(target);const forced=process.argv[2].split(":");const type=s.size===0?"regular empty file":"regular file";const suffix=process.argv[3].includes("%F")?":"+type:"";process.stdout.write(String(s.dev)+":"+String(s.ino)+":"+forced[0]+":"+forced[1]+suffix+"\\n")' "$target" "$CLAWD_TEST_LOCK_STAT" "${2}"
     exit 0
   fi
-  "$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'const fs=require("fs");const target=process.argv[1];const s=target==="/dev/fd/9"?fs.fstatSync(9):fs.statSync(target);process.stdout.write(String(s.dev)+":"+String(s.ino)+":"+String(s.uid)+":"+((s.mode&0o777).toString(8))+":"+(s.isFile()?"regular file":"other")+"\\n")' "$target"
+  "$CLAWD_INSTALL_TEST_NODE_SOURCE" -e 'const fs=require("fs");const target=process.argv[1];const s=target==="/dev/fd/9"?fs.fstatSync(9):fs.statSync(target);const type=s.isFile()?(s.size===0?"regular empty file":"regular file"):"other";const suffix=process.argv[2].includes("%F")?":"+type:"";process.stdout.write(String(s.dev)+":"+String(s.ino)+":"+String(s.uid)+":"+((s.mode&0o777).toString(8))+suffix+"\\n")' "$target" "${2}"
   exit 0
 fi
 if [ "\${1:-}" = -c ] && [ "\${2:-}" = %u:%a ]; then

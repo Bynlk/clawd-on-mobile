@@ -646,3 +646,4 @@ POST /api/manage/phone/rotate
 - 真实 smoke 首轮 RED：VPS 尚未部署前，macOS 长 `TMPDIR` 使 SSH ControlMaster socket 超过 Unix path 上限，流程在 SSH connection 阶段以 255 退出且脱敏。新增源合同测试先 RED；控制 socket 改为独立的 root-local `/tmp/cwgr.XXXXXX/s` 短路径、目录 `0700` 并纳入 trap 清理后，聚焦测试与 `bash -n` 均 GREEN。
 - 真实 smoke 第二轮 RED：SSH 已连接但 macOS bsdtar 把 `com.apple.provenance` xattr 写入上传流，远端 GNU tar 对未知扩展头以 2 退出，安装器尚未运行且 VPS 保持旧 WireGuard 状态。新增 `--no-xattrs` 源合同先 RED，上传 tar 显式禁用扩展属性后聚焦测试与 `bash -n` GREEN。
 - 真实 smoke 可诊断性：上传兼容修复后仍出现无阶段信息的退出码 2；新增只输出固定 `phase`、数字退出码和脱敏声明的 `ERR` trap 合同，明确禁止转储 installer stderr/readback。该合同先 RED，最小诊断实现后聚焦测试与 `bash -n` GREEN。
+- Debian 实机锁文件 RED/GREEN：受控手动运行把 readback/stderr 留在 VPS root-only 文件后，确认 installer 在任何真实空锁文件上退出 21；GNU `stat %F` 返回 `regular empty file`，旧实现错误要求英文字符串精确等于 `regular file`。fixture shim 改为真实 GNU 语义后首装测试按预期 RED；生产校验改为 `test -f`、同 inode、root owner 与 `0600`，不再依赖本地化类型文本。锁安全与首装聚焦 7/7 GREEN。

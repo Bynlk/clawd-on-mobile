@@ -161,18 +161,18 @@ acquire_lock() {
   exec 9>>"${LOCK_FILE_FS}"
   local fd_path="/proc/self/fd/9"
   [ -e "${fd_path}" ] || fd_path="/dev/fd/9"
-  local path_stat fd_stat path_device path_inode path_uid path_mode path_type
-  local fd_device fd_inode fd_uid fd_mode fd_type expected_uid
-  path_stat="$(stat -Lc '%d:%i:%u:%a:%F' "${LOCK_FILE_FS}")" ||
+  local path_stat fd_stat path_device path_inode path_uid path_mode
+  local fd_device fd_inode fd_uid fd_mode expected_uid
+  path_stat="$(stat -Lc '%d:%i:%u:%a' "${LOCK_FILE_FS}")" ||
     die 21 "installer lock path metadata is unavailable"
-  fd_stat="$(stat -Lc '%d:%i:%u:%a:%F' "${fd_path}")" ||
+  fd_stat="$(stat -Lc '%d:%i:%u:%a' "${fd_path}")" ||
     die 21 "installer lock descriptor metadata is unavailable"
-  IFS=: read -r path_device path_inode path_uid path_mode path_type <<<"${path_stat}"
-  IFS=: read -r fd_device fd_inode fd_uid fd_mode fd_type <<<"${fd_stat}"
+  IFS=: read -r path_device path_inode path_uid path_mode <<<"${path_stat}"
+  IFS=: read -r fd_device fd_inode fd_uid fd_mode <<<"${fd_stat}"
   expected_uid=0
   if [ "${TEST_MODE}" = 1 ]; then expected_uid="$(id -u)"; fi
-  [ ! -L "${LOCK_FILE_FS}" ] && [ "${path_type}" = "regular file" ] &&
-    [ "${fd_type}" = "regular file" ] || die 21 "installer lock path must be a regular file"
+  [ ! -L "${LOCK_FILE_FS}" ] && [ -f "${LOCK_FILE_FS}" ] && [ -f "${fd_path}" ] ||
+    die 21 "installer lock path must be a regular file"
   [ "${path_device}:${path_inode}" = "${fd_device}:${fd_inode}" ] ||
     die 21 "installer lock path changed while opening"
   [ "${path_uid}" = "${expected_uid}" ] && [ "${fd_uid}" = "${expected_uid}" ] ||
