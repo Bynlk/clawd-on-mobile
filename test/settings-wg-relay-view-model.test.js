@@ -450,7 +450,7 @@ test("normalizes progress, preserves failures, and advances validate to save", (
   })[7], "failed");
 });
 
-test("summarizes deployment progress and removes pending failure details", () => {
+test("summarizes deployment progress only while deploying", () => {
   const uploaded = applyDeploymentProgress(createDeploymentProgress(), {
     step: "upload",
     status: "ok",
@@ -466,7 +466,21 @@ test("summarizes deployment progress and removes pending failure details", () =>
     progressStates: failedStates,
   }));
 
-  assert.deepEqual(failure.progress, {
+  assert.equal(failure.mode, PAGE_MODES.DEPLOYMENT_FAILURE);
+  assert.equal(failure.progress, null);
+
+  const earlyFailure = deriveWgRelayPageModel(input({
+    hasDeployedProfile: false,
+    deploymentFailure: { errorCode: "deploy_failed" },
+  }));
+  assert.equal(earlyFailure.progress, null);
+
+  const deploying = deriveWgRelayPageModel(input({
+    hasDeployedProfile: false,
+    operation: "deploy",
+    progressStates: failedStates,
+  }));
+  assert.deepEqual(deploying.progress, {
     currentStage: "dependencies",
     currentState: "failed",
     completedCount: 3,
@@ -477,22 +491,14 @@ test("summarizes deployment progress and removes pending failure details", () =>
       { key: "fingerprint", state: "complete" },
       { key: "upload", state: "complete" },
       { key: "dependencies", state: "failed" },
+      { key: "wireguard", state: "pending" },
+      { key: "relay", state: "pending" },
+      { key: "verify", state: "pending" },
+      { key: "save", state: "pending" },
+      { key: "pcConnect", state: "pending" },
+      { key: "qr", state: "pending" },
     ],
   });
-
-  const earlyFailure = deriveWgRelayPageModel(input({
-    hasDeployedProfile: false,
-    deploymentFailure: { errorCode: "deploy_failed" },
-  }));
-  assert.equal(earlyFailure.progress.detailStages.length, 1);
-  assert.equal(earlyFailure.progress.detailStages.some((stage) => stage.state === "pending"), false);
-
-  const deploying = deriveWgRelayPageModel(input({
-    hasDeployedProfile: false,
-    operation: "deploy",
-    progressStates: failedStates,
-  }));
-  assert.equal(deploying.progress.detailStages.length, 10);
   assert.equal(deriveWgRelayPageModel(input()).progress, null);
 });
 

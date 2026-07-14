@@ -337,7 +337,7 @@ function buildSettingsWgRelayViewModelExports() {
       primaryAction,
       secondaryActions,
       error,
-      progress: mode === PAGE_MODES.DEPLOYING || mode === PAGE_MODES.DEPLOYMENT_FAILURE
+      progress: mode === PAGE_MODES.DEPLOYING
         ? deploymentProgressModel(input.progressStates, mode)
         : null,
     };

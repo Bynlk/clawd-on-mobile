@@ -552,16 +552,17 @@
   }
 
   function renderDeploymentFailure(parent, model) {
-    const surface = renderDeploymentProgressSurface(parent, model, "wg-relay-deployment-failure");
+    const surface = document.createElement("section");
+    surface.className = "section wg-relay-deployment-failure";
     const heading = document.createElement("h2");
     heading.textContent = t("wgRelayDeploymentFailedTitle");
-    surface.insertBefore(heading, surface.children[0] || null);
+    surface.appendChild(heading);
     const alert = document.createElement("div");
     alert.className = "wg-relay-action-callout";
     alert.setAttribute("role", "alert");
     alert.setAttribute("aria-live", "assertive");
     alert.textContent = localizedError(model.error ? model.error.safeCode : "deploy_failed");
-    surface.insertBefore(alert, heading.nextSibling || null);
+    surface.appendChild(alert);
     const retry = createButton("wgRelayTryDeployAgain", "soft-btn accent wg-relay-primary-action", () => {
       view.deploymentFailure = null;
       view.errorCode = null;
@@ -569,6 +570,7 @@
       requestContentRender();
     }, model.primaryAction && model.primaryAction.disabled);
     surface.appendChild(retry);
+    parent.appendChild(surface);
   }
 
   function buildProfile(draft, advanced) {
@@ -1169,7 +1171,9 @@
     const row = document.createElement("div");
     row.className = "wg-relay-domain-row";
     row.dataset.domain = rowModel.kind;
+    row.dataset.state = rowModel.state;
     row.setAttribute("data-domain", rowModel.kind);
+    row.setAttribute("data-state", rowModel.state);
     const marker = document.createElement("span");
     marker.className = "wg-relay-domain-marker";
     marker.setAttribute("aria-hidden", "true");

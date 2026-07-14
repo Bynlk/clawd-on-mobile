@@ -638,11 +638,10 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   assert.ok(failure);
   assert.equal(failure.querySelectorAll(".wg-relay-action-callout").length, 1);
   assert.equal(failure.querySelector(".wg-relay-action-callout").getAttribute("role"), "alert");
-  assert.equal(
-    Array.from(failure.querySelectorAll(".wg-relay-progress-stage"))
-      .filter((row) => row.classList.contains("is-pending")).length,
-    0,
-  );
+  assert.equal(failure.querySelector(".wg-relay-current-step"), null);
+  assert.equal(failure.querySelector("progress"), null);
+  assert.equal(failure.querySelector("details"), null);
+  assert.equal(failure.querySelector(".wg-relay-progress"), null);
   assert.equal(failure.querySelectorAll(".accent").length, 1);
   buttonByText(failure, "TRY_DEPLOY_AGAIN").dispatchEvent({ type: "click", bubbles: false });
   assert.equal(harness.content.querySelector("#wg-relay-host").value, "relay.example.test");
@@ -686,7 +685,7 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   assert.equal(successful.content.querySelector(".wg-relay-deployment-surface"), null);
 });
 
-test("deployment failure without progress never renders ten pending rows", async () => {
+test("deployment failure renders only one error and one recommended action", async () => {
   const pending = deferred();
   const harness = createHarness({ api: { deploy: () => pending.promise } });
   setInput(harness.content.querySelector("#wg-relay-host"), "relay.example.test");
@@ -697,9 +696,17 @@ test("deployment failure without progress never renders ten pending rows", async
 
   const failure = harness.content.querySelector(".wg-relay-deployment-failure");
   assert.ok(failure);
-  const rows = Array.from(failure.querySelectorAll(".wg-relay-progress-stage"));
-  assert.equal(rows.length, 1);
-  assert.equal(rows.filter((row) => row.classList.contains("is-pending")).length, 0);
+  assert.equal(
+    Array.from(failure.querySelectorAll("div"))
+      .filter((node) => node.getAttribute("role") === "alert").length,
+    1,
+  );
+  assert.equal(failure.querySelector(".wg-relay-action-callout").textContent, "SAFE_DEPLOY_ERROR");
+  assert.deepEqual(buttons(failure).map((button) => button.textContent), ["TRY_DEPLOY_AGAIN"]);
+  assert.equal(failure.querySelector(".wg-relay-progress-stage"), null);
+  assert.equal(failure.querySelector(".wg-relay-current-step"), null);
+  assert.equal(failure.querySelector("progress"), null);
+  assert.equal(failure.querySelector("details"), null);
 });
 
 test("deployed daily card renders three domain rows, one primary action, and advanced management", async () => {
@@ -722,6 +729,7 @@ test("deployed daily card renders three domain rows, one primary action, and adv
     assert.ok(card, status);
     const rows = Array.from(card.querySelectorAll(".wg-relay-domain-row"));
     assert.deepEqual(rows.map((row) => row.dataset.domain), ["vps", "computer", "android"]);
+    assert.deepEqual(rows.map((row) => row.dataset.state), ["configured", status, "pairing-available"]);
     assert.equal(rows[0].querySelector(".wg-relay-domain-name").textContent, "VPS_RELAY");
     assert.equal(rows[0].querySelector(".wg-relay-domain-status").textContent, "VPS_CONFIGURED");
     assert.equal(rows[0].querySelector(".wg-relay-domain-supporting").textContent, "relay.example.test");
@@ -784,6 +792,8 @@ test("rendered modes keep accessible controls, native progress, and a single acc
       .filter((node) => node.getAttribute("role") === "alert").length,
     1,
   );
+  assert.equal(failure.querySelector("progress"), null);
+  assert.equal(failure.querySelector("details"), null);
   assert.equal(failure.querySelectorAll(".accent").length, 1);
 
   const daily = createHarness({ profile: DEPLOYED_PROFILE });
@@ -796,6 +806,7 @@ test("rendered modes keep accessible controls, native progress, and a single acc
     assert.ok(button.textContent.trim(), "visible buttons must have text");
   }
   for (const row of Array.from(card.querySelectorAll(".wg-relay-domain-row"))) {
+    assert.ok(row.dataset.state, "domain rows must expose semantic state for status styling");
     assert.ok(row.querySelector(".wg-relay-domain-status").textContent.trim());
     assert.equal(row.querySelector(".wg-relay-domain-marker").getAttribute("aria-hidden"), "true");
   }
@@ -1282,6 +1293,13 @@ test("source and CSS include password/a11y/responsive/reduced-motion security ho
   assert.doesNotMatch(TAB_SOURCE, /dataset\.[A-Za-z]*password/i);
   assert.doesNotMatch(TAB_SOURCE, /manualUrl|manualToken|relayToken/);
   assert.match(css, /\.wg-relay-domain-row/);
+  assert.match(TAB_SOURCE, /data-state/);
+  assert.match(css, /\.wg-relay-domain-row\[data-state="configured"\]/);
+  assert.match(css, /\.wg-relay-domain-row\[data-state="connected"\]/);
+  assert.match(css, /\.wg-relay-domain-row\[data-state="repair-required"\]/);
+  assert.match(css, /\.wg-relay-domain-row\[data-state="unavailable"\]/);
+  assert.doesNotMatch(css, /\.wg-relay-domain-row\[data-domain="vps"\][\s\S]{0,120}\.wg-relay-domain-marker/);
+  assert.doesNotMatch(css, /\.wg-relay-domain-row\[data-domain="android"\][\s\S]{0,120}\.wg-relay-domain-marker/);
   assert.match(css, /\.wg-relay-action-callout/);
   assert.match(css, /\.wg-relay-advanced-management/);
   assert.match(css, /@media\s*\(max-width:\s*420px\)[\s\S]*\.wg-relay-/);

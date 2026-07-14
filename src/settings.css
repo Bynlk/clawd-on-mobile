@@ -3508,15 +3508,30 @@ html, body {
   box-shadow: 0 0 0 3px var(--wg-relay-neutral-bg);
 }
 
-.wg-relay-domain-row[data-domain="vps"] .wg-relay-domain-marker,
-.wg-relay-domain-row[data-domain="android"] .wg-relay-domain-marker {
+.wg-relay-domain-row[data-state="configured"] .wg-relay-domain-marker,
+.wg-relay-domain-row[data-state="connected"] .wg-relay-domain-marker,
+.wg-relay-domain-row[data-state="pairing-available"] .wg-relay-domain-marker {
   background: var(--wg-relay-success-text);
   box-shadow: 0 0 0 3px var(--wg-relay-success-bg);
 }
 
-.wg-relay-domain-row[data-domain="computer"] .wg-relay-domain-marker {
+.wg-relay-domain-row[data-state="starting_tunnel"] .wg-relay-domain-marker,
+.wg-relay-domain-row[data-state="verifying_relay"] .wg-relay-domain-marker,
+.wg-relay-domain-row[data-state="connecting_relay"] .wg-relay-domain-marker,
+.wg-relay-domain-row[data-state="disconnecting"] .wg-relay-domain-marker {
   background: var(--wg-relay-current-text);
   box-shadow: 0 0 0 3px var(--wg-relay-warning-bg);
+}
+
+.wg-relay-domain-row[data-state="repair-required"] .wg-relay-domain-marker,
+.wg-relay-domain-row[data-state="failed"] .wg-relay-domain-marker {
+  background: var(--wg-relay-error-text);
+  box-shadow: 0 0 0 3px var(--wg-relay-error-bg);
+}
+
+.wg-relay-domain-row[data-state="unavailable"] .wg-relay-domain-marker {
+  background: var(--text-secondary);
+  box-shadow: 0 0 0 3px var(--wg-relay-neutral-bg);
 }
 
 .wg-relay-domain-body {
