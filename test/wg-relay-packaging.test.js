@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
@@ -154,6 +155,29 @@ test("VPS smoke script exercises idempotence, service gates, private Relay, side
   assert.doesNotMatch(script, /CLAWD_TEST_VPS_HOST:-[^}]+/);
   assert.doesNotMatch(script, /CLAWD_TEST_VPS_USER:-[^}]+/);
   assert.doesNotMatch(script, /CLAWD_TEST_VPS_PORT:-[^}]+/);
+});
+
+test("VPS smoke quotes multiline remote checks compatibly with macOS Bash 3.2", () => {
+  const script = read("scripts/smoke-wg-relay-vps.sh");
+  const shellQuoteFunction = script.match(/shell_quote\(\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(shellQuoteFunction, "shell_quote function must exist");
+  assert.match(shellQuoteFunction, /printf ['"]%q['"] "\$1"/);
+  assert.doesNotMatch(shellQuoteFunction, /\$\{value\/\//);
+
+  const remoteCheck = [
+    "set -euo pipefail",
+    'bind_addr="$(sed -n \'s/^BIND_ADDR=//p\' "${relay_env}")"',
+    "awk 'END { exit !(found && !unexpected) }' /dev/null",
+  ].join("\n");
+  const harness = [
+    shellQuoteFunction,
+    'quoted="$(shell_quote "$1")"',
+    '/bin/bash -c "bash -n -c ${quoted}"',
+  ].join("\n");
+  const result = spawnSync("/bin/bash", ["-c", harness, "shell-quote-test", remoteCheck], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("desktop and Android READMEs document the one-click first-run flow", () => {

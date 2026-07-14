@@ -141,8 +141,7 @@ run_ssh() {
 }
 
 shell_quote() {
-  local value="$1"
-  printf "'%s'" "${value//\'/\'\"\'\"\'}"
+  printf '%q' "$1"
 }
 
 run_privileged() {
