@@ -2944,7 +2944,11 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes('key: "hideBubbles"'));
     assert.ok(generalSource.includes("rowHideBubbles"));
     assert.ok(generalSource.includes("setAllBubblesHidden"));
-    assert.match(generalSource, /hidden:\s*nextRaw/);
+    // The General baseline is multiline; verify the exact command argument, not its whitespace.
+    assert.match(
+      generalSource,
+      /window\.settingsAPI\.command\("setAllBubblesHidden",\s*\{\s*hidden:\s*nextRaw,?\s*\}\)/,
+    );
     assert.ok(generalSource.includes('keys.includes("hideBubbles")'));
     assert.ok(generalSource.includes("buildBubblePolicyRow()"));
     assert.ok(generalSource.includes("setBubbleCategoryEnabled"));
@@ -2992,10 +2996,11 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes("SESSION_CLEANUP_DEFAULTS"));
     assert.ok(generalSource.includes('"actionResetSessionCleanup"'));
 
-    // patchInPlace covers the new keys in BOTH the existence guard and the sync loop.
+    // The General baseline is multiline; verify the exact guard and sync chain, not its whitespace.
+    assert.ok(generalSource.includes("keys.some((key) => SESSION_CLEANUP_NUMBER_KEYS.has(key))"));
     assert.match(
       generalSource,
-      /keys\.some\(\(key\) => SESSION_CLEANUP_NUMBER_KEYS\.has\(key\)\)[\s\S]+SESSION_CLEANUP_NUMBER_KEYS\.has\(key\)[\s\S]+sessionCleanupControls[\s\S]+\.get\(key\)[\s\S]+\.syncFromSnapshot\(\)/,
+      /if \(SESSION_CLEANUP_NUMBER_KEYS\.has\(key\)\) \{\s*state\.mountedControls\.sessionCleanupControls\s*\.get\(key\)\s*\.syncFromSnapshot\(\);\s*continue;\s*\}/,
     );
 
     // ui-core registers the helper and the mountedControls bag.
@@ -3117,8 +3122,15 @@ describe("settings renderer browser environment", () => {
     assert.ok(!mainSource.includes('ipcMain.handle("settings:confirm-disable-update-bubbles"'));
     assert.ok(i18nSource.includes("Hide update bubbles"));
     assert.ok(i18nSource.includes("隐藏更新气泡"));
-    assert.match(generalSource, /id:\s*"confirm",[\s\S]{0,120}label:\s*t\("updateBubbleDisableConfirmAction"\),[\s\S]{0,80}tone:\s*"danger"/);
-    assert.match(generalSource, /id:\s*"cancel",[\s\S]{0,120}label:\s*t\("updateBubbleDisableConfirmCancel"\),[\s\S]{0,80}tone:\s*"accent",[\s\S]{0,80}defaultFocus:\s*true/);
+    // The General baseline is multiline; verify the exact action objects, not their whitespace.
+    assert.match(
+      generalSource,
+      /\{\s*id:\s*"confirm",\s*label:\s*t\("updateBubbleDisableConfirmAction"\),\s*tone:\s*"danger",?\s*\}/,
+    );
+    assert.match(
+      generalSource,
+      /\{\s*id:\s*"cancel",\s*label:\s*t\("updateBubbleDisableConfirmCancel"\),\s*tone:\s*"accent",\s*defaultFocus:\s*true,?\s*\}/,
+    );
     assert.ok(generalSource.includes('if (actionId === "confirm") runToggleCommit(nextEnabled);'));
     assert.ok(uiCoreSource.includes('tone === "accent"'));
     assert.ok(uiCoreSource.includes('tone === "danger"'));
@@ -3162,7 +3174,11 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes("danger: true"));
     assert.ok(generalSource.includes("confirmAutoApproveAll"));
     assert.ok(generalSource.includes("showAutoApproveAllConfirmModal"));
-    assert.match(generalSource, /id:\s*"enable",[\s\S]{0,120}label:\s*t\("autoApproveAllConfirmEnable"\),[\s\S]{0,80}tone:\s*"danger"/);
+    // The General baseline is multiline; verify the exact action object, not its whitespace.
+    assert.match(
+      generalSource,
+      /\{\s*id:\s*"enable",\s*label:\s*t\("autoApproveAllConfirmEnable"\),\s*tone:\s*"danger",?\s*\}/,
+    );
     // buildSwitchRow honors danger by painting the label red.
     assert.ok(coreSource.includes("row-label-danger"));
     assert.ok(css.includes(".row-label.row-label-danger"));
