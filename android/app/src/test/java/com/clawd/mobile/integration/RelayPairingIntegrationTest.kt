@@ -11,11 +11,58 @@ import com.clawd.mobile.data.RelayPairingErrorCode
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import kotlinx.serialization.decodeFromString
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class RelayPairingIntegrationTest {
     private val fixtureUri = "clawd://relay-pair?v=1&data=eyJ2ZXJzaW9uIjoxLCJuYW1lIjoiQW5kcm9pZCBmaXh0dXJlIiwid2lyZUd1YXJkIjp7InByaXZhdGVLZXkiOiJCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjPSIsImFkZHJlc3MiOiIxMC44LjAuMy8zMiIsInNlcnZlclB1YmxpY0tleSI6IkNBZ0lDQWdJQ0FnSUNBZ0lDQWdJQ0FnSUNBZ0lDQWdJQ0FnSUNBZ0lDQWc9IiwiZW5kcG9pbnQiOiIxOTguNTEuMTAwLjc6NTE4MjAiLCJhbGxvd2VkSXBzIjpbIjEwLjguMC4wLzI0Il0sInBlcnNpc3RlbnRLZWVwYWxpdmUiOjI1fSwicmVsYXkiOnsidXJsIjoid3M6Ly8xMC44LjAuMTo3ODkxIiwidG9rZW4iOiJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiIn0sImlzc3VlZEF0IjoxNzgzOTAwODAwMDAwfQ"
+
+    private fun currentPcSemanticVectors(): List<RelayPairingConfig> {
+        var repositoryRoot = File(System.getProperty("user.dir") ?: error("user.dir unavailable")).canonicalFile
+        while (!File(repositoryRoot, "src/wg-relay-pairing-qr.js").isFile) {
+            repositoryRoot = repositoryRoot.parentFile
+                ?: error("repository root not found")
+        }
+        val encoder = File(repositoryRoot, "src/wg-relay-pairing-qr.js")
+        val script = """
+            const { buildPairingDeepLink } = require(process.argv[1]);
+            function make(overrides = {}) {
+              const subnet = overrides.subnet || '10.8.0.0/24';
+              const prefix = subnet.replace(/\.0\/24${'$'}/, '');
+              const endpoint = overrides.endpoint || '198.51.100.7:51820';
+              const privateKey = Buffer.alloc(32, overrides.privateByte || 7).toString('base64');
+              const publicKey = Buffer.alloc(32, 8).toString('base64');
+              return buildPairingDeepLink({
+                profile: { label: overrides.label || 'Semantic fixture', wgSubnet: subnet, endpoint },
+                secrets: {
+                  phoneConfig: `[Interface]\nPrivateKey = ${'$'}{privateKey}\nAddress = ${'$'}{prefix}.3/32\n\n[Peer]\nPublicKey = ${'$'}{publicKey}\nEndpoint = ${'$'}{endpoint}\nAllowedIPs = ${'$'}{subnet}\nPersistentKeepalive = 25\n`,
+                  relayUrl: `ws://${'$'}{prefix}.1:7891`,
+                  relayToken: (overrides.tokenByte || 'ab').repeat(32),
+                },
+                issuedAt: overrides.issuedAt,
+              });
+            }
+            process.stdout.write(JSON.stringify([
+              make({ issuedAt: 1783900800100 }),
+              make({ issuedAt: 1783900800200 }),
+              make({ issuedAt: 1783900800300, label: 'Renamed fixture' }),
+              make({ issuedAt: 1783900800300, tokenByte: 'cd' }),
+              make({ issuedAt: 1783900800300, privateByte: 9 }),
+              make({ issuedAt: 1783900800300, endpoint: '198.51.100.8:51820' }),
+              make({ issuedAt: 1783900800300, subnet: '10.9.0.0/24' }),
+            ]));
+        """.trimIndent()
+        val process = ProcessBuilder("node", "-e", script, encoder.absolutePath)
+            .redirectErrorStream(true)
+            .start()
+        assertEquals(true, process.waitFor(10, TimeUnit.SECONDS))
+        val output = process.inputStream.bufferedReader().readText().trim()
+        assertEquals(0, process.exitValue())
+        val links = kotlinx.serialization.json.Json.decodeFromString<List<String>>(output)
+        return links.map(RelayPairingConfig::parse)
+    }
 
     @Test
     fun `Android parses the fixed URI emitted by the PC JavaScript encoder`() {
@@ -186,6 +233,56 @@ class RelayPairingIntegrationTest {
         assertEquals(0, saves)
         assertEquals(0, navigations)
         assertEquals(0, lanStarts)
+    }
+
+    @Test
+    fun `PC reissue with only issuedAt changed is duplicate across cold start`() {
+        val (stored, reissued) = currentPcSemanticVectors()
+        assertNotEquals(stored.issuedAt, reissued.issuedAt)
+        assertEquals(
+            RelayPairingConfig.semanticFingerprint(stored),
+            RelayPairingConfig.semanticFingerprint(reissued),
+        )
+        var saves = 0
+        var navigations = 0
+        val restarted = RelayPairingCoordinator(
+            initialPairing = stored,
+            save = { saves++; true },
+            navigateToSettings = { navigations++ },
+        )
+
+        assertEquals(RelayPairingAcceptance.DUPLICATE, restarted.accept(reissued))
+        assertEquals(0, saves)
+        assertEquals(0, navigations)
+    }
+
+    @Test
+    fun `label and every WG Relay security or topology change replaces pairing`() {
+        val vectors = currentPcSemanticVectors()
+        val stored = vectors[0]
+        val changes = vectors.drop(2)
+        assertNotEquals(stored.name, changes[0].name)
+        assertNotEquals(stored.relay.token, changes[1].relay.token)
+        assertNotEquals(stored.wireGuard.privateKey, changes[2].wireGuard.privateKey)
+        assertNotEquals(stored.wireGuard.endpoint, changes[3].wireGuard.endpoint)
+        assertNotEquals(stored.wireGuard.address, changes[4].wireGuard.address)
+
+        for (changed in changes) {
+            var saved: RelayPairingConfig? = null
+            var navigations = 0
+            val restarted = RelayPairingCoordinator(
+                initialPairing = stored,
+                save = { saved = it; true },
+                navigateToSettings = { navigations++ },
+            )
+            assertNotEquals(
+                RelayPairingConfig.semanticFingerprint(stored),
+                RelayPairingConfig.semanticFingerprint(changed),
+            )
+            assertEquals(RelayPairingAcceptance.SAVED, restarted.accept(changed))
+            assertEquals(changed, saved)
+            assertEquals(1, navigations)
+        }
     }
 
     @Test

@@ -173,14 +173,11 @@ data class RelayPairingConfig internal constructor(
             ),
         )
 
-        /** Stable semantic identity independent of URI text and JSON/storage key order. */
+        /** Stable connection identity; intentionally excludes only the freshness-only issuedAt field. */
         internal fun semanticFingerprint(config: RelayPairingConfig): String {
             val digest = MessageDigest.getInstance("SHA-256")
             fun addInt(value: Int) {
                 digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(value).array())
-            }
-            fun addLong(value: Long) {
-                digest.update(ByteBuffer.allocate(Long.SIZE_BYTES).putLong(value).array())
             }
             fun addString(value: String) {
                 val bytes = value.toByteArray(StandardCharsets.UTF_8)
@@ -199,7 +196,6 @@ data class RelayPairingConfig internal constructor(
             addInt(config.wireGuard.persistentKeepalive)
             addString(config.relay.url)
             addString(config.relay.token)
-            addLong(config.issuedAt)
             val hex = "0123456789abcdef"
             return buildString(64) {
                 for (byte in digest.digest()) {
