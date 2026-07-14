@@ -453,11 +453,11 @@ Immediately confirm local HEAD equals `origin/codex/one-click-wireguard-relay`.
 - Modify: `src/settings-tab-wg-relay.js`
 - Modify: `docs/superpowers/plans/2026-07-14-remote-connection-tab-redesign.md`
 
-- [ ] **Step 1: Make the DOM harness load the pure view-model**
+- [x] **Step 1: Make the DOM harness load the pure view-model**
 
 Read `settings-wg-relay-view-model.js` next to `TAB_SOURCE`, execute it first in the same VM context, and assert `ClawdSettingsWgRelayViewModel.deriveWgRelayPageModel` exists before initializing the tab. Keep the existing fake DOM, race, focus-trap, and listener helpers unchanged except where native form/details/progress semantics require small properties.
 
-- [ ] **Step 2: Write failing Setup and Enter-submission tests**
+- [x] **Step 2: Write failing Setup and Enter-submission tests**
 
 Replace the first-use expectation with one native form containing exactly four required inputs, one password hint associated by `aria-describedby`, and exactly one accent submit button:
 
@@ -480,13 +480,13 @@ assert.equal(form.querySelector("#wg-relay-password").value, "");
 
 Verify validation emits one adjacent `role="alert"`, never serializes the password into the profile/dataset/view-model, and retains the host, username, and port draft.
 
-- [ ] **Step 3: Run Setup tests and verify RED**
+- [x] **Step 3: Run Setup tests and verify RED**
 
 Run: `node --test --test-name-pattern='first-use|one-click deploy|Enter|password' test/settings-tab-wg-relay.test.js`
 
 Expected: FAIL because the current setup uses a section with a click-only `type="button"` and renders progress inside the form.
 
-- [ ] **Step 4: Write failing Deploying surface tests**
+- [x] **Step 4: Write failing Deploying surface tests**
 
 Start a deferred deployment and assert the form is replaced, not disabled in place:
 
@@ -507,7 +507,7 @@ assert.equal(surface.querySelector(".accent").disabled, true);
 
 Emit existing raw `wgRelay:progress` payloads and verify only the current sentence and progress value change while the disclosure remains closed by default.
 
-- [ ] **Step 5: Write failing deployment-failure regression tests**
+- [x] **Step 5: Write failing deployment-failure regression tests**
 
 Resolve a deployment with `{ status: "error", errorCode: "deploy_failed" }` after a failed `install` stage. Assert the result has one localized alert, one `Try deployment again` primary action, a closed details disclosure with only completed/failed rows, and zero pending rows:
 
@@ -526,13 +526,13 @@ assert.equal(harness.content.querySelector(".wg-relay-progress"), null);
 
 Add a no-progress failure case proving the UI never renders ten pending rows even if the backend rejects before emitting a stage.
 
-- [ ] **Step 6: Run deployment tests and verify RED**
+- [x] **Step 6: Run deployment tests and verify RED**
 
 Run: `node --test --test-name-pattern='deploy|progress|failure' test/settings-tab-wg-relay.test.js`
 
 Expected: FAIL because the setup form remains visible during deployment and `progressVisible` remains true after failure.
 
-- [ ] **Step 7: Implement view-model-driven setup/deployment/failure rendering**
+- [x] **Step 7: Implement view-model-driven setup/deployment/failure rendering**
 
 Replace `progressVisible`, `PROGRESS_STAGES`, `RAW_PROGRESS_STAGE`, `applyProgress`, and ad hoc failure rendering with:
 
@@ -563,7 +563,7 @@ function pageModel(profile) {
 
 Use `<form>` submit handlers for setup and repair, set `view.deploymentFailure = null` before invoking deploy, replace the form with `renderDeploymentSurface(model)` while busy, set a failure record in both resolved-error and rejected paths, and have `retry-deploy` clear only the failure/progress state. Preserve the non-password draft and synchronously blank the detached password input in `finally`.
 
-- [ ] **Step 8: Run GREEN setup/deployment tests and lifecycle regressions**
+- [x] **Step 8: Run GREEN setup/deployment tests and lifecycle regressions**
 
 Run:
 
@@ -574,7 +574,7 @@ node --test test/settings-renderer-browser-env.test.js test/settings-window.test
 
 Expected: all selected tests pass; late deploy completion after tab exit still cannot mutate the view, and listeners/dialogs are still cleaned up.
 
-- [ ] **Step 9: Review scope, commit, and immediately push**
+- [x] **Step 9: Review scope, commit, and immediately push**
 
 Verify diff, origin, branch, and focused test output. Then run:
 

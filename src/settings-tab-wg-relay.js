@@ -6,6 +6,7 @@
   let state = null;
   let helpers = null;
   let ops = null;
+  const modelApi = root.ClawdSettingsWgRelayViewModel;
 
   const DEFAULTS = Object.freeze({
     sshUsername: "root",
@@ -54,30 +55,6 @@
     "delete_prepare_failed", "delete_failed", "connection_failed", "sidecar_failed",
     "health_failed", "relay_failed", "unknown",
   ]);
-  const PROGRESS_STAGES = Object.freeze([
-    "connect", "fingerprint", "upload", "dependencies", "wireguard",
-    "relay", "verify", "save", "pcConnect", "qr",
-  ]);
-  const RAW_PROGRESS_STAGE = Object.freeze({
-    connect: 0,
-    "host-key": 1,
-    upload: 2,
-    install: 3,
-    detect: 3,
-    "install-wg": 4,
-    "gen-keys": 4,
-    "write-conf": 4,
-    "start-service": 5,
-    firewall: 5,
-    readback: 6,
-    validate: 6,
-    save: 7,
-    persist: 7,
-    "pc-connect": 8,
-    pc_connect: 8,
-    qr: 9,
-  });
-
   const view = {
     epoch: 0,
     setupDraft: null,
@@ -91,8 +68,9 @@
     statusAttemptsByProfile: new Map(),
     statusRetryTimer: null,
     progressProfileId: null,
-    progressVisible: false,
-    progressStates: PROGRESS_STAGES.map(() => "pending"),
+    progressStates: modelApi.createDeploymentProgress(),
+    deploymentFailure: null,
+    deploymentContext: "setup",
     errorCode: null,
     repairOpen: false,
     busy: null,
@@ -371,23 +349,12 @@
 
   function resetProgress(profileId) {
     view.progressProfileId = profileId;
-    view.progressVisible = true;
-    view.progressStates = PROGRESS_STAGES.map(() => "pending");
+    view.progressStates = modelApi.createDeploymentProgress();
+    view.deploymentFailure = null;
   }
 
   function applyProgress(payload) {
-    const index = RAW_PROGRESS_STAGE[payload.step];
-    if (!Number.isInteger(index)) return;
-    for (let i = 0; i < index; i++) {
-      if (view.progressStates[i] !== "failed") view.progressStates[i] = "complete";
-    }
-    if (payload.status === "fail") view.progressStates[index] = "failed";
-    else if (payload.status === "ok") view.progressStates[index] = "complete";
-    else view.progressStates[index] = "current";
-    if (payload.step === "validate" && payload.status === "ok"
-        && view.progressStates[7] === "pending") {
-      view.progressStates[7] = "current";
-    }
+    view.progressStates = modelApi.applyDeploymentProgress(view.progressStates, payload);
   }
 
   function applyConnectionProgress(payload) {
@@ -402,13 +369,27 @@
   }
 
   function finishProgress() {
-    view.progressStates = PROGRESS_STAGES.map(() => "complete");
+    view.progressStates = modelApi.PROGRESS_STAGES.map(() => "complete");
   }
 
   function setResultError(result, fallback) {
     view.errorCode = result && typeof result.errorCode === "string"
       ? result.errorCode
       : fallback;
+  }
+
+  function pageModel(profile) {
+    return modelApi.deriveWgRelayPageModel({
+      hasDeployedProfile: isDeployed(profile),
+      host: profile && profile.host,
+      status: profile ? statusFor(profile) : { status: "idle" },
+      operation: view.busy && view.busy.kind,
+      deploymentFailure: view.deploymentFailure,
+      errorCode: view.errorCode,
+      repairFormOpen: view.repairOpen,
+      runtimeAvailable: Boolean(window.wgRelay),
+      progressStates: view.progressStates,
+    });
   }
 
   function beginOperation(kind, operation, applyResult) {
@@ -446,18 +427,18 @@
     return record.promise;
   }
 
-  function createButton(textKey, className, onClick, disabled) {
+  function createButton(textKey, className, onClick, disabled, type = "button") {
     const button = document.createElement("button");
-    button.type = "button";
+    button.type = type;
     button.className = className || "soft-btn";
     button.textContent = t(textKey);
     button.disabled = Boolean(disabled);
-    button.addEventListener("click", onClick);
+    if (typeof onClick === "function") button.addEventListener("click", onClick);
     return button;
   }
 
   function createField({ id, labelKey, type = "text", value = "", required = false,
-    autocomplete, disabled = false, readOnly = false, onInput }) {
+    autocomplete, describedBy, disabled = false, readOnly = false, onInput }) {
     const wrap = document.createElement("div");
     wrap.className = "wg-relay-field";
     const label = document.createElement("label");
@@ -473,6 +454,7 @@
     input.disabled = disabled;
     input.readOnly = readOnly;
     if (autocomplete) input.setAttribute("autocomplete", autocomplete);
+    if (describedBy) input.setAttribute("aria-describedby", describedBy);
     if (required) input.setAttribute("aria-required", "true");
     if (typeof onInput === "function") input.addEventListener("input", () => onInput(input.value));
     wrap.appendChild(label);
@@ -490,14 +472,14 @@
     parent.appendChild(error);
   }
 
-  function renderProgress(parent) {
-    if (!view.progressVisible) return;
+  function renderProgress(parent, progressModel) {
+    if (!progressModel) return;
     const progress = document.createElement("div");
     progress.className = "wg-relay-progress";
     progress.setAttribute("aria-live", "polite");
     progress.setAttribute("aria-label", t("wgRelayProgressLabel"));
-    PROGRESS_STAGES.forEach((stage, index) => {
-      const stageState = view.progressStates[index] || "pending";
+    progressModel.detailStages.forEach((stage, index) => {
+      const stageState = stage.state || "pending";
       const row = document.createElement("div");
       row.className = "wg-relay-progress-stage is-" + stageState;
       const marker = document.createElement("span");
@@ -506,7 +488,7 @@
       marker.textContent = stageState === "complete" ? "✓" : (stageState === "failed" ? "!" : String(index + 1));
       const label = document.createElement("span");
       label.className = "wg-relay-progress-name";
-      label.textContent = t("wgRelayStep_" + stage);
+      label.textContent = t("wgRelayStep_" + stage.key);
       const stateText = document.createElement("span");
       stateText.className = "wg-relay-progress-state";
       stateText.textContent = t("wgRelayProgress_" + (stageState === "complete" ? "completed" : stageState));
@@ -516,6 +498,62 @@
       progress.appendChild(row);
     });
     parent.appendChild(progress);
+  }
+
+  function renderDeploymentProgressSurface(parent, model, className) {
+    const surface = document.createElement("section");
+    surface.className = "section " + className;
+
+    const current = document.createElement("p");
+    current.className = "wg-relay-current-step";
+    current.textContent = t("wgRelayStep_" + model.progress.currentStage);
+    surface.appendChild(current);
+
+    const bar = document.createElement("progress");
+    bar.value = model.progress.completedCount;
+    bar.max = model.progress.total;
+    bar.setAttribute("value", String(model.progress.completedCount));
+    bar.setAttribute("max", String(model.progress.total));
+    bar.setAttribute("aria-label", t("wgRelayProgressLabel"));
+    surface.appendChild(bar);
+
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = t("wgRelayProgressLabel");
+    details.appendChild(summary);
+    renderProgress(details, model.progress);
+    surface.appendChild(details);
+    parent.appendChild(surface);
+    return surface;
+  }
+
+  function renderDeploymentSurface(parent, model) {
+    const surface = renderDeploymentProgressSurface(parent, model, "wg-relay-deployment-surface");
+    const action = model.primaryAction;
+    const button = createButton(
+      action ? action.labelKey : "wgRelayDeploying",
+      "soft-btn accent wg-relay-primary-action",
+      null,
+      true,
+    );
+    surface.appendChild(button);
+  }
+
+  function renderDeploymentFailure(parent, model) {
+    const surface = renderDeploymentProgressSurface(parent, model, "wg-relay-deployment-failure");
+    const alert = document.createElement("div");
+    alert.className = "wg-relay-action-callout";
+    alert.setAttribute("role", "alert");
+    alert.setAttribute("aria-live", "assertive");
+    alert.textContent = localizedError(model.error ? model.error.safeCode : "deploy_failed");
+    surface.insertBefore(alert, surface.children[0] || null);
+    const retry = createButton("wgRelayTryDeployAgain", "soft-btn accent wg-relay-primary-action", () => {
+      view.deploymentFailure = null;
+      view.errorCode = null;
+      view.progressStates = modelApi.createDeploymentProgress();
+      requestContentRender();
+    }, model.primaryAction && model.primaryAction.disabled);
+    surface.appendChild(retry);
   }
 
   function buildProfile(draft, advanced) {
@@ -554,6 +592,8 @@
     const record = { kind: "deploy", epoch: view.epoch, promise: null };
     view.busy = record;
     view.errorCode = null;
+    view.deploymentFailure = null;
+    view.deploymentContext = isDeployed(profile) ? "repair" : "setup";
     let invoke;
     try {
       invoke = Promise.resolve(window.wgRelay.deploy({ profile, password }));
@@ -571,17 +611,26 @@
         view.repairDraftByProfile.delete(result.profile.id);
         view.repairOpen = false;
         view.errorCode = null;
+        view.deploymentFailure = null;
         if (result.state) {
           view.statusByProfile.set(result.profile.id, safeStatus(result.state, result.profile.id));
         }
         finishProgress();
       } else {
         setResultError(result, "deploy_failed");
+        view.deploymentFailure = {
+          errorCode: view.errorCode,
+          context: view.deploymentContext,
+        };
       }
       return result;
     }).catch(() => {
       if (record.epoch === view.epoch && state.activeTab === "wg-relay") {
         view.errorCode = "deploy_failed";
+        view.deploymentFailure = {
+          errorCode: "deploy_failed",
+          context: view.deploymentContext,
+        };
       }
       return { status: "error", errorCode: "deploy_failed" };
     }).finally(() => {
@@ -594,8 +643,9 @@
 
   function renderSetup(parent, existingProfile) {
     const draft = ensureSetupDraft(existingProfile);
-    const card = document.createElement("section");
-    card.className = "section wg-relay-setup-card";
+    const card = document.createElement("form");
+    card.className = "section wg-relay-setup-card wg-relay-setup-form";
+    card.noValidate = true;
     const heading = document.createElement("h2");
     heading.textContent = t("wgRelaySetupTitle");
     card.appendChild(heading);
@@ -618,21 +668,24 @@
     });
     const password = createField({
       id: "wg-relay-password", labelKey: "wgRelayFieldPassword", type: "password", value: "",
-      required: true, autocomplete: "new-password", disabled,
+      required: true, autocomplete: "new-password", describedBy: "wg-relay-password-hint", disabled,
     });
     card.appendChild(host.wrap);
     card.appendChild(username.wrap);
     card.appendChild(port.wrap);
     card.appendChild(password.wrap);
     const passwordHint = document.createElement("p");
+    passwordHint.id = "wg-relay-password-hint";
+    passwordHint.setAttribute("id", "wg-relay-password-hint");
     passwordHint.className = "wg-relay-password-hint";
     passwordHint.textContent = t("wgRelayPasswordOneTimeHint");
     card.appendChild(passwordHint);
     renderError(card);
-    renderProgress(card);
-    const deploy = createButton(view.busy ? "wgRelayDeploying" : "wgRelayDeploy", "soft-btn accent wg-relay-primary-action", () => {
+    card.addEventListener("submit", (event) => {
+      event.preventDefault();
       runDeploy(buildProfile(draft), password.input);
-    }, disabled);
+    });
+    const deploy = createButton("wgRelayDeploy", "soft-btn accent wg-relay-primary-action", null, disabled, "submit");
     card.appendChild(deploy);
     parent.appendChild(card);
   }
@@ -964,7 +1017,8 @@
           view.statusByProfile.delete(profile.id);
           view.statusRevisionByProfile.delete(profile.id);
           view.statusRequest = null;
-          view.progressVisible = false;
+          view.deploymentFailure = null;
+          view.progressStates = modelApi.createDeploymentProgress();
           view.repairOpen = false;
           view.repairDraftByProfile.delete(profile.id);
           view.errorCode = null;
@@ -1185,8 +1239,16 @@
       view.errorCode = "runtime_unavailable";
     }
     const profile = currentProfile();
-    if (!isDeployed(profile)) renderSetup(parent, profile);
-    else renderStatusCard(parent, profile);
+    const model = pageModel(profile);
+    if (model.mode === modelApi.PAGE_MODES.DEPLOYING) {
+      renderDeploymentSurface(parent, model);
+    } else if (model.mode === modelApi.PAGE_MODES.DEPLOYMENT_FAILURE) {
+      renderDeploymentFailure(parent, model);
+    } else if (!isDeployed(profile)) {
+      renderSetup(parent, profile);
+    } else {
+      renderStatusCard(parent, profile);
+    }
     restorePendingFocus();
   }
 
@@ -1217,7 +1279,8 @@
     view.repairDraftByProfile.clear();
     view.statusByProfile.clear();
     view.statusRevisionByProfile.clear();
-    view.progressVisible = false;
+    view.deploymentFailure = null;
+    view.progressStates = modelApi.createDeploymentProgress();
     view.errorCode = null;
   }
 

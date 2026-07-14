@@ -10,6 +10,7 @@ const SRC_DIR = path.join(__dirname, "..", "src");
 const SETTINGS_HTML = path.join(SRC_DIR, "settings.html");
 const SETTINGS_CSS = path.join(SRC_DIR, "settings.css");
 const SETTINGS_TAB_GENERAL = path.join(SRC_DIR, "settings-tab-general.js");
+const SETTINGS_WG_RELAY_VIEW_MODEL = path.join(SRC_DIR, "settings-wg-relay-view-model.js");
 const SETTINGS_TAB_WG_RELAY = path.join(SRC_DIR, "settings-tab-wg-relay.js");
 const SETTINGS_RENDERER = path.join(SRC_DIR, "settings-renderer.js");
 const SETTINGS_UI_CORE = path.join(SRC_DIR, "settings-ui-core.js");
@@ -1298,6 +1299,7 @@ function loadWgRelayBrowserHarness() {
   };
   context.globalThis = context;
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync(SETTINGS_WG_RELAY_VIEW_MODEL, "utf8"), context);
   vm.runInContext(fs.readFileSync(SETTINGS_TAB_WG_RELAY, "utf8"), context);
   context.ClawdSettingsTabWgRelay.init(core);
   function render() {
@@ -1327,6 +1329,7 @@ describe("settings renderer browser environment", () => {
       "settings-tab-telegram-approval.js",
       "settings-tab-about.js",
       "settings-tab-remote-ssh.js",
+      "settings-wg-relay-view-model.js",
       "settings-tab-wg-relay.js",
       "settings-doctor-modal.js",
       "settings-icons.js",
@@ -1403,7 +1406,7 @@ describe("settings renderer browser environment", () => {
     }
     const action = card.querySelector("button");
     assert.strictEqual(action.textContent, "One-click deploy");
-    assert.strictEqual(action.type, "button");
+    assert.strictEqual(action.type, "submit");
   });
 
   it("keeps the WG Relay renderer on the Task 6 API and explicit cleanup lifecycle", () => {

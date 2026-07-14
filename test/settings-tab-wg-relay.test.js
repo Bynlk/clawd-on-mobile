@@ -7,6 +7,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const SRC_DIR = path.join(__dirname, "..", "src");
+const VIEW_MODEL_SOURCE = fs.readFileSync(path.join(SRC_DIR, "settings-wg-relay-view-model.js"), "utf8");
 const TAB_SOURCE = fs.readFileSync(path.join(SRC_DIR, "settings-tab-wg-relay.js"), "utf8");
 const { SUPPORTED_LANGS } = require("../src/i18n");
 
@@ -117,6 +118,7 @@ class FakeElement {
     this.readOnly = false;
     this.hidden = false;
     this.inert = false;
+    this.open = false;
     this.tabIndex = 0;
     this.src = "";
     this.alt = "";
@@ -125,6 +127,13 @@ class FakeElement {
   appendChild(child) {
     child.parentNode = this;
     this.children.push(child);
+    return child;
+  }
+  insertBefore(child, reference) {
+    child.parentNode = this;
+    const index = reference ? this.children.indexOf(reference) : -1;
+    if (index >= 0) this.children.splice(index, 0, child);
+    else this.children.push(child);
     return child;
   }
   remove() {
@@ -151,6 +160,7 @@ class FakeElement {
     if (name === "type") this.type = text;
     if (name === "src") this.src = text;
     if (name === "inert") this.inert = true;
+    if (name === "open") this.open = true;
     if (name.startsWith("data-")) {
       const key = name.slice(5).replace(/-([a-z])/g, (_m, ch) => ch.toUpperCase());
       this.dataset[key] = text;
@@ -161,6 +171,7 @@ class FakeElement {
     delete this.attributes[name];
     if (name === "src") this.src = "";
     if (name === "inert") this.inert = false;
+    if (name === "open") this.open = false;
   }
   addEventListener(type, listener) {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
@@ -258,6 +269,7 @@ class FakeDocument {
 const TRANSLATIONS = {
   wgRelayDeploy: "ONE_CLICK_DEPLOY",
   wgRelayDeploying: "DEPLOYING",
+  wgRelayTryDeployAgain: "TRY_DEPLOY_AGAIN",
   wgRelayConnect: "CONNECT",
   wgRelayDisconnect: "DISCONNECT",
   wgRelayShowQr: "SHOW_QR",
@@ -286,6 +298,7 @@ const TRANSLATIONS = {
   wgRelayError_profile_not_found: "SAFE_PROFILE_MISSING_ERROR",
   wgRelayError_health_failed: "SAFE_HEALTH_ERROR",
   wgRelayError_unknown: "SAFE_UNKNOWN_ERROR",
+  wgRelayProgressLabel: "DEPLOY_PROGRESS",
 };
 
 const DEPLOYED_PROFILE = Object.freeze({
@@ -387,6 +400,11 @@ function createHarness({ profile = null, api = {}, runtimeAvailable = true } = {
   };
   context.globalThis = context;
   vm.createContext(context);
+  vm.runInContext(VIEW_MODEL_SOURCE, context, { filename: "settings-wg-relay-view-model.js" });
+  assert.equal(
+    typeof context.ClawdSettingsWgRelayViewModel.deriveWgRelayPageModel,
+    "function",
+  );
   vm.runInContext(TAB_SOURCE, context, { filename: "settings-tab-wg-relay.js" });
   context.ClawdSettingsTabWgRelay.init(core);
 
@@ -422,6 +440,7 @@ test("tab registers a render/onExit/dispose lifecycle without top-level DOM acce
   const sandbox = { globalThis: null };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
+  vm.runInContext(VIEW_MODEL_SOURCE, sandbox);
   vm.runInContext(TAB_SOURCE, sandbox);
   assert.equal(typeof sandbox.ClawdSettingsTabWgRelay.init, "function");
   assert.match(TAB_SOURCE, /core\.tabs\["wg-relay"\]\s*=\s*\{[^}]*render[^}]*onExit[^}]*dispose/s);
@@ -459,38 +478,40 @@ test("renderer treats querySelectorAll as NodeList and normalizes before Array-o
   assert.equal(harness.document.modalRoot.children.length, 0);
 });
 
-test("first-use card renders exactly four labelled required fields with safe defaults", () => {
+test("first-use form renders exactly four labelled required fields with safe defaults", () => {
   const harness = createHarness();
-  const card = harness.content.querySelector(".wg-relay-setup-card");
-  assert.ok(card, "first use should be one setup card");
-  const inputs = Array.from(card.querySelectorAll("input"));
+  const form = harness.content.querySelector(".wg-relay-setup-form");
+  assert.ok(form, "first use should be one setup form");
+  const inputs = Array.from(form.querySelectorAll("input"));
   assert.equal(inputs.length, 4);
-  const labels = Array.from(card.querySelectorAll("label"));
+  const labels = Array.from(form.querySelectorAll("label"));
   assert.equal(labels.length, 4);
   for (const label of labels) {
     assert.ok(label.getAttribute("for"));
     assert.ok(inputs.some((input) => input.id === label.getAttribute("for")));
   }
-  assert.equal(card.querySelector("#wg-relay-ssh-username").value, "root");
-  assert.equal(card.querySelector("#wg-relay-ssh-port").value, "22");
-  const password = card.querySelector("#wg-relay-password");
+  assert.equal(form.querySelector("#wg-relay-ssh-username").value, "root");
+  assert.equal(form.querySelector("#wg-relay-ssh-port").value, "22");
+  const password = form.querySelector("#wg-relay-password");
   assert.equal(password.type, "password");
   assert.equal(password.getAttribute("autocomplete"), "new-password");
-  assert.equal(card.textContent.includes("51820"), false);
-  assert.equal(card.textContent.includes("10.8.0.0/24"), false);
-  assert.equal(card.textContent.includes("7891"), false);
-  assert.deepEqual(buttons(card).map((button) => button.textContent), ["ONE_CLICK_DEPLOY"]);
-  assert.ok(buttons(card).every((button) => button.type === "button"));
+  assert.equal(password.getAttribute("aria-describedby"), "wg-relay-password-hint");
+  assert.equal(form.textContent.includes("51820"), false);
+  assert.equal(form.textContent.includes("10.8.0.0/24"), false);
+  assert.equal(form.textContent.includes("7891"), false);
+  assert.deepEqual(buttons(form).map((button) => button.textContent), ["ONE_CLICK_DEPLOY"]);
+  assert.equal(buttons(form)[0].type, "submit");
+  assert.equal(form.querySelectorAll(".accent").length, 1);
 });
 
-test("one-click deploy sends {profile,password}, clears password immediately, and coalesces double click", async () => {
+test("one-click deploy submits on Enter, clears password immediately, and coalesces repeats", async () => {
   const pending = deferred();
   const harness = createHarness({ api: { deploy: () => pending.promise } });
-  setInput(harness.content.querySelector("#wg-relay-host"), "relay.example.test");
-  setInput(harness.content.querySelector("#wg-relay-password"), "unit-test-only");
-  const deploy = buttonByText(harness.content, "ONE_CLICK_DEPLOY");
-  deploy.dispatchEvent({ type: "click", bubbles: false });
-  deploy.dispatchEvent({ type: "click", bubbles: false });
+  const form = harness.content.querySelector(".wg-relay-setup-form");
+  setInput(form.querySelector("#wg-relay-host"), "relay.example.test");
+  setInput(form.querySelector("#wg-relay-password"), "unit-test-only");
+  form.dispatchEvent({ type: "submit", bubbles: false });
+  form.dispatchEvent({ type: "submit", bubbles: false });
 
   assert.equal(harness.calls.deploy.length, 1);
   const request = harness.calls.deploy[0][0];
@@ -507,16 +528,42 @@ test("one-click deploy sends {profile,password}, clears password immediately, an
   assert.equal(request.password, "unit-test-only");
   assert.equal(Object.hasOwn(request.profile, "password"), false);
   assert.equal(JSON.stringify(request.profile).includes("unit-test-only"), false);
-  assert.equal(harness.content.querySelector("#wg-relay-password").value, "");
-  assert.ok(Array.from(harness.content.querySelectorAll("input")).every((input) => input.disabled));
-  assert.ok(buttons(harness.content).every((button) => button.disabled));
+  assert.equal(form.querySelector("#wg-relay-password").value, "");
+  assert.equal(harness.content.querySelector(".wg-relay-setup-form"), null);
+  const surface = harness.content.querySelector(".wg-relay-deployment-surface");
+  assert.ok(surface);
+  assert.equal(surface.querySelectorAll("input").length, 0);
+  assert.equal(surface.querySelectorAll(".accent").length, 1);
+  assert.equal(surface.querySelector(".accent").disabled, true);
 
   pending.resolve({ status: "error", errorCode: "deploy_failed", message: "server stderr unit-test-only" });
   await flushPromises();
-  const error = harness.content.querySelector(".wg-relay-error");
+  const error = harness.content.querySelector(".wg-relay-action-callout");
+  assert.equal(error.getAttribute("role"), "alert");
   assert.equal(error.textContent, "SAFE_DEPLOY_ERROR");
   assert.equal(error.textContent.includes("stderr"), false);
-  assert.equal(harness.content.querySelector("#wg-relay-password").value, "");
+  assert.equal(harness.content.querySelector("#wg-relay-password"), null);
+});
+
+test("first-use validation keeps non-password draft and exposes one adjacent alert", () => {
+  const harness = createHarness();
+  const form = harness.content.querySelector(".wg-relay-setup-form");
+  setInput(form.querySelector("#wg-relay-host"), "relay.example.test");
+  setInput(form.querySelector("#wg-relay-password"), "");
+  form.dispatchEvent({ type: "submit", bubbles: false });
+
+  const nextForm = harness.content.querySelector(".wg-relay-setup-form");
+  assert.equal(harness.calls.deploy.length, 0);
+  assert.equal(nextForm.querySelector("#wg-relay-host").value, "relay.example.test");
+  assert.equal(nextForm.querySelector("#wg-relay-ssh-username").value, "root");
+  assert.equal(nextForm.querySelector("#wg-relay-ssh-port").value, "22");
+  assert.equal(nextForm.querySelector("#wg-relay-password").value, "");
+  assert.equal(
+    Array.from(nextForm.querySelectorAll("div"))
+      .filter((node) => node.getAttribute("role") === "alert").length,
+    1,
+  );
+  assert.equal(JSON.stringify(harness.core.state.snapshot).includes("unit-test-only"), false);
 });
 
 test("an existing undeployed profile becomes a status card before its settings broadcast arrives", async () => {
@@ -527,7 +574,7 @@ test("an existing undeployed profile becomes a status card before its settings b
   };
   const harness = createHarness({ profile: undeployed });
   setInput(harness.content.querySelector("#wg-relay-password"), "unit-test-only");
-  buttonByText(harness.content, "ONE_CLICK_DEPLOY").dispatchEvent({ type: "click", bubbles: false });
+  harness.content.querySelector(".wg-relay-setup-form").dispatchEvent({ type: "submit", bubbles: false });
   await flushPromises();
   assert.ok(harness.content.querySelector(".wg-relay-status-card"));
   assert.equal(harness.content.querySelector(".wg-relay-setup-card"), null);
@@ -538,7 +585,19 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   const harness = createHarness({ api: { deploy: () => pending.promise } });
   setInput(harness.content.querySelector("#wg-relay-host"), "relay.example.test");
   setInput(harness.content.querySelector("#wg-relay-password"), "unit-test-only");
-  buttonByText(harness.content, "ONE_CLICK_DEPLOY").dispatchEvent({ type: "click", bubbles: false });
+  harness.content.querySelector(".wg-relay-setup-form").dispatchEvent({ type: "submit", bubbles: false });
+  assert.equal(harness.content.querySelector(".wg-relay-setup-form"), null);
+  const surface = harness.content.querySelector(".wg-relay-deployment-surface");
+  assert.ok(surface);
+  assert.equal(surface.querySelectorAll("input").length, 0);
+  assert.ok(surface.querySelector(".wg-relay-current-step"));
+  assert.ok(surface.querySelector("progress"));
+  const details = surface.querySelector("details");
+  assert.ok(details);
+  assert.equal(details.open, false);
+  assert.equal(details.querySelectorAll(".wg-relay-progress-stage").length, 10);
+  assert.equal(surface.querySelectorAll(".accent").length, 1);
+  assert.equal(surface.querySelector(".accent").disabled, true);
   harness.emitProgress({ profileId: "wg-0000000000004", step: "connect", status: "ok" });
   harness.emitProgress({ profileId: "wg-0000000000004", step: "host-key", status: "ok" });
   harness.emitProgress({ profileId: "wg-0000000000004", step: "upload", status: "ok" });
@@ -556,12 +615,26 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   assert.equal(rows[9].classList.contains("is-pending"), true);
   pending.resolve({ status: "error", errorCode: "deploy_failed" });
   await flushPromises();
+  const failure = harness.content.querySelector(".wg-relay-deployment-failure");
+  assert.ok(failure);
+  assert.equal(failure.querySelectorAll(".wg-relay-action-callout").length, 1);
+  assert.equal(failure.querySelector(".wg-relay-action-callout").getAttribute("role"), "alert");
+  assert.equal(
+    Array.from(failure.querySelectorAll(".wg-relay-progress-stage"))
+      .filter((row) => row.classList.contains("is-pending")).length,
+    0,
+  );
+  assert.equal(failure.querySelectorAll(".accent").length, 1);
+  buttonByText(failure, "TRY_DEPLOY_AGAIN").dispatchEvent({ type: "click", bubbles: false });
+  assert.equal(harness.content.querySelector("#wg-relay-host").value, "relay.example.test");
+  assert.equal(harness.content.querySelector("#wg-relay-password").value, "");
+  assert.equal(harness.content.querySelector(".wg-relay-progress"), null);
 
   const successfulDeploy = deferred();
   const successful = createHarness({ api: { deploy: () => successfulDeploy.promise } });
   setInput(successful.content.querySelector("#wg-relay-host"), "relay.example.test");
   setInput(successful.content.querySelector("#wg-relay-password"), "unit-test-only");
-  buttonByText(successful.content, "ONE_CLICK_DEPLOY").dispatchEvent({ type: "click", bubbles: false });
+  successful.content.querySelector(".wg-relay-setup-form").dispatchEvent({ type: "submit", bubbles: false });
   successful.emitProgress({ profileId: "wg-0000000000004", step: "validate", status: "ok" });
   let successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
   assert.equal(successfulRows[6].classList.contains("is-complete"), true);
@@ -590,9 +663,24 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
     qr: { version: 1, dataUrl: "data:image/png;base64,ZGVwbG95" },
   });
   await flushPromises();
-  successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
-  assert.equal(successfulRows.length, 10);
-  assert.ok(Array.from(successfulRows).every((row) => row.classList.contains("is-complete")));
+  assert.ok(successful.content.querySelector(".wg-relay-status-card"));
+  assert.equal(successful.content.querySelector(".wg-relay-deployment-surface"), null);
+});
+
+test("deployment failure without progress never renders ten pending rows", async () => {
+  const pending = deferred();
+  const harness = createHarness({ api: { deploy: () => pending.promise } });
+  setInput(harness.content.querySelector("#wg-relay-host"), "relay.example.test");
+  setInput(harness.content.querySelector("#wg-relay-password"), "unit-test-only");
+  harness.content.querySelector(".wg-relay-setup-form").dispatchEvent({ type: "submit", bubbles: false });
+  pending.resolve({ status: "error", errorCode: "deploy_failed" });
+  await flushPromises();
+
+  const failure = harness.content.querySelector(".wg-relay-deployment-failure");
+  assert.ok(failure);
+  const rows = Array.from(failure.querySelectorAll(".wg-relay-progress-stage"));
+  assert.equal(rows.length, 1);
+  assert.equal(rows.filter((row) => row.classList.contains("is-pending")).length, 0);
 });
 
 test("deployed card localizes all seven states and uses only connect/disconnect as its primary action", async () => {
@@ -1009,7 +1097,7 @@ test("late deploy completion after tab exit cannot mutate the view", async () =>
   const harness = createHarness({ api: { deploy: () => pending.promise } });
   setInput(harness.content.querySelector("#wg-relay-host"), "relay.example.test");
   setInput(harness.content.querySelector("#wg-relay-password"), "unit-test-only");
-  buttonByText(harness.content, "ONE_CLICK_DEPLOY").dispatchEvent({ type: "click", bubbles: false });
+  harness.content.querySelector(".wg-relay-setup-form").dispatchEvent({ type: "submit", bubbles: false });
   const rendersBeforeExit = harness.calls.renders;
   harness.core.state.activeTab = "general";
   harness.core.tabs["wg-relay"].onExit();
