@@ -35,21 +35,20 @@ import com.clawd.mobile.ui.scan.RelayPairingAcceptance
 import com.clawd.mobile.ui.scan.RelayPairingReceiver
 import com.clawd.mobile.ui.scan.ScanPayloadResult
 import com.clawd.mobile.ui.scan.parseScannedPayload
-import java.security.MessageDigest
 
 internal class RelayPairingCoordinator(
-    initialFingerprint: String? = null,
+    initialPairing: RelayPairingConfig? = null,
+    private val initialStorageUnavailable: Boolean = false,
     private val save: (RelayPairingConfig) -> Boolean,
     private val navigateToSettings: () -> Unit,
 ) {
-    var lastFingerprint: String? = initialFingerprint
+    var lastFingerprint: String? = initialPairing?.let(RelayPairingConfig::semanticFingerprint)
         private set
 
     @Synchronized
     fun accept(config: RelayPairingConfig): RelayPairingAcceptance {
-        val fingerprint = MessageDigest.getInstance("SHA-256")
-            .digest(RelayPairingConfig.encodeStorage(config).toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+        if (initialStorageUnavailable) return RelayPairingAcceptance.STORAGE_FAILED
+        val fingerprint = RelayPairingConfig.semanticFingerprint(config)
         if (fingerprint == lastFingerprint) return RelayPairingAcceptance.DUPLICATE
         val saved = try {
             save(config)
@@ -96,7 +95,6 @@ internal class RelayDeepLinkRouter(
 class MainActivity : ComponentActivity(), RelayPairingReceiver {
 
     companion object {
-        private const val STATE_RELAY_PAIRING_FINGERPRINT = "relay_pairing_fingerprint"
         private const val STATE_RELAY_PAIRING_NEXT_REQUEST_ID = "relay_pairing_next_request_id"
         private const val STATE_RELAY_PAIRING_PENDING_REQUEST_ID = "relay_pairing_pending_request_id"
     }
@@ -154,9 +152,12 @@ class MainActivity : ComponentActivity(), RelayPairingReceiver {
             ?.getInt(STATE_RELAY_PAIRING_NEXT_REQUEST_ID, 1)
             ?.coerceAtLeast(1)
             ?: 1
+        val prefsStore = PrefsStore.getInstance(this)
+        val initialPairing = prefsStore.loadRelayPairing()
         relayPairingCoordinator = RelayPairingCoordinator(
-            initialFingerprint = savedInstanceState?.getString(STATE_RELAY_PAIRING_FINGERPRINT),
-            save = { PrefsStore.getInstance(this).saveRelayPairing(it) },
+            initialPairing = initialPairing,
+            initialStorageUnavailable = initialPairing == null && prefsStore.hasRelayPairingBlob(),
+            save = prefsStore::saveRelayPairing,
             navigateToSettings = {
                 settingsNavigationRequest = nextSettingsNavigationRequestId
                 nextSettingsNavigationRequestId =
@@ -215,9 +216,6 @@ class MainActivity : ComponentActivity(), RelayPairingReceiver {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        relayPairingCoordinator.lastFingerprint?.let {
-            outState.putString(STATE_RELAY_PAIRING_FINGERPRINT, it)
-        }
         outState.putInt(STATE_RELAY_PAIRING_NEXT_REQUEST_ID, nextSettingsNavigationRequestId)
         outState.putInt(STATE_RELAY_PAIRING_PENDING_REQUEST_ID, settingsNavigationRequest)
         super.onSaveInstanceState(outState)

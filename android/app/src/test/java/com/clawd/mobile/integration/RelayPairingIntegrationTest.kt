@@ -72,6 +72,39 @@ class RelayPairingIntegrationTest {
     }
 
     @Test
+    fun `Android parses IPv4 mapped IPv6 endpoint emitted by current PC encoder`() {
+        var repositoryRoot = File(System.getProperty("user.dir") ?: error("user.dir unavailable")).canonicalFile
+        while (!File(repositoryRoot, "src/wg-relay-pairing-qr.js").isFile) {
+            repositoryRoot = repositoryRoot.parentFile
+                ?: error("repository root not found")
+        }
+        val encoder = File(repositoryRoot, "src/wg-relay-pairing-qr.js")
+        val script = """
+            const { buildPairingDeepLink } = require(process.argv[1]);
+            const privateKey = Buffer.alloc(32, 7).toString('base64');
+            const publicKey = Buffer.alloc(32, 8).toString('base64');
+            const endpoint = '[::ffff:192.0.2.1]:51820';
+            process.stdout.write(buildPairingDeepLink({
+              profile: { label: 'Mapped IPv6 fixture', wgSubnet: '10.8.0.0/24', endpoint },
+              secrets: {
+                phoneConfig: `[Interface]\nPrivateKey = ${'$'}{privateKey}\nAddress = 10.8.0.3/32\n\n[Peer]\nPublicKey = ${'$'}{publicKey}\nEndpoint = ${'$'}{endpoint}\nAllowedIPs = 10.8.0.0/24\nPersistentKeepalive = 25\n`,
+                relayUrl: 'ws://10.8.0.1:7891', relayToken: 'ab'.repeat(32),
+              },
+              issuedAt: 1783900800001,
+            }));
+        """.trimIndent()
+        val process = ProcessBuilder("node", "-e", script, encoder.absolutePath)
+            .redirectErrorStream(true)
+            .start()
+        assertEquals(true, process.waitFor(10, TimeUnit.SECONDS))
+        val deepLink = process.inputStream.bufferedReader().readText().trim()
+        assertEquals(0, process.exitValue())
+
+        val parsed = RelayPairingConfig.parse(deepLink)
+        assertEquals("[::ffff:192.0.2.1]:51820", parsed.wireGuard.endpoint)
+    }
+
+    @Test
     fun `scan parser distinguishes LAN relay and typed relay errors`() {
         val lan = parseScannedPayload("clawd://192.168.1.7:23334/abcdef1234567890")
         val relay = parseScannedPayload(fixtureUri)
@@ -103,7 +136,7 @@ class RelayPairingIntegrationTest {
         assertEquals(coordinator.lastFingerprint, coordinator.lastFingerprint?.takeIf { it.length == 64 })
 
         val restored = RelayPairingCoordinator(
-            initialFingerprint = coordinator.lastFingerprint,
+            initialPairing = config,
             save = { saves++; true },
             navigateToSettings = { navigations++ },
         )
@@ -118,18 +151,82 @@ class RelayPairingIntegrationTest {
         var shouldSave = false
         var navigations = 0
         val coordinator = RelayPairingCoordinator(
-            initialFingerprint = "old-fingerprint",
             save = { shouldSave },
             navigateToSettings = { navigations++ },
         )
 
         assertEquals(RelayPairingAcceptance.STORAGE_FAILED, coordinator.accept(config))
-        assertEquals("old-fingerprint", coordinator.lastFingerprint)
+        assertEquals(null, coordinator.lastFingerprint)
         assertEquals(0, navigations)
 
         shouldSave = true
         assertEquals(RelayPairingAcceptance.SAVED, coordinator.accept(config))
         assertEquals(1, navigations)
+    }
+
+    @Test
+    fun `new coordinator process deduplicates pairing loaded from encrypted storage`() {
+        val scanned = RelayPairingConfig.parse(fixtureUri)
+        val loaded = RelayPairingConfig.decodeStorage(RelayPairingConfig.encodeStorage(scanned))
+        var saves = 0
+        var navigations = 0
+        var lanStarts = 0
+        val coordinator = RelayPairingCoordinator(
+            initialPairing = loaded,
+            save = { saves++; true },
+            navigateToSettings = { navigations++ },
+        )
+        val router = RelayDeepLinkRouter(
+            relayCoordinator = coordinator,
+            saveLan = {},
+            startLan = { lanStarts++ },
+        )
+
+        assertEquals(RelayDeepLinkRoutingResult.RELAY_DUPLICATE, router.route(fixtureUri))
+        assertEquals(0, saves)
+        assertEquals(0, navigations)
+        assertEquals(0, lanStarts)
+    }
+
+    @Test
+    fun `new coordinator process atomically saves a semantically different pairing`() {
+        val loaded = RelayPairingConfig.parse(fixtureUri)
+        val payload = String(
+            java.util.Base64.getUrlDecoder().decode(fixtureUri.substringAfter("&data=")),
+            Charsets.UTF_8,
+        )
+            .replace("Android fixture", "Replacement fixture")
+        val replacementUri = "clawd://relay-pair?v=1&data=" +
+            java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
+        var saved: RelayPairingConfig? = null
+        var navigations = 0
+        val coordinator = RelayPairingCoordinator(
+            initialPairing = loaded,
+            save = { saved = it; true },
+            navigateToSettings = { navigations++ },
+        )
+
+        val replacement = RelayPairingConfig.parse(replacementUri)
+        assertEquals(RelayPairingAcceptance.SAVED, coordinator.accept(replacement))
+        assertEquals(replacement, saved)
+        assertEquals(1, navigations)
+    }
+
+    @Test
+    fun `corrupt persisted pairing fails closed without save or navigation`() {
+        val scanned = RelayPairingConfig.parse(fixtureUri)
+        var saves = 0
+        var navigations = 0
+        val coordinator = RelayPairingCoordinator(
+            initialPairing = null,
+            initialStorageUnavailable = true,
+            save = { saves++; true },
+            navigateToSettings = { navigations++ },
+        )
+
+        assertEquals(RelayPairingAcceptance.STORAGE_FAILED, coordinator.accept(scanned))
+        assertEquals(0, saves)
+        assertEquals(0, navigations)
     }
 
     @Test

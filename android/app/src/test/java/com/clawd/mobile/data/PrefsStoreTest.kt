@@ -81,6 +81,7 @@ class PrefsStoreTest {
         every { mockPrefs.getLong(any(), any()) } answers {
             (inMemoryPrefs[firstArg()] as? Long) ?: secondArg()
         }
+        every { mockPrefs.contains(any()) } answers { inMemoryPrefs.containsKey(firstArg()) }
         every { mockPrefs.all } answers { inMemoryPrefs.toMap() }
 
         // Mock context
@@ -575,6 +576,7 @@ class PrefsStoreTest {
         store.setRelayToken("legacy-manual-token")
 
         assertFalse(store.hasRelayPairing())
+        assertFalse(store.hasRelayPairingBlob())
         assertNull(store.loadRelayPairing())
         assertEquals("wss://legacy.example.test", store.getRelayUrl())
         assertEquals("legacy-manual-token", store.getRelayToken())
@@ -591,11 +593,13 @@ class PrefsStoreTest {
         inMemoryPrefs["relay_pairing"] = validBlob.replaceFirst("\"storageVersion\":1", "\"storageVersion\":2")
         assertNull(store.loadRelayPairing())
         assertFalse(store.hasRelayPairing())
+        assertTrue(store.hasRelayPairingBlob())
         assertEquals(lan, store.loadConfig())
         assertEquals(listOf(lan), store.getHistory())
 
         inMemoryPrefs["relay_pairing"] = "{corrupt"
         assertNull(store.loadRelayPairing())
+        assertTrue(store.hasRelayPairingBlob())
         assertEquals(lan, store.loadConfig())
         assertEquals(listOf(lan), store.getHistory())
     }
@@ -610,6 +614,7 @@ class PrefsStoreTest {
 
         assertNull(store.loadRelayPairing())
         assertFalse(store.hasRelayPairing())
+        assertTrue(store.hasRelayPairingBlob())
         assertEquals(lan, store.loadConfig())
         assertEquals(listOf(lan), store.getHistory())
     }

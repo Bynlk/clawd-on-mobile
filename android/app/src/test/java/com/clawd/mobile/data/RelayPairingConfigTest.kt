@@ -146,21 +146,37 @@ class RelayPairingConfigTest {
 
     @Test
     fun `accepts legal endpoint forms and rejects ambiguous hosts or ports`() {
-        for (endpoint in listOf("relay.example.test:1", "192.0.2.4:65535", "[2001:db8::1]:51820")) {
+        for (endpoint in listOf(
+            "relay.example.test:1",
+            "192.0.2.4:65535",
+            "[2001:db8::1]:51820",
+            "[::ffff:192.0.2.1]:51820",
+        )) {
             assertEquals(endpoint, RelayPairingConfig.parse(uri(json(endpoint = endpoint))).wireGuard.endpoint)
         }
-        for (endpoint in listOf("bad_host:51820", "2001:db8::1:51820", "[not::ip]:51820", "example.test:0", "example.test:65536", "user@example.test:22")) {
+        for (endpoint in listOf(
+            "bad_host:51820",
+            "2001:db8::1:51820",
+            "[not::ip]:51820",
+            "[192.0.2.1]:51820",
+            "[example.test]:51820",
+            "[::ffff:gggg]:51820",
+            "[fe80::1%eth0]:51820",
+            "example.test:0",
+            "example.test:65536",
+            "user@example.test:22",
+        )) {
             assertError(RelayPairingErrorCode.INVALID_ENDPOINT, uri(json(endpoint = endpoint)))
         }
     }
 
     @Test
-    fun `keepalive is bounded and relay token is exactly 64 hexadecimal characters`() {
-        assertEquals(1, RelayPairingConfig.parse(uri(json(keepalive = "1"))).wireGuard.persistentKeepalive)
-        assertEquals(120, RelayPairingConfig.parse(uri(json(keepalive = "120"))).wireGuard.persistentKeepalive)
+    fun `keepalive is exactly PC schema value 25 and relay token is 64 hexadecimal characters`() {
+        assertEquals(25, RelayPairingConfig.parse(uri(json(keepalive = "25"))).wireGuard.persistentKeepalive)
         assertEquals("AB".repeat(32), RelayPairingConfig.parse(uri(json(token = "AB".repeat(32)))).relay.token)
-        assertError(RelayPairingErrorCode.INVALID_KEEPALIVE, uri(json(keepalive = "0")))
-        assertError(RelayPairingErrorCode.INVALID_KEEPALIVE, uri(json(keepalive = "121")))
+        for (keepalive in listOf("0", "1", "24", "26", "120", "121")) {
+            assertError(RelayPairingErrorCode.INVALID_KEEPALIVE, uri(json(keepalive = keepalive)))
+        }
         assertError(RelayPairingErrorCode.INVALID_RELAY_TOKEN, uri(json(token = "zz".repeat(32))))
         assertError(RelayPairingErrorCode.INVALID_RELAY_TOKEN, uri(json(token = "ab".repeat(31))))
     }

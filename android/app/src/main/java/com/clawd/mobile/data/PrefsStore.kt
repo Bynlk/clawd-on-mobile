@@ -273,6 +273,13 @@ class PrefsStore private constructor(context: Context) {
 
     fun hasRelayPairing(): Boolean = loadRelayPairing() != null
 
+    /** Distinguishes no pairing from an encrypted blob that exists but cannot be decoded. */
+    internal fun hasRelayPairingBlob(): Boolean = try {
+        prefs.contains(KEY_RELAY_PAIRING)
+    } catch (_: Exception) {
+        true
+    }
+
     @Synchronized
     fun clearRelayPairing(): Boolean = try {
         prefs.edit().remove(KEY_RELAY_PAIRING).commit()

@@ -1,11 +1,13 @@
 package com.clawd.mobile.data
 
+import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.Base64
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -171,6 +173,43 @@ data class RelayPairingConfig internal constructor(
             ),
         )
 
+        /** Stable semantic identity independent of URI text and JSON/storage key order. */
+        internal fun semanticFingerprint(config: RelayPairingConfig): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            fun addInt(value: Int) {
+                digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(value).array())
+            }
+            fun addLong(value: Long) {
+                digest.update(ByteBuffer.allocate(Long.SIZE_BYTES).putLong(value).array())
+            }
+            fun addString(value: String) {
+                val bytes = value.toByteArray(StandardCharsets.UTF_8)
+                addInt(bytes.size)
+                digest.update(bytes)
+            }
+
+            addInt(config.version)
+            addString(config.name)
+            addString(config.wireGuard.privateKey)
+            addString(config.wireGuard.address)
+            addString(config.wireGuard.serverPublicKey)
+            addString(config.wireGuard.endpoint)
+            addInt(config.wireGuard.allowedIps.size)
+            config.wireGuard.allowedIps.forEach(::addString)
+            addInt(config.wireGuard.persistentKeepalive)
+            addString(config.relay.url)
+            addString(config.relay.token)
+            addLong(config.issuedAt)
+            val hex = "0123456789abcdef"
+            return buildString(64) {
+                for (byte in digest.digest()) {
+                    val value = byte.toInt() and 0xff
+                    append(hex[value ushr 4])
+                    append(hex[value and 0x0f])
+                }
+            }
+        }
+
         internal fun decodeStorage(blob: String): RelayPairingConfig {
             if (blob.toByteArray(StandardCharsets.UTF_8).size > MAX_JSON_BYTES) {
                 invalid(RelayPairingErrorCode.INVALID_JSON)
@@ -276,7 +315,7 @@ data class RelayPairingConfig internal constructor(
                 invalid(RelayPairingErrorCode.INVALID_WIREGUARD_KEY)
             }
             if (!validEndpoint(dto.wireGuard.endpoint)) invalid(RelayPairingErrorCode.INVALID_ENDPOINT)
-            if (dto.wireGuard.persistentKeepalive !in 1..120) {
+            if (dto.wireGuard.persistentKeepalive != 25) {
                 invalid(RelayPairingErrorCode.INVALID_KEEPALIVE)
             }
             val prefix = validateTopology(dto.wireGuard.address, dto.wireGuard.allowedIps)
@@ -371,10 +410,18 @@ data class RelayPairingConfig internal constructor(
                 (octets[0] == 172 && octets[1] in 16..31) ||
                 (octets[0] == 192 && octets[1] == 168)
 
-        private fun isIpv6(value: String): Boolean = try {
-            value.contains(':') && InetAddress.getByName(value) is Inet6Address
-        } catch (_: Exception) {
-            false
+        private fun isIpv6(value: String): Boolean {
+            if (!value.contains(':') || value.contains('%')) return false
+            return try {
+                when (InetAddress.getByName(value)) {
+                    is Inet6Address -> true
+                    // The JDK collapses valid IPv4-mapped IPv6 text to Inet4Address.
+                    is Inet4Address -> true
+                    else -> false
+                }
+            } catch (_: Exception) {
+                false
+            }
         }
 
         private fun RelayPairingConfig.toDto() = RelayPairingDto(
