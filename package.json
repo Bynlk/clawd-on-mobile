@@ -15,14 +15,17 @@
     "fetch:sidecars": "node scripts/fetch-sidecar-binaries.js",
     "fetch:wg": "node scripts/fetch-wg-binaries.js",
     "verify:sidecars": "node scripts/verify-sidecar-binaries.js",
+    "build:wg-relay-sidecar": "node scripts/build-wg-relay-sidecar.js",
+    "build:wg-relay-sidecars": "node scripts/build-wg-relay-sidecar.js",
+    "verify:wg-relay-sidecars": "node scripts/verify-wg-relay-sidecars.js",
     "rebuild:native": "electron-builder install-app-deps",
-    "prebuild": "node scripts/verify-sidecar-binaries.js",
-    "prebuild:win:x64": "node scripts/verify-sidecar-binaries.js",
-    "prebuild:win:arm64": "node scripts/verify-sidecar-binaries.js",
-    "prebuild:win:all": "node scripts/verify-sidecar-binaries.js",
-    "prebuild:mac": "node scripts/verify-sidecar-binaries.js",
-    "prebuild:linux": "node scripts/verify-sidecar-binaries.js",
-    "prebuild:all": "node scripts/verify-sidecar-binaries.js",
+    "prebuild": "node scripts/verify-sidecar-binaries.js && node scripts/verify-wg-relay-sidecars.js --target win32-x64,win32-arm64",
+    "prebuild:win:x64": "node scripts/verify-sidecar-binaries.js && node scripts/verify-wg-relay-sidecars.js --target win32-x64",
+    "prebuild:win:arm64": "node scripts/verify-sidecar-binaries.js && node scripts/verify-wg-relay-sidecars.js --target win32-arm64",
+    "prebuild:win:all": "node scripts/verify-sidecar-binaries.js && node scripts/verify-wg-relay-sidecars.js --target win32-x64,win32-arm64",
+    "prebuild:mac": "node scripts/verify-sidecar-binaries.js && node scripts/verify-wg-relay-sidecars.js --target darwin-x64,darwin-arm64",
+    "prebuild:linux": "node scripts/verify-sidecar-binaries.js && node scripts/verify-wg-relay-sidecars.js --target linux-x64",
+    "prebuild:all": "node scripts/verify-sidecar-binaries.js && node scripts/verify-wg-relay-sidecars.js --target win32-x64,win32-arm64,darwin-x64,darwin-arm64,linux-x64,linux-arm64",
     "test": "node test/run-tests.js",
     "create-theme": "node scripts/create-theme.js",
     "export-agent-icons": "node scripts/export-agent-icons.js",
@@ -65,6 +68,7 @@
   "build": {
     "appId": "com.clawd.on-mobile",
     "productName": "Clawd on Mobile",
+    "beforePack": "scripts/verify-wg-relay-sidecars.js",
     "protocols": [
       {
         "name": "Clawd Import Protocol",
@@ -76,6 +80,15 @@
     "mac": {
       "icon": "assets/icon.png",
       "artifactName": "Clawd-on-Mobile-${version}-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "wg-relay-sidecars/darwin-${arch}",
+          "to": "sidecars/wg-relay-tunnel/darwin-${arch}",
+          "filter": [
+            "clawd-wg-tunnel"
+          ]
+        }
+      ],
       "target": [
         {
           "target": "dmg",
@@ -94,6 +107,15 @@
       "icon": "assets/icon.ico",
       "signAndEditExecutable": false,
       "artifactName": "Clawd-on-Mobile-Setup-${version}-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "wg-relay-sidecars/win32-${arch}",
+          "to": "sidecars/wg-relay-tunnel/win32-${arch}",
+          "filter": [
+            "clawd-wg-tunnel.exe"
+          ]
+        }
+      ],
       "target": [
         {
           "target": "nsis",
@@ -109,6 +131,15 @@
       "icon": "assets/icons",
       "category": "Utility",
       "artifactName": "Clawd-on-Mobile-${version}-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "wg-relay-sidecars/linux-${arch}",
+          "to": "sidecars/wg-relay-tunnel/linux-${arch}",
+          "filter": [
+            "clawd-wg-tunnel"
+          ]
+        }
+      ],
       "target": [
         {
           "target": "AppImage",

@@ -634,3 +634,11 @@ POST /api/manage/phone/rotate
 - TDD 证据：配置与控制器测试分别先因目标类型不存在而 RED；实现后 `./gradlew testDebugUnitTest --tests '*WireGuard*' --rerun-tasks` 为 10/10 通过、0 failure/error。
 - Manifest 与主流程复验：`:app:processDebugMainManifest --rerun-tasks` 通过；合并 Manifest 中唯一官方 `GoBackend$VpnService` 为 `exported=false` 且受 `android.permission.BIND_VPN_SERVICE` 保护。主流程使用已有 JDK 17 复跑 `./gradlew --no-daemon testDebugUnitTest --tests '*WireGuard*' :app:processDebugMainManifest`，退出码 0、BUILD SUCCESSFUL。
 - 未访问 VPS、未读取或使用真实凭据；真机 VPN 授权、握手及仅本 App 路由的运行时验收统一留到 Task 12。
+
+### Task 11：sidecar 打包、CI 与 VPS smoke（2026-07-14）
+
+- 打包：新增六个固定桌面目标的 Go sidecar 构建与校验脚本；electron-builder 只复制当前平台/架构产物，并在打包前验证文件存在、非空及 Unix 可执行位。保留复数构建命令并补齐计划约定的 `build:wg-relay-sidecar` 单数兼容命令。
+- CI：桌面 workflow 对 Windows/macOS/Linux 六目标构建并校验，实际打包 job 在 electron-builder 前再次生成并验证当前目标；Android workflow 强制运行单测、lint 与 debug assembly，不再允许跳过单测。原有 tag release、产物与 draft release 行为保持不变。
+- 运维验收：新增 `scripts/smoke-wg-relay-vps.sh`，通过环境变量接收测试 VPS 地址/用户/端口、TTY 或 CI secret 接收密码，不接受地址参数，不使用 `sshpass`、`set -x` 或关闭主机校验。脚本覆盖两次幂等部署、systemd enable/active、Relay 私网监听、公网 Relay TCP 拒绝、sidecar `/health`、手机轮换及旧 key/token 拒绝；临时 readback 与 askpass 文件均为 `0700/0600` 范围并在退出时删除。
+- TDD 与主流程验证：初始 16 项中 15 项按缺失实现 RED；完成后 `node --test test/verify-wg-relay-sidecars.test.js test/wg-relay-packaging.test.js` 为 16/16 通过。单数命令契约另先以 `undefined` 断言 RED，再补兼容别名并回归 16/16。`bash -n`、两个 JS `node --check`、两份 workflow YAML 解析、smoke 可执行位与 `git diff --check` 均通过。
+- 实际产物：在当前 macOS arm64 主机执行 sidecar build 与 verify，生成的 `darwin-arm64/clawd-wg-tunnel` 非空且可执行，校验 1/1 通过。真实 VPS 执行保留到 Task 12，本文档与仓库未记录任何真实地址、密码、配置、私钥或 Token。

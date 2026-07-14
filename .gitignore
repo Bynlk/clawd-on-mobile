@@ -110,6 +110,12 @@ scripts/*
 !scripts/verify-sidecar-binaries.js
 !scripts/fetch-sidecar-binaries.js
 !scripts/fetch-wg-binaries.js
+!scripts/build-wg-relay-sidecar.js
+!scripts/verify-wg-relay-sidecars.js
+!scripts/smoke-wg-relay-vps.sh
+
+# WireGuard Relay sidecar build artifacts
+wg-relay-sidecars/
 
 # oh-my-cursor state
 .omc/

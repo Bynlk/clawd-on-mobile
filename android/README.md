@@ -13,6 +13,18 @@
 
 ---
 
+## 🌐 WireGuard 一键远程连接
+
+不在同一局域网时，可以让桌面端自动把一台 VPS 配成 WireGuard 私有中继。电脑和 Android 已内置隧道能力，使用者无需另装 WireGuard、Docker、Node.js、SSH 客户端或其他外部软件。
+
+首次部署在桌面端 **设置 → 远程连接** 填写四项：**VPS 地址**（公网 IP 或域名）、**SSH 用户名**、**SSH 端口**、**SSH 密码**。SSH 密码只在这一次部署中使用且不会保存。部署完成后，桌面端会显示配对二维码；在 Android 端打开扫码页扫码，即可导入手机 WireGuard 配置和 Relay 凭据。后续日常使用只需一键连接，无需再次输入 SSH 密码；只有修复或重新部署服务器时才会再次询问。
+
+云厂商安全组需放行入站 **UDP 51820**（自定义端口时放行对应 UDP 端口），不要公开 TCP 7891；Relay 只在 WireGuard 私网内监听。SSH 管理端口建议只对白名单 IP 开放。支持 Windows x64 / ARM64、macOS x64 / ARM64、Linux x64 / ARM64 桌面端；VPS 建议至少 **1 核（1C）/ 2 GB（2G）** 内存，并支持 systemd 与内核 WireGuard。
+
+手机遗失或需要重新配对时，在桌面端点击“轮换手机”。新二维码会同时替换手机 WireGuard 密钥与 Relay token，旧密钥和旧 token 会立即被拒绝。
+
+---
+
 ## 🚀 项目简介
 
 **Clawd Mobile** 是一款基于 **Kotlin 2.1 + Coroutines + WebSocket + WebView SVG + Jetpack Compose** 的原生 Android 客户端。它不是桌面端的"缩小版"，而是桌面端在移动端的**忠实数字分身**——一只住在你手机屏幕上的小螃蟹/三花猫/白云，实时感知 PC 端 AI Agent 的每一个呼吸。

@@ -14,10 +14,6 @@ on:
       - ".github/workflows/android.yml"
   workflow_dispatch:
     inputs:
-      skip_tests:
-        description: 'Skip unit tests'
-        type: boolean
-        default: false
       debug_only:
         description: 'Build debug APK only (skip release)'
         type: boolean
@@ -79,7 +75,6 @@ jobs:
         run: echo "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
 
       - name: Run Unit Tests
-        if: ${{ !inputs.skip_tests }}
         run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Build Debug APK

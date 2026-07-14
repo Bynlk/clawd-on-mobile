@@ -9,16 +9,47 @@ on:
   workflow_dispatch:
 
 jobs:
+  test-wg-relay-sidecars:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - win32-x64
+          - win32-arm64
+          - darwin-x64
+          - darwin-arm64
+          - linux-x64
+          - linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecars/wg-relay-tunnel/go.mod
+          cache-dependency-path: sidecars/wg-relay-tunnel/go.sum
+      - run: node scripts/build-wg-relay-sidecar.js --target ${{ matrix.target }}
+      - run: node scripts/verify-wg-relay-sidecars.js --target ${{ matrix.target }}
+
   build-windows:
+    needs: test-wg-relay-sidecars
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecars/wg-relay-tunnel/go.mod
+          cache-dependency-path: sidecars/wg-relay-tunnel/go.sum
       - run: npm install
       - run: npm run rebuild:native
       - run: npm test
+      - run: node scripts/build-wg-relay-sidecar.js --target win32-x64,win32-arm64
+      - run: node scripts/verify-wg-relay-sidecars.js --target win32-x64,win32-arm64
       - run: npm run fetch:sidecars -- --target windows-x64,windows-arm64
       - run: node scripts/verify-sidecar-binaries.js prebuild:win:all
       - run: npx electron-builder --win --publish never
@@ -30,14 +61,22 @@ jobs:
             dist/latest.yml
 
   build-mac:
+    needs: test-wg-relay-sidecars
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecars/wg-relay-tunnel/go.mod
+          cache-dependency-path: sidecars/wg-relay-tunnel/go.sum
       - run: npm install
       - run: npm run rebuild:native
+      - run: npm test
+      - run: node scripts/build-wg-relay-sidecar.js --target darwin-x64,darwin-arm64
+      - run: node scripts/verify-wg-relay-sidecars.js --target darwin-x64,darwin-arm64
       - run: npm run fetch:sidecars -- --target darwin-x64,darwin-arm64
       - run: node scripts/verify-sidecar-binaries.js prebuild:mac
       - run: npx electron-builder --mac --publish never
@@ -49,14 +88,22 @@ jobs:
             dist/latest-mac.yml
 
   build-linux:
+    needs: test-wg-relay-sidecars
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecars/wg-relay-tunnel/go.mod
+          cache-dependency-path: sidecars/wg-relay-tunnel/go.sum
       - run: npm install
       - run: npm run rebuild:native
+      - run: npm test
+      - run: node scripts/build-wg-relay-sidecar.js --target linux-x64
+      - run: node scripts/verify-wg-relay-sidecars.js --target linux-x64
       - run: npm run fetch:sidecars -- --target linux-x64
       - run: node scripts/verify-sidecar-binaries.js prebuild:linux
       - run: npx electron-builder --linux --publish never

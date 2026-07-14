@@ -99,6 +99,18 @@ Thinking when you prompt, typing when tools run, grooving or juggling for subage
 
 See [Android Agent Console](docs/project/android-agent-console.md) for usage, boundaries, protocol, and failure behavior.
 
+### WireGuard 一键远程连接（VPS）
+
+Clawd 可以把 VPS 配成仅经 WireGuard 到达的私有 Relay。电脑端和 Android 端都内置所需隧道能力，日常使用无需另装 WireGuard、Docker、Node.js、SSH 客户端或其他外部软件。
+
+首次部署在桌面端 **Settings → Remote Connection** 只需填写四个字段：**VPS 地址**（公网 IP 或域名）、**SSH 用户名**、**SSH 端口**、**SSH 密码**。密码只用于当次 SSH 部署，不会保存；确认首次出现的 SSH 主机指纹后，Clawd 会自动安装依赖、生成密钥、配置 systemd 与防火墙。部署成功后显示配对二维码，在 Android 端打开扫码页完成配对。后续日常连接只需一键点击“连接”，不再输入 SSH 密码；修复或重新部署时才需要再次提供。
+
+云厂商安全组必须放行入站 **UDP 51820**（或你选择的 WireGuard UDP 端口）。不要把 Relay 的 TCP 7891 暴露到公网；它只监听 WireGuard 私网。SSH 端口仍用于服务器管理，建议仅向你的管理 IP 放行。
+
+- WireGuard Relay sidecar 支持：Windows x64 / ARM64、macOS x64 / ARM64、Linux x64 / ARM64。
+- VPS 建议至少 **1 核（1C）/ 2 GB（2G）** 内存、支持 systemd 与内核 WireGuard，安装器支持 apt、dnf 或 yum。
+- 轮换手机配对会同时更换手机 WireGuard 密钥和 Relay token；旧二维码、旧密钥与旧 token 随即失效。
+
 ### System
 - **Click-through** — transparent areas pass clicks to windows below; only Clawd's body is interactive
 - **Position memory** — Clawd remembers where you left it across restarts (including mini mode)
