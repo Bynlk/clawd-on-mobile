@@ -47,9 +47,11 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 }
 
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/clawd-wg-relay-smoke.XXXXXX")"
+CONTROL_ROOT="$(mktemp -d /tmp/cwgr.XXXXXX)"
+chmod 700 "${CONTROL_ROOT}"
 LOCAL_BUNDLE="${TEMP_ROOT}/bundle"
 REMOTE_ROOT="/tmp/clawd-wg-relay-smoke"
-CONTROL_PATH="${TEMP_ROOT}/ssh-control"
+CONTROL_PATH="${CONTROL_ROOT}/s"
 ASKPASS_PATH="${TEMP_ROOT}/askpass.sh"
 FIRST_STDOUT="${TEMP_ROOT}/deploy-1.stdout"
 FIRST_STDERR="${TEMP_ROOT}/deploy-1.stderr"
@@ -69,6 +71,7 @@ cleanup() {
   VPS_PASSWORD=""
   unset CLAWD_SMOKE_ASKPASS_SECRET CLAWD_TEST_VPS_PASSWORD
   rm -rf "${TEMP_ROOT}"
+  rm -rf "${CONTROL_ROOT}"
   if [ "${status}" -ne 0 ]; then
     printf '[FAIL] %s (diagnostics suppressed; secrets redacted)\n' "${PHASE}" >&2
   fi

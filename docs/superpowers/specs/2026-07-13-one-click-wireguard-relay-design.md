@@ -643,3 +643,4 @@ POST /api/manage/phone/rotate
 - TDD 与主流程验证：初始 16 项中 15 项按缺失实现 RED；完成后 `node --test test/verify-wg-relay-sidecars.test.js test/wg-relay-packaging.test.js` 为 16/16 通过。单数命令契约另先以 `undefined` 断言 RED，再补兼容别名并回归 16/16。`bash -n`、两个 JS `node --check`、两份 workflow YAML 解析、smoke 可执行位与 `git diff --check` 均通过。
 - 全量邻接修复：首次 `npm test` 暴露旧 sidecar 合同测试仍要求 prebuild 命令只能等于单一 verifier；该 RED 与新增双 sidecar 打包门禁不一致。测试更新为逐目标要求“原 sidecar verifier → WireGuard Relay verifier”的精确顺序后，`verify-sidecar-binaries`、WG verifier 与 packaging 三文件 22/22 通过。
 - 实际产物：在当前 macOS arm64 主机执行 sidecar build 与 verify，生成的 `darwin-arm64/clawd-wg-tunnel` 非空且可执行，校验 1/1 通过。真实 VPS 执行保留到 Task 12，本文档与仓库未记录任何真实地址、密码、配置、私钥或 Token。
+- 真实 smoke 首轮 RED：VPS 尚未部署前，macOS 长 `TMPDIR` 使 SSH ControlMaster socket 超过 Unix path 上限，流程在 SSH connection 阶段以 255 退出且脱敏。新增源合同测试先 RED；控制 socket 改为独立的 root-local `/tmp/cwgr.XXXXXX/s` 短路径、目录 `0700` 并纳入 trap 清理后，聚焦测试与 `bash -n` 均 GREEN。

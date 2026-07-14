@@ -111,6 +111,9 @@ test("VPS smoke script uses explicit test address variables and never accepts ad
   assert.match(script, /read -r -s/);
   assert.match(script, /CLAWD_TEST_VPS_PASSWORD/);
   assert.doesNotMatch(script, /ssh[^\n]*(?:PASSWORD|password)/);
+  assert.match(script, /CONTROL_ROOT="\$\(mktemp -d \/tmp\/cwgr\.XXXXXX\)"/);
+  assert.match(script, /CONTROL_PATH="\$\{CONTROL_ROOT\}\/s"/);
+  assert.match(script, /rm -rf "\$\{CONTROL_ROOT\}"/);
 });
 
 test("VPS smoke script exercises idempotence, service gates, private Relay, sidecar health, and rotation", () => {
