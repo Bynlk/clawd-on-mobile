@@ -42,7 +42,7 @@
 - Modify: `src/settings.html`
 - Modify: `docs/superpowers/plans/2026-07-14-remote-connection-tab-redesign.md`
 
-- [ ] **Step 1: Write the failing six-mode state matrix tests**
+- [x] **Step 1: Write the failing six-mode state matrix tests**
 
 Create `test/settings-wg-relay-view-model.test.js` with table-driven assertions for Setup, Deploying, Ready, Connected, Repair required, and Deployment failure. The test API is fixed as follows:
 
@@ -95,13 +95,13 @@ assert.deepEqual(connected.secondaryActions.map((action) => action.kind), [
 
 Add separate assertions that Ready uses `connect`, Deploying uses a disabled `deploying` primary representation, Repair required uses only `repair` as the primary action, Deployment failure uses `retry-deploy`, and opening the repair form suppresses the daily primary action so the repair submit remains the sole accent action.
 
-- [ ] **Step 2: Run the state matrix test and verify RED**
+- [x] **Step 2: Run the state matrix test and verify RED**
 
 Run: `node --test test/settings-wg-relay-view-model.test.js`
 
 Expected: FAIL with `MODULE_NOT_FOUND` for `src/settings-wg-relay-view-model.js`.
 
-- [ ] **Step 3: Write failing error-domain and secret-availability tests**
+- [x] **Step 3: Write failing error-domain and secret-availability tests**
 
 Add one table that fixes the public classification contract:
 
@@ -129,7 +129,7 @@ for (const [code, domain, safeCode, requiresRepair] of cases) {
 
 Also prove that every repair-required model omits `show-pairing-qr` and `rotate-phone`, exposes a single error descriptor, retains `delete-local` under advanced management, and never leaks the raw backend code as user-facing text.
 
-- [ ] **Step 4: Write failing pure progress tests**
+- [x] **Step 4: Write failing pure progress tests**
 
 Prove the mapper is immutable, maps the existing raw IPC stages, exposes one current sentence plus overall completion, and removes pending detail rows after failure:
 
@@ -160,7 +160,7 @@ assert.equal(model.progress.detailStages.some((stage) => stage.state === "pendin
 
 Cover `host-key`, `validate → save current`, PC connection status progression, and successful completion across the existing ten public stage keys without changing IPC payloads.
 
-- [ ] **Step 5: Implement the minimal browser/CommonJS view-model**
+- [x] **Step 5: Implement the minimal browser/CommonJS view-model**
 
 Implement the module with this stable export shape and no DOM, localization, IPC, timers, or secret values:
 
@@ -415,7 +415,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = exportsObj
 if (typeof globalThis !== "undefined") globalThis.ClawdSettingsWgRelayViewModel = exportsObject;
 ```
 
-- [ ] **Step 6: Load the view-model before the tab and run GREEN tests**
+- [x] **Step 6: Load the view-model before the tab and run GREEN tests**
 
 Insert `<script src="settings-wg-relay-view-model.js"></script>` immediately before the tab script in `src/settings.html`, then run:
 
@@ -423,7 +423,7 @@ Insert `<script src="settings-wg-relay-view-model.js"></script>` immediately bef
 
 Expected: all selected tests pass, and `settings.html` still loads the renderer after both modules.
 
-- [ ] **Step 7: Review scope, commit, and immediately push**
+- [x] **Step 7: Review scope, commit, and immediately push**
 
 Run:
 
