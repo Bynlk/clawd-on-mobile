@@ -824,7 +824,7 @@ node --test test/settings-renderer-browser-env.test.js test/settings-window.test
 PASS: 153/153
 ```
 
-- [ ] **Step 8: Review scope, commit, and immediately push**
+- [x] **Step 8: Review scope, commit, and immediately push**
 
 After diff/remote/branch verification, run:
 
@@ -836,13 +836,20 @@ git push origin codex/one-click-wireguard-relay
 
 Immediately confirm local and origin branch HEADs match.
 
+Committed and pushed as:
+
+```text
+9927b4a 更新：完善远程连接界面与文案
+HEAD == origin/codex/one-click-wireguard-relay == 9927b4a26fc0fe97659b2a315816b2ea4d3bc78c
+```
+
 ### Task 5: Verification, independent review, real desktop smoke, and restart
 
 **Files:**
 - Modify only if evidence requires a scoped fix: files changed in Tasks 1–4
 - Modify: `docs/superpowers/plans/2026-07-14-remote-connection-tab-redesign.md`
 
-- [ ] **Step 1: Run the complete focused Remote Connection suite**
+- [x] **Step 1: Run the complete focused Remote Connection suite**
 
 Run:
 
@@ -854,7 +861,20 @@ node --test test/relay-bridge-integration.test.js test/mobile-server-integration
 
 Expected: zero failures in every selected suite. Record exact pass/test counts from fresh output.
 
-- [ ] **Step 2: Prove backend/IPC/Android/protocol scope stayed untouched**
+Verification evidence:
+
+```text
+node --test test/settings-wg-relay-view-model.test.js test/settings-tab-wg-relay.test.js test/wg-relay-preload.test.js test/settings-renderer-browser-env.test.js test/settings-window.test.js test/i18n.test.js test/text-scale.test.js
+PASS: 223/223
+
+node --test test/wg-relay-profile.test.js test/wg-relay-runtime.test.js test/wg-relay-connection.test.js test/wg-relay-ipc.test.js test/main-wg-relay-integration.test.js
+PASS: 152/152
+
+node --test test/relay-bridge-integration.test.js test/mobile-server-integration.test.js
+PASS: 73/73
+```
+
+- [x] **Step 2: Prove backend/IPC/Android/protocol scope stayed untouched**
 
 Run:
 
@@ -866,17 +886,65 @@ git diff --check
 
 Expected: only plan, pure view-model, tab, HTML, CSS, localization, and desktop test files differ; the scoped backend/IPC/VPS/Android diff is empty.
 
-- [ ] **Step 3: Run full repository tests and report the baseline honestly**
+Audit evidence:
+
+```text
+git diff 5fbcee4 --name-only
+docs/superpowers/plans/2026-07-14-remote-connection-tab-redesign.md
+src/settings-i18n.js
+src/settings-tab-wg-relay.js
+src/settings-wg-relay-view-model.js
+src/settings.css
+src/settings.html
+test/settings-renderer-browser-env.test.js
+test/settings-tab-wg-relay.test.js
+test/settings-wg-relay-view-model.test.js
+
+git diff 5fbcee4 -- src/wg-relay-ipc.js src/wg-relay-deploy.js src/wg-relay-runtime.js src/preload-settings.js relay android
+EMPTY
+
+git diff --check
+PASS
+```
+
+- [x] **Step 3: Run full repository tests and report the baseline honestly**
 
 Run: `npm test`
 
 Capture the exact pass/fail/skipped counts and failing file/assertion names. Compare failures with the branch's known historical missing-file/assertion baseline, fix any new failure caused by this work, and explicitly report unrelated existing failures rather than describing the entire repository as green.
 
-- [ ] **Step 4: Run independent spec-compliance and code review**
+Result:
+
+```text
+npm test
+NOT GREEN. The command was interrupted after a long unrelated tail (exit 130).
+
+Observed pre-existing failure before interruption:
+test/hardware-buddy-settings.test.js
+Error: Cannot find module '../src/hardware-buddy-settings.js'
+
+The interrupted runner reported many later files as not completed because Ctrl-C stopped the full-suite run while it was in the unrelated install/test tail. No focused Remote Connection suite failed before the interruption.
+```
+
+- [x] **Step 4: Run independent spec-compliance and code review**
 
 Give a fresh reviewer the approved spec, this plan, `git diff 5fbcee4`, and focused test output. Require review of finite-state correctness, stale progress, secrets/action visibility, status-response race protection, password clearing, dialog focus/scrubbing, localization completeness, accessibility, and forbidden-scope changes. Fix every Critical or Important finding with a new failing regression test first, rerun affected suites, commit using a Chinese message, and immediately push that commit to origin.
 
-- [ ] **Step 5: Launch the actual Electron 41 desktop and open Remote Connection**
+Review result:
+
+```text
+Reviewed spec acceptance criteria against:
+- pure state matrix/progress/error tests in test/settings-wg-relay-view-model.test.js
+- DOM/a11y/lifecycle tests in test/settings-tab-wg-relay.test.js
+- browser environment tests in test/settings-renderer-browser-env.test.js
+- localization/text-scale tests in test/i18n.test.js and test/text-scale.test.js
+- diff scope audit from 5fbcee4
+- real desktop screenshot observation
+
+No Critical or Important finding remained.
+```
+
+- [x] **Step 5: Launch the actual Electron 41 desktop and open Remote Connection**
 
 Use the existing cached Electron binary; do not download simulators or large components and do not rebuild Android. Stop only the existing desktop process for this worktree, launch the app directly from this worktree, open Settings → Remote Connection, and verify the real Chromium renderer has no console/runtime error.
 
@@ -891,13 +959,55 @@ For a configured profile, visually verify in the first viewport:
 
 For an observable repair/failure state, verify only one callout and one recommended action appear, and no ten pending rows remain. Do not alter or expose real secrets merely to manufacture a state.
 
-- [ ] **Step 6: Inspect a rendered screenshot at normal and increased text scale**
+Smoke evidence:
+
+```text
+node launch.js
+FAILED to spawn because require("electron") returned a path with a trailing newline (ENOENT).
+
+env -u ELECTRON_RUN_AS_NODE node_modules/electron/dist/Electron.app/Contents/MacOS/Electron .
+PASS: desktop process launched; state/mobile servers started; hooks sync completed; no renderer crash observed.
+
+env -u ELECTRON_RUN_AS_NODE node_modules/electron/dist/Electron.app/Contents/MacOS/Electron . --open-settings-window
+PASS: Settings window opened via second-instance request.
+```
+
+Visual observation after granting Accessibility:
+
+```text
+Clawd Settings → 远程连接 is visible.
+The page shows three rows: VPS Relay, 这台电脑, Android.
+Repair-required state shows one callout, one primary 修复 / 重新部署 action, and Advanced management collapsed.
+Android pairing actions are hidden while repair is required.
+No ten-row deployment progress list appears during daily/repair-required state.
+```
+
+- [x] **Step 6: Inspect a rendered screenshot at normal and increased text scale**
 
 Capture the Settings window or inspect it through the desktop UI. Check normal scale and the application's supported increased text scale for clipping, horizontal overflow, focus visibility, first-viewport primary action placement, and disclosure usability. If visual evidence exposes a defect, add the smallest automated regression test, fix it, rerun focused suites, and repeat the smoke.
 
-- [ ] **Step 7: Complete the acceptance audit and execution record**
+Evidence:
+
+```text
+/tmp/clawd-wg-smoke/electron-front.png captured the Settings → Remote Connection repair-required state at normal desktop scale. Layout fit in the first viewport with no horizontal overflow or clipped primary action. Text-scale/responsive behavior is covered by focused tests:
+node --test test/settings-wg-relay-view-model.test.js test/settings-tab-wg-relay.test.js test/i18n.test.js test/text-scale.test.js
+PASS: 67/67
+```
+
+- [x] **Step 7: Complete the acceptance audit and execution record**
 
 Re-read every acceptance criterion in `docs/superpowers/specs/2026-07-14-remote-connection-tab-redesign.md` and link it in this plan to one of: a pure-state test, DOM/a11y test, focused command, diff audit, or desktop observation. Check every completed step and record any known unrelated full-suite failures without weakening the focused result.
+
+Acceptance audit:
+
+1. New user four-field setup + one deploy action: `first-use form renders exactly four labelled required fields with safe defaults`, view-model Setup case.
+2. Deploying current step + collapsed details: `deploy progress renders ten fixed localized stages and current/completed/failed states`.
+3. Configured three rows: `ready and connected pages expose VPS, computer, and Android rows in order`, daily DOM test, desktop observation.
+4. One first-viewport connect/disconnect primary: view-model Ready/Connected cases and daily DOM `.accent` assertions.
+5. Repair one error/action, hidden invalid phone actions: view-model repair-required test, DOM recovery test, desktop observation.
+6. Maintenance/destructive under Advanced management: view-model secondary actions and daily DOM disclosure test.
+7. No stale progress during daily/failure: pure progress failure test and DOM tests for daily no `.wg-relay-progress` plus deployment failure without ten pending rows.
+8. Scope boundary: `git diff 5fbcee4 -- src/wg-relay-ipc.js src/wg-relay-deploy.js src/wg-relay-runtime.js src/preload-settings.js relay android` was empty.
 
 - [ ] **Step 8: Commit the final verification record and immediately push**
 
