@@ -140,7 +140,8 @@ test("VPS smoke script exercises idempotence, service gates, private Relay, side
   assert.match(script, /systemctl is-active --quiet wg-quick@clawd/);
   assert.match(script, /systemctl is-enabled --quiet clawd-relay\.service/);
   assert.match(script, /systemctl is-active --quiet clawd-relay\.service/);
-  assert.match(script, /REMOTE_CHECK_COMMAND="\$\(cat <<'REMOTE_CHECKS'/);
+  assert.match(script, /IFS= read -r -d '' REMOTE_CHECK_COMMAND <<'REMOTE_CHECKS' \|\| true/);
+  assert.doesNotMatch(script, /REMOTE_CHECK_COMMAND="\$\(cat <<'REMOTE_CHECKS'/);
   assert.doesNotMatch(script, /run_privileged "bash -s"/);
   assert.match(script, /public Relay TCP exposure/i);
   assert.match(script, /build-wg-relay-sidecar\.js/);

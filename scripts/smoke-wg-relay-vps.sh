@@ -188,7 +188,7 @@ for deployment in 1 2; do
 done
 
 set_phase "systemd enable/active and private listener checks"
-REMOTE_CHECK_COMMAND="$(cat <<'REMOTE_CHECKS'
+IFS= read -r -d '' REMOTE_CHECK_COMMAND <<'REMOTE_CHECKS' || true
 set -euo pipefail
 systemctl is-enabled --quiet wg-quick@clawd
 systemctl is-active --quiet wg-quick@clawd
@@ -214,7 +214,6 @@ ss -H -lnt | awk -v expected="${bind_addr}:${relay_port}" -v suffix=":${relay_po
   END { exit !(found && !unexpected) }
 '
 REMOTE_CHECKS
-)"
 run_privileged "${REMOTE_CHECK_COMMAND}" >/dev/null
 
 set_phase "current sidecar build and verification"
