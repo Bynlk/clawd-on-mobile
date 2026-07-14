@@ -220,6 +220,13 @@
     <string name="scan_pairing_invalid">配对二维码无效，请在电脑端重新生成</string>
     <string name="scan_pairing_unsupported">此配对二维码版本暂不支持，请更新应用</string>
     <string name="scan_pairing_save_failed">无法安全保存配对信息，请重试</string>
+    <string name="scan_pairing_already_paired">此设备已完成配对</string>
+    <string name="scan_camera_unavailable">摄像头暂时不可用，请重试</string>
+    <string name="relay_pairing_confirm_title">确认中继配对</string>
+    <string name="relay_pairing_confirm_name">名称：%1$s</string>
+    <string name="relay_pairing_confirm_endpoint">Endpoint：%1$s</string>
+    <string name="relay_pairing_confirm_action">确认配对</string>
+    <string name="relay_pairing_cancel_action">取消</string>
     <string name="scan_retry">重新扫描</string>
 
     <!-- Language settings -->

@@ -36,6 +36,88 @@ import com.google.zxing.qrcode.QRCodeReader
 import com.clawd.mobile.util.SafeExecutor
 
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+
+internal class CameraResultGate {
+    private val disposed = AtomicBoolean(false)
+    private val claimed = AtomicBoolean(false)
+
+    val hasResult: Boolean get() = claimed.get()
+    val isDisposed: Boolean get() = disposed.get()
+
+    fun <T> queue(
+        value: T,
+        enqueue: (() -> Unit) -> Unit,
+        deliver: (T) -> Unit,
+    ): Boolean {
+        if (disposed.get() || !claimed.compareAndSet(false, true)) return false
+        if (disposed.get()) return false
+        enqueue {
+            if (!disposed.get()) deliver(value)
+        }
+        return true
+    }
+
+    fun dispose() {
+        disposed.set(true)
+    }
+}
+
+internal class CameraBindingLifecycle {
+    private val disposed = AtomicBoolean(false)
+    private val lock = Any()
+    private var clearAnalyzer: (() -> Unit)? = null
+    private var unbindBoundUseCases: (() -> Unit)? = null
+
+    val isDisposed: Boolean get() = disposed.get()
+
+    fun attachAnalyzer(clearAnalyzer: () -> Unit): Boolean {
+        val attached = synchronized(lock) {
+            if (disposed.get()) {
+                false
+            } else {
+                this.clearAnalyzer = clearAnalyzer
+                true
+            }
+        }
+        if (!attached) {
+            clearAnalyzer()
+        }
+        return attached
+    }
+
+    fun markBound(unbind: () -> Unit): Boolean {
+        val retained = synchronized(lock) {
+            if (disposed.get()) {
+                false
+            } else {
+                unbindBoundUseCases = unbind
+                true
+            }
+        }
+        if (!retained) unbind()
+        return retained
+    }
+
+    fun runIfActive(action: () -> Unit): Boolean = synchronized(lock) {
+        if (disposed.get()) false else {
+            action()
+            true
+        }
+    }
+
+    fun dispose() {
+        if (!disposed.compareAndSet(false, true)) return
+        val cleanup = synchronized(lock) {
+            val callbacks = clearAnalyzer to unbindBoundUseCases
+            clearAnalyzer = null
+            unbindBoundUseCases = null
+            callbacks
+        }
+        cleanup.first?.invoke()
+        cleanup.second?.invoke()
+    }
+}
 
 sealed interface ScanPayloadResult {
     data class Lan(val config: ConnectionConfig) : ScanPayloadResult
@@ -45,8 +127,29 @@ sealed interface ScanPayloadResult {
 
 enum class RelayPairingAcceptance { SAVED, DUPLICATE, STORAGE_FAILED }
 
+internal enum class RelayScanUiEffect { NONE, DUPLICATE, STORAGE_FAILED }
+
+internal fun relayScanUiEffect(acceptance: RelayPairingAcceptance): RelayScanUiEffect =
+    when (acceptance) {
+        RelayPairingAcceptance.SAVED -> RelayScanUiEffect.NONE
+        RelayPairingAcceptance.DUPLICATE -> RelayScanUiEffect.DUPLICATE
+        RelayPairingAcceptance.STORAGE_FAILED -> RelayScanUiEffect.STORAGE_FAILED
+    }
+
+internal inline fun <T> cameraProviderOrNull(load: () -> T): T? = try {
+    load()
+} catch (interrupted: InterruptedException) {
+    Thread.currentThread().interrupt()
+    null
+} catch (_: Exception) {
+    null
+}
+
 interface RelayPairingReceiver {
-    fun onRelayPairingScanned(config: RelayPairingConfig): RelayPairingAcceptance
+    fun onRelayPairingScanned(
+        config: RelayPairingConfig,
+        onResult: (RelayPairingAcceptance) -> Unit,
+    )
 }
 
 internal fun parseScannedPayload(raw: String): ScanPayloadResult? {
@@ -82,6 +185,8 @@ fun ScanScreen(
         hasCameraPermission = granted
     }
     var scanError by remember { mutableStateOf<RelayPairingErrorCode?>(null) }
+    var duplicatePairing by remember { mutableStateOf(false) }
+    var cameraError by remember { mutableStateOf(false) }
     var scannerKey by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
@@ -123,21 +228,30 @@ fun ScanScreen(
         } else {
             Box(modifier = Modifier.fillMaxSize().padding(padding).background(Color.Black)) {
                 key(scannerKey) {
-                    CameraPreview { result ->
-                        when (result) {
-                            is ScanPayloadResult.Lan -> onScanned(result.config)
-                            is ScanPayloadResult.Relay -> {
-                                val receiver = context as? RelayPairingReceiver
-                                when (receiver?.onRelayPairingScanned(result.config)) {
-                                    RelayPairingAcceptance.SAVED -> Unit
-                                    RelayPairingAcceptance.DUPLICATE -> onBack()
-                                    RelayPairingAcceptance.STORAGE_FAILED,
-                                    null -> scanError = RelayPairingErrorCode.STORAGE_FAILED
+                    CameraPreview(
+                        onResult = { result ->
+                            when (result) {
+                                is ScanPayloadResult.Lan -> onScanned(result.config)
+                                is ScanPayloadResult.Relay -> {
+                                    val receiver = context as? RelayPairingReceiver
+                                    if (receiver == null) {
+                                        scanError = RelayPairingErrorCode.STORAGE_FAILED
+                                    } else {
+                                        receiver.onRelayPairingScanned(result.config) { acceptance ->
+                                            when (relayScanUiEffect(acceptance)) {
+                                                RelayScanUiEffect.NONE -> Unit
+                                                RelayScanUiEffect.DUPLICATE -> duplicatePairing = true
+                                                RelayScanUiEffect.STORAGE_FAILED ->
+                                                    scanError = RelayPairingErrorCode.STORAGE_FAILED
+                                            }
+                                        }
+                                    }
                                 }
+                                is ScanPayloadResult.InvalidRelay -> scanError = result.code
                             }
-                            is ScanPayloadResult.InvalidRelay -> scanError = result.code
-                        }
-                    }
+                        },
+                        onCameraError = { cameraError = true },
+                    )
                 }
 
                 // Scan frame
@@ -155,7 +269,13 @@ fun ScanScreen(
                     modifier = Modifier.align(Alignment.Center).offset(y = 160.dp)
                 )
 
-                scanError?.let { code ->
+                val statusMessage = when {
+                    cameraError -> R.string.scan_camera_unavailable
+                    duplicatePairing -> R.string.scan_pairing_already_paired
+                    scanError != null -> pairingErrorMessage(requireNotNull(scanError))
+                    else -> null
+                }
+                statusMessage?.let { message ->
                     Card(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -165,10 +285,12 @@ fun ScanScreen(
                             modifier = Modifier.padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text(stringResource(pairingErrorMessage(code)))
+                            Text(stringResource(message))
                             Spacer(modifier = Modifier.height(8.dp))
                             TextButton(onClick = {
                                 scanError = null
+                                duplicatePairing = false
+                                cameraError = false
                                 scannerKey++
                             }) {
                                 Text(stringResource(R.string.scan_retry))
@@ -182,14 +304,22 @@ fun ScanScreen(
 }
 
 @Composable
-private fun CameraPreview(onResult: (ScanPayloadResult) -> Unit) {
+private fun CameraPreview(
+    onResult: (ScanPayloadResult) -> Unit,
+    onCameraError: () -> Unit,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
-    DisposableEffect(Unit) {
-        onDispose { cameraExecutor.shutdown() }
+    val resultGate = remember { CameraResultGate() }
+    val bindingLifecycle = remember { CameraBindingLifecycle() }
+    DisposableEffect(cameraExecutor, resultGate, bindingLifecycle) {
+        onDispose {
+            resultGate.dispose()
+            bindingLifecycle.dispose()
+            cameraExecutor.shutdown()
+        }
     }
-    var scanned by remember { mutableStateOf(false) }
 
     AndroidView(
         factory = { ctx ->
@@ -197,7 +327,12 @@ private fun CameraPreview(onResult: (ScanPayloadResult) -> Unit) {
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
 
             cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
+                val cameraProvider = cameraProviderOrNull {
+                    cameraProviderFuture.get()
+                } ?: run {
+                    onCameraError()
+                    return@addListener
+                }
                 val preview = Preview.Builder().build().also {
                     it.surfaceProvider = previewView.surfaceProvider
                 }
@@ -208,21 +343,32 @@ private fun CameraPreview(onResult: (ScanPayloadResult) -> Unit) {
                     .build()
                     .also { analysis ->
                         analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                            if (scanned) {
+                            if (resultGate.isDisposed || resultGate.hasResult) {
                                 imageProxy.close()
                                 return@setAnalyzer
                             }
                             processImage(imageProxy) { result ->
-                                if (result != null && !scanned) {
-                                    scanned = true
-                                    ContextCompat.getMainExecutor(ctx).execute { onResult(result) }
+                                if (result != null) {
+                                    resultGate.queue(
+                                        value = result,
+                                        enqueue = { callback ->
+                                            ContextCompat.getMainExecutor(ctx).execute { callback() }
+                                        },
+                                        deliver = onResult,
+                                    )
                                 }
                             }
                         }
                     }
 
-                cameraProvider.unbindAll()
-                    SafeExecutor.tryOrReport("Scan") {
+                if (!bindingLifecycle.attachAnalyzer(imageAnalysis::clearAnalyzer)) {
+                    return@addListener
+                }
+                bindingLifecycle.runIfActive {
+                    val bound = SafeExecutor.tryOrReport(
+                        tag = "Scan",
+                        onError = { onCameraError() },
+                    ) {
                         cameraProvider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
@@ -230,6 +376,12 @@ private fun CameraPreview(onResult: (ScanPayloadResult) -> Unit) {
                             imageAnalysis
                         )
                     }
+                    if (bound != null) {
+                        bindingLifecycle.markBound {
+                            cameraProvider.unbind(preview, imageAnalysis)
+                        }
+                    }
+                }
             }, ContextCompat.getMainExecutor(ctx))
 
             previewView

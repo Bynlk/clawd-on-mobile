@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
@@ -34,6 +36,10 @@ class PrefsStore private constructor(context: Context) {
         private const val KEY_CONSOLE_SYNC_ENABLED = "console_sync_enabled"
         private const val KEY_CONSOLE_DEVICE_ID = "console_device_id"
         private const val KEY_RELAY_PAIRING = "relay_pairing"
+        private const val KEY_RELAY_PAIRING_TRANSACTION = "relay_pairing_transaction"
+        private const val RELAY_PAIRING_TRANSACTION_VERSION = 1
+        private const val TRANSACTION_PREPARED = "prepared"
+        private const val TRANSACTION_COMMITTED = "committed"
 
         @Volatile
         private var instance: PrefsStore? = null
@@ -63,6 +69,26 @@ class PrefsStore private constructor(context: Context) {
     )
 
     private val json = Json { ignoreUnknownKeys = true }
+    private val pairingTransactionJson = Json {
+        ignoreUnknownKeys = false
+        explicitNulls = false
+    }
+
+    @Serializable
+    private data class RelayPairingTransaction(
+        val storageVersion: Int = RELAY_PAIRING_TRANSACTION_VERSION,
+        val phase: String,
+        val previousPairing: String? = null,
+        val previousRelayUrl: String? = null,
+        val previousRelayToken: String? = null,
+        val candidatePairing: String,
+    )
+
+    private data class RawRelayPairingState(
+        val pairing: String?,
+        val relayUrl: String?,
+        val relayToken: String?,
+    )
 
     init {
         migrateIfNeeded(context)
@@ -210,9 +236,9 @@ class PrefsStore private constructor(context: Context) {
     fun setRelayToken(v: String) { prefs.edit().putString("relay_token", v).apply() }
 
     /**
-     * Atomically replaces the complete encrypted relay pairing blob and removes obsolete
-     * manual relay credentials. A failed commit or failed readback restores the previous
-     * pairing and manual values.
+     * Replaces the complete encrypted relay pairing under a durable two-phase journal.
+     * A prepared journal always recovers the previous state; a committed journal exposes
+     * the candidate only when the complete candidate state is present.
      */
     @Synchronized
     fun saveRelayPairing(config: RelayPairingConfig): Boolean {
@@ -221,47 +247,65 @@ class PrefsStore private constructor(context: Context) {
         } catch (_: Exception) {
             return false
         }
-        val previousPairing: String?
-        val previousRelayUrl: String?
-        val previousRelayToken: String?
-        try {
-            previousPairing = prefs.getString(KEY_RELAY_PAIRING, null)
-            previousRelayUrl = prefs.getString("relay_url", null)
-            previousRelayToken = prefs.getString("relay_token", null)
-        } catch (_: Exception) {
+        if (!recoverRelayPairingTransaction()) return false
+        val previous = readRawRelayPairingState() ?: run {
             Log.w(TAG, "Relay pairing snapshot read failed")
             return false
         }
-
-        val committed = try {
-            prefs.edit()
-                .putString(KEY_RELAY_PAIRING, encoded)
-                .commit()
-        } catch (_: Exception) {
-            false
-        }
-        if (!committed || loadRelayPairing() != config) {
-            restoreRelayPairing(previousPairing, previousRelayUrl, previousRelayToken)
+        val prepared = RelayPairingTransaction(
+            phase = TRANSACTION_PREPARED,
+            previousPairing = previous.pairing,
+            previousRelayUrl = previous.relayUrl,
+            previousRelayToken = previous.relayToken,
+            candidatePairing = encoded,
+        )
+        val preparedEncoded = pairingTransactionJson.encodeToString(prepared)
+        if (!commitEditor {
+                putString(KEY_RELAY_PAIRING_TRANSACTION, preparedEncoded)
+            }) {
+            restorePreviousRelayPairing(prepared)
             return false
         }
-        if (previousRelayUrl != null || previousRelayToken != null) {
-            val manualCleared = try {
-                prefs.edit()
-                    .remove("relay_url")
-                    .remove("relay_token")
-                    .commit()
-            } catch (_: Exception) {
-                false
-            }
-            if (!manualCleared) {
-                restoreRelayPairing(previousPairing, previousRelayUrl, previousRelayToken)
-                return false
-            }
+
+        val candidateCommitted = commitEditor {
+            putString(KEY_RELAY_PAIRING, encoded)
+        }
+        if (!candidateCommitted || !currentStateMatchesCandidatePairingOnly(prepared)) {
+            restorePreviousRelayPairing(prepared)
+            return false
+        }
+
+        val manualCleanupCommitted = commitEditor {
+            remove("relay_url")
+            remove("relay_token")
+        }
+        if (!manualCleanupCommitted || !currentStateMatchesCandidate(prepared)) {
+            restorePreviousRelayPairing(prepared)
+            return false
+        }
+
+        val committed = prepared.copy(phase = TRANSACTION_COMMITTED)
+        val committedEncoded = pairingTransactionJson.encodeToString(committed)
+        val commitMarkerStored = commitEditor {
+            putString(KEY_RELAY_PAIRING_TRANSACTION, committedEncoded)
+        }
+        if (!commitMarkerStored ||
+            readRelayPairingTransaction() != committed ||
+            !currentStateMatchesCandidate(committed)
+        ) {
+            restorePreviousRelayPairing(prepared)
+            return false
+        }
+
+        if (!removeRelayPairingTransaction()) {
+            Log.w(TAG, "Relay pairing transaction cleanup deferred")
         }
         return true
     }
 
+    @Synchronized
     fun loadRelayPairing(): RelayPairingConfig? {
+        if (!recoverRelayPairingTransaction()) return null
         return try {
             val blob = prefs.getString(KEY_RELAY_PAIRING, null) ?: return null
             RelayPairingConfig.decodeStorage(blob)
@@ -274,30 +318,137 @@ class PrefsStore private constructor(context: Context) {
     fun hasRelayPairing(): Boolean = loadRelayPairing() != null
 
     /** Distinguishes no pairing from an encrypted blob that exists but cannot be decoded. */
+    @Synchronized
     internal fun hasRelayPairingBlob(): Boolean = try {
-        prefs.contains(KEY_RELAY_PAIRING)
+        prefs.contains(KEY_RELAY_PAIRING) || prefs.contains(KEY_RELAY_PAIRING_TRANSACTION)
     } catch (_: Exception) {
         true
     }
 
     @Synchronized
-    fun clearRelayPairing(): Boolean = try {
-        prefs.edit().remove(KEY_RELAY_PAIRING).commit()
-    } catch (_: Exception) {
-        false
+    fun clearRelayPairing(): Boolean {
+        if (!recoverRelayPairingTransaction()) return false
+        return commitEditor {
+            remove(KEY_RELAY_PAIRING)
+            remove(KEY_RELAY_PAIRING_TRANSACTION)
+        }
     }
 
-    private fun restoreRelayPairing(pairing: String?, relayUrl: String?, relayToken: String?) {
-        try {
-            val editor = prefs.edit()
-            if (pairing == null) editor.remove(KEY_RELAY_PAIRING)
-            else editor.putString(KEY_RELAY_PAIRING, pairing)
-            if (relayUrl == null) editor.remove("relay_url") else editor.putString("relay_url", relayUrl)
-            if (relayToken == null) editor.remove("relay_token") else editor.putString("relay_token", relayToken)
-            editor.commit()
+    private fun recoverRelayPairingTransaction(): Boolean {
+        val journalExists = try {
+            prefs.contains(KEY_RELAY_PAIRING_TRANSACTION)
         } catch (_: Exception) {
-            Log.w(TAG, "Relay pairing rollback failed")
+            return false
         }
+        if (!journalExists) return true
+        val transaction = readRelayPairingTransaction() ?: return false
+        if (!isValidRelayPairingTransaction(transaction)) return false
+
+        return when (transaction.phase) {
+            TRANSACTION_PREPARED -> restorePreviousRelayPairing(transaction)
+            TRANSACTION_COMMITTED -> when {
+                currentStateMatchesCandidate(transaction) -> {
+                    if (!removeRelayPairingTransaction()) {
+                        Log.w(TAG, "Committed relay pairing cleanup deferred")
+                    }
+                    true
+                }
+                currentStateMatchesPrevious(transaction) -> {
+                    if (!removeRelayPairingTransaction()) {
+                        Log.w(TAG, "Rolled back relay pairing cleanup deferred")
+                    }
+                    true
+                }
+                else -> false
+            }
+            else -> false
+        }
+    }
+
+    private fun isValidRelayPairingTransaction(transaction: RelayPairingTransaction): Boolean {
+        if (transaction.storageVersion != RELAY_PAIRING_TRANSACTION_VERSION) return false
+        if (transaction.phase != TRANSACTION_PREPARED && transaction.phase != TRANSACTION_COMMITTED) {
+            return false
+        }
+        return try {
+            RelayPairingConfig.decodeStorage(transaction.candidatePairing)
+            transaction.previousPairing?.let(RelayPairingConfig::decodeStorage)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun readRelayPairingTransaction(): RelayPairingTransaction? = try {
+        val encoded = prefs.getString(KEY_RELAY_PAIRING_TRANSACTION, null) ?: return null
+        pairingTransactionJson.decodeFromString(encoded)
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun readRawRelayPairingState(): RawRelayPairingState? = try {
+        RawRelayPairingState(
+            pairing = prefs.getString(KEY_RELAY_PAIRING, null),
+            relayUrl = prefs.getString("relay_url", null),
+            relayToken = prefs.getString("relay_token", null),
+        )
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun currentStateMatchesCandidate(transaction: RelayPairingTransaction): Boolean =
+        readRawRelayPairingState() == RawRelayPairingState(
+            pairing = transaction.candidatePairing,
+            relayUrl = null,
+            relayToken = null,
+        )
+
+    private fun currentStateMatchesCandidatePairingOnly(
+        transaction: RelayPairingTransaction,
+    ): Boolean = readRawRelayPairingState() == RawRelayPairingState(
+        pairing = transaction.candidatePairing,
+        relayUrl = transaction.previousRelayUrl,
+        relayToken = transaction.previousRelayToken,
+    )
+
+    private fun currentStateMatchesPrevious(transaction: RelayPairingTransaction): Boolean =
+        readRawRelayPairingState() == RawRelayPairingState(
+            pairing = transaction.previousPairing,
+            relayUrl = transaction.previousRelayUrl,
+            relayToken = transaction.previousRelayToken,
+        )
+
+    private fun restorePreviousRelayPairing(transaction: RelayPairingTransaction): Boolean {
+        val rollbackCommitted = commitEditor {
+            if (transaction.previousPairing == null) remove(KEY_RELAY_PAIRING)
+            else putString(KEY_RELAY_PAIRING, transaction.previousPairing)
+            if (transaction.previousRelayUrl == null) remove("relay_url")
+            else putString("relay_url", transaction.previousRelayUrl)
+            if (transaction.previousRelayToken == null) remove("relay_token")
+            else putString("relay_token", transaction.previousRelayToken)
+        }
+        val restored = currentStateMatchesPrevious(transaction)
+        if (!rollbackCommitted) {
+            Log.w(TAG, "Relay pairing rollback failed")
+            return restored
+        }
+        if (!restored) return false
+        if (!removeRelayPairingTransaction()) {
+            Log.w(TAG, "Relay pairing rollback cleanup deferred")
+        }
+        return true
+    }
+
+    private fun removeRelayPairingTransaction(): Boolean = commitEditor {
+        remove(KEY_RELAY_PAIRING_TRANSACTION)
+    }
+
+    private inline fun commitEditor(
+        edit: SharedPreferences.Editor.() -> Unit,
+    ): Boolean = try {
+        prefs.edit().apply(edit).commit()
+    } catch (_: Exception) {
+        false
     }
 
     // Managed Agent Console — content sync is intentionally opt-in.

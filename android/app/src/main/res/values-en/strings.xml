@@ -254,6 +254,13 @@
     <string name="scan_pairing_invalid">This pairing QR code is invalid. Generate a new one on your PC.</string>
     <string name="scan_pairing_unsupported">This pairing QR version is not supported. Update the app.</string>
     <string name="scan_pairing_save_failed">Pairing could not be stored securely. Try again.</string>
+    <string name="scan_pairing_already_paired">This device is already paired.</string>
+    <string name="scan_camera_unavailable">The camera is unavailable. Try again.</string>
+    <string name="relay_pairing_confirm_title">Confirm relay pairing</string>
+    <string name="relay_pairing_confirm_name">Name: %1$s</string>
+    <string name="relay_pairing_confirm_endpoint">Endpoint: %1$s</string>
+    <string name="relay_pairing_confirm_action">Pair</string>
+    <string name="relay_pairing_cancel_action">Cancel</string>
     <string name="scan_retry">Scan again</string>
 
     <!-- Language settings -->

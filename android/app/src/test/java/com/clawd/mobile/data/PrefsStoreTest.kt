@@ -20,69 +20,161 @@ import org.junit.Test
 class PrefsStoreTest {
 
     private lateinit var inMemoryPrefs: MutableMap<String, Any?>
-    private lateinit var mockPrefs: SharedPreferences
-    private lateinit var mockEditor: SharedPreferences.Editor
+    private lateinit var fakePrefs: StagingSharedPreferences
     private lateinit var context: Context
+
+    private class SimulatedProcessCrash : Error("simulated process crash")
+
+    private class StagingSharedPreferences(
+        val durableValues: MutableMap<String, Any?> = mutableMapOf(),
+    ) : SharedPreferences {
+        val memoryValues: MutableMap<String, Any?> = durableValues.toMutableMap()
+        data class CommitBehavior(
+            val result: Boolean,
+            val failureAfterPersist: Throwable? = null,
+        )
+
+        private object Removed
+        private val commitBehaviors = ArrayDeque<CommitBehavior>()
+        var stringReader: ((String, String?) -> String?)? = null
+
+        fun enqueueCommit(vararg behaviors: CommitBehavior) {
+            commitBehaviors.addAll(behaviors)
+        }
+
+        fun storedString(key: String, defaultValue: String? = null): String? =
+            memoryValues[key] as? String ?: defaultValue
+
+        fun simulateProcessRestart() {
+            memoryValues.clear()
+            memoryValues.putAll(durableValues)
+            stringReader = null
+        }
+
+        fun putMemoryAndDisk(key: String, value: Any?) {
+            if (value == null) {
+                memoryValues.remove(key)
+                durableValues.remove(key)
+            } else {
+                memoryValues[key] = value
+                durableValues[key] = value
+            }
+        }
+
+        fun clearMemoryAndDisk() {
+            memoryValues.clear()
+            durableValues.clear()
+        }
+
+        override fun getAll(): MutableMap<String, *> =
+            memoryValues.filterValues { it != null }.toMutableMap()
+
+        override fun getString(key: String, defValue: String?): String? =
+            stringReader?.invoke(key, defValue) ?: storedString(key, defValue)
+
+        override fun getStringSet(key: String, defValues: MutableSet<String>?): MutableSet<String>? =
+            @Suppress("UNCHECKED_CAST")
+            ((memoryValues[key] as? Set<String>)?.toMutableSet() ?: defValues)
+
+        override fun getInt(key: String, defValue: Int): Int =
+            memoryValues[key] as? Int ?: defValue
+
+        override fun getLong(key: String, defValue: Long): Long =
+            memoryValues[key] as? Long ?: defValue
+
+        override fun getFloat(key: String, defValue: Float): Float =
+            memoryValues[key] as? Float ?: defValue
+
+        override fun getBoolean(key: String, defValue: Boolean): Boolean =
+            memoryValues[key] as? Boolean ?: defValue
+
+        override fun contains(key: String): Boolean = memoryValues.containsKey(key)
+
+        override fun edit(): SharedPreferences.Editor = StagingEditor()
+
+        override fun registerOnSharedPreferenceChangeListener(
+            listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+        ) = Unit
+
+        override fun unregisterOnSharedPreferenceChangeListener(
+            listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+        ) = Unit
+
+        private inner class StagingEditor : SharedPreferences.Editor {
+            private val staged = linkedMapOf<String, Any?>()
+            private var clearRequested = false
+
+            override fun putString(key: String, value: String?): SharedPreferences.Editor = apply {
+                staged[key] = value ?: Removed
+            }
+
+            override fun putStringSet(
+                key: String,
+                values: MutableSet<String>?,
+            ): SharedPreferences.Editor = apply {
+                staged[key] = values?.toSet() ?: Removed
+            }
+
+            override fun putInt(key: String, value: Int): SharedPreferences.Editor = apply {
+                staged[key] = value
+            }
+
+            override fun putLong(key: String, value: Long): SharedPreferences.Editor = apply {
+                staged[key] = value
+            }
+
+            override fun putFloat(key: String, value: Float): SharedPreferences.Editor = apply {
+                staged[key] = value
+            }
+
+            override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor = apply {
+                staged[key] = value
+            }
+
+            override fun remove(key: String): SharedPreferences.Editor = apply {
+                staged[key] = Removed
+            }
+
+            override fun clear(): SharedPreferences.Editor = apply {
+                clearRequested = true
+            }
+
+            override fun commit(): Boolean {
+                val behavior = if (commitBehaviors.isEmpty()) {
+                    CommitBehavior(result = true)
+                } else {
+                    commitBehaviors.removeFirst()
+                }
+                persistStaged(memoryValues)
+                // SharedPreferences.commit() returns true only when values were
+                // successfully written to persistent storage. A false result may
+                // still leave this process's memory map updated, but not disk.
+                if (behavior.result) persistStaged(durableValues)
+                behavior.failureAfterPersist?.let { throw it }
+                return behavior.result
+            }
+
+            override fun apply() {
+                persistStaged(memoryValues)
+                persistStaged(durableValues)
+            }
+
+            private fun persistStaged(target: MutableMap<String, Any?>) {
+                if (clearRequested) target.clear()
+                staged.forEach { (key, value) ->
+                    if (value === Removed) target.remove(key)
+                    else target[key] = value
+                }
+            }
+        }
+    }
 
     @Before
     fun setUp() {
         PrefsStore.resetForTesting()
 
-        inMemoryPrefs = mutableMapOf()
-
-        // Build a mock Editor that writes to inMemoryPrefs
-        mockEditor = mockk(relaxed = true)
-        every { mockEditor.putString(any(), any()) } answers {
-            inMemoryPrefs[firstArg()] = secondArg()
-            mockEditor
-        }
-        every { mockEditor.putBoolean(any(), any()) } answers {
-            inMemoryPrefs[firstArg()] = secondArg()
-            mockEditor
-        }
-        every { mockEditor.putInt(any(), any()) } answers {
-            inMemoryPrefs[firstArg()] = secondArg()
-            mockEditor
-        }
-        every { mockEditor.putFloat(any(), any()) } answers {
-            inMemoryPrefs[firstArg()] = secondArg()
-            mockEditor
-        }
-        every { mockEditor.putLong(any(), any()) } answers {
-            inMemoryPrefs[firstArg()] = secondArg()
-            mockEditor
-        }
-        every { mockEditor.remove(any()) } answers {
-            inMemoryPrefs.remove(firstArg())
-            mockEditor
-        }
-        every { mockEditor.clear() } answers {
-            inMemoryPrefs.clear()
-            mockEditor
-        }
-        every { mockEditor.apply() } just Runs
-        every { mockEditor.commit() } returns true
-
-        // Build a mock SharedPreferences backed by inMemoryPrefs
-        mockPrefs = mockk(relaxed = true)
-        every { mockPrefs.edit() } returns mockEditor
-        every { mockPrefs.getString(any(), any()) } answers {
-            inMemoryPrefs[firstArg()] as? String ?: secondArg()
-        }
-        every { mockPrefs.getBoolean(any(), any()) } answers {
-            (inMemoryPrefs[firstArg()] as? Boolean) ?: secondArg()
-        }
-        every { mockPrefs.getInt(any(), any()) } answers {
-            (inMemoryPrefs[firstArg()] as? Int) ?: secondArg()
-        }
-        every { mockPrefs.getFloat(any(), any()) } answers {
-            (inMemoryPrefs[firstArg()] as? Float) ?: secondArg()
-        }
-        every { mockPrefs.getLong(any(), any()) } answers {
-            (inMemoryPrefs[firstArg()] as? Long) ?: secondArg()
-        }
-        every { mockPrefs.contains(any()) } answers { inMemoryPrefs.containsKey(firstArg()) }
-        every { mockPrefs.all } answers { inMemoryPrefs.toMap() }
+        fakePrefs = StagingSharedPreferences()
+        inMemoryPrefs = fakePrefs.memoryValues
 
         // Mock context
         context = mockk(relaxed = true)
@@ -106,7 +198,7 @@ class PrefsStoreTest {
         mockkStatic(EncryptedSharedPreferences::class)
         every {
             EncryptedSharedPreferences.create(any(), any(), any<MasterKey>(), any(), any())
-        } returns mockPrefs
+        } returns fakePrefs
     }
 
     @After
@@ -119,12 +211,30 @@ class PrefsStoreTest {
         return PrefsStore.getInstance(context)
     }
 
+    private fun restartPrefsStore(): PrefsStore {
+        PrefsStore.resetForTesting()
+        fakePrefs.simulateProcessRestart()
+        return createPrefsStore()
+    }
+
     private fun relayPairing(name: String = "Stored fixture", tokenByte: String = "ab"): RelayPairingConfig {
         val privateKey = Base64.getEncoder().encodeToString(ByteArray(32) { 7 })
         val publicKey = Base64.getEncoder().encodeToString(ByteArray(32) { 8 })
         val payload = """{"version":1,"name":"$name","wireGuard":{"privateKey":"$privateKey","address":"10.8.0.3/32","serverPublicKey":"$publicKey","endpoint":"192.0.2.7:51820","allowedIps":["10.8.0.0/24"],"persistentKeepalive":25},"relay":{"url":"ws://10.8.0.1:7891","token":"${tokenByte.repeat(32)}"},"issuedAt":1783900800000}"""
         val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
         return RelayPairingConfig.parse("clawd://relay-pair?v=1&data=$encoded")
+    }
+
+    @Test
+    fun `failed commit updates process memory but not durable storage`() {
+        fakePrefs.enqueueCommit(StagingSharedPreferences.CommitBehavior(result = false))
+
+        assertFalse(fakePrefs.edit().putString("probe", "memory-only").commit())
+        assertEquals("memory-only", fakePrefs.getString("probe", null))
+        assertFalse(fakePrefs.durableValues.containsKey("probe"))
+
+        fakePrefs.simulateProcessRestart()
+        assertNull(fakePrefs.getString("probe", null))
     }
 
     @Test
@@ -503,7 +613,10 @@ class PrefsStoreTest {
         assertTrue(store.saveRelayPairing(first))
         store.setRelayUrl("wss://legacy.example.test")
         store.setRelayToken("legacy-manual-token")
-        every { mockEditor.commit() } returnsMany listOf(false, true)
+        fakePrefs.enqueueCommit(
+            StagingSharedPreferences.CommitBehavior(result = false),
+            StagingSharedPreferences.CommitBehavior(result = true),
+        )
 
         assertFalse(store.saveRelayPairing(relayPairing("Rejected", "cd")))
 
@@ -520,9 +633,11 @@ class PrefsStoreTest {
         store.setRelayUrl("wss://legacy.example.test")
         store.setRelayToken("legacy-manual-token")
         var pairingReads = 0
-        every { mockPrefs.getString("relay_pairing", null) } answers {
+        fakePrefs.stringReader = reader@{ key, defaultValue ->
+            if (key != "relay_pairing") return@reader fakePrefs.storedString(key, defaultValue)
             pairingReads++
-            if (pairingReads == 2) "{corrupt-readback" else inMemoryPrefs["relay_pairing"] as? String
+            if (pairingReads == 2) "{corrupt-readback"
+            else fakePrefs.storedString("relay_pairing", defaultValue)
         }
 
         assertFalse(store.saveRelayPairing(relayPairing("Rejected", "cd")))
@@ -539,13 +654,14 @@ class PrefsStoreTest {
         store.setRelayUrl("wss://legacy.example.test")
         store.setRelayToken("legacy-manual-token")
         var pairingReads = 0
-        every { mockPrefs.getString("relay_pairing", null) } answers {
+        fakePrefs.stringReader = reader@{ key, defaultValue ->
+            if (key != "relay_pairing") return@reader fakePrefs.storedString(key, defaultValue)
             pairingReads++
             if (pairingReads == 2) {
                 assertEquals("wss://legacy.example.test", inMemoryPrefs["relay_url"])
                 assertEquals("legacy-manual-token", inMemoryPrefs["relay_token"])
             }
-            inMemoryPrefs["relay_pairing"] as? String
+            fakePrefs.storedString("relay_pairing", defaultValue)
         }
 
         assertTrue(store.saveRelayPairing(relayPairing("Replacement", "cd")))
@@ -560,7 +676,12 @@ class PrefsStoreTest {
         assertTrue(store.saveRelayPairing(first))
         store.setRelayUrl("wss://legacy.example.test")
         store.setRelayToken("legacy-manual-token")
-        every { mockEditor.commit() } returnsMany listOf(true, false, true)
+        fakePrefs.enqueueCommit(
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = false),
+            StagingSharedPreferences.CommitBehavior(result = true),
+        )
 
         assertFalse(store.saveRelayPairing(relayPairing("Rejected", "cd")))
 
@@ -610,7 +731,10 @@ class PrefsStoreTest {
         val lan = ConnectionConfig("192.168.1.7", 23334, "abcdef1234567890")
         store.saveConfig(lan)
         assertTrue(store.saveRelayPairing(relayPairing()))
-        every { mockPrefs.getString("relay_pairing", null) } throws SecurityException("decrypt failed")
+        fakePrefs.stringReader = { key, defaultValue ->
+            if (key == "relay_pairing") throw SecurityException("decrypt failed")
+            fakePrefs.storedString(key, defaultValue)
+        }
 
         assertNull(store.loadRelayPairing())
         assertFalse(store.hasRelayPairing())
@@ -632,5 +756,170 @@ class PrefsStoreTest {
         assertFalse(store.hasRelayPairing())
         assertEquals(lan, store.loadConfig())
         assertEquals(listOf(lan), store.getHistory())
+    }
+
+    @Test
+    fun `candidate commit failure plus rollback failure never activates rejected pairing after restart`() {
+        val store = createPrefsStore()
+        val previous = relayPairing("Previous", "ab")
+        val rejected = relayPairing("Rejected", "cd")
+        assertTrue(store.saveRelayPairing(previous))
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+        fakePrefs.enqueueCommit(
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = false),
+            StagingSharedPreferences.CommitBehavior(result = false),
+        )
+
+        assertFalse(store.saveRelayPairing(rejected))
+
+        val restarted = restartPrefsStore()
+        assertNotEquals(rejected, restarted.loadRelayPairing())
+        assertEquals(previous, restarted.loadRelayPairing())
+        assertEquals("wss://legacy.example.test", restarted.getRelayUrl())
+        assertEquals("legacy-manual-token", restarted.getRelayToken())
+    }
+
+    @Test
+    fun `cleanup failure keeps committed journal and returns success for deterministic restart recovery`() {
+        val store = createPrefsStore()
+        val previous = relayPairing("Previous", "ab")
+        val replacement = relayPairing("Replacement", "cd")
+        assertTrue(store.saveRelayPairing(previous))
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+        fakePrefs.enqueueCommit(
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = false),
+        )
+
+        assertTrue(store.saveRelayPairing(replacement))
+        assertTrue(fakePrefs.durableValues.containsKey("relay_pairing_transaction"))
+
+        val restarted = restartPrefsStore()
+        assertEquals(replacement, restarted.loadRelayPairing())
+        assertEquals("", restarted.getRelayUrl())
+        assertEquals("", restarted.getRelayToken())
+        assertFalse(inMemoryPrefs.containsKey("relay_pairing_transaction"))
+    }
+
+    @Test
+    fun `rollback cleanup failure leaves recoverable journal without activating candidate`() {
+        val store = createPrefsStore()
+        val previous = relayPairing("Previous", "ab")
+        val rejected = relayPairing("Rejected", "cd")
+        assertTrue(store.saveRelayPairing(previous))
+        fakePrefs.enqueueCommit(
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = false),
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = false),
+        )
+
+        assertFalse(store.saveRelayPairing(rejected))
+        assertTrue(fakePrefs.durableValues.containsKey("relay_pairing_transaction"))
+
+        val restarted = restartPrefsStore()
+        assertEquals(previous, restarted.loadRelayPairing())
+        assertFalse(inMemoryPrefs.containsKey("relay_pairing_transaction"))
+    }
+
+    @Test
+    fun `rollback commit false retains journal even when current memory still shows previous state`() {
+        val store = createPrefsStore()
+        val previous = relayPairing("Previous", "ab")
+        val rejected = relayPairing("Rejected", "cd")
+        assertTrue(store.saveRelayPairing(previous))
+        fakePrefs.enqueueCommit(
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = false),
+            StagingSharedPreferences.CommitBehavior(result = false),
+        )
+
+        assertFalse(store.saveRelayPairing(rejected))
+
+        assertEquals(previous, RelayPairingConfig.decodeStorage(inMemoryPrefs["relay_pairing"] as String))
+        assertTrue(inMemoryPrefs.containsKey("relay_pairing_transaction"))
+        assertEquals(previous, restartPrefsStore().loadRelayPairing())
+    }
+
+    @Test
+    fun `memory only committed marker cannot report durable pairing success`() {
+        val store = createPrefsStore()
+        val previous = relayPairing("Previous", "ab")
+        val replacement = relayPairing("Replacement", "cd")
+        assertTrue(store.saveRelayPairing(previous))
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+        fakePrefs.enqueueCommit(
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = true),
+            StagingSharedPreferences.CommitBehavior(result = true),
+            // Android may update its process-memory map before disk persistence fails.
+            StagingSharedPreferences.CommitBehavior(result = false),
+            StagingSharedPreferences.CommitBehavior(result = false),
+        )
+
+        assertFalse(store.saveRelayPairing(replacement))
+        assertEquals(previous, restartPrefsStore().loadRelayPairing())
+        assertEquals("wss://legacy.example.test", store.getRelayUrl())
+        assertEquals("legacy-manual-token", store.getRelayToken())
+    }
+
+    @Test
+    fun `restart recovers deterministically after every durable transaction stage crash`() {
+        for (crashCommit in 1..5) {
+            val store = createPrefsStore()
+            val previous = relayPairing("Previous $crashCommit", "ab")
+            val replacement = relayPairing("Replacement $crashCommit", "cd")
+            assertTrue(store.saveRelayPairing(previous))
+            store.setRelayUrl("wss://legacy.example.test")
+            store.setRelayToken("legacy-manual-token")
+            repeat(crashCommit - 1) {
+                fakePrefs.enqueueCommit(StagingSharedPreferences.CommitBehavior(result = true))
+            }
+            fakePrefs.enqueueCommit(
+                StagingSharedPreferences.CommitBehavior(
+                    result = true,
+                    failureAfterPersist = SimulatedProcessCrash(),
+                ),
+            )
+
+            assertThrows(SimulatedProcessCrash::class.java) {
+                store.saveRelayPairing(replacement)
+            }
+
+            val restarted = restartPrefsStore()
+            val expected = if (crashCommit <= 3) previous else replacement
+            assertEquals("crash after transaction commit $crashCommit", expected, restarted.loadRelayPairing())
+            if (crashCommit <= 3) {
+                assertEquals("wss://legacy.example.test", restarted.getRelayUrl())
+                assertEquals("legacy-manual-token", restarted.getRelayToken())
+            } else {
+                assertEquals("", restarted.getRelayUrl())
+                assertEquals("", restarted.getRelayToken())
+            }
+
+            fakePrefs.clearMemoryAndDisk()
+            PrefsStore.resetForTesting()
+        }
+    }
+
+    @Test
+    fun `corrupt transaction journal fails closed across new store instances`() {
+        val store = createPrefsStore()
+        val pairing = relayPairing()
+        assertTrue(store.saveRelayPairing(pairing))
+        fakePrefs.putMemoryAndDisk("relay_pairing_transaction", "{corrupt")
+
+        val restarted = restartPrefsStore()
+        assertNull(restarted.loadRelayPairing())
+        assertFalse(restarted.hasRelayPairing())
+        assertTrue(restarted.hasRelayPairingBlob())
+        assertEquals(pairing, RelayPairingConfig.decodeStorage(inMemoryPrefs["relay_pairing"] as String))
     }
 }

@@ -3,6 +3,14 @@ package com.clawd.mobile.integration
 import com.clawd.mobile.RelayPairingCoordinator
 import com.clawd.mobile.RelayDeepLinkRouter
 import com.clawd.mobile.RelayDeepLinkRoutingResult
+import com.clawd.mobile.RelayPairingPreparation
+import com.clawd.mobile.RelayPairingConfirmationViewModel
+import com.clawd.mobile.RelayPairingConfirmationPhase
+import com.clawd.mobile.RelayPairingResumeAction
+import com.clawd.mobile.relayPairingResumeAction
+import com.clawd.mobile.RelayPairingStoredState
+import com.clawd.mobile.consumeActionViewUri
+import com.clawd.mobile.toConfirmationMetadata
 import com.clawd.mobile.ui.scan.RelayPairingAcceptance
 import com.clawd.mobile.ui.scan.ScanPayloadResult
 import com.clawd.mobile.ui.scan.parseScannedPayload
@@ -10,10 +18,21 @@ import com.clawd.mobile.data.RelayPairingConfig
 import com.clawd.mobile.data.RelayPairingErrorCode
 import java.io.File
 import java.security.MessageDigest
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.async
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RelayPairingIntegrationTest {
@@ -62,6 +81,16 @@ class RelayPairingIntegrationTest {
         assertEquals(0, process.exitValue())
         val links = kotlinx.serialization.json.Json.decodeFromString<List<String>>(output)
         return links.map(RelayPairingConfig::parse)
+    }
+
+    private fun renamedFixture(name: String): RelayPairingConfig {
+        val payload = String(
+            java.util.Base64.getUrlDecoder().decode(fixtureUri.substringAfter("&data=")),
+            Charsets.UTF_8,
+        ).replace("Android fixture", name)
+        val encoded = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(payload.toByteArray())
+        return RelayPairingConfig.parse("clawd://relay-pair?v=1&data=$encoded")
     }
 
     @Test
@@ -167,7 +196,7 @@ class RelayPairingIntegrationTest {
     }
 
     @Test
-    fun `coordinator saves and navigates once for duplicate pairing input`() {
+    fun `coordinator saves and navigates once for duplicate pairing input`() = runBlocking {
         val config = RelayPairingConfig.parse(fixtureUri)
         var saves = 0
         var navigations = 0
@@ -193,7 +222,96 @@ class RelayPairingIntegrationTest {
     }
 
     @Test
-    fun `coordinator failure does not replace prior fingerprint or navigate`() {
+    fun `pending external confirmation survives activity recreation in retained memory`() = runBlocking {
+        val config = RelayPairingConfig.parse(fixtureUri)
+        val retained = RelayPairingConfirmationViewModel()
+        assertTrue(retained.retainForPreparation(config))
+
+        // A recreated Activity receives the same ViewModel instance from its ViewModelStore,
+        // while no secret is written into the Activity saved-state Bundle.
+        val recreatedCoordinator = RelayPairingCoordinator(
+            load = { RelayPairingStoredState() },
+            save = { true },
+        )
+        assertEquals(config, retained.pendingExternalPairing)
+        assertEquals(config.toConfirmationMetadata(), retained.metadata)
+        assertEquals(RelayPairingConfirmationPhase.PREPARING, retained.phase)
+        assertEquals(
+            RelayPairingPreparation.CONFIRMATION_REQUIRED,
+            recreatedCoordinator.prepareExternal(requireNotNull(retained.pendingExternalPairing)),
+        )
+    }
+
+    @Test
+    fun `duplicate external event cannot overwrite retained pending confirmation`() {
+        val config = RelayPairingConfig.parse(fixtureUri)
+        val retained = RelayPairingConfirmationViewModel()
+        assertTrue(retained.retainForPreparation(config))
+        retained.show(config)
+
+        assertFalse(retained.retainForPreparation(config))
+        assertEquals(config, retained.pendingExternalPairing)
+        assertEquals(RelayPairingConfirmationPhase.AWAITING_CONFIRMATION, retained.phase)
+    }
+
+    @Test
+    fun `late preparation result cannot overwrite a newer external pairing`() {
+        val first = RelayPairingConfig.parse(fixtureUri)
+        val replacement = renamedFixture("Newer pairing")
+        val retained = RelayPairingConfirmationViewModel()
+        assertTrue(retained.retainForPreparation(first))
+        val firstPhase = requireNotNull(retained.phase)
+        assertTrue(retained.retainForPreparation(replacement))
+
+        assertFalse(retained.isCurrent(first, firstPhase))
+        assertTrue(
+            retained.isCurrent(
+                replacement,
+                RelayPairingConfirmationPhase.PREPARING,
+            ),
+        )
+    }
+
+    @Test
+    fun `new activity restore invalidates old same config attempt`() {
+        val config = RelayPairingConfig.parse(fixtureUri)
+        val retained = RelayPairingConfirmationViewModel()
+        assertTrue(retained.retainForPreparation(config))
+        val phase = requireNotNull(retained.phase)
+        val oldAttempt = retained.beginRestore()
+        val newAttempt = retained.beginRestore()
+
+        assertFalse(retained.isCurrent(config, phase, oldAttempt))
+        assertTrue(retained.isCurrent(config, phase, newAttempt))
+    }
+
+    @Test
+    fun `recreated activity resumes confirmed save or补发 settings navigation`() {
+        assertEquals(
+            RelayPairingResumeAction.RESUME_CONFIRMED_SAVE,
+            relayPairingResumeAction(
+                RelayPairingConfirmationPhase.CONFIRMING,
+                RelayPairingPreparation.CONFIRMATION_REQUIRED,
+            ),
+        )
+        assertEquals(
+            RelayPairingResumeAction.NAVIGATE_TO_SETTINGS,
+            relayPairingResumeAction(
+                RelayPairingConfirmationPhase.CONFIRMING,
+                RelayPairingPreparation.DUPLICATE,
+            ),
+        )
+        assertEquals(
+            RelayPairingResumeAction.SHOW_CONFIRMATION,
+            relayPairingResumeAction(
+                RelayPairingConfirmationPhase.PREPARING,
+                RelayPairingPreparation.CONFIRMATION_REQUIRED,
+            ),
+        )
+    }
+
+    @Test
+    fun `coordinator failure does not replace prior fingerprint or navigate`() = runBlocking {
         val config = RelayPairingConfig.parse(fixtureUri)
         var shouldSave = false
         var navigations = 0
@@ -212,7 +330,7 @@ class RelayPairingIntegrationTest {
     }
 
     @Test
-    fun `new coordinator process deduplicates pairing loaded from encrypted storage`() {
+    fun `new coordinator process deduplicates pairing loaded from encrypted storage`() = runBlocking {
         val scanned = RelayPairingConfig.parse(fixtureUri)
         val loaded = RelayPairingConfig.decodeStorage(RelayPairingConfig.encodeStorage(scanned))
         var saves = 0
@@ -224,19 +342,19 @@ class RelayPairingIntegrationTest {
             navigateToSettings = { navigations++ },
         )
         val router = RelayDeepLinkRouter(
-            relayCoordinator = coordinator,
             saveLan = {},
             startLan = { lanStarts++ },
         )
 
-        assertEquals(RelayDeepLinkRoutingResult.RELAY_DUPLICATE, router.route(fixtureUri))
+        val routed = router.route(fixtureUri) as RelayDeepLinkRoutingResult.RelayConfirmationRequired
+        assertEquals(RelayPairingPreparation.DUPLICATE, coordinator.prepareExternal(routed.config))
         assertEquals(0, saves)
         assertEquals(0, navigations)
         assertEquals(0, lanStarts)
     }
 
     @Test
-    fun `PC reissue with only issuedAt changed is duplicate across cold start`() {
+    fun `PC reissue with only issuedAt changed is duplicate across cold start`() = runBlocking {
         val (stored, reissued) = currentPcSemanticVectors()
         assertNotEquals(stored.issuedAt, reissued.issuedAt)
         assertEquals(
@@ -257,7 +375,7 @@ class RelayPairingIntegrationTest {
     }
 
     @Test
-    fun `label and every WG Relay security or topology change replaces pairing`() {
+    fun `label and every WG Relay security or topology change replaces pairing`() = runBlocking {
         val vectors = currentPcSemanticVectors()
         val stored = vectors[0]
         val changes = vectors.drop(2)
@@ -286,7 +404,7 @@ class RelayPairingIntegrationTest {
     }
 
     @Test
-    fun `new coordinator process atomically saves a semantically different pairing`() {
+    fun `new coordinator process atomically saves a semantically different pairing`() = runBlocking {
         val loaded = RelayPairingConfig.parse(fixtureUri)
         val payload = String(
             java.util.Base64.getUrlDecoder().decode(fixtureUri.substringAfter("&data=")),
@@ -310,7 +428,7 @@ class RelayPairingIntegrationTest {
     }
 
     @Test
-    fun `corrupt persisted pairing fails closed without save or navigation`() {
+    fun `corrupt persisted pairing fails closed without save or navigation`() = runBlocking {
         val scanned = RelayPairingConfig.parse(fixtureUri)
         var saves = 0
         var navigations = 0
@@ -328,33 +446,219 @@ class RelayPairingIntegrationTest {
 
     @Test
     fun `deep link router never starts LAN connection for relay or invalid pairing`() {
-        var relaySaves = 0
         var lanSaves = 0
         var lanStarts = 0
-        val coordinator = RelayPairingCoordinator(
-            save = { relaySaves++; true },
-            navigateToSettings = {},
-        )
         val router = RelayDeepLinkRouter(
-            relayCoordinator = coordinator,
             saveLan = { lanSaves++ },
             startLan = { lanStarts++ },
         )
 
-        assertEquals(RelayDeepLinkRoutingResult.RELAY_SAVED, router.route(fixtureUri))
+        assertTrue(router.route(fixtureUri) is RelayDeepLinkRoutingResult.RelayConfirmationRequired)
         assertEquals(
-            RelayDeepLinkRoutingResult.RELAY_REJECTED,
+            RelayDeepLinkRoutingResult.RelayRejected,
             router.route(fixtureUri.replace("?v=1", "?v=2")),
         )
-        assertEquals(1, relaySaves)
         assertEquals(0, lanSaves)
         assertEquals(0, lanStarts)
 
         assertEquals(
-            RelayDeepLinkRoutingResult.LAN_STARTED,
+            RelayDeepLinkRoutingResult.LanStarted,
             router.route("clawd://192.168.1.7:23334/abcdef1234567890"),
         )
         assertEquals(1, lanSaves)
         assertEquals(1, lanStarts)
+    }
+
+    @Test
+    fun `external relay link only returns safe confirmation metadata before user confirmation`() = runBlocking {
+        val config = RelayPairingConfig.parse(fixtureUri)
+        var saves = 0
+        val coordinator = RelayPairingCoordinator(
+            load = { RelayPairingStoredState() },
+            save = { saves++; true },
+        )
+        val router = RelayDeepLinkRouter(
+            saveLan = {},
+            startLan = {},
+        )
+
+        val routed = router.route(fixtureUri) as RelayDeepLinkRoutingResult.RelayConfirmationRequired
+        assertEquals(config, routed.config)
+        assertEquals(RelayPairingPreparation.CONFIRMATION_REQUIRED, coordinator.prepareExternal(routed.config))
+        assertEquals(0, saves)
+
+        val metadata = routed.config.toConfirmationMetadata()
+        val rendered = metadata.toString()
+        assertEquals("Android fixture", metadata.name)
+        assertEquals("198.51.100.7:51820", metadata.endpoint)
+        assertFalse(rendered.contains(config.wireGuard.privateKey))
+        assertFalse(rendered.contains(config.wireGuard.serverPublicKey))
+        assertFalse(rendered.contains(config.relay.token))
+
+        assertEquals(RelayPairingAcceptance.SAVED, coordinator.confirmExternal(routed.config))
+        assertEquals(1, saves)
+    }
+
+    @Test
+    fun `semantic duplicate external links neither confirm save nor navigate`() = runBlocking {
+        val (stored, reissued) = currentPcSemanticVectors()
+        var saves = 0
+        var navigations = 0
+        val coordinator = RelayPairingCoordinator(
+            load = { RelayPairingStoredState(pairing = stored) },
+            save = { saves++; true },
+        )
+
+        val preparation = coordinator.prepareExternal(reissued)
+        if (preparation == RelayPairingPreparation.CONFIRMATION_REQUIRED) navigations++
+
+        assertEquals(RelayPairingPreparation.DUPLICATE, preparation)
+        assertEquals(0, saves)
+        assertEquals(0, navigations)
+    }
+
+    @Test
+    fun `repeated pending external link is a semantic duplicate and is not confirmed twice`() = runBlocking {
+        val config = RelayPairingConfig.parse(fixtureUri)
+        var saves = 0
+        val coordinator = RelayPairingCoordinator(
+            load = { RelayPairingStoredState() },
+            save = { saves++; true },
+        )
+
+        assertEquals(RelayPairingPreparation.CONFIRMATION_REQUIRED, coordinator.prepareExternal(config))
+        assertEquals(RelayPairingPreparation.DUPLICATE, coordinator.prepareExternal(config))
+        assertEquals(0, saves)
+    }
+
+    @Test
+    fun `external confirmation can retry but leaves navigation to validated activity attempt`() = runBlocking {
+        val config = RelayPairingConfig.parse(fixtureUri)
+        var saves = 0
+        var navigations = 0
+        val coordinator = RelayPairingCoordinator(
+            load = { RelayPairingStoredState() },
+            save = { ++saves > 1 },
+            navigateToSettings = { navigations++ },
+        )
+        assertEquals(RelayPairingPreparation.CONFIRMATION_REQUIRED, coordinator.prepareExternal(config))
+
+        assertEquals(RelayPairingAcceptance.STORAGE_FAILED, coordinator.confirmExternal(config))
+        assertEquals(0, navigations)
+        assertEquals(RelayPairingAcceptance.SAVED, coordinator.confirmExternal(config))
+        assertEquals(2, saves)
+        assertEquals(0, navigations)
+    }
+
+    @Test
+    fun `coordinator propagates lifecycle cancellation during load and save`() = runBlocking {
+        val config = RelayPairingConfig.parse(fixtureUri)
+        val loadCancelled = RelayPairingCoordinator(
+            load = { throw CancellationException("activity recreated during load") },
+            save = { true },
+        )
+        var loadPropagated = false
+        try {
+            loadCancelled.prepareExternal(config)
+        } catch (_: CancellationException) {
+            loadPropagated = true
+        }
+        assertTrue(loadPropagated)
+
+        val saveCancelled = RelayPairingCoordinator(
+            load = { RelayPairingStoredState() },
+            save = { throw CancellationException("activity recreated during save") },
+        )
+        assertEquals(
+            RelayPairingPreparation.CONFIRMATION_REQUIRED,
+            saveCancelled.prepareExternal(config),
+        )
+        var savePropagated = false
+        try {
+            saveCancelled.confirmExternal(config)
+        } catch (_: CancellationException) {
+            savePropagated = true
+        }
+        assertTrue(savePropagated)
+    }
+
+    @Test
+    fun `camera and deep link writes share one IO writer and serialize duplicate events`() = runBlocking {
+        val ioExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "relay-pairing-writer")
+        }
+        val ioDispatcher = ioExecutor.asCoroutineDispatcher()
+        try {
+            val first = RelayPairingConfig.parse(fixtureUri)
+            val second = renamedFixture("Second fixture")
+            val enteredFirstSave = CountDownLatch(1)
+            val releaseFirstSave = CountDownLatch(1)
+            val activeWrites = AtomicInteger(0)
+            val maximumActiveWrites = AtomicInteger(0)
+            val savedNames = Collections.synchronizedList(mutableListOf<String>())
+            val storageThreads = Collections.synchronizedList(mutableListOf<String>())
+            val coordinator = RelayPairingCoordinator(
+                load = {
+                    storageThreads += Thread.currentThread().name
+                    RelayPairingStoredState()
+                },
+                save = { config ->
+                    storageThreads += Thread.currentThread().name
+                    val active = activeWrites.incrementAndGet()
+                    maximumActiveWrites.updateAndGet { current -> maxOf(current, active) }
+                    if (config.name == first.name) {
+                        enteredFirstSave.countDown()
+                        assertTrue(releaseFirstSave.await(10, TimeUnit.SECONDS))
+                    }
+                    savedNames += config.name
+                    activeWrites.decrementAndGet()
+                    true
+                },
+                storageDispatcher = ioDispatcher,
+            )
+
+            val camera = async(Dispatchers.Default) { coordinator.accept(first) }
+            assertTrue(enteredFirstSave.await(10, TimeUnit.SECONDS))
+            val deepLink = async(Dispatchers.Default) {
+                assertEquals(
+                    RelayPairingPreparation.CONFIRMATION_REQUIRED,
+                    coordinator.prepareExternal(second),
+                )
+                coordinator.confirmExternal(second)
+            }
+            releaseFirstSave.countDown()
+
+            assertEquals(RelayPairingAcceptance.SAVED, camera.await())
+            assertEquals(RelayPairingAcceptance.SAVED, deepLink.await())
+            assertEquals(listOf(first.name, second.name), savedNames)
+            assertEquals(1, maximumActiveWrites.get())
+            assertTrue(storageThreads.isNotEmpty())
+            assertTrue(storageThreads.all { it.startsWith("relay-pairing-writer") })
+        } finally {
+            ioDispatcher.close()
+            ioExecutor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `ACTION_VIEW URI data is cleared immediately after read and before parsing`() {
+        val events = mutableListOf<String>()
+        var currentData: String? = fixtureUri
+
+        val raw = consumeActionViewUri(
+            action = "android.intent.action.VIEW",
+            readUri = { events += "read"; currentData },
+            clearData = { events += "clear"; currentData = null },
+        )
+        events += "parse"
+        val parsed = parseScannedPayload(requireNotNull(raw))
+
+        assertEquals(listOf("read", "clear", "parse"), events)
+        assertEquals(null, currentData)
+        assertTrue(parsed is ScanPayloadResult.Relay)
+        assertEquals(
+            null,
+            consumeActionViewUri("android.intent.action.MAIN", { fixtureUri }, { error("must not clear") }),
+        )
     }
 }
