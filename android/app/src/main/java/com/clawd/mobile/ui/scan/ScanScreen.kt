@@ -27,12 +27,46 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.clawd.mobile.R
 import com.clawd.mobile.data.ConnectionConfig
+import com.clawd.mobile.data.RelayPairingConfig
+import com.clawd.mobile.data.RelayPairingErrorCode
+import com.clawd.mobile.data.RelayPairingException
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
 import com.clawd.mobile.util.SafeExecutor
 
 import java.util.concurrent.Executors
+
+sealed interface ScanPayloadResult {
+    data class Lan(val config: ConnectionConfig) : ScanPayloadResult
+    data class Relay(val config: RelayPairingConfig) : ScanPayloadResult
+    data class InvalidRelay(val code: RelayPairingErrorCode) : ScanPayloadResult
+}
+
+enum class RelayPairingAcceptance { SAVED, DUPLICATE, STORAGE_FAILED }
+
+interface RelayPairingReceiver {
+    fun onRelayPairingScanned(config: RelayPairingConfig): RelayPairingAcceptance
+}
+
+internal fun parseScannedPayload(raw: String): ScanPayloadResult? {
+    val relayPrefix = "clawd://relay-pair"
+    if (raw.regionMatches(0, relayPrefix, 0, relayPrefix.length, ignoreCase = true)) {
+        return try {
+            ScanPayloadResult.Relay(RelayPairingConfig.parse(raw))
+        } catch (error: RelayPairingException) {
+            ScanPayloadResult.InvalidRelay(error.code)
+        }
+    }
+    return ConnectionConfig.fromClawdUrl(raw)?.let(ScanPayloadResult::Lan)
+}
+
+@androidx.annotation.StringRes
+private fun pairingErrorMessage(code: RelayPairingErrorCode): Int = when (code) {
+    RelayPairingErrorCode.UNSUPPORTED_VERSION -> R.string.scan_pairing_unsupported
+    RelayPairingErrorCode.STORAGE_FAILED -> R.string.scan_pairing_save_failed
+    else -> R.string.scan_pairing_invalid
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +81,8 @@ fun ScanScreen(
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasCameraPermission = granted
     }
+    var scanError by remember { mutableStateOf<RelayPairingErrorCode?>(null) }
+    var scannerKey by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
@@ -86,7 +122,23 @@ fun ScanScreen(
             }
         } else {
             Box(modifier = Modifier.fillMaxSize().padding(padding).background(Color.Black)) {
-                CameraPreview(onScanned = onScanned)
+                key(scannerKey) {
+                    CameraPreview { result ->
+                        when (result) {
+                            is ScanPayloadResult.Lan -> onScanned(result.config)
+                            is ScanPayloadResult.Relay -> {
+                                val receiver = context as? RelayPairingReceiver
+                                when (receiver?.onRelayPairingScanned(result.config)) {
+                                    RelayPairingAcceptance.SAVED -> Unit
+                                    RelayPairingAcceptance.DUPLICATE -> onBack()
+                                    RelayPairingAcceptance.STORAGE_FAILED,
+                                    null -> scanError = RelayPairingErrorCode.STORAGE_FAILED
+                                }
+                            }
+                            is ScanPayloadResult.InvalidRelay -> scanError = result.code
+                        }
+                    }
+                }
 
                 // Scan frame
                 Box(
@@ -102,13 +154,35 @@ fun ScanScreen(
                     color = Color.White,
                     modifier = Modifier.align(Alignment.Center).offset(y = 160.dp)
                 )
+
+                scanError?.let { code ->
+                    Card(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(24.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(stringResource(pairingErrorMessage(code)))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = {
+                                scanError = null
+                                scannerKey++
+                            }) {
+                                Text(stringResource(R.string.scan_retry))
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CameraPreview(onScanned: (ConnectionConfig) -> Unit) {
+private fun CameraPreview(onResult: (ScanPayloadResult) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
@@ -138,10 +212,10 @@ private fun CameraPreview(onScanned: (ConnectionConfig) -> Unit) {
                                 imageProxy.close()
                                 return@setAnalyzer
                             }
-                            processImage(imageProxy) { config ->
-                                if (config != null && !scanned) {
+                            processImage(imageProxy) { result ->
+                                if (result != null && !scanned) {
                                     scanned = true
-                                    ContextCompat.getMainExecutor(ctx).execute { onScanned(config) }
+                                    ContextCompat.getMainExecutor(ctx).execute { onResult(result) }
                                 }
                             }
                         }
@@ -164,7 +238,7 @@ private fun CameraPreview(onScanned: (ConnectionConfig) -> Unit) {
     )
 }
 
-private fun processImage(imageProxy: ImageProxy, onResult: (ConnectionConfig?) -> Unit) {
+private fun processImage(imageProxy: ImageProxy, onResult: (ScanPayloadResult?) -> Unit) {
     try {
         val buffer = imageProxy.planes[0].buffer
         val bytes = ByteArray(buffer.remaining())
@@ -184,11 +258,10 @@ private fun processImage(imageProxy: ImageProxy, onResult: (ConnectionConfig?) -
         val result = reader.decode(binaryBitmap)
         val raw = result.text
 
-        val config = ConnectionConfig.fromClawdUrl(raw)
-        onResult(config)
+        onResult(parseScannedPayload(raw))
     } catch (e: Exception) {
         // QR decode failures are expected (no QR in frame) — debug level only
-        android.util.Log.d("Scan", "QR decode failed: ${e.javaClass.simpleName}: ${e.message}")
+        android.util.Log.d("Scan", "QR decode failed: ${e.javaClass.simpleName}")
         onResult(null)
     } finally {
         imageProxy.close()

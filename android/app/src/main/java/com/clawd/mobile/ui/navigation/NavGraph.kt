@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -25,9 +26,43 @@ import com.clawd.mobile.ui.settings.SettingsScreen
 import com.clawd.mobile.ui.console.ConsoleScreen
 import com.clawd.mobile.ui.console.ConsoleViewModel
 
+internal const val CLAWD_DEFAULT_START_DESTINATION = "sessions"
+
+internal data class RelayPairingNavigationDecision(
+    val consumedRequestId: Int,
+    val shouldNavigate: Boolean,
+)
+
+internal fun decideRelayPairingNavigation(
+    requestId: Int,
+    lastConsumedRequestId: Int,
+    currentRoute: String?,
+    navigationReady: Boolean = true,
+): RelayPairingNavigationDecision? {
+    if (!navigationReady || requestId <= 0 || requestId == lastConsumedRequestId) return null
+    return RelayPairingNavigationDecision(
+        consumedRequestId = requestId,
+        shouldNavigate = currentRoute != "settings",
+    )
+}
+
+internal fun performRelayPairingNavigation(
+    decision: RelayPairingNavigationDecision,
+    navigateToSettings: () -> Unit,
+    clearRequest: (Int) -> Unit,
+): Int {
+    if (decision.shouldNavigate) navigateToSettings()
+    clearRequest(decision.consumedRequestId)
+    return decision.consumedRequestId
+}
+
 @Composable
-fun ClawdNavGraph() {
+fun ClawdNavGraph(
+    relayPairingNavigationRequest: Int = 0,
+    onRelayPairingNavigationConsumed: (Int) -> Unit = {},
+) {
     val navController = rememberNavController()
+    var lastConsumedRelayPairingRequest by rememberSaveable { mutableIntStateOf(0) }
     val context = LocalContext.current
     val prefsStore = remember { PrefsStore.getInstance(context) }
     val statusNotifier = remember { StatusNotifier(context, prefsStore) }
@@ -64,6 +99,22 @@ fun ClawdNavGraph() {
             CircularProgressIndicator()
         }
         return
+    }
+
+    LaunchedEffect(relayPairingNavigationRequest) {
+        val decision = decideRelayPairingNavigation(
+            requestId = relayPairingNavigationRequest,
+            lastConsumedRequestId = lastConsumedRelayPairingRequest,
+            currentRoute = navController.currentBackStackEntry?.destination?.route,
+            navigationReady = true,
+        ) ?: return@LaunchedEffect
+        lastConsumedRelayPairingRequest = performRelayPairingNavigation(
+            decision = decision,
+            navigateToSettings = {
+                navController.navigate("settings") { launchSingleTop = true }
+            },
+            clearRequest = onRelayPairingNavigationConsumed,
+        )
     }
     val activeClient = if (prefsStore.loadConfig()?.useRelay == true) {
         com.clawd.mobile.service.WsConnectionService.getClientByTag(
@@ -111,7 +162,7 @@ fun ClawdNavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = "sessions",
+            startDestination = CLAWD_DEFAULT_START_DESTINATION,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("sessions") {

@@ -33,6 +33,7 @@ class PrefsStore private constructor(context: Context) {
         private const val KEY_MIGRATED = "_migrated_v1"
         private const val KEY_CONSOLE_SYNC_ENABLED = "console_sync_enabled"
         private const val KEY_CONSOLE_DEVICE_ID = "console_device_id"
+        private const val KEY_RELAY_PAIRING = "relay_pairing"
 
         @Volatile
         private var instance: PrefsStore? = null
@@ -207,6 +208,90 @@ class PrefsStore private constructor(context: Context) {
 
     fun getRelayToken(): String = prefs.getString("relay_token", "") ?: ""
     fun setRelayToken(v: String) { prefs.edit().putString("relay_token", v).apply() }
+
+    /**
+     * Atomically replaces the complete encrypted relay pairing blob and removes obsolete
+     * manual relay credentials. A failed commit or failed readback restores the previous
+     * pairing and manual values.
+     */
+    @Synchronized
+    fun saveRelayPairing(config: RelayPairingConfig): Boolean {
+        val encoded = try {
+            RelayPairingConfig.encodeStorage(config)
+        } catch (_: Exception) {
+            return false
+        }
+        val previousPairing: String?
+        val previousRelayUrl: String?
+        val previousRelayToken: String?
+        try {
+            previousPairing = prefs.getString(KEY_RELAY_PAIRING, null)
+            previousRelayUrl = prefs.getString("relay_url", null)
+            previousRelayToken = prefs.getString("relay_token", null)
+        } catch (_: Exception) {
+            Log.w(TAG, "Relay pairing snapshot read failed")
+            return false
+        }
+
+        val committed = try {
+            prefs.edit()
+                .putString(KEY_RELAY_PAIRING, encoded)
+                .commit()
+        } catch (_: Exception) {
+            false
+        }
+        if (!committed || loadRelayPairing() != config) {
+            restoreRelayPairing(previousPairing, previousRelayUrl, previousRelayToken)
+            return false
+        }
+        if (previousRelayUrl != null || previousRelayToken != null) {
+            val manualCleared = try {
+                prefs.edit()
+                    .remove("relay_url")
+                    .remove("relay_token")
+                    .commit()
+            } catch (_: Exception) {
+                false
+            }
+            if (!manualCleared) {
+                restoreRelayPairing(previousPairing, previousRelayUrl, previousRelayToken)
+                return false
+            }
+        }
+        return true
+    }
+
+    fun loadRelayPairing(): RelayPairingConfig? {
+        return try {
+            val blob = prefs.getString(KEY_RELAY_PAIRING, null) ?: return null
+            RelayPairingConfig.decodeStorage(blob)
+        } catch (_: Exception) {
+            Log.w(TAG, "Relay pairing unavailable")
+            null
+        }
+    }
+
+    fun hasRelayPairing(): Boolean = loadRelayPairing() != null
+
+    @Synchronized
+    fun clearRelayPairing(): Boolean = try {
+        prefs.edit().remove(KEY_RELAY_PAIRING).commit()
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun restoreRelayPairing(pairing: String?, relayUrl: String?, relayToken: String?) {
+        try {
+            val editor = prefs.edit()
+            if (pairing == null) editor.remove(KEY_RELAY_PAIRING)
+            else editor.putString(KEY_RELAY_PAIRING, pairing)
+            if (relayUrl == null) editor.remove("relay_url") else editor.putString("relay_url", relayUrl)
+            if (relayToken == null) editor.remove("relay_token") else editor.putString("relay_token", relayToken)
+            editor.commit()
+        } catch (_: Exception) {
+            Log.w(TAG, "Relay pairing rollback failed")
+        }
+    }
 
     // Managed Agent Console — content sync is intentionally opt-in.
     fun isConsoleSyncEnabled(): Boolean = prefs.getBoolean(KEY_CONSOLE_SYNC_ENABLED, false)

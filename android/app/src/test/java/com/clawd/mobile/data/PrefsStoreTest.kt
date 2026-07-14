@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import io.mockk.*
+import java.util.Base64
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -115,6 +116,14 @@ class PrefsStoreTest {
 
     private fun createPrefsStore(): PrefsStore {
         return PrefsStore.getInstance(context)
+    }
+
+    private fun relayPairing(name: String = "Stored fixture", tokenByte: String = "ab"): RelayPairingConfig {
+        val privateKey = Base64.getEncoder().encodeToString(ByteArray(32) { 7 })
+        val publicKey = Base64.getEncoder().encodeToString(ByteArray(32) { 8 })
+        val payload = """{"version":1,"name":"$name","wireGuard":{"privateKey":"$privateKey","address":"10.8.0.3/32","serverPublicKey":"$publicKey","endpoint":"192.0.2.7:51820","allowedIps":["10.8.0.0/24"],"persistentKeepalive":25},"relay":{"url":"ws://10.8.0.1:7891","token":"${tokenByte.repeat(32)}"},"issuedAt":1783900800000}"""
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
+        return RelayPairingConfig.parse("clawd://relay-pair?v=1&data=$encoded")
     }
 
     @Test
@@ -437,5 +446,186 @@ class PrefsStoreTest {
 
         assertEquals(100.5f, store.getPetContentCx(0f), 0.01f)
         assertEquals(200.3f, store.getPetContentCy(0f), 0.01f)
+    }
+
+    // ── Relay pairing encrypted atomic blob ───────────────────────────
+
+    @Test
+    fun `relay pairing saves as one versioned blob and round trips`() {
+        val store = createPrefsStore()
+        val pairing = relayPairing()
+
+        assertTrue(store.saveRelayPairing(pairing))
+
+        assertEquals(pairing, store.loadRelayPairing())
+        assertTrue(store.hasRelayPairing())
+        assertTrue(inMemoryPrefs["relay_pairing"] is String)
+        assertEquals(1, inMemoryPrefs.keys.count { it.startsWith("relay_pairing") })
+    }
+
+    @Test
+    fun `relay pairing never enters ordinary config history or manual relay fields`() {
+        val store = createPrefsStore()
+        val pairing = relayPairing()
+
+        assertTrue(store.saveRelayPairing(pairing))
+
+        assertNull(store.loadConfig())
+        assertTrue(store.getHistory().isEmpty())
+        for (key in listOf("connection_config", "connection_history", "relay_url", "relay_token")) {
+            val ordinaryValue = inMemoryPrefs[key]?.toString().orEmpty()
+            assertFalse(ordinaryValue.contains(pairing.wireGuard.privateKey))
+            assertFalse(ordinaryValue.contains(pairing.relay.token))
+        }
+    }
+
+    @Test
+    fun `successful relay pairing atomically replaces old pairing then clears manual relay`() {
+        val store = createPrefsStore()
+        val first = relayPairing("First", "ab")
+        val replacement = relayPairing("Replacement", "cd")
+        assertTrue(store.saveRelayPairing(first))
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+
+        assertTrue(store.saveRelayPairing(replacement))
+
+        assertEquals(replacement, store.loadRelayPairing())
+        assertEquals("", store.getRelayUrl())
+        assertEquals("", store.getRelayToken())
+    }
+
+    @Test
+    fun `failed relay pairing commit restores old pairing and manual relay`() {
+        val store = createPrefsStore()
+        val first = relayPairing("First", "ab")
+        assertTrue(store.saveRelayPairing(first))
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+        every { mockEditor.commit() } returnsMany listOf(false, true)
+
+        assertFalse(store.saveRelayPairing(relayPairing("Rejected", "cd")))
+
+        assertEquals(first, store.loadRelayPairing())
+        assertEquals("wss://legacy.example.test", store.getRelayUrl())
+        assertEquals("legacy-manual-token", store.getRelayToken())
+    }
+
+    @Test
+    fun `failed readback restores old pairing and manual relay`() {
+        val store = createPrefsStore()
+        val first = relayPairing("First", "ab")
+        assertTrue(store.saveRelayPairing(first))
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+        var pairingReads = 0
+        every { mockPrefs.getString("relay_pairing", null) } answers {
+            pairingReads++
+            if (pairingReads == 2) "{corrupt-readback" else inMemoryPrefs["relay_pairing"] as? String
+        }
+
+        assertFalse(store.saveRelayPairing(relayPairing("Rejected", "cd")))
+
+        assertEquals(first, store.loadRelayPairing())
+        assertEquals("wss://legacy.example.test", store.getRelayUrl())
+        assertEquals("legacy-manual-token", store.getRelayToken())
+    }
+
+    @Test
+    fun `manual relay is retained until replacement pairing passes readback`() {
+        val store = createPrefsStore()
+        assertTrue(store.saveRelayPairing(relayPairing("First", "ab")))
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+        var pairingReads = 0
+        every { mockPrefs.getString("relay_pairing", null) } answers {
+            pairingReads++
+            if (pairingReads == 2) {
+                assertEquals("wss://legacy.example.test", inMemoryPrefs["relay_url"])
+                assertEquals("legacy-manual-token", inMemoryPrefs["relay_token"])
+            }
+            inMemoryPrefs["relay_pairing"] as? String
+        }
+
+        assertTrue(store.saveRelayPairing(relayPairing("Replacement", "cd")))
+        assertEquals("", store.getRelayUrl())
+        assertEquals("", store.getRelayToken())
+    }
+
+    @Test
+    fun `manual cleanup failure rolls back pairing and preserves manual relay`() {
+        val store = createPrefsStore()
+        val first = relayPairing("First", "ab")
+        assertTrue(store.saveRelayPairing(first))
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+        every { mockEditor.commit() } returnsMany listOf(true, false, true)
+
+        assertFalse(store.saveRelayPairing(relayPairing("Rejected", "cd")))
+
+        assertEquals(first, store.loadRelayPairing())
+        assertEquals("wss://legacy.example.test", store.getRelayUrl())
+        assertEquals("legacy-manual-token", store.getRelayToken())
+    }
+
+    @Test
+    fun `manual relay values never synthesize a WireGuard pairing`() {
+        val store = createPrefsStore()
+        store.setRelayUrl("wss://legacy.example.test")
+        store.setRelayToken("legacy-manual-token")
+
+        assertFalse(store.hasRelayPairing())
+        assertNull(store.loadRelayPairing())
+        assertEquals("wss://legacy.example.test", store.getRelayUrl())
+        assertEquals("legacy-manual-token", store.getRelayToken())
+    }
+
+    @Test
+    fun `corrupt and unknown storage versions fail closed without touching LAN history`() {
+        val store = createPrefsStore()
+        val lan = ConnectionConfig("192.168.1.7", 23334, "abcdef1234567890")
+        store.saveConfig(lan)
+        assertTrue(store.saveRelayPairing(relayPairing()))
+        val validBlob = inMemoryPrefs["relay_pairing"] as String
+
+        inMemoryPrefs["relay_pairing"] = validBlob.replaceFirst("\"storageVersion\":1", "\"storageVersion\":2")
+        assertNull(store.loadRelayPairing())
+        assertFalse(store.hasRelayPairing())
+        assertEquals(lan, store.loadConfig())
+        assertEquals(listOf(lan), store.getHistory())
+
+        inMemoryPrefs["relay_pairing"] = "{corrupt"
+        assertNull(store.loadRelayPairing())
+        assertEquals(lan, store.loadConfig())
+        assertEquals(listOf(lan), store.getHistory())
+    }
+
+    @Test
+    fun `decrypt failure fails closed without clearing other preferences`() {
+        val store = createPrefsStore()
+        val lan = ConnectionConfig("192.168.1.7", 23334, "abcdef1234567890")
+        store.saveConfig(lan)
+        assertTrue(store.saveRelayPairing(relayPairing()))
+        every { mockPrefs.getString("relay_pairing", null) } throws SecurityException("decrypt failed")
+
+        assertNull(store.loadRelayPairing())
+        assertFalse(store.hasRelayPairing())
+        assertEquals(lan, store.loadConfig())
+        assertEquals(listOf(lan), store.getHistory())
+    }
+
+    @Test
+    fun `clear relay pairing is idempotent and preserves LAN history`() {
+        val store = createPrefsStore()
+        val lan = ConnectionConfig("192.168.1.7", 23334, "abcdef1234567890")
+        store.saveConfig(lan)
+        assertTrue(store.saveRelayPairing(relayPairing()))
+
+        assertTrue(store.clearRelayPairing())
+        assertTrue(store.clearRelayPairing())
+
+        assertFalse(store.hasRelayPairing())
+        assertEquals(lan, store.loadConfig())
+        assertEquals(listOf(lan), store.getHistory())
     }
 }

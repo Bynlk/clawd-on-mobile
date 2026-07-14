@@ -1,6 +1,6 @@
 # 一键 WireGuard Relay 设计
 
-> 状态：实施中（Task 1-7 实现待双审查）
+> 状态：实施中（Task 1-8 实现待双审查）
 > 日期：2026-07-13
 > 分支：`codex/one-click-wireguard-relay`
 
@@ -605,3 +605,16 @@ POST /api/manage/phone/rotate
 - 剩余复审 NodeList RED/GREEN：FakeDOM 的 `querySelectorAll` 改为 NodeList-like，只提供 iterator、`forEach`、`item`、数字索引和 `length`，明确不提供 `filter/find/every`。新增语义探针先在 renderer 直接调用 NodeList `.filter/.find` 处 RED；生产文件全部 8 处 `querySelectorAll` 随后先经 `Array.from` 再做 Array 操作或遍历，QR Tab trap、完整 rerender 回焦、onExit 密码清理与 listener 清理在该 FakeDOM 下继续 GREEN。聚焦文件因此从 20 项增为 21 项。
 - save current 序列 RED/GREEN：Task 6 真实远端末端事件为 `validate:start/fail/ok`；新增序列断言先证明 `validate:ok` 后 save 仍为 pending。renderer 现在只在真实 `validate:ok` 且 save 尚 pending 时置 `save=current`，不使用定时器，也不把 `readback` 或旧连接的 `disconnecting` 当成本地保存/PC 连接证据；`starting_tunnel/verifying_relay/connecting_relay` 才完成 save 并置 `pc_connect=current`，`connected` 完成 PC 连接并置 QR current，含 QR 的 deploy 成功结果最终完成 QR。最终 Task 7 原 184 项加新探针为 185/185，Task 6 邻接保持 169/169，均 0 失败、0 跳过；状态仍为“Task 1-7 实现待双审查”。
 - 本 Task 未读取、请求或使用真实 VPS 地址/凭据，未访问 VPS；测试只使用保留域名和明确的 unit-test-only 占位值。未修改 Task 6 核心 IPC/main、Android、打包或 CI。
+
+### Task 8：Android versioned QR 配对与加密持久化（2026-07-14）
+
+- PC schema 与跨语言 fixture：实现前完整读取 `src/wg-relay-pairing-qr.js` 与 `test/wg-relay-pairing-qr.test.js`，Android 字段顺序和语义精确对应 `version/name/wireGuard/relay/issuedAt`。固定向量由当前 PC `buildPairingDeepLink()` 使用显式 fixture key、RFC 5737 Endpoint 和固定时间生成；Android 测试先校验完整 URI 的 SHA-256 `6176404493ba1fc27408cfa52c0683da476ddf087dbd59556aaab10cdd96000f`，再逐字段断言解析结果。另一项集成测试直接调用仓库已有 Node 与当前 PC encoder，只输出并比较 SHA-256，不输出 URI/fixture secrets，防止两端 schema 静默漂移。
+- parser RED/GREEN：新增测试后聚焦命令先在 `RelayPairingConfig`、typed error 等符号不存在处编译失败；实现后 11 个 parser 用例与跨语言用例 GREEN。解析器限制 URI 8 KiB、JSON 6 KiB及字段长度，只接受精确 `clawd://relay-pair?v=1&data=<canonical base64url JSON>`；拒绝大小写混淆、userinfo/fragment、重复/额外 query、非规范 base64url、非规范/尾随 JSON、duplicate semantic JSON key、未知字段、missing/wrong type 和未知版本。`Json` 使用 `ignoreUnknownKeys=false`、`explicitNulls=false`，duplicate key 在反序列化前由有界结构扫描器拒绝。
+- WireGuard/Relay 安全模型：两份 WG key 必须为规范非零 32-byte base64 且不同；Address 必须是私有 `/24` 派生的 `.3/32`，AllowedIPs 精确且仅有同一私网 `.0/24`，Relay URL 精确为该子网 `.1:7891` 的 `ws://`；Endpoint 只接受合法 domain、IPv4 或括号 IPv6 与 `1..65535` 端口，keepalive 为 `1..120`，Token 精确 64 hex。模型全为不可变值，所有 `toString()` 与稳定异常只暴露安全 code/`REDACTED`，不回显 URI、key 或 token。
+- 持久化 RED/GREEN：`PrefsStoreTest` 先因 `save/load/clear/hasRelayPairing` 不存在而编译失败；实现使用既有 `EncryptedSharedPreferences`，完整 pairing 保存为一个带 `storageVersion=1` 的 blob，不进入普通 config/history/manual 字段。替换先原子 commit pairing、严格 readback，再清 obsolete `relay_url/relay_token`；commit、readback 或 manual cleanup 失败均尝试恢复旧 pairing/manual。后续时序审查新增两项先 RED，证明旧实现过早删除 manual 且 cleanup failure 未回滚；调整后 `PrefsStoreTest` 42/42 GREEN。损坏、未知版本、decrypt failure 均 fail closed且不影响 LAN config/history，clear 幂等；旧 manual URL/token 绝不合成 WireGuard pairing。
+- 扫码/deep link 路由 RED/GREEN：集成测试先因 scan result、coordinator 与 deep-link router 不存在而编译失败。`ScanScreen` 现在区分 LAN、Relay 与 typed invalid Relay；本地化错误只显示稳定类别并允许重新扫描。`MainActivity` 同时接受 camera 和 `ACTION_VIEW`，成功保存后只发非敏感整数 Settings 请求，Relay 分支不调用 `WsConnectionService.start`，也不启动 VPN。原始 deep link 不写 log、Toast 或 saved state；saved state 仅保存 pairing SHA-256 指纹和整数请求 ID。失败不覆盖旧 pairing；相同指纹在 onNewIntent、rotation 或重复扫描时不重复保存/导航。
+- 一次性 Settings 导航：用户明确授权最小扩展 `NavGraph.kt` 和对应测试。默认 `startDestination` 仍为 `sessions`；graph 未就绪时不消费请求，成功后按 `navigate(settings) → Activity 清零 pending → rememberSaveable 记录 consumed` 顺序执行，已经位于 Settings 时只消费不叠栈。导航测试最初因 decision/helper 不存在而 RED；启动时序与 rotation 顺序的两个复审测试也分别先 RED，最终 7/7 GREEN。
+- 最终聚焦验证：在 `android/` 执行 `JAVA_HOME=/opt/homebrew/opt/openjdk@17 ANDROID_HOME=$HOME/.local/android ./gradlew testDebugUnitTest --tests '*RelayPairing*' --tests '*PrefsStoreTest*`，退出码 0，共 66 项，66 通过、0 失败、0 跳过；组成是 parser 11、跨语言/路由 integration 6、导航 7、PrefsStore 42。
+- Android 邻接/编译/lint 验证：相同环境执行完整 `./gradlew testDebugUnitTest`，退出码 0，共 617/617；最终组合命令 `./gradlew testDebugUnitTest lintDebug assembleDebug` 也退出码 0，`lintDebug` 生成 debug lint HTML且 `assembleDebug` 成功产出 debug APK。提交前另执行 `git diff --check` 与授权范围检查。
+- 两轮独立自审分别覆盖 parser/schema/secret 泄漏与 persistence/navigation/rotation 时序；当前工具环境没有可调用的 reviewer subagent，因此不伪称完成 AGENTS.md 的子代理交叉审查，整体状态按要求更新为“Task 1-8 实现待双审查”。
+- 本 Task 未读取、请求或使用真实 VPS 地址/凭据，未访问 VPS；测试仅使用 RFC 地址和显式 fixture secrets。未修改 WireGuard 依赖/VPN（Task 9）、远程连接 UI（Task 10）、打包或 CI。

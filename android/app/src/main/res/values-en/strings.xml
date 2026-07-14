@@ -251,6 +251,10 @@
     <string name="scan_need_camera">Camera permission required</string>
     <string name="scan_grant_camera">Grant Permission</string>
     <string name="scan_qr_hint">Place QR code in the frame</string>
+    <string name="scan_pairing_invalid">This pairing QR code is invalid. Generate a new one on your PC.</string>
+    <string name="scan_pairing_unsupported">This pairing QR version is not supported. Update the app.</string>
+    <string name="scan_pairing_save_failed">Pairing could not be stored securely. Try again.</string>
+    <string name="scan_retry">Scan again</string>
 
     <!-- Language settings -->
     <string name="settings_language">Language</string>
