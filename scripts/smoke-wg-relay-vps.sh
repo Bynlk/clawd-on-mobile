@@ -155,7 +155,7 @@ cp -R "${PROJECT_ROOT}/node_modules/ws" "${LOCAL_BUNDLE}/app/node_modules/ws"
 find "${LOCAL_BUNDLE}/app/node_modules/ws" -type d -exec chmod 700 {} +
 find "${LOCAL_BUNDLE}/app/node_modules/ws" -type f -exec chmod 600 {} +
 
-tar -C "${LOCAL_BUNDLE}" -cf - . |
+tar --no-xattrs -C "${LOCAL_BUNDLE}" -cf - . |
   run_ssh "umask 077; rm -rf '${REMOTE_ROOT}'; mkdir -m 700 '${REMOTE_ROOT}'; tar -xf - -C '${REMOTE_ROOT}'"
 
 ENDPOINT_ASSIGNMENT="ENDPOINT_HOST='${VPS_HOST}'"

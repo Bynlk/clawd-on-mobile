@@ -644,3 +644,4 @@ POST /api/manage/phone/rotate
 - 全量邻接修复：首次 `npm test` 暴露旧 sidecar 合同测试仍要求 prebuild 命令只能等于单一 verifier；该 RED 与新增双 sidecar 打包门禁不一致。测试更新为逐目标要求“原 sidecar verifier → WireGuard Relay verifier”的精确顺序后，`verify-sidecar-binaries`、WG verifier 与 packaging 三文件 22/22 通过。
 - 实际产物：在当前 macOS arm64 主机执行 sidecar build 与 verify，生成的 `darwin-arm64/clawd-wg-tunnel` 非空且可执行，校验 1/1 通过。真实 VPS 执行保留到 Task 12，本文档与仓库未记录任何真实地址、密码、配置、私钥或 Token。
 - 真实 smoke 首轮 RED：VPS 尚未部署前，macOS 长 `TMPDIR` 使 SSH ControlMaster socket 超过 Unix path 上限，流程在 SSH connection 阶段以 255 退出且脱敏。新增源合同测试先 RED；控制 socket 改为独立的 root-local `/tmp/cwgr.XXXXXX/s` 短路径、目录 `0700` 并纳入 trap 清理后，聚焦测试与 `bash -n` 均 GREEN。
+- 真实 smoke 第二轮 RED：SSH 已连接但 macOS bsdtar 把 `com.apple.provenance` xattr 写入上传流，远端 GNU tar 对未知扩展头以 2 退出，安装器尚未运行且 VPS 保持旧 WireGuard 状态。新增 `--no-xattrs` 源合同先 RED，上传 tar 显式禁用扩展属性后聚焦测试与 `bash -n` GREEN。
