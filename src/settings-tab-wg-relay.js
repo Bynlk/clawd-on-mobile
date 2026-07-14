@@ -384,6 +384,10 @@
     if (payload.status === "fail") view.progressStates[index] = "failed";
     else if (payload.status === "ok") view.progressStates[index] = "complete";
     else view.progressStates[index] = "current";
+    if (payload.step === "validate" && payload.status === "ok"
+        && view.progressStates[7] === "pending") {
+      view.progressStates[7] = "current";
+    }
   }
 
   function applyConnectionProgress(payload) {
@@ -653,7 +657,7 @@
 
   function overlayButtons(record) {
     if (!record || !record.dialog) return [];
-    return record.dialog.querySelectorAll("button")
+    return Array.from(record.dialog.querySelectorAll("button"))
       .filter((button) => !button.disabled && !button.hidden);
   }
 
@@ -662,7 +666,7 @@
     if (!target || !target.isConnected) {
       const label = record && record.triggerLabel;
       target = label && view.renderRoot
-        ? view.renderRoot.querySelectorAll("button").find((button) => button.textContent === label)
+        ? Array.from(view.renderRoot.querySelectorAll("button")).find((button) => button.textContent === label)
         : null;
     }
     if (target && typeof target.focus === "function") {
@@ -676,7 +680,7 @@
     const label = view.pendingFocusLabel;
     view.pendingFocusLabel = null;
     if (!label || !view.renderRoot) return;
-    const target = view.renderRoot.querySelectorAll("button")
+    const target = Array.from(view.renderRoot.querySelectorAll("button"))
       .find((button) => button.textContent === label && !button.disabled && !button.hidden);
     if (target && typeof target.focus === "function") target.focus();
   }
@@ -1080,13 +1084,13 @@
     if (!rootNode) return;
     const repair = rootNode.querySelector(".wg-relay-repair-card");
     if (repair) {
-      for (const input of repair.querySelectorAll("input")) input.disabled = disabled;
-      for (const button of repair.querySelectorAll("button")) button.disabled = disabled;
+      for (const input of Array.from(repair.querySelectorAll("input"))) input.disabled = disabled;
+      for (const button of Array.from(repair.querySelectorAll("button"))) button.disabled = disabled;
     }
     const setup = rootNode.querySelector(".wg-relay-setup-card");
     if (setup) {
-      for (const input of setup.querySelectorAll("input")) input.disabled = disabled || !window.wgRelay;
-      for (const button of setup.querySelectorAll("button")) button.disabled = disabled || !window.wgRelay;
+      for (const input of Array.from(setup.querySelectorAll("input"))) input.disabled = disabled || !window.wgRelay;
+      for (const button of Array.from(setup.querySelectorAll("button"))) button.disabled = disabled || !window.wgRelay;
     }
   }
 
@@ -1191,7 +1195,7 @@
     closeQrDialog();
     cancelStatusRetry();
     if (view.renderRoot) {
-      for (const input of view.renderRoot.querySelectorAll("input").filter((item) => item.type === "password")) {
+      for (const input of Array.from(view.renderRoot.querySelectorAll("input")).filter((item) => item.type === "password")) {
         input.value = "";
       }
     }

@@ -89,6 +89,17 @@ class FakeClassList {
   contains(name) { return this.values().has(name); }
 }
 
+class FakeNodeList {
+  constructor(values) {
+    this._values = [...values];
+    this.length = this._values.length;
+    this._values.forEach((value, index) => { this[index] = value; });
+  }
+  item(index) { return this._values[index] || null; }
+  forEach(callback, thisArg) { this._values.forEach(callback, thisArg); }
+  [Symbol.iterator]() { return this._values[Symbol.iterator](); }
+}
+
 class FakeElement {
   constructor(tagName, ownerDocument) {
     this.tagName = String(tagName || "").toUpperCase();
@@ -207,9 +218,9 @@ class FakeElement {
       }
     };
     visit(this);
-    return result;
+    return new FakeNodeList(result);
   }
-  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+  querySelector(selector) { return this.querySelectorAll(selector).item(0); }
 }
 
 class FakeDocument {
@@ -399,7 +410,7 @@ function createHarness({ profile = null, api = {}, runtimeAvailable = true } = {
   };
 }
 
-function buttons(root) { return root.querySelectorAll("button"); }
+function buttons(root) { return Array.from(root.querySelectorAll("button")); }
 function buttonByText(root, text) { return buttons(root).find((button) => button.textContent === text) || null; }
 function setInput(input, value) {
   assert.ok(input, "expected input to exist");
@@ -416,13 +427,45 @@ test("tab registers a render/onExit/dispose lifecycle without top-level DOM acce
   assert.match(TAB_SOURCE, /core\.tabs\["wg-relay"\]\s*=\s*\{[^}]*render[^}]*onExit[^}]*dispose/s);
 });
 
+test("renderer treats querySelectorAll as NodeList and normalizes before Array-only methods", async () => {
+  const harness = createHarness({ profile: DEPLOYED_PROFILE });
+  await flushPromises();
+  const list = harness.content.querySelectorAll("button");
+  assert.equal(typeof list[Symbol.iterator], "function");
+  assert.equal(typeof list.forEach, "function");
+  assert.equal(list.item(0), list[0]);
+  assert.equal(list.filter, undefined);
+  assert.equal(list.find, undefined);
+  assert.equal(list.every, undefined);
+  let visited = 0;
+  list.forEach(() => { visited++; });
+  assert.equal(visited, list.length);
+  assert.doesNotMatch(
+    TAB_SOURCE,
+    /querySelectorAll\([^)]*\)\s*\.(?:filter|find)\(/s,
+  );
+  for (const line of TAB_SOURCE.split("\n").filter((sourceLine) => sourceLine.includes("querySelectorAll("))) {
+    assert.ok(line.includes("Array.from("), `querySelectorAll must be normalized: ${line.trim()}`);
+  }
+
+  const showQr = buttonByText(harness.content, "SHOW_QR");
+  showQr.focus();
+  showQr.dispatchEvent({ type: "click", bubbles: false });
+  await flushPromises();
+  harness.document.emit("keydown", { key: "Tab" });
+  harness.document.emit("keydown", { key: "Escape" });
+  harness.core.tabs["wg-relay"].onExit();
+  assert.equal(harness.document.listenerCount("keydown"), 0);
+  assert.equal(harness.document.modalRoot.children.length, 0);
+});
+
 test("first-use card renders exactly four labelled required fields with safe defaults", () => {
   const harness = createHarness();
   const card = harness.content.querySelector(".wg-relay-setup-card");
   assert.ok(card, "first use should be one setup card");
-  const inputs = card.querySelectorAll("input");
+  const inputs = Array.from(card.querySelectorAll("input"));
   assert.equal(inputs.length, 4);
-  const labels = card.querySelectorAll("label");
+  const labels = Array.from(card.querySelectorAll("label"));
   assert.equal(labels.length, 4);
   for (const label of labels) {
     assert.ok(label.getAttribute("for"));
@@ -465,7 +508,7 @@ test("one-click deploy sends {profile,password}, clears password immediately, an
   assert.equal(Object.hasOwn(request.profile, "password"), false);
   assert.equal(JSON.stringify(request.profile).includes("unit-test-only"), false);
   assert.equal(harness.content.querySelector("#wg-relay-password").value, "");
-  assert.ok(harness.content.querySelectorAll("input").every((input) => input.disabled));
+  assert.ok(Array.from(harness.content.querySelectorAll("input")).every((input) => input.disabled));
   assert.ok(buttons(harness.content).every((button) => button.disabled));
 
   pending.resolve({ status: "error", errorCode: "deploy_failed", message: "server stderr unit-test-only" });
@@ -522,11 +565,11 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   successful.emitProgress({ profileId: "wg-0000000000004", step: "validate", status: "ok" });
   let successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
   assert.equal(successfulRows[6].classList.contains("is-complete"), true);
-  assert.equal(successfulRows[7].classList.contains("is-pending"), true, "save is not fabricated before IPC evidence");
+  assert.equal(successfulRows[7].classList.contains("is-current"), true, "validated remote state starts local save");
 
   successful.emitStatus({ profileId: "wg-0000000000004", status: "disconnecting", generation: 1 });
   successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
-  assert.equal(successfulRows[7].classList.contains("is-pending"), true, "old connection release is not PC connect evidence");
+  assert.equal(successfulRows[7].classList.contains("is-current"), true, "old connection release does not advance local save");
   assert.equal(successfulRows[8].classList.contains("is-pending"), true);
 
   successful.emitStatus({ profileId: "wg-0000000000004", status: "starting_tunnel", generation: 1 });
@@ -549,7 +592,7 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   await flushPromises();
   successfulRows = successful.content.querySelectorAll(".wg-relay-progress-stage");
   assert.equal(successfulRows.length, 10);
-  assert.ok(successfulRows.every((row) => row.classList.contains("is-complete")));
+  assert.ok(Array.from(successfulRows).every((row) => row.classList.contains("is-complete")));
 });
 
 test("deployed card localizes all seven states and uses only connect/disconnect as its primary action", async () => {
@@ -872,7 +915,7 @@ test("rotate and delete require explicit localized confirmations; rotate replace
   assert.equal(harness.content.getAttribute("aria-hidden"), "true");
   assert.equal(harness.document.modalRoot.children.length, 1, "double click owns one confirm modal");
   assert.equal(harness.calls.rotatePhone.length, 0);
-  assert.equal(harness.content.querySelectorAll("button").every((button) => button.disabled), true);
+  assert.equal(Array.from(harness.content.querySelectorAll("button")).every((button) => button.disabled), true);
   assert.equal(harness.document.activeElement, buttonByText(confirmDialog, "CANCEL"));
   const confirmTab = harness.document.emit("keydown", { key: "Tab", shiftKey: false });
   assert.equal(confirmTab.defaultPrevented, true);
