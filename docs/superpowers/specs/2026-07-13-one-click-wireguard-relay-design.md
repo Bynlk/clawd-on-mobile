@@ -1,6 +1,6 @@
 # 一键 WireGuard Relay 设计
 
-> 状态：实施中（Task 1-5 完成，Task 6 实现待复审）
+> 状态：实施中（Task 1-7 实现待双审查）
 > 日期：2026-07-13
 > 分支：`codex/one-click-wireguard-relay`
 
@@ -584,3 +584,17 @@ POST /api/manage/phone/rotate
 - 本轮六项质量审查 RED：secret-store 全文件命令为 16/24，8 项按预期失败并覆盖 schema revision、单 entry 隔离、随机 no-follow temp、store/lock/tmp symlink、权限/类型、live/dead lock 与 24 进程丢更新；IPC/QR 定向为 1/8，7 项失败覆盖 8+3 channels、label/topology/delete CAS、5000 unknown disconnect、QR cache 和 INI 注释；abort 定向为 0/7，never-ready ssh2 实际等满 5 秒，key child 另为 0/1；原子 settings CAS 为 0/2；recovery-read DoS 与 active installer listener 各为 0/1。每组都先复现目标失败再做最小修复。
 - 本轮质量审查 GREEN：Task 6/secret/deploy/SSH/main/QR/settings 十文件精确命令为 289/289、0 失败、0 跳过；真实 Bridge 筛选为 1/1。Task 1–5 WG/Relay/settings 邻接 15 文件为 480/480、0 失败、0 跳过（原 451 项继续通过）。24 个独立 Node 进程并发写入筛选探针为 1/1；SSH/key child/HTTP/IPC dispose 取消链路筛选为 10/10，其中 never-ready SSH 的 dispose 探针约 182 ms，低于 2 秒目标。对全部 changed JS 执行 `node --check`，并执行 `git diff --check`，均退出码 0。本状态保持“Task 6 实现待复审”，不提前标为完成。
 - 本 Task 未读取或使用真实 VPS 凭据，未连接或访问真实 VPS；未修改 Task 7 UI、Android、打包或 CI。整个一键 Relay 仍处于实施中，Task 7–12 尚未标为完成。
+
+### Task 7：PC 最小步骤一键部署向导与已部署状态卡（2026-07-14）
+
+- 初始基线与 RED：修改前 `node --test test/settings-tab-wg-relay.test.js` 为 13 项中 11 通过、2 失败，两个失败精确为五种桌面语言全部缺少 `sidebarWgRelay` 与 WG Relay 设置文案；没有把它们误归为本轮新回归。先仅修改测试后，同一文件 14/14 按预期失败；browser 新增的 Task 7 两项也 2/2 失败，证明旧多 profile/旧 tunnel UI 不满足四字段、Task 6 API、进度、状态卡、QR 与生命周期合同。
+- 首次/未部署向导：页面收敛为单张卡，只显示公网 IP/域名、SSH 用户名、SSH 端口和 SSH 密码；用户名/端口默认 `root`/`22`。首次路径固定使用 `51820`、`10.8.0.0/24`、`7891`，仅在修复/高级卡中展示。主按钮只调用 `window.wgRelay.deploy({ profile, password })`；公开 profile 不含 password，renderer 不调用 settings command、旧 tunnel API 或本地二维码生成 API。
+- 密码与错误边界：password 只存在于当前 input、同步 deploy 参数和随即清空的局部变量；提交后立即清空 input，无论 Promise 成败，不写 view/profile/prefs/dataset/log。输入使用 `type=password`、`autocomplete=new-password`。renderer 只按稳定 `errorCode` 选择五语言安全文案；细分 sidecar/health/Relay/connection code 映射到本地化类别，忽略 raw message、stderr 和未知 secret-like 内容。
+- 进度与日常状态：生产的 11 个 SSH/install progress step 映射为用户既定的 10 阶段，显示 pending/current/completed/failed 并使用 `aria-live`。部署结果再收敛保存、PC 连接和 QR 三阶段。部署后只显示一张 VPS 名称/公网地址状态卡；七态 `idle/starting_tunnel/verifying_relay/connecting_relay/connected/disconnecting/failed` 独立本地化，主操作只走 `connect`/`disconnect`。
+- 配对、修复与删除：二维码只在用户点击后调用 `pairingQr`，dialog 带 title/alt/敏感数据警告、初始焦点和 Escape；关闭、切换页面、重新配对替换或删除成功时都把旧 `<img>` 的 `src` 属性/属性值和 renderer 引用清空。重新配对先确认“旧手机立即失效”，调用 `rotatePhone` 并在 busy 状态替换 QR；修复重新要求 SSH 密码且不复用旧值；删除确认明确 VPS 服务继续运行，只调用 `deleteLocal`。
+- 恢复、busy 与竞态：`remote_commit_recovery_required`、`profile_conflict_recovery_required` 及同类 recovery code 无论来自 `status` 还是 `errorCode` 都显示“需要修复/重新部署”并禁用连接。任一 operation 或四个 runtime busy 状态会禁用重复/破坏动作；双击复用同一个 renderer in-flight Promise。每次 rerender 先退订旧 status/progress listener，`onExit`/`dispose` 再清理 listener 与 QR。view epoch 阻止切页后的 deploy late result 写回；status revision 阻止初始 `status()` 的迟到成功或拒绝覆盖更新的实时事件；已有未部署 profile 的成功结果在 settings broadcast 到达前使用 public profile override 显示状态卡。
+- 响应式与可访问性：所有 label 关联 input，按钮显式 `type=button`，错误与进度使用 `aria-live`，QR 使用 modal 语义和 alt；focus-visible 清晰。`420px` 以下（覆盖 320px）全部动作/字段单列，长公网地址和错误 `overflow-wrap:anywhere`；所有 viewport 单位按 `--clawd-text-zoom` 补偿，并提供 `prefers-reduced-motion`。
+- i18n：en/zh/zh-TW/ko/ja 的 Task 7 keyset 完全一致，无裸 key fallback；英文与简体中文使用产品既定“一键部署 / 远程连接 / 旧手机立即失效 / VPS 服务继续运行”语义，其余三种语言提供可理解翻译。既有两个 WG i18n 失败已修复。browser 基线另有四个与 Task 7 无关的 General 页 source-format 断言；核对生产行为后只把它们改成等价的空白无关语义 regex，没有修改 General 生产代码。
+- 后续审查 RED/GREEN：recovery code 从 `status` 字段进入时先 0/1，修复后 1/1；已有未部署 profile 的即时收敛、initial status late resolve、runtime bridge 缺失全禁用先 0/3，修复后 3/3；initial status late reject 先 0/1，修复后 1/1；health 子码安全本地化先 0/1，修复后 1/1。两轮独立自审分别覆盖 A–G 规格一致性和 secret/QR/race/listener 边界；当前工具环境没有可调用的 reviewer subagent，因此不伪称已完成 AGENTS.md 要求的子代理交叉审查，整体状态保持“Task 1-7 实现待双审查”。
+- 最终 GREEN：`node --test test/settings-tab-wg-relay.test.js test/settings-renderer-browser-env.test.js test/i18n.test.js test/settings-tab-remote-ssh.test.js test/doctor-modal-no-active-integrations.test.js` 退出码 0，共 184 项，184 通过、0 失败、0 跳过；其中 Task 7 聚焦文件为 20/20，browser 全文件为 143/143。`node --test test/wg-relay-preload.test.js test/wg-relay-ipc.test.js test/main-wg-relay-integration.test.js test/settings-ipc.test.js test/settings-actions-wg-relay.test.js test/wg-relay-runtime.test.js test/wg-relay-connection.test.js` 退出码 0，共 169 项，169 通过、0 失败、0 跳过。对两个生产 JS 与两个改动测试 JS 执行 `node --check` 全部退出码 0；`git diff --check` 退出码 0；授权范围检查只列出 Task 7 允许的 6 个文件。
+- 本 Task 未读取、请求或使用真实 VPS 地址/凭据，未访问 VPS；测试只使用保留域名和明确的 unit-test-only 占位值。未修改 Task 6 核心 IPC/main、Android、打包或 CI。

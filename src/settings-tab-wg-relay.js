@@ -1,79 +1,85 @@
 "use strict";
 
-// WireGuard relay tab — plan-wg-relay §3.6
-//
-// One-click cross-network relay: the user supplies ONLY a VPS IP + password
-// (or an SSH key) and this tab drives the whole deploy over SSH — install
-// wireguard, generate keys, write configs, start the service, open the
-// firewall, read back the public endpoint, bring up the PC tunnel and render
-// a phone-join QR. No jumping to external apps (D-UX).
-//
-// Profile CRUD goes through window.settingsAPI.command using the
-// wgRelay.add / .update / .remove / .applyReadback actions registered on
-// settings-actions.js. Runtime ops (deploy / tunnelUp / tunnelDown /
-// regenPhone / status) go through window.wgRelay.* — that preload bridge is
-// added separately; every call site guards for its absence so the tab still
-// renders (read-only) when the bridge is missing.
-//
-// SECURITY:
-//   SEC-1  the SSH password lives ONLY in the in-memory view.passwords Map.
-//          It is never put in a saved profile payload, never persisted, and is
-//          re-entered every app launch. The edit form only stores authMethod.
-//   SEC-3  the phone private key / phoneConf comes back from a deploy inside
-//          view.readbacks (transient, memory-only). Only the PUBLIC readback
-//          fields are persisted (via wgRelay.applyReadback). The QR is drawn
-//          from the transient conf and is gone on reload.
-
+// Minimal desktop flow for one-click WireGuard Relay deployment and daily use.
+// SSH passwords exist only in the active input and a short-lived deploy call.
 (function initSettingsTabWgRelay(root) {
   let state = null;
   let helpers = null;
   let ops = null;
 
-  // Local view state (tab-scoped — not persisted in core.state).
-  //
-  // passwords / readbacks are memory-only by design (SEC-1 / SEC-3). progressLog
-  // and deployingProfileIds are keyed by profileId so concurrent deploys on
-  // multiple profiles don't clobber each other's button/log.
-  const view = {
-    selectedProfileId: null,
-    editing: null,               // profile snapshot for edit form, or null
-    runtimeStatuses: new Map(),  // profileId → status snapshot
-    progressLog: new Map(),      // profileId → Array<event>
-    passwords: new Map(),        // profileId → SSH password (MEMORY ONLY, SEC-1)
-    readbacks: new Map(),        // profileId → transient deploy readback (SEC-3)
-    qrDataUrls: new Map(),       // profileId → phone-join QR data URL (transient)
-    listenerInstalled: false,
-    deployingProfileIds: new Set(),
-  };
-
-  const PROGRESS_LOG_MAX = 50;
-  // Deploy pipeline steps — labels come from wgRelayStep_<step> i18n keys.
-  const DEPLOY_STEPS = [
-    "connect", "detect", "install-wg", "gen-keys",
-    "write-conf", "start-service", "firewall", "readback",
-  ];
-  const STATUS_UI = Object.freeze({
-    idle: Object.freeze({ badge: "idle", busy: false, labelKey: "remoteSshStatus_idle", tunnelDown: false }),
-    starting_tunnel: Object.freeze({ badge: "connecting", busy: true, labelKey: "remoteSshStatus_connecting", tunnelDown: false }),
-    verifying_relay: Object.freeze({ badge: "connecting", busy: true, labelKey: "remoteSshStatus_connecting", tunnelDown: false }),
-    connecting_relay: Object.freeze({ badge: "connecting", busy: true, labelKey: "remoteSshStatus_connecting", tunnelDown: false }),
-    connected: Object.freeze({ badge: "connected", busy: false, labelKey: "remoteSshStatus_connected", tunnelDown: true }),
-    disconnecting: Object.freeze({ badge: "connecting", busy: true, labelKey: "remoteSshDisconnect", tunnelDown: true }),
-    failed: Object.freeze({ badge: "failed", busy: false, labelKey: "remoteSshStatus_failed", tunnelDown: false }),
+  const DEFAULTS = Object.freeze({
+    sshUsername: "root",
+    sshPort: 22,
+    wgPort: 51820,
+    wgSubnet: "10.8.0.0/24",
+    relayPort: 7891,
   });
+  const STATUSES = new Set([
+    "idle",
+    "starting_tunnel",
+    "verifying_relay",
+    "connecting_relay",
+    "connected",
+    "disconnecting",
+    "failed",
+  ]);
+  const RUNTIME_BUSY_STATUSES = new Set([
+    "starting_tunnel", "verifying_relay", "connecting_relay", "disconnecting",
+  ]);
+  const RECOVERY_CODES = new Set([
+    "remote_commit_recovery_required",
+    "profile_conflict_recovery_required",
+  ]);
+  const DIRECT_ERROR_CODES = new Set([
+    "invalid_profile", "password_required", "runtime_unavailable", "deploy_failed",
+    "deploy_aborted", "remote_commit_recovery_required",
+    "profile_conflict_recovery_required", "secure_storage_unavailable",
+    "secret_store_read_failed", "local_storage_retry_required",
+    "public_profile_retry_required", "connection_retry_required",
+    "pairing_qr_retry_required", "invalid_profile_id", "profile_not_found",
+    "secrets_not_found", "pairing_qr_failed", "rotate_failed", "rotate_aborted",
+    "delete_prepare_failed", "delete_failed", "connection_failed", "sidecar_failed",
+    "health_failed", "relay_failed", "unknown",
+  ]);
+  const PROGRESS_STAGES = Object.freeze([
+    "connect", "fingerprint", "upload", "dependencies", "wireguard",
+    "relay", "verify", "save", "pcConnect", "qr",
+  ]);
+  const RAW_PROGRESS_STAGE = Object.freeze({
+    connect: 0,
+    "host-key": 1,
+    upload: 2,
+    install: 3,
+    detect: 3,
+    "install-wg": 4,
+    "gen-keys": 4,
+    "write-conf": 4,
+    "start-service": 5,
+    firewall: 5,
+    readback: 6,
+    validate: 6,
+  });
+
+  const view = {
+    epoch: 0,
+    setupDraft: null,
+    profileOverride: null,
+    hiddenProfileIds: new Set(),
+    statusByProfile: new Map(),
+    statusRevisionByProfile: new Map(),
+    statusRequest: null,
+    progressProfileId: null,
+    progressVisible: false,
+    progressStates: PROGRESS_STAGES.map(() => "pending"),
+    errorCode: null,
+    repairOpen: false,
+    busy: null,
+    listenerDisposers: [],
+    qrDialog: null,
+  };
 
   function t(key) {
     return helpers.t(key);
-  }
-
-  function listProfiles() {
-    const snap = state.snapshot || {};
-    const wgRelay = snap.wgRelay || {};
-    return Array.isArray(wgRelay.profiles) ? wgRelay.profiles : [];
-  }
-
-  function findProfile(id) {
-    return listProfiles().find((p) => p.id === id) || null;
   }
 
   function uuid() {
@@ -83,628 +89,730 @@
     return "wg-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
-  function ensureRuntimeListeners() {
-    if (view.listenerInstalled) return;
-    if (!window.wgRelay) return;
-    view.listenerInstalled = true;
-    if (typeof window.wgRelay.onStatusChanged === "function") {
-      window.wgRelay.onStatusChanged((s) => {
-        if (s && typeof s.profileId === "string") {
-          view.runtimeStatuses.set(s.profileId, s);
+  function profiles() {
+    const snapshot = state.snapshot || {};
+    const relay = snapshot.wgRelay || {};
+    return Array.isArray(relay.profiles) ? relay.profiles : [];
+  }
+
+  function currentProfile() {
+    const persisted = profiles().find((profile) => profile
+      && !view.hiddenProfileIds.has(profile.id));
+    if (persisted) {
+      if (view.profileOverride && view.profileOverride.id === persisted.id) {
+        if (isDeployed(view.profileOverride) && !isDeployed(persisted)) {
+          return view.profileOverride;
         }
-        if (state.activeTab === "wg-relay") ops.requestRender({ content: true });
+        view.profileOverride = null;
+      }
+      return persisted;
+    }
+    if (view.profileOverride && !view.hiddenProfileIds.has(view.profileOverride.id)) {
+      return view.profileOverride;
+    }
+    return null;
+  }
+
+  function isDeployed(profile) {
+    return Boolean(profile && (
+      profile.deployVersion || profile.lastDeployedAt || profile.endpoint || profile.relayAddr
+    ));
+  }
+
+  function ensureSetupDraft(profile) {
+    if (view.setupDraft && (!profile || view.setupDraft.id === profile.id)) return view.setupDraft;
+    view.setupDraft = {
+      id: profile && profile.id ? profile.id : uuid(),
+      label: profile && profile.label ? profile.label : "",
+      host: profile && profile.host ? profile.host : "",
+      sshUsername: profile && profile.sshUsername ? profile.sshUsername : DEFAULTS.sshUsername,
+      sshPort: profile && Number.isInteger(profile.sshPort) ? profile.sshPort : DEFAULTS.sshPort,
+      wgPort: profile && Number.isInteger(profile.wgPort) ? profile.wgPort : DEFAULTS.wgPort,
+      wgSubnet: profile && profile.wgSubnet ? profile.wgSubnet : DEFAULTS.wgSubnet,
+    };
+    return view.setupDraft;
+  }
+
+  function safeStatus(value, profileId) {
+    const source = value && typeof value === "object" ? value : {};
+    const status = STATUSES.has(source.status) ? source.status : "idle";
+    const result = { profileId, status };
+    if (typeof source.errorCode === "string") result.errorCode = source.errorCode;
+    else if (typeof source.status === "string"
+        && (RECOVERY_CODES.has(source.status) || source.status.endsWith("_recovery_required"))) {
+      result.errorCode = source.status;
+    }
+    return result;
+  }
+
+  function statusFor(profile) {
+    return view.statusByProfile.get(profile.id) || { profileId: profile.id, status: "idle" };
+  }
+
+  function recoveryCode(status) {
+    if (!status) return null;
+    if (RECOVERY_CODES.has(status.status)) return status.status;
+    if (typeof status.errorCode === "string"
+        && (RECOVERY_CODES.has(status.errorCode) || status.errorCode.endsWith("_recovery_required"))) {
+      return status.errorCode;
+    }
+    return null;
+  }
+
+  function localizedError(code) {
+    const safeCode = typeof code === "string" && /^[a-z0-9_]{1,80}$/.test(code)
+      ? code
+      : "unknown";
+    let displayCode = DIRECT_ERROR_CODES.has(safeCode) ? safeCode : "unknown";
+    if (!DIRECT_ERROR_CODES.has(safeCode)) {
+      if (safeCode.startsWith("health_")) displayCode = "health_failed";
+      else if (safeCode.startsWith("relay_") || safeCode === "local_connect_failed") {
+        displayCode = "relay_failed";
+      } else if (safeCode.startsWith("connection_") || safeCode === "secret_invalid") {
+        displayCode = "connection_failed";
+      } else if (safeCode.startsWith("sidecar_") || safeCode.startsWith("device_")
+          || safeCode.startsWith("endpoint_") || safeCode.startsWith("listener_")
+          || safeCode === "listen_failed" || safeCode === "stdin_failed"
+          || safeCode === "trailing_data" || safeCode === "duplicate_ready"
+          || safeCode.startsWith("invalid_")) {
+        displayCode = "sidecar_failed";
+      }
+    }
+    return t("wgRelayError_" + displayCode);
+  }
+
+  function requestContentRender() {
+    if (state.activeTab === "wg-relay") ops.requestRender({ content: true });
+  }
+
+  function unsubscribeListeners() {
+    for (const dispose of view.listenerDisposers.splice(0)) {
+      try { dispose(); } catch (_) {}
+    }
+  }
+
+  function subscribeListeners() {
+    unsubscribeListeners();
+    if (!window.wgRelay) return;
+    const listenerEpoch = view.epoch;
+    if (typeof window.wgRelay.onStatusChanged === "function") {
+      const dispose = window.wgRelay.onStatusChanged((payload) => {
+        if (listenerEpoch !== view.epoch || state.activeTab !== "wg-relay") return;
+        const profile = currentProfile();
+        if (!profile || !payload || payload.profileId !== profile.id) return;
+        const next = safeStatus(payload, profile.id);
+        view.statusByProfile.set(profile.id, next);
+        view.statusRevisionByProfile.set(
+          profile.id,
+          (view.statusRevisionByProfile.get(profile.id) || 0) + 1,
+        );
+        view.errorCode = next.errorCode || null;
+        requestContentRender();
       });
+      if (typeof dispose === "function") view.listenerDisposers.push(dispose);
     }
     if (typeof window.wgRelay.onProgress === "function") {
-      window.wgRelay.onProgress((p) => {
-        if (!p || typeof p.profileId !== "string") return;
-        let log = view.progressLog.get(p.profileId);
-        if (!log) {
-          log = [];
-          view.progressLog.set(p.profileId, log);
-        }
-        log.push({ ...p, ts: Date.now() });
-        if (log.length > PROGRESS_LOG_MAX) {
-          log.splice(0, log.length - PROGRESS_LOG_MAX);
-        }
-        if (state.activeTab === "wg-relay") ops.requestRender({ content: true });
+      const dispose = window.wgRelay.onProgress((payload) => {
+        if (listenerEpoch !== view.epoch || state.activeTab !== "wg-relay") return;
+        if (!payload || payload.profileId !== view.progressProfileId) return;
+        applyProgress(payload);
+        requestContentRender();
       });
-    }
-    if (typeof window.wgRelay.listStatuses === "function") {
-      window.wgRelay.listStatuses().then((res) => {
-        if (res && res.status === "ok" && Array.isArray(res.statuses)) {
-          for (const s of res.statuses) view.runtimeStatuses.set(s.profileId, s);
-          if (state.activeTab === "wg-relay") ops.requestRender({ content: true });
-        }
-      }).catch(() => {});
+      if (typeof dispose === "function") view.listenerDisposers.push(dispose);
     }
   }
 
-  function statusForProfile(id) {
-    const s = view.runtimeStatuses.get(id);
-    return s || { profileId: id, status: "idle" };
-  }
-
-  function statusBadgeClass(status) {
-    const viewState = STATUS_UI[status];
-    return `wg-relay-status-${viewState ? viewState.badge : "idle"}`;
-  }
-
-  function statusLabel(status) {
-    const viewState = STATUS_UI[status];
-    return viewState ? t(viewState.labelKey) : status;
-  }
-
-  function statusMessageText(status) {
-    if (!status) return "";
-    if (status.hint) {
-      const translated = t(status.hint);
-      if (translated && translated !== status.hint) return translated;
-    }
-    return status.message || "";
-  }
-
-  function callCommand(action, payload) {
-    if (!window.settingsAPI || typeof window.settingsAPI.command !== "function") {
-      ops.showToast(t("toastSaveFailed") + "settings API unavailable", { error: true });
-      return Promise.resolve({ status: "error" });
-    }
-    return window.settingsAPI.command(action, payload).then((result) => {
-      if (!result || result.status !== "ok") {
-        ops.showToast((result && result.message) || (t("toastSaveFailed") + "unknown error"), { error: true });
+  function refreshStatus(profile) {
+    if (!window.wgRelay || typeof window.wgRelay.status !== "function") return;
+    if (view.statusRequest
+        && view.statusRequest.profileId === profile.id
+        && view.statusRequest.epoch === view.epoch) return;
+    const request = {
+      profileId: profile.id,
+      epoch: view.epoch,
+      statusRevision: view.statusRevisionByProfile.get(profile.id) || 0,
+    };
+    view.statusRequest = request;
+    window.wgRelay.status(profile.id).then((result) => {
+      if (view.statusRequest !== request || request.epoch !== view.epoch
+          || state.activeTab !== "wg-relay") return;
+      if ((view.statusRevisionByProfile.get(profile.id) || 0) !== request.statusRevision) return;
+      if (result && result.status === "ok" && result.state) {
+        const next = safeStatus(result.state, profile.id);
+        view.statusByProfile.set(profile.id, next);
+        view.errorCode = next.errorCode || null;
+      } else if (result && typeof result.errorCode === "string") {
+        const existing = statusFor(profile);
+        view.statusByProfile.set(profile.id, { ...existing, errorCode: result.errorCode });
+        view.errorCode = result.errorCode;
       }
-      return result;
-    }).catch((err) => {
-      ops.showToast(t("toastSaveFailed") + (err && err.message), { error: true });
-      return { status: "error", message: err && err.message };
+      requestContentRender();
+    }).catch(() => {
+      if (view.statusRequest === request && request.epoch === view.epoch
+          && state.activeTab === "wg-relay"
+          && (view.statusRevisionByProfile.get(profile.id) || 0) === request.statusRevision) {
+        view.errorCode = "unknown";
+        requestContentRender();
+      }
     });
   }
 
-  // ── Render ──
+  function resetProgress(profileId) {
+    view.progressProfileId = profileId;
+    view.progressVisible = true;
+    view.progressStates = PROGRESS_STAGES.map(() => "pending");
+  }
+
+  function applyProgress(payload) {
+    const index = RAW_PROGRESS_STAGE[payload.step];
+    if (!Number.isInteger(index)) return;
+    for (let i = 0; i < index; i++) {
+      if (view.progressStates[i] !== "failed") view.progressStates[i] = "complete";
+    }
+    if (payload.status === "fail") view.progressStates[index] = "failed";
+    else if (payload.status === "ok") view.progressStates[index] = "complete";
+    else view.progressStates[index] = "current";
+  }
+
+  function finishProgress() {
+    view.progressStates = PROGRESS_STAGES.map(() => "complete");
+  }
+
+  function setResultError(result, fallback) {
+    view.errorCode = result && typeof result.errorCode === "string"
+      ? result.errorCode
+      : fallback;
+  }
+
+  function beginOperation(kind, operation, applyResult) {
+    if (view.busy) return view.busy.promise;
+    const record = { kind, epoch: view.epoch, promise: null };
+    view.busy = record;
+    view.errorCode = null;
+    let promise;
+    try {
+      promise = Promise.resolve(operation());
+    } catch (_) {
+      promise = Promise.resolve({ status: "error", errorCode: "unknown" });
+    }
+    record.promise = promise.then((result) => {
+      if (record.epoch === view.epoch && state.activeTab === "wg-relay") {
+        applyResult(result || { status: "error", errorCode: "unknown" });
+      }
+      return result;
+    }).catch(() => {
+      if (record.epoch === view.epoch && state.activeTab === "wg-relay") {
+        view.errorCode = "unknown";
+      }
+      return { status: "error", errorCode: "unknown" };
+    }).finally(() => {
+      if (view.busy === record) view.busy = null;
+      requestContentRender();
+    });
+    requestContentRender();
+    return record.promise;
+  }
+
+  function createButton(textKey, className, onClick, disabled) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className || "soft-btn";
+    button.textContent = t(textKey);
+    button.disabled = Boolean(disabled);
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  function createField({ id, labelKey, type = "text", value = "", required = false,
+    autocomplete, disabled = false, readOnly = false, onInput }) {
+    const wrap = document.createElement("div");
+    wrap.className = "wg-relay-field";
+    const label = document.createElement("label");
+    label.className = "wg-relay-field-label";
+    label.setAttribute("for", id);
+    label.textContent = t(labelKey);
+    const input = document.createElement("input");
+    input.id = id;
+    input.setAttribute("id", id);
+    input.type = type;
+    input.value = String(value == null ? "" : value);
+    input.required = required;
+    input.disabled = disabled;
+    input.readOnly = readOnly;
+    if (autocomplete) input.setAttribute("autocomplete", autocomplete);
+    if (required) input.setAttribute("aria-required", "true");
+    if (typeof onInput === "function") input.addEventListener("input", () => onInput(input.value));
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    return { wrap, input };
+  }
+
+  function renderError(parent) {
+    if (!view.errorCode) return;
+    const error = document.createElement("div");
+    error.className = "wg-relay-error";
+    error.setAttribute("role", "alert");
+    error.setAttribute("aria-live", "assertive");
+    error.textContent = localizedError(view.errorCode);
+    parent.appendChild(error);
+  }
+
+  function renderProgress(parent) {
+    if (!view.progressVisible) return;
+    const progress = document.createElement("div");
+    progress.className = "wg-relay-progress";
+    progress.setAttribute("aria-live", "polite");
+    progress.setAttribute("aria-label", t("wgRelayProgressLabel"));
+    PROGRESS_STAGES.forEach((stage, index) => {
+      const stageState = view.progressStates[index] || "pending";
+      const row = document.createElement("div");
+      row.className = "wg-relay-progress-stage is-" + stageState;
+      const marker = document.createElement("span");
+      marker.className = "wg-relay-progress-marker";
+      marker.setAttribute("aria-hidden", "true");
+      marker.textContent = stageState === "complete" ? "✓" : (stageState === "failed" ? "!" : String(index + 1));
+      const label = document.createElement("span");
+      label.className = "wg-relay-progress-name";
+      label.textContent = t("wgRelayStep_" + stage);
+      const stateText = document.createElement("span");
+      stateText.className = "wg-relay-progress-state";
+      stateText.textContent = t("wgRelayProgress_" + (stageState === "complete" ? "completed" : stageState));
+      row.appendChild(marker);
+      row.appendChild(label);
+      row.appendChild(stateText);
+      progress.appendChild(row);
+    });
+    parent.appendChild(progress);
+  }
+
+  function buildProfile(draft, advanced) {
+    const host = String(draft.host || "").trim();
+    const username = String(draft.sshUsername || "").trim();
+    const sshPort = Number.parseInt(draft.sshPort, 10);
+    const profile = {
+      id: draft.id,
+      label: String(draft.label || host).trim() || host,
+      host,
+      sshUsername: username,
+      sshPort,
+      authMethod: "password",
+      wgPort: advanced && Number.isInteger(advanced.wgPort) ? advanced.wgPort : DEFAULTS.wgPort,
+      wgSubnet: advanced && advanced.wgSubnet ? advanced.wgSubnet : DEFAULTS.wgSubnet,
+    };
+    return profile;
+  }
+
+  function validDeployFields(profile, password) {
+    return Boolean(profile.host && profile.sshUsername && Number.isInteger(profile.sshPort)
+      && profile.sshPort >= 1 && profile.sshPort <= 65535 && password);
+  }
+
+  function runDeploy(profile, passwordInput) {
+    if (view.busy) return view.busy.promise;
+    let password = passwordInput.value;
+    if (!validDeployFields(profile, password)) {
+      passwordInput.value = "";
+      password = "";
+      view.errorCode = profile.host && profile.sshUsername ? "password_required" : "invalid_profile";
+      requestContentRender();
+      return Promise.resolve({ status: "error" });
+    }
+    resetProgress(profile.id);
+    const record = { kind: "deploy", epoch: view.epoch, promise: null };
+    view.busy = record;
+    view.errorCode = null;
+    let invoke;
+    try {
+      invoke = Promise.resolve(window.wgRelay.deploy({ profile, password }));
+    } catch (_) {
+      invoke = Promise.resolve({ status: "error", errorCode: "deploy_failed" });
+    } finally {
+      passwordInput.value = "";
+      password = "";
+    }
+    record.promise = invoke.then((result) => {
+      if (record.epoch !== view.epoch || state.activeTab !== "wg-relay") return result;
+      if (result && result.status === "ok" && result.profile) {
+        view.profileOverride = result.profile;
+        view.setupDraft = null;
+        view.repairOpen = false;
+        view.errorCode = null;
+        if (result.state) {
+          view.statusByProfile.set(result.profile.id, safeStatus(result.state, result.profile.id));
+        }
+        finishProgress();
+      } else {
+        setResultError(result, "deploy_failed");
+      }
+      return result;
+    }).catch(() => {
+      if (record.epoch === view.epoch && state.activeTab === "wg-relay") {
+        view.errorCode = "deploy_failed";
+      }
+      return { status: "error", errorCode: "deploy_failed" };
+    }).finally(() => {
+      if (view.busy === record) view.busy = null;
+      requestContentRender();
+    });
+    requestContentRender();
+    return record.promise;
+  }
+
+  function renderSetup(parent, existingProfile) {
+    const draft = ensureSetupDraft(existingProfile);
+    const card = document.createElement("section");
+    card.className = "section wg-relay-setup-card";
+    const heading = document.createElement("h2");
+    heading.textContent = t("wgRelaySetupTitle");
+    card.appendChild(heading);
+    const description = document.createElement("p");
+    description.className = "wg-relay-card-description";
+    description.textContent = t("wgRelaySetupDescription");
+    card.appendChild(description);
+    const disabled = Boolean(view.busy) || !window.wgRelay;
+    const host = createField({
+      id: "wg-relay-host", labelKey: "wgRelayFieldHost", value: draft.host,
+      required: true, disabled, onInput: (value) => { draft.host = value; },
+    });
+    const username = createField({
+      id: "wg-relay-ssh-username", labelKey: "wgRelayFieldSshUsername", value: draft.sshUsername,
+      required: true, disabled, onInput: (value) => { draft.sshUsername = value; },
+    });
+    const port = createField({
+      id: "wg-relay-ssh-port", labelKey: "wgRelayFieldSshPort", type: "number", value: draft.sshPort,
+      required: true, disabled, onInput: (value) => { draft.sshPort = value; },
+    });
+    const password = createField({
+      id: "wg-relay-password", labelKey: "wgRelayFieldPassword", type: "password", value: "",
+      required: true, autocomplete: "new-password", disabled,
+    });
+    card.appendChild(host.wrap);
+    card.appendChild(username.wrap);
+    card.appendChild(port.wrap);
+    card.appendChild(password.wrap);
+    const passwordHint = document.createElement("p");
+    passwordHint.className = "wg-relay-password-hint";
+    passwordHint.textContent = t("wgRelayPasswordOneTimeHint");
+    card.appendChild(passwordHint);
+    renderError(card);
+    renderProgress(card);
+    const deploy = createButton(view.busy ? "wgRelayDeploying" : "wgRelayDeploy", "soft-btn accent wg-relay-primary-action", () => {
+      runDeploy(buildProfile(draft), password.input);
+    }, disabled);
+    card.appendChild(deploy);
+    parent.appendChild(card);
+  }
+
+  function statusClass(status) {
+    if (status === "connected") return "connected";
+    if (status === "failed") return "failed";
+    if (RUNTIME_BUSY_STATUSES.has(status)) return "connecting";
+    return "idle";
+  }
+
+  function applyConnectionResult(profile, result, fallback) {
+    if (result && result.status === "ok" && result.state) {
+      view.statusByProfile.set(profile.id, safeStatus(result.state, profile.id));
+      view.errorCode = null;
+    } else {
+      setResultError(result, fallback);
+      const previous = statusFor(profile);
+      view.statusByProfile.set(profile.id, { ...previous, status: "failed", errorCode: view.errorCode });
+    }
+  }
+
+  function confirmAction({ titleKey, detailKey, confirmKey }) {
+    if (helpers && typeof helpers.showSettingsConfirmModal === "function") {
+      return helpers.showSettingsConfirmModal({
+        title: t(titleKey),
+        detail: t(detailKey),
+        actions: [
+          { id: "cancel", label: t("wgRelayCancel") },
+          { id: "confirm", label: t(confirmKey), tone: "danger", defaultFocus: true },
+        ],
+      });
+    }
+    return Promise.resolve(typeof confirm === "function" && confirm(t(detailKey)) ? "confirm" : null);
+  }
+
+  function closeQrDialog() {
+    const record = view.qrDialog;
+    if (!record) return;
+    try { document.removeEventListener("keydown", record.onKeyDown, true); } catch (_) {}
+    record.image.src = "";
+    record.image.removeAttribute("src");
+    record.dataUrl = "";
+    const modalRoot = document.getElementById("modalRoot");
+    if (modalRoot) modalRoot.innerHTML = "";
+    view.qrDialog = null;
+  }
+
+  function openQrDialog(dataUrl) {
+    if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/png;base64,")) {
+      view.errorCode = "pairing_qr_failed";
+      return;
+    }
+    const modalRoot = document.getElementById("modalRoot");
+    if (!modalRoot) {
+      view.errorCode = "pairing_qr_failed";
+      return;
+    }
+    closeQrDialog();
+    let sensitiveUrl = dataUrl;
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop wg-relay-qr-backdrop";
+    const dialog = document.createElement("div");
+    dialog.className = "wg-relay-qr-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "wg-relay-qr-title");
+    const title = document.createElement("h2");
+    title.id = "wg-relay-qr-title";
+    title.setAttribute("id", title.id);
+    title.textContent = t("wgRelayQrTitle");
+    const image = document.createElement("img");
+    image.className = "wg-relay-qr-img";
+    image.src = sensitiveUrl;
+    image.setAttribute("src", sensitiveUrl);
+    image.alt = t("wgRelayQrAlt");
+    const warning = document.createElement("p");
+    warning.className = "wg-relay-qr-warning";
+    warning.textContent = t("wgRelayQrWarning");
+    const close = createButton("wgRelayQrClose", "soft-btn", closeQrDialog, false);
+    function onKeyDown(event) {
+      if (event.key === "Escape") closeQrDialog();
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    dialog.appendChild(title);
+    dialog.appendChild(image);
+    dialog.appendChild(warning);
+    dialog.appendChild(close);
+    backdrop.appendChild(dialog);
+    modalRoot.innerHTML = "";
+    modalRoot.appendChild(backdrop);
+    view.qrDialog = { image, dataUrl: sensitiveUrl, onKeyDown };
+    sensitiveUrl = "";
+    if (typeof close.focus === "function") close.focus();
+  }
+
+  function showPairingQr(profile) {
+    return beginOperation("pairing-qr", () => window.wgRelay.pairingQr(profile.id), (result) => {
+      if (result && result.status === "ok" && result.qr) {
+        view.errorCode = null;
+        openQrDialog(result.qr.dataUrl);
+      } else setResultError(result, "pairing_qr_failed");
+    });
+  }
+
+  function rotatePhone(profile) {
+    return confirmAction({
+      titleKey: "wgRelayRotateConfirmTitle",
+      detailKey: "wgRelayRotateConfirmDetail",
+      confirmKey: "wgRelayRotateConfirmAction",
+    }).then((choice) => {
+      if (choice !== "confirm") return null;
+      return beginOperation("rotate", () => window.wgRelay.rotatePhone(profile.id), (result) => {
+        applyConnectionResult(profile, result, "rotate_failed");
+        if (result && result.status === "ok" && result.qr) openQrDialog(result.qr.dataUrl);
+      });
+    });
+  }
+
+  function deleteProfile(profile) {
+    return confirmAction({
+      titleKey: "wgRelayDeleteConfirmTitle",
+      detailKey: "wgRelayDeleteConfirmDetail",
+      confirmKey: "wgRelayDeleteConfirmAction",
+    }).then((choice) => {
+      if (choice !== "confirm") return null;
+      return beginOperation("delete", () => window.wgRelay.deleteLocal(profile.id), (result) => {
+        if (result && result.status === "ok") {
+          closeQrDialog();
+          view.hiddenProfileIds.add(profile.id);
+          view.profileOverride = null;
+          view.setupDraft = null;
+          view.statusByProfile.delete(profile.id);
+          view.statusRevisionByProfile.delete(profile.id);
+          view.statusRequest = null;
+          view.progressVisible = false;
+          view.repairOpen = false;
+          view.errorCode = null;
+        } else setResultError(result, "delete_failed");
+      });
+    });
+  }
+
+  function renderRepair(parent, profile) {
+    const card = document.createElement("section");
+    card.className = "section wg-relay-repair-card";
+    const title = document.createElement("h2");
+    title.textContent = t("wgRelayRepairTitle");
+    card.appendChild(title);
+    const hint = document.createElement("p");
+    hint.className = "wg-relay-card-description";
+    hint.textContent = t("wgRelayRepairDescription");
+    card.appendChild(hint);
+    const draft = {
+      id: profile.id,
+      label: profile.label,
+      host: profile.host,
+      sshUsername: profile.sshUsername || DEFAULTS.sshUsername,
+      sshPort: Number.isInteger(profile.sshPort) ? profile.sshPort : DEFAULTS.sshPort,
+      wgPort: Number.isInteger(profile.wgPort) ? profile.wgPort : DEFAULTS.wgPort,
+      wgSubnet: profile.wgSubnet || DEFAULTS.wgSubnet,
+    };
+    const disabled = Boolean(view.busy);
+    const fieldSpecs = [
+      ["wg-relay-repair-host", "wgRelayFieldHost", "text", "host"],
+      ["wg-relay-repair-username", "wgRelayFieldSshUsername", "text", "sshUsername"],
+      ["wg-relay-repair-ssh-port", "wgRelayFieldSshPort", "number", "sshPort"],
+      ["wg-relay-repair-wg-port", "wgRelayFieldWgPort", "number", "wgPort"],
+      ["wg-relay-repair-subnet", "wgRelayFieldSubnet", "text", "wgSubnet"],
+    ];
+    for (const [id, labelKey, type, key] of fieldSpecs) {
+      const field = createField({
+        id, labelKey, type, value: draft[key], required: true, disabled,
+        onInput: (value) => { draft[key] = type === "number" ? Number.parseInt(value, 10) : value; },
+      });
+      card.appendChild(field.wrap);
+    }
+    const relayPort = createField({
+      id: "wg-relay-repair-relay-port", labelKey: "wgRelayFieldRelayPort", type: "number",
+      value: DEFAULTS.relayPort, disabled, readOnly: true,
+    });
+    card.appendChild(relayPort.wrap);
+    const password = createField({
+      id: "wg-relay-repair-password", labelKey: "wgRelayFieldPassword", type: "password", value: "",
+      required: true, autocomplete: "new-password", disabled,
+    });
+    card.appendChild(password.wrap);
+    const passwordHint = document.createElement("p");
+    passwordHint.className = "wg-relay-password-hint";
+    passwordHint.textContent = t("wgRelayRepairPasswordHint");
+    card.appendChild(passwordHint);
+    const actions = document.createElement("div");
+    actions.className = "wg-relay-actions";
+    actions.appendChild(createButton("wgRelayCancel", "soft-btn", () => {
+      password.input.value = "";
+      view.repairOpen = false;
+      requestContentRender();
+    }, disabled));
+    actions.appendChild(createButton(view.busy ? "wgRelayDeploying" : "wgRelayRepairDeploy", "soft-btn accent", () => {
+      const next = buildProfile(draft, {
+        wgPort: Number.isInteger(draft.wgPort) ? draft.wgPort : DEFAULTS.wgPort,
+        wgSubnet: String(draft.wgSubnet || DEFAULTS.wgSubnet).trim(),
+      });
+      runDeploy({ ...profile, ...next, identityFile: undefined }, password.input);
+    }, disabled));
+    card.appendChild(actions);
+    parent.appendChild(card);
+  }
+
+  function renderStatusCard(parent, profile) {
+    refreshStatus(profile);
+    const status = statusFor(profile);
+    const recovery = recoveryCode(status);
+    const runtimeUnavailable = !window.wgRelay;
+    const busy = runtimeUnavailable || Boolean(view.busy) || RUNTIME_BUSY_STATUSES.has(status.status);
+    const card = document.createElement("section");
+    card.className = "section wg-relay-status-card";
+    const header = document.createElement("div");
+    header.className = "wg-relay-status-header";
+    const identity = document.createElement("div");
+    identity.className = "wg-relay-server-identity";
+    const name = document.createElement("h2");
+    name.className = "wg-relay-server-name";
+    name.textContent = profile.label;
+    const host = document.createElement("div");
+    host.className = "wg-relay-server-host";
+    host.textContent = profile.host;
+    identity.appendChild(name);
+    identity.appendChild(host);
+    const badge = document.createElement("span");
+    badge.className = "wg-relay-status-badge wg-relay-status-" + statusClass(status.status);
+    badge.textContent = t("wgRelayStatus_" + status.status);
+    header.appendChild(identity);
+    header.appendChild(badge);
+    card.appendChild(header);
+    if (recovery) {
+      const recoveryNode = document.createElement("div");
+      recoveryNode.className = "wg-relay-recovery";
+      recoveryNode.setAttribute("role", "status");
+      recoveryNode.textContent = t("wgRelayRecoveryRequired");
+      card.appendChild(recoveryNode);
+      view.errorCode = recovery;
+    }
+    renderError(card);
+    const primaryKey = status.status === "connected" || status.status === "disconnecting"
+      ? "wgRelayDisconnect"
+      : "wgRelayConnect";
+    const primary = createButton(primaryKey, "soft-btn accent wg-relay-primary-action", () => {
+      if (status.status === "connected" || status.status === "disconnecting") {
+        beginOperation("disconnect", () => window.wgRelay.disconnect(profile.id), (result) => {
+          applyConnectionResult(profile, result, "connection_failed");
+        });
+      } else {
+        beginOperation("connect", () => window.wgRelay.connect(profile.id), (result) => {
+          applyConnectionResult(profile, result, "connection_failed");
+        });
+      }
+    }, busy || Boolean(recovery) || !window.wgRelay);
+    card.appendChild(primary);
+    const secondary = document.createElement("div");
+    secondary.className = "wg-relay-secondary-actions";
+    secondary.appendChild(createButton("wgRelayShowQr", "soft-btn", () => showPairingQr(profile), busy));
+    secondary.appendChild(createButton("wgRelayRotatePhone", "soft-btn", () => rotatePhone(profile), busy));
+    secondary.appendChild(createButton("wgRelayRepair", "soft-btn", () => {
+      closeQrDialog();
+      view.repairOpen = true;
+      requestContentRender();
+    }, busy));
+    secondary.appendChild(createButton("wgRelayDelete", "soft-btn wg-relay-danger-action", () => deleteProfile(profile), busy));
+    card.appendChild(secondary);
+    parent.appendChild(card);
+    if (view.repairOpen) renderRepair(parent, profile);
+  }
 
   function render(parent) {
-    ensureRuntimeListeners();
-
-    const h1 = document.createElement("h1");
-    h1.textContent = t("wgRelayTitle");
-    parent.appendChild(h1);
-
+    subscribeListeners();
+    const title = document.createElement("h1");
+    title.textContent = t("wgRelayTitle");
+    parent.appendChild(title);
     const subtitle = document.createElement("p");
     subtitle.className = "subtitle";
     subtitle.textContent = t("wgRelaySubtitle");
     parent.appendChild(subtitle);
-
-    // Surface a single non-blocking notice when the runtime bridge is missing:
-    // CRUD still works (profiles persist) but deploy/tunnel ops are disabled.
     if (!window.wgRelay) {
-      const warn = document.createElement("div");
-      warn.className = "wg-relay-runtime-warn";
-      warn.textContent = t("wgRelayRuntimeUnavailable");
-      parent.appendChild(warn);
+      view.errorCode = "runtime_unavailable";
     }
-
-    if (view.editing) {
-      renderEditForm(parent);
-      return;
-    }
-
-    parent.appendChild(renderProfilesList());
-
-    if (view.selectedProfileId) {
-      const p = findProfile(view.selectedProfileId);
-      if (p) parent.appendChild(renderProfileDetail(p));
-    }
+    const profile = currentProfile();
+    if (!isDeployed(profile)) renderSetup(parent, profile);
+    else renderStatusCard(parent, profile);
   }
 
-  function renderProfilesList() {
-    const section = document.createElement("section");
-    section.className = "section wg-relay-list";
-
-    const header = document.createElement("div");
-    header.className = "wg-relay-section-header";
-    const headTitle = document.createElement("h2");
-    headTitle.textContent = t("wgRelaySectionProfiles");
-    header.appendChild(headTitle);
-
-    const addBtn = document.createElement("button");
-    addBtn.className = "soft-btn accent";
-    addBtn.textContent = t("wgRelayAddProfile");
-    addBtn.addEventListener("click", () => {
-      view.editing = {
-        id: uuid(),
-        label: "",
-        host: "",
-        port: 22,
-        authMethod: "key",
-        identityFile: "",
-        wgPort: 51820,
-        wgSubnet: "10.8.0.0/24",
-        _isNew: true,
-      };
-      ops.requestRender({ content: true });
-    });
-    header.appendChild(addBtn);
-    section.appendChild(header);
-
-    const profiles = listProfiles();
-    if (profiles.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "wg-relay-empty";
-      empty.textContent = t("wgRelayEmpty");
-      section.appendChild(empty);
-      return section;
-    }
-
-    for (const p of profiles) {
-      section.appendChild(renderProfileCard(p));
-    }
-    return section;
+  function onExit() {
+    view.epoch++;
+    view.statusRequest = null;
+    view.repairOpen = false;
+    unsubscribeListeners();
+    closeQrDialog();
   }
 
-  function renderProfileCard(profile) {
-    const card = document.createElement("div");
-    card.className = "wg-relay-card";
-    if (view.selectedProfileId === profile.id) card.classList.add("selected");
-
-    const meta = document.createElement("div");
-    meta.className = "wg-relay-card-meta";
-    const label = document.createElement("div");
-    label.className = "wg-relay-card-label";
-    label.textContent = profile.label;
-    const hostRow = document.createElement("div");
-    hostRow.className = "wg-relay-card-host";
-    hostRow.textContent = profile.host + (profile.port && profile.port !== 22 ? `:${profile.port}` : "");
-    meta.appendChild(label);
-    meta.appendChild(hostRow);
-
-    const status = statusForProfile(profile.id);
-    const badge = document.createElement("span");
-    badge.className = "wg-relay-status-badge " + statusBadgeClass(status.status);
-    badge.textContent = statusLabel(status.status);
-
-    const actions = document.createElement("div");
-    actions.className = "wg-relay-card-actions";
-    actions.appendChild(badge);
-
-    card.appendChild(meta);
-    card.appendChild(actions);
-    card.addEventListener("click", () => {
-      view.selectedProfileId = view.selectedProfileId === profile.id ? null : profile.id;
-      ops.requestRender({ content: true });
-    });
-    return card;
-  }
-
-  function renderProfileDetail(profile) {
-    const section = document.createElement("section");
-    section.className = "section wg-relay-detail";
-
-    const header = document.createElement("div");
-    header.className = "wg-relay-section-header";
-    const headTitle = document.createElement("h2");
-    headTitle.textContent = profile.label;
-    header.appendChild(headTitle);
-
-    const editBtn = document.createElement("button");
-    editBtn.className = "soft-btn";
-    editBtn.textContent = t("wgRelayEdit");
-    editBtn.addEventListener("click", () => {
-      view.editing = { ...profile };
-      ops.requestRender({ content: true });
-    });
-    header.appendChild(editBtn);
-
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "soft-btn wg-relay-btn-danger";
-    deleteBtn.textContent = t("wgRelayDelete");
-    deleteBtn.addEventListener("click", () => {
-      if (!confirm(t("wgRelayDeleteConfirm").replace("{label}", profile.label))) return;
-      if (window.wgRelay && typeof window.wgRelay.tunnelDown === "function") {
-        window.wgRelay.tunnelDown(profile.id);
-      }
-      callCommand("wgRelay.remove", profile.id).then((r) => {
-        if (r && r.status === "ok") {
-          if (view.selectedProfileId === profile.id) view.selectedProfileId = null;
-          // Drop the deleted profile's memory-only buckets so a reused id
-          // never inherits a stale password / readback / QR / log.
-          view.passwords.delete(profile.id);
-          view.readbacks.delete(profile.id);
-          view.qrDataUrls.delete(profile.id);
-          view.progressLog.delete(profile.id);
-          view.deployingProfileIds.delete(profile.id);
-          ops.requestRender({ content: true });
-        }
-      });
-    });
-    header.appendChild(deleteBtn);
-    section.appendChild(header);
-
-    // Status row
-    const status = statusForProfile(profile.id);
-    const statusRow = document.createElement("div");
-    statusRow.className = "wg-relay-status-row";
-    const statusBadge = document.createElement("span");
-    statusBadge.className = "wg-relay-status-badge " + statusBadgeClass(status.status);
-    statusBadge.textContent = statusLabel(status.status);
-    statusRow.appendChild(statusBadge);
-    const messageText = statusMessageText(status);
-    if (messageText) {
-      const msg = document.createElement("span");
-      msg.className = "wg-relay-status-message";
-      msg.textContent = messageText;
-      if (status.message && status.message !== messageText) msg.title = status.message;
-      statusRow.appendChild(msg);
-    }
-    section.appendChild(statusRow);
-
-    // Password field — password auth only, held in memory (SEC-1). The value is
-    // re-entered every launch; it is NEVER part of a saved profile.
-    if (profile.authMethod === "password") {
-      const pwField = document.createElement("div");
-      pwField.className = "wg-relay-password-field";
-      const pwLabel = document.createElement("label");
-      pwLabel.className = "wg-relay-field-label";
-      pwLabel.textContent = t("wgRelayFieldPassword");
-      const pwInput = document.createElement("input");
-      pwInput.type = "password";
-      pwInput.autocomplete = "off";
-      pwInput.placeholder = t("wgRelayFieldPasswordPlaceholder");
-      pwInput.value = view.passwords.get(profile.id) || "";
-      pwInput.addEventListener("input", () => {
-        if (pwInput.value) view.passwords.set(profile.id, pwInput.value);
-        else view.passwords.delete(profile.id);
-      });
-      pwField.appendChild(pwLabel);
-      pwField.appendChild(pwInput);
-      const pwWarn = document.createElement("div");
-      pwWarn.className = "wg-relay-password-warn";
-      pwWarn.textContent = t("wgRelayFieldPasswordHint");
-      pwField.appendChild(pwWarn);
-      section.appendChild(pwField);
-    }
-
-    // Action buttons
-    const actions = document.createElement("div");
-    actions.className = "wg-relay-actions";
-
-    const isDeploying = view.deployingProfileIds.has(profile.id);
-    const statusUi = STATUS_UI[status.status] || STATUS_UI.idle;
-    const deployBtn = document.createElement("button");
-    deployBtn.className = "soft-btn accent";
-    deployBtn.textContent = isDeploying ? t("wgRelayDeploying") : t("wgRelayDeploy");
-    deployBtn.disabled = isDeploying || statusUi.busy || !window.wgRelay;
-    deployBtn.addEventListener("click", () => runDeploy(profile, {}));
-    actions.appendChild(deployBtn);
-
-    // Tunnel up/down toggles the local (PC) side once a deploy readback exists.
-    const tunnelBtn = document.createElement("button");
-    tunnelBtn.className = "soft-btn";
-    tunnelBtn.disabled = statusUi.busy || !window.wgRelay;
-    if (statusUi.tunnelDown) {
-      tunnelBtn.textContent = t("wgRelayTunnelDown");
-      tunnelBtn.addEventListener("click", () => {
-        if (window.wgRelay && typeof window.wgRelay.tunnelDown === "function") {
-          window.wgRelay.tunnelDown(profile.id);
-        }
-      });
-    } else {
-      tunnelBtn.textContent = t("wgRelayTunnelUp");
-      tunnelBtn.addEventListener("click", () => {
-        if (window.wgRelay && typeof window.wgRelay.tunnelUp === "function") {
-          window.wgRelay.tunnelUp(profile.id);
-        }
-      });
-    }
-    actions.appendChild(tunnelBtn);
-
-    // Regenerate the phone peer (new key + QR) without redeploying the server.
-    const regenBtn = document.createElement("button");
-    regenBtn.className = "soft-btn";
-    regenBtn.textContent = t("wgRelayRegenPhone");
-    regenBtn.disabled = statusUi.busy || !window.wgRelay;
-    regenBtn.addEventListener("click", () => runDeploy(profile, { regenPhoneOnly: true }));
-    actions.appendChild(regenBtn);
-
-    section.appendChild(actions);
-
-    // Progress log slice for this profile.
-    const profileLog = view.progressLog.get(profile.id) || [];
-    if (profileLog.length > 0) {
-      const log = document.createElement("div");
-      log.className = "wg-relay-progress-log";
-      for (const ev of profileLog) {
-        const line = document.createElement("div");
-        line.className = "wg-relay-progress-line wg-relay-progress-" + ev.status;
-        const stepLabel = t("wgRelayStep_" + ev.step) || ev.step;
-        let detail = "";
-        if (ev.hint) {
-          const hintText = t(ev.hint);
-          if (hintText && hintText !== ev.hint) detail = hintText;
-        }
-        if (!detail && ev.message) detail = ev.message;
-        line.textContent = `[${ev.status}] ${stepLabel}` + (detail ? ` — ${detail}` : "");
-        if (ev.message && detail !== ev.message) line.title = ev.message;
-        log.appendChild(line);
-      }
-      section.appendChild(log);
-    }
-
-    // Readback (public endpoint + keys) and phone-join QR, if present.
-    const readback = view.readbacks.get(profile.id);
-    if (readback || profile.endpoint || profile.serverPubKey) {
-      section.appendChild(renderReadback(profile, readback));
-    }
-
-    return section;
-  }
-
-  function renderReadback(profile, readback) {
-    // Prefer the transient readback (freshest, includes phoneConf for the QR)
-    // and fall back to the persisted public fields on the profile.
-    const src = readback || {};
-    const wrap = document.createElement("div");
-    wrap.className = "wg-relay-readback";
-
-    const title = document.createElement("div");
-    title.className = "wg-relay-readback-title";
-    title.textContent = t("wgRelayReadbackTitle");
-    wrap.appendChild(title);
-
-    const rows = [
-      ["wgRelayEndpoint", src.endpoint || profile.endpoint],
-      ["wgRelayServerPubKey", src.serverPubKey || profile.serverPubKey],
-      ["wgRelayPcAddress", src.pcAddress || profile.pcAddress],
-      ["wgRelayRelayAddr", src.relayAddr || profile.relayAddr],
-    ];
-    for (const [labelKey, value] of rows) {
-      if (!value) continue;
-      const row = document.createElement("div");
-      row.className = "wg-relay-readback-row";
-      const k = document.createElement("span");
-      k.className = "wg-relay-readback-key";
-      k.textContent = t(labelKey);
-      const v = document.createElement("span");
-      v.className = "wg-relay-readback-val";
-      v.textContent = value;
-      row.appendChild(k);
-      row.appendChild(v);
-      wrap.appendChild(row);
-    }
-
-    // Phone-join QR — drawn from the transient conf only (SEC-3). It is never
-    // persisted, so it disappears on reload; the user re-deploys / regenerates
-    // to get a fresh one.
-    const qr = view.qrDataUrls.get(profile.id);
-    if (qr) {
-      const qrWrap = document.createElement("div");
-      qrWrap.className = "wg-relay-qr";
-      const qrTitle = document.createElement("div");
-      qrTitle.className = "wg-relay-qr-title";
-      qrTitle.textContent = t("wgRelayQrTitle");
-      qrWrap.appendChild(qrTitle);
-      const img = document.createElement("img");
-      img.className = "wg-relay-qr-img";
-      img.src = qr;
-      img.alt = t("wgRelayQrTitle");
-      qrWrap.appendChild(img);
-      const hint = document.createElement("div");
-      hint.className = "wg-relay-qr-hint";
-      hint.textContent = t("wgRelayScanToJoin");
-      qrWrap.appendChild(hint);
-      wrap.appendChild(qrWrap);
-    }
-
-    return wrap;
-  }
-
-  // Drive a full deploy (or phone-only regen) over the runtime bridge, persist
-  // ONLY the public readback fields, keep the phone conf transient, and render
-  // a phone-join QR from that transient conf.
-  function runDeploy(profile, opts) {
-    if (!window.wgRelay || typeof window.wgRelay.deploy !== "function") {
-      ops.showToast(t("wgRelayRuntimeUnavailable"), { error: true });
-      return;
-    }
-    // Password auth requires the in-memory password (SEC-1) — never persisted,
-    // so it must be present in this session before a deploy can run.
-    const password = view.passwords.get(profile.id) || "";
-    if (profile.authMethod === "password" && !password) {
-      ops.showToast(t("wgRelayPasswordRequired"), { error: true });
-      return;
-    }
-
-    view.deployingProfileIds.add(profile.id);
-    view.progressLog.set(profile.id, []);
-    ops.requestRender({ content: true });
-
-    const req = {
-      profileId: profile.id,
-      regenPhoneOnly: !!(opts && opts.regenPhoneOnly),
-    };
-    // Password travels only in the IPC request payload, in memory — it is not
-    // written to the profile or to disk.
-    if (profile.authMethod === "password") req.password = password;
-
-    window.wgRelay.deploy(req)
-      .then((r) => {
-        if (r && r.status === "ok" && r.readback) {
-          // Hold the full readback (incl. phoneConf) transiently for QR/tunnel.
-          view.readbacks.set(profile.id, r.readback);
-          // Persist ONLY public fields via the whitelisted action (SEC-1/SEC-3).
-          const persist = {
-            serverPubKey: r.readback.serverPubKey,
-            endpoint: r.readback.endpoint,
-            pcAddress: r.readback.pcAddress,
-            relayAddr: r.readback.relayAddr,
-            deployedAt: r.readback.deployedAt || Date.now(),
-          };
-          callCommand("wgRelay.applyReadback", { profileId: profile.id, readback: persist });
-          // Draw the phone-join QR from the transient conf only.
-          const confText = r.readback.phoneConf || r.readback.phoneConfig || "";
-          if (confText && window.settingsAPI && typeof window.settingsAPI.generateQr === "function") {
-            window.settingsAPI.generateQr(confText).then((qr) => {
-              if (qr && qr.dataUrl) {
-                view.qrDataUrls.set(profile.id, qr.dataUrl);
-                if (state.activeTab === "wg-relay") ops.requestRender({ content: true });
-              }
-            }).catch(() => {});
-          }
-          ops.showToast(t("wgRelayDeploySuccess"), { ttl: 8000 });
-        } else {
-          let toastMsg = null;
-          if (r && r.hint) {
-            const hintText = t(r.hint);
-            if (hintText && hintText !== r.hint) toastMsg = hintText;
-          }
-          if (!toastMsg) toastMsg = (r && r.message) || t("wgRelayDeployFailed");
-          ops.showToast(toastMsg, { error: true, ttl: 10000 });
-        }
-      })
-      .catch((err) => {
-        ops.showToast((err && err.message) || t("wgRelayDeployFailed"), { error: true });
-      })
-      .finally(() => {
-        view.deployingProfileIds.delete(profile.id);
-        ops.requestRender({ content: true });
-      });
-  }
-
-  function renderEditForm(parent) {
-    const section = document.createElement("section");
-    section.className = "section wg-relay-edit";
-
-    const isNew = view.editing._isNew === true;
-
-    const headTitle = document.createElement("h2");
-    headTitle.textContent = isNew ? t("wgRelayAddTitle") : t("wgRelayEditTitle");
-    section.appendChild(headTitle);
-
-    const formData = view.editing;
-
-    function input(labelKey, key, attrs = {}) {
-      const wrap = document.createElement("div");
-      wrap.className = "wg-relay-field";
-      const label = document.createElement("label");
-      label.className = "wg-relay-field-label";
-      label.textContent = t(labelKey);
-      const inputEl = document.createElement("input");
-      inputEl.type = attrs.type || "text";
-      if (attrs.placeholder) inputEl.placeholder = attrs.placeholder;
-      inputEl.value = formData[key] != null ? String(formData[key]) : "";
-      inputEl.addEventListener("input", () => {
-        if (attrs.type === "number") {
-          const n = parseInt(inputEl.value, 10);
-          formData[key] = Number.isFinite(n) ? n : null;
-        } else {
-          formData[key] = inputEl.value;
-        }
-      });
-      wrap.appendChild(label);
-      wrap.appendChild(inputEl);
-      if (attrs.hint) {
-        const hint = document.createElement("div");
-        hint.className = "wg-relay-field-hint";
-        hint.textContent = attrs.hint;
-        wrap.appendChild(hint);
-      }
-      return wrap;
-    }
-
-    // Auth method toggle (key | password). Only the METHOD is stored; the
-    // password itself is entered later in the detail panel and kept in memory
-    // (SEC-1) — it is never part of the saved profile.
-    function authToggle() {
-      const wrap = document.createElement("div");
-      wrap.className = "wg-relay-field wg-relay-auth-toggle";
-      const label = document.createElement("label");
-      label.className = "wg-relay-field-label";
-      label.textContent = t("wgRelayFieldAuthMethod");
-      const select = document.createElement("select");
-      for (const [val, key] of [["key", "wgRelayAuthKey"], ["password", "wgRelayAuthPassword"]]) {
-        const optEl = document.createElement("option");
-        optEl.value = val;
-        optEl.textContent = t(key);
-        if ((formData.authMethod || "key") === val) optEl.selected = true;
-        select.appendChild(optEl);
-      }
-      select.addEventListener("change", () => {
-        formData.authMethod = select.value;
-        ops.requestRender({ content: true });
-      });
-      wrap.appendChild(label);
-      wrap.appendChild(select);
-      return wrap;
-    }
-
-    section.appendChild(input("wgRelayFieldLabel", "label", { placeholder: "My VPS" }));
-    section.appendChild(input("wgRelayFieldHost", "host", { placeholder: "root@203.0.113.10" }));
-    section.appendChild(input("wgRelayFieldPort", "port", { type: "number", placeholder: "22" }));
-    section.appendChild(authToggle());
-    if ((formData.authMethod || "key") === "key") {
-      section.appendChild(input("wgRelayFieldIdentityFile", "identityFile", {
-        placeholder: "/home/me/.ssh/id_rsa",
-        hint: t("wgRelayFieldIdentityFileHint"),
-      }));
-    }
-    section.appendChild(input("wgRelayFieldWgPort", "wgPort", { type: "number", placeholder: "51820" }));
-    section.appendChild(input("wgRelayFieldWgSubnet", "wgSubnet", {
-      placeholder: "10.8.0.0/24",
-      hint: t("wgRelayFieldWgSubnetHint"),
-    }));
-
-    // Submit / cancel
-    const formActions = document.createElement("div");
-    formActions.className = "wg-relay-form-actions";
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "soft-btn";
-    cancelBtn.textContent = t("wgRelayCancel");
-    cancelBtn.addEventListener("click", () => {
-      view.editing = null;
-      ops.requestRender({ content: true });
-    });
-    formActions.appendChild(cancelBtn);
-
-    const saveBtn = document.createElement("button");
-    saveBtn.className = "soft-btn accent";
-    saveBtn.textContent = t("wgRelaySave");
-    saveBtn.addEventListener("click", () => {
-      const authMethod = formData.authMethod === "password" ? "password" : "key";
-      // SEC-1: the payload NEVER carries a password — only authMethod is saved.
-      const payload = {
-        id: formData.id,
-        label: (formData.label || "").trim(),
-        host: (formData.host || "").trim(),
-        authMethod,
-        wgPort: Number.isFinite(formData.wgPort) ? formData.wgPort : 51820,
-        wgSubnet: (formData.wgSubnet || "10.8.0.0/24").trim(),
-        createdAt: formData.createdAt,
-      };
-      if (formData.port && formData.port !== 22) payload.port = formData.port;
-      if (authMethod === "key" && formData.identityFile && formData.identityFile.trim()) {
-        payload.identityFile = formData.identityFile.trim();
-      }
-      const action = isNew ? "wgRelay.add" : "wgRelay.update";
-      callCommand(action, payload).then((r) => {
-        if (r && r.status === "ok") {
-          ops.showToast(t(isNew ? "wgRelayAddSuccess" : "wgRelayUpdateSuccess"));
-          view.editing = null;
-          if (isNew) view.selectedProfileId = payload.id;
-          ops.requestRender({ content: true });
-        }
-      });
-    });
-    formActions.appendChild(saveBtn);
-
-    section.appendChild(formActions);
-    parent.appendChild(section);
+  function dispose() {
+    onExit();
+    view.setupDraft = null;
+    view.profileOverride = null;
+    view.statusByProfile.clear();
+    view.statusRevisionByProfile.clear();
+    view.progressVisible = false;
+    view.errorCode = null;
   }
 
   function init(core) {
     state = core.state;
     helpers = core.helpers;
     ops = core.ops;
-    core.tabs["wg-relay"] = { render };
+    core.tabs["wg-relay"] = { render, onExit, dispose };
   }
 
   root.ClawdSettingsTabWgRelay = { init };

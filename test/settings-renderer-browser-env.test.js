@@ -10,6 +10,7 @@ const SRC_DIR = path.join(__dirname, "..", "src");
 const SETTINGS_HTML = path.join(SRC_DIR, "settings.html");
 const SETTINGS_CSS = path.join(SRC_DIR, "settings.css");
 const SETTINGS_TAB_GENERAL = path.join(SRC_DIR, "settings-tab-general.js");
+const SETTINGS_TAB_WG_RELAY = path.join(SRC_DIR, "settings-tab-wg-relay.js");
 const SETTINGS_RENDERER = path.join(SRC_DIR, "settings-renderer.js");
 const SETTINGS_UI_CORE = path.join(SRC_DIR, "settings-ui-core.js");
 const SETTINGS_ANIM_OVERRIDES_MERGE = path.join(SRC_DIR, "settings-anim-overrides-merge.js");
@@ -30,6 +31,7 @@ const TAB_MODULES = [
   path.join(SRC_DIR, "settings-tab-shortcuts.js"),
   path.join(SRC_DIR, "settings-tab-telegram-approval.js"),
   path.join(SRC_DIR, "settings-tab-about.js"),
+  SETTINGS_TAB_WG_RELAY,
 ];
 const VERIFIED_GITHUB_CONTRIBUTORS = [
   "Bynlk",
@@ -321,6 +323,10 @@ class FakeElement {
 
   getBoundingClientRect() {
     return { top: 0, left: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  }
+
+  focus() {
+    this.focused = true;
   }
 
   _matchesSelectorParts(parts) {
@@ -1239,6 +1245,69 @@ function createAnimOverridesRuntime(card, overrides = {}) {
   };
 }
 
+function loadWgRelayBrowserHarness() {
+  const body = new FakeElement("body");
+  const content = new FakeElement("main");
+  const modalRoot = new FakeElement("div");
+  modalRoot.id = "modalRoot";
+  body.appendChild(content);
+  body.appendChild(modalRoot);
+  const documentListeners = new Map();
+  const document = {
+    body,
+    createElement: (tagName) => new FakeElement(tagName),
+    getElementById: (id) => (id === "modalRoot" ? modalRoot : null),
+    addEventListener(type, listener) {
+      if (!documentListeners.has(type)) documentListeners.set(type, new Set());
+      documentListeners.get(type).add(listener);
+    },
+    removeEventListener(type, listener) { documentListeners.get(type)?.delete(listener); },
+  };
+  const deployCalls = [];
+  const wgRelay = {
+    deploy(request) { deployCalls.push(structuredClone(request)); return Promise.resolve({ status: "error", errorCode: "deploy_failed" }); },
+    connect: () => Promise.resolve({ status: "ok" }),
+    disconnect: () => Promise.resolve({ status: "ok" }),
+    rotatePhone: () => Promise.resolve({ status: "ok" }),
+    deleteLocal: () => Promise.resolve({ status: "ok" }),
+    pairingQr: () => Promise.resolve({ status: "error", errorCode: "pairing_qr_failed" }),
+    status: () => Promise.resolve({ status: "ok", state: { profileId: "none", status: "idle", generation: 0 } }),
+    listStatuses: () => new Promise(() => {}),
+    onStatusChanged: () => () => {},
+    onProgress: () => () => {},
+  };
+  const core = {
+    state: { activeTab: "wg-relay", snapshot: { lang: "en", wgRelay: { profiles: [] } } },
+    helpers: {
+      t: (key) => ({ wgRelayDeploy: "One-click deploy" }[key] || key),
+      showSettingsConfirmModal: () => Promise.resolve(null),
+    },
+    ops: {
+      requestRender({ content: shouldRender } = {}) { if (shouldRender) render(); },
+      showToast() {},
+    },
+    tabs: {},
+  };
+  const context = {
+    console,
+    crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000001" },
+    document,
+    window: { wgRelay },
+    confirm: () => true,
+    globalThis: null,
+  };
+  context.globalThis = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(SETTINGS_TAB_WG_RELAY, "utf8"), context);
+  context.ClawdSettingsTabWgRelay.init(core);
+  function render() {
+    content.innerHTML = "";
+    core.tabs["wg-relay"].render(content, core);
+  }
+  render();
+  return { content, core, deployCalls, document, modalRoot };
+}
+
 describe("settings renderer browser environment", () => {
   it("loads browser scripts in dependency order and keeps CommonJS helpers out of settings.html", () => {
     const html = fs.readFileSync(SETTINGS_HTML, "utf8");
@@ -1258,6 +1327,7 @@ describe("settings renderer browser environment", () => {
       "settings-tab-telegram-approval.js",
       "settings-tab-about.js",
       "settings-tab-remote-ssh.js",
+      "settings-tab-wg-relay.js",
       "settings-doctor-modal.js",
       "settings-icons.js",
       "settings-renderer.js",
@@ -1313,6 +1383,40 @@ describe("settings renderer browser environment", () => {
       assert.ok(!source.includes("settingsAPI.onShortcutFailuresChanged"), `${path.basename(file)} must not subscribe to settingsAPI.onShortcutFailuresChanged`);
       assert.ok(!source.includes("settingsAPI.onRemoteApprovalStatusChanged"), `${path.basename(file)} must not subscribe to remote approval status directly`);
     }
+  });
+
+  it("renders the WG Relay first-use flow as a four-field one-click browser form", () => {
+    const harness = loadWgRelayBrowserHarness();
+    const card = harness.content.querySelector(".wg-relay-setup-card");
+    assert.ok(card);
+    const inputs = card.querySelectorAll("input");
+    assert.strictEqual(inputs.length, 4);
+    assert.strictEqual(inputs[1].value, "root");
+    assert.strictEqual(inputs[2].value, "22");
+    assert.strictEqual(inputs[3].type, "password");
+    assert.strictEqual(inputs[3].getAttribute("autocomplete"), "new-password");
+    const labels = card.querySelectorAll("label");
+    assert.strictEqual(labels.length, 4);
+    for (const label of labels) {
+      assert.ok(label.getAttribute("for"));
+      assert.ok(inputs.some((input) => input.id === label.getAttribute("for")));
+    }
+    const action = card.querySelector("button");
+    assert.strictEqual(action.textContent, "One-click deploy");
+    assert.strictEqual(action.type, "button");
+  });
+
+  it("keeps the WG Relay renderer on the Task 6 API and explicit cleanup lifecycle", () => {
+    const source = fs.readFileSync(SETTINGS_TAB_WG_RELAY, "utf8");
+    for (const api of ["deploy", "connect", "disconnect", "pairingQr", "rotatePhone", "deleteLocal"]) {
+      assert.ok(source.includes(`window.wgRelay.${api}`), api);
+    }
+    for (const legacy of ["tunnelUp", "tunnelDown", "generateQr", "wgRelay.applyReadback"]) {
+      assert.ok(!source.includes(legacy), legacy);
+    }
+    assert.match(source, /onExit/);
+    assert.match(source, /dispose/);
+    assert.match(source, /removeAttribute\("src"\)/);
   });
 
   it("keeps About contributors visible and includes verified GitHub contributors", () => {
@@ -2840,7 +2944,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes('key: "hideBubbles"'));
     assert.ok(generalSource.includes("rowHideBubbles"));
     assert.ok(generalSource.includes("setAllBubblesHidden"));
-    assert.ok(generalSource.includes('{ hidden: nextRaw }'));
+    assert.match(generalSource, /hidden:\s*nextRaw/);
     assert.ok(generalSource.includes('keys.includes("hideBubbles")'));
     assert.ok(generalSource.includes("buildBubblePolicyRow()"));
     assert.ok(generalSource.includes("setBubbleCategoryEnabled"));
@@ -2889,7 +2993,10 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes('"actionResetSessionCleanup"'));
 
     // patchInPlace covers the new keys in BOTH the existence guard and the sync loop.
-    assert.ok(generalSource.match(/SESSION_CLEANUP_NUMBER_KEYS\.has\(key\)[\s\S]+sessionCleanupControls\.get\(key\)\.syncFromSnapshot\(\)/));
+    assert.match(
+      generalSource,
+      /keys\.some\(\(key\) => SESSION_CLEANUP_NUMBER_KEYS\.has\(key\)\)[\s\S]+SESSION_CLEANUP_NUMBER_KEYS\.has\(key\)[\s\S]+sessionCleanupControls[\s\S]+\.get\(key\)[\s\S]+\.syncFromSnapshot\(\)/,
+    );
 
     // ui-core registers the helper and the mountedControls bag.
     assert.ok(uiCoreSource.includes("buildNumberInputRow"));
@@ -3010,8 +3117,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(!mainSource.includes('ipcMain.handle("settings:confirm-disable-update-bubbles"'));
     assert.ok(i18nSource.includes("Hide update bubbles"));
     assert.ok(i18nSource.includes("隐藏更新气泡"));
-    assert.ok(generalSource.includes('{ id: "confirm", label: t("updateBubbleDisableConfirmAction"), tone: "danger" }'));
-    assert.ok(generalSource.includes('{ id: "cancel", label: t("updateBubbleDisableConfirmCancel"), tone: "accent", defaultFocus: true }'));
+    assert.match(generalSource, /id:\s*"confirm",[\s\S]{0,120}label:\s*t\("updateBubbleDisableConfirmAction"\),[\s\S]{0,80}tone:\s*"danger"/);
+    assert.match(generalSource, /id:\s*"cancel",[\s\S]{0,120}label:\s*t\("updateBubbleDisableConfirmCancel"\),[\s\S]{0,80}tone:\s*"accent",[\s\S]{0,80}defaultFocus:\s*true/);
     assert.ok(generalSource.includes('if (actionId === "confirm") runToggleCommit(nextEnabled);'));
     assert.ok(uiCoreSource.includes('tone === "accent"'));
     assert.ok(uiCoreSource.includes('tone === "danger"'));
@@ -3055,7 +3162,7 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes("danger: true"));
     assert.ok(generalSource.includes("confirmAutoApproveAll"));
     assert.ok(generalSource.includes("showAutoApproveAllConfirmModal"));
-    assert.ok(generalSource.includes('{ id: "enable", label: t("autoApproveAllConfirmEnable"), tone: "danger" }'));
+    assert.match(generalSource, /id:\s*"enable",[\s\S]{0,120}label:\s*t\("autoApproveAllConfirmEnable"\),[\s\S]{0,80}tone:\s*"danger"/);
     // buildSwitchRow honors danger by painting the label red.
     assert.ok(coreSource.includes("row-label-danger"));
     assert.ok(css.includes(".row-label.row-label-danger"));

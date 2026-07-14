@@ -3384,197 +3384,282 @@ html, body {
   cursor: ew-resize;
 }
 
-/* ── WireGuard relay tab ── */
-.wg-relay-list,
-.wg-relay-detail,
-.wg-relay-edit {
+/* ── One-click WireGuard Relay ── */
+.wg-relay-setup-card,
+.wg-relay-status-card,
+.wg-relay-repair-card {
+  box-sizing: border-box;
+  width: min(100%, 680px);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-.wg-relay-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 12px;
+  overflow: hidden;
 }
-.wg-relay-runtime-warn {
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(255, 176, 32, 0.12);
-  color: #a5720a;
-  font-size: 13px;
+
+.wg-relay-card-description,
+.wg-relay-password-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
 }
-.wg-relay-empty {
-  padding: 16px;
-  text-align: center;
-  opacity: 0.6;
-  font-size: 13px;
+
+.wg-relay-password-hint {
+  color: var(--warning-text, #9a6800);
 }
-.wg-relay-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(128, 128, 128, 0.18);
-  cursor: pointer;
-}
-.wg-relay-card.selected {
-  border-color: var(--accent, #4c8bf5);
-  background: rgba(76, 139, 245, 0.06);
-}
-.wg-relay-card-meta {
+
+.wg-relay-field {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
 }
-.wg-relay-card-label {
+
+.wg-relay-field-label {
+  color: var(--text-primary);
+  font-size: 13px;
   font-weight: 600;
 }
-.wg-relay-card-host {
-  font-size: 12px;
-  opacity: 0.65;
+
+.wg-relay-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
-.wg-relay-card-actions {
+
+.wg-relay-primary-action {
+  width: fit-content;
+  min-width: 142px;
+  justify-content: center;
+}
+
+.wg-relay-status-header {
+  min-width: 0;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
 }
+
+.wg-relay-server-identity {
+  min-width: 0;
+}
+
+.wg-relay-server-name {
+  margin: 0 0 3px;
+}
+
+.wg-relay-server-host,
+.wg-relay-error,
+.wg-relay-recovery,
+.wg-relay-progress-name {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.wg-relay-server-host {
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
 .wg-relay-status-badge {
-  padding: 2px 8px;
+  flex: 0 0 auto;
+  padding: 3px 9px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
 }
+
 .wg-relay-status-idle {
+  color: var(--text-secondary);
   background: rgba(128, 128, 128, 0.15);
-  color: #777;
 }
-.wg-relay-status-connecting,
-.wg-relay-status-deploying {
-  background: rgba(255, 176, 32, 0.18);
-  color: #a5720a;
+
+.wg-relay-status-connecting {
+  color: var(--warning-text, #9a6800);
+  background: rgba(255, 176, 32, 0.16);
 }
+
 .wg-relay-status-connected {
-  background: rgba(46, 179, 105, 0.18);
-  color: #1f8a4c;
+  color: var(--success-text, #187a40);
+  background: rgba(46, 179, 105, 0.16);
 }
+
 .wg-relay-status-failed {
-  background: rgba(224, 64, 64, 0.16);
-  color: #c0392b;
+  color: var(--danger-text, #b83232);
+  background: rgba(224, 64, 64, 0.14);
 }
-.wg-relay-status-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.wg-relay-status-message {
-  font-size: 12px;
-  opacity: 0.7;
-}
-.wg-relay-password-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.wg-relay-password-warn {
-  font-size: 12px;
-  color: #a5720a;
-}
+
+.wg-relay-secondary-actions,
 .wg-relay-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
-.wg-relay-btn-danger {
-  color: #c0392b;
+
+.wg-relay-danger-action {
+  color: var(--danger-text, #b83232);
 }
-.wg-relay-progress-log {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  padding: 8px 10px;
+
+.wg-relay-error,
+.wg-relay-recovery {
+  padding: 9px 11px;
   border-radius: 8px;
-  background: rgba(128, 128, 128, 0.08);
-  max-height: 220px;
-  overflow-y: auto;
-}
-.wg-relay-progress-line {
+  font-size: 12px;
+  line-height: 1.5;
   white-space: pre-wrap;
-  word-break: break-word;
 }
-.wg-relay-progress-error {
-  color: #c0392b;
+
+.wg-relay-error {
+  color: var(--danger-text, #b83232);
+  background: rgba(224, 64, 64, 0.11);
 }
-.wg-relay-progress-ok {
-  color: #1f8a4c;
+
+.wg-relay-recovery {
+  color: var(--warning-text, #9a6800);
+  background: rgba(255, 176, 32, 0.12);
 }
-.wg-relay-readback {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(128, 128, 128, 0.18);
+
+.wg-relay-progress {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border-radius: 9px;
+  background: rgba(128, 128, 128, 0.07);
 }
-.wg-relay-readback-title {
+
+.wg-relay-progress-stage {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.wg-relay-progress-marker {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(128, 128, 128, 0.28);
+  border-radius: 50%;
+  font-size: 10px;
+}
+
+.wg-relay-progress-state {
+  opacity: 0.72;
+}
+
+.wg-relay-progress-stage.is-current {
+  color: var(--accent);
   font-weight: 600;
 }
-.wg-relay-readback-row {
-  display: flex;
-  gap: 10px;
-  font-size: 13px;
+
+.wg-relay-progress-stage.is-complete {
+  color: var(--success-text, #187a40);
 }
-.wg-relay-readback-key {
-  min-width: 130px;
-  opacity: 0.65;
+
+.wg-relay-progress-stage.is-failed {
+  color: var(--danger-text, #b83232);
 }
-.wg-relay-readback-val {
-  font-family: ui-monospace, monospace;
-  word-break: break-all;
+
+.wg-relay-qr-backdrop {
+  display: grid;
+  place-items: center;
 }
-.wg-relay-qr {
+
+.wg-relay-qr-dialog {
+  box-sizing: border-box;
+  width: min(calc(92vw / var(--clawd-text-zoom, 1)), 380px);
+  max-height: min(calc(90vh / var(--clawd-text-zoom, 1)), 620px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text-primary);
+  background: var(--panel-bg);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
 }
-.wg-relay-qr-title {
-  font-weight: 600;
+
+.wg-relay-qr-dialog h2,
+.wg-relay-qr-warning {
+  margin: 0;
 }
+
 .wg-relay-qr-img {
-  width: 200px;
-  height: 200px;
+  width: min(240px, calc(76vw / var(--clawd-text-zoom, 1)));
+  height: auto;
+  aspect-ratio: 1;
   border-radius: 8px;
   background: #fff;
 }
-.wg-relay-qr-hint {
+
+.wg-relay-qr-warning {
+  color: var(--warning-text, #9a6800);
   font-size: 12px;
-  opacity: 0.65;
+  line-height: 1.55;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
-.wg-relay-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+
+.wg-relay-setup-card input:focus-visible,
+.wg-relay-repair-card input:focus-visible,
+.wg-relay-setup-card button:focus-visible,
+.wg-relay-status-card button:focus-visible,
+.wg-relay-repair-card button:focus-visible,
+.wg-relay-qr-dialog button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
-.wg-relay-field-label {
-  font-size: 13px;
-  font-weight: 600;
+
+@media (max-width: 420px) {
+  .wg-relay-setup-card,
+  .wg-relay-status-card,
+  .wg-relay-repair-card {
+    width: 100%;
+    padding: 12px;
+  }
+
+  .wg-relay-status-header {
+    flex-direction: column;
+  }
+
+  .wg-relay-primary-action,
+  .wg-relay-secondary-actions,
+  .wg-relay-secondary-actions .soft-btn,
+  .wg-relay-actions,
+  .wg-relay-actions .soft-btn {
+    width: 100%;
+  }
+
+  .wg-relay-secondary-actions,
+  .wg-relay-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wg-relay-progress-stage {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .wg-relay-progress-state {
+    grid-column: 2;
+  }
 }
-.wg-relay-field-hint {
-  font-size: 12px;
-  opacity: 0.6;
-}
-.wg-relay-auth-toggle select {
-  width: 100%;
-}
-.wg-relay-form-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
+
+@media (prefers-reduced-motion: reduce) {
+  .wg-relay-setup-card *,
+  .wg-relay-status-card *,
+  .wg-relay-repair-card *,
+  .wg-relay-qr-dialog * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
