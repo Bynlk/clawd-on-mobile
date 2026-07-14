@@ -644,6 +644,7 @@ POST /api/manage/phone/rotate
 - 设置刷新与删除：NavGraph 把已消费的非敏感配对 request id 作为单调 refresh revision 传入 Settings；`RelayPairingSnapshotLoader` 只在 revision 改变时重新从加密 prefs 读取，因此停留设置页重新扫码也会刷新。loader 测试先缺符号 RED 后 GREEN。删除严格等待本次新断开终态后才清配对；初始旧 `FAILED` 不再被误当本次结果，该竞态测试先缺 helper RED 后 GREEN。
 - Service 销毁：正常显式 stop 在 `stopSelf()` 前等待远程逆序清理；onDestroy fallback 改为由 Service 自身 scope 持有、`UNDISPATCHED` 启动的 cleanup job，完成 disconnect 后才销毁 Relay、清状态并取消 scope，不再创建立即失去所有权的临时 scope。所有权测试先缺 helper RED 后 GREEN。
 - 最终 Android 验证：`./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug --rerun-tasks` 退出码 0，XML 汇总 39 suites、687/687、0 failure/error/skipped；lint 与 debug APK 均构建成功。无 Android 真机或 emulator system image，蜂窝漫游、系统 VPN 授权和其他 App 出口保持不变仍必须由真机完成，不以 JVM 测试冒充。
+- 独立质量复审：首轮为 0 Critical、2 Important。有效项指出 `NonCancellable` cleanup 的 Relay/VPN I/O 可无界挂起；新增每步默认 5 秒 timeout，并在 `finally` 必然完成共享 cleanup result，hung cleanup 测试先因缺参数 RED 后 GREEN，且 Relay 超时后仍继续尝试 VPN stop。另一项建议 REMOTE_DISCONNECT 后 stop foreground Service；结合 `ServiceManager.initialize()` 始终持有同一 LAN client 复核后撤销，因为释放共享 locks/stopSelf 会破坏 LAN 与当前 UI 生命周期。复审最终为 0 Critical、0 Important。
 
 ### Task 11：sidecar 打包、CI 与 VPS smoke（2026-07-14）
 

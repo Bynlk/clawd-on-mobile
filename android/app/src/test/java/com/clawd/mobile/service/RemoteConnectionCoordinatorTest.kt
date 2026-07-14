@@ -9,6 +9,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -113,6 +114,32 @@ class RemoteConnectionCoordinatorTest {
         )
 
         coordinator.disconnect()
+        assertEquals(1, events.count { it == "relay.disconnect" })
+        assertEquals(1, events.count { it == "vpn.stop" })
+    }
+
+    @Test
+    fun `hung cleanup is bounded and still attempts vpn stop`() = runTest {
+        val events = mutableListOf<String>()
+        val neverReturns = CompletableDeferred<Boolean>()
+        val coordinator = coordinator(
+            scope = this,
+            events = events,
+            relayDisconnect = { neverReturns.await() },
+            cleanupTimeoutMillis = 100,
+        )
+        coordinator.connect()
+
+        val disconnecting = async { coordinator.disconnect() }
+        runCurrent()
+        assertEquals(RemoteConnectionState.DISCONNECTING, coordinator.state.value)
+        advanceTimeBy(101)
+        runCurrent()
+
+        assertEquals(
+            RemoteConnectionState.FAILED(RemoteConnectionErrorCode.RELAY_DISCONNECT_FAILED),
+            disconnecting.await(),
+        )
         assertEquals(1, events.count { it == "relay.disconnect" })
         assertEquals(1, events.count { it == "vpn.stop" })
     }
@@ -226,7 +253,10 @@ class RemoteConnectionCoordinatorTest {
         healthResult: Boolean = true,
         relayResult: RemoteRelayConnectResult = RemoteRelayConnectResult.CONNECTED,
         vpnStart: suspend () -> RemoteVpnStartResult = { RemoteVpnStartResult.UP },
+        vpnStop: suspend () -> Boolean = { true },
+        relayDisconnect: suspend () -> Boolean = { true },
         timeoutMillis: Long = 15_000,
+        cleanupTimeoutMillis: Long = 5_000,
     ) = RemoteConnectionCoordinator(
         scope = scope,
         pairingProvider = { pairing },
@@ -238,7 +268,7 @@ class RemoteConnectionCoordinatorTest {
 
             override suspend fun stop(): Boolean {
                 events += "vpn.stop"
-                return true
+                return vpnStop()
             }
         },
         health = RemoteHealthCheckAdapter {
@@ -253,10 +283,11 @@ class RemoteConnectionCoordinatorTest {
 
             override suspend fun disconnect(): Boolean {
                 events += "relay.disconnect"
-                return true
+                return relayDisconnect()
             }
         },
         timeoutMillis = timeoutMillis,
+        cleanupTimeoutMillis = cleanupTimeoutMillis,
     )
 
     private fun pairing(): RelayPairingConfig {

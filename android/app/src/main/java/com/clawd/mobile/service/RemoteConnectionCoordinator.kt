@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
@@ -150,6 +151,7 @@ class RemoteConnectionCoordinator(
     private val health: RemoteHealthCheckAdapter,
     private val relay: RemoteRelayConnectionAdapter,
     private val timeoutMillis: Long = DEFAULT_TIMEOUT_MS,
+    private val cleanupTimeoutMillis: Long = DEFAULT_CLEANUP_TIMEOUT_MS,
 ) {
     private data class CleanupResult(
         val relayStopped: Boolean,
@@ -328,24 +330,31 @@ class RemoteConnectionCoordinator(
 
     private suspend fun cleanupOnce(attempt: Attempt): CleanupResult {
         if (attempt.cleanupStarted.compareAndSet(false, true)) {
-            val result = withContext(NonCancellable) {
-                val relayStopped = try {
-                    relay.disconnect()
-                } catch (_: Exception) {
-                    false
+            var result = CleanupResult(relayStopped = false, vpnStopped = false)
+            try {
+                result = withContext(NonCancellable) {
+                    val relayStopped = runCleanupStep { relay.disconnect() }
+                    val vpnStopped = runCleanupStep { vpn.stop() }
+                    CleanupResult(relayStopped, vpnStopped)
                 }
-                val vpnStopped = try {
-                    vpn.stop()
-                } catch (_: Exception) {
-                    false
-                }
-                CleanupResult(relayStopped, vpnStopped)
+                return result
+            } finally {
+                attempt.cleanupResult.complete(result)
             }
-            attempt.cleanupResult.complete(result)
-            return result
         }
         return withContext(NonCancellable) { attempt.cleanupResult.await() }
     }
+
+    private suspend fun runCleanupStep(block: suspend () -> Boolean): Boolean =
+        withTimeoutOrNull(cleanupTimeoutMillis) {
+            try {
+                block()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+        } ?: false
 
     private fun publish(expectedGeneration: Long, value: RemoteConnectionState) {
         synchronized(lock) {
@@ -378,5 +387,6 @@ class RemoteConnectionCoordinator(
 
     companion object {
         const val DEFAULT_TIMEOUT_MS = 15_000L
+        const val DEFAULT_CLEANUP_TIMEOUT_MS = 5_000L
     }
 }
