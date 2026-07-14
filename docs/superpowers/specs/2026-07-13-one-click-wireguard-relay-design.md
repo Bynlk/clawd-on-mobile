@@ -648,3 +648,4 @@ POST /api/manage/phone/rotate
 - 真实 smoke 可诊断性：上传兼容修复后仍出现无阶段信息的退出码 2；新增只输出固定 `phase`、数字退出码和脱敏声明的 `ERR` trap 合同，明确禁止转储 installer stderr/readback。该合同先 RED，最小诊断实现后聚焦测试与 `bash -n` GREEN。
 - Debian 实机锁文件 RED/GREEN：受控手动运行把 readback/stderr 留在 VPS root-only 文件后，确认 installer 在任何真实空锁文件上退出 21；GNU `stat %F` 返回 `regular empty file`，旧实现错误要求英文字符串精确等于 `regular file`。fixture shim 改为真实 GNU 语义后首装测试按预期 RED；生产校验改为 `test -f`、同 inode、root owner 与 `0600`，不再依赖本地化类型文本。锁安全与首装聚焦 7/7 GREEN。
 - Debian 实机 WireGuard 验证 RED/GREEN：锁修复后安装推进到 WireGuard config validation 并退出 18；真实 `wg-quick strip` 要求传入文件 basename 是合法接口名，旧 `.clawd.tmp.<随机>.conf` 必然被拒。fixture 增加真实 basename 门禁后首装按预期 RED；生产改在同一安全目录的临时子目录中复制为 `clawd.conf` 后验证，再原子替换正式配置。首装与 malformed-config 聚焦 2/2 GREEN。
+- Smoke 阶段可见性：安装器已在实机成功但完整 smoke 仍由本地编排层退出；新增固定 allowlist 阶段进度输出，内容不含地址、凭据或 readback。源合同先 RED，`set_phase` 实现后聚焦测试与 `bash -n` GREEN，用于定位剩余编排边界。

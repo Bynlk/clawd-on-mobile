@@ -117,6 +117,17 @@ test("VPS smoke script uses explicit test address variables and never accepts ad
   assert.match(script, /tar --no-xattrs -C "\$\{LOCAL_BUNDLE\}" -cf - \./);
   assert.match(script, /trap report_error ERR/);
   assert.match(script, /\[FAIL\].*phase=%s.*exit=%s.*diagnostics suppressed; secrets redacted/);
+  assert.match(script, /set_phase\(\)/);
+  for (const phase of [
+    "SSH connection",
+    "secure bundle staging",
+    "idempotent deployment",
+    "systemd enable/active and private listener checks",
+    "current sidecar build and verification",
+    "public Relay TCP exposure, sidecar health, and rotation rejection probes",
+  ]) {
+    assert.match(script, new RegExp(`set_phase \\"${phase}`));
+  }
 });
 
 test("VPS smoke script exercises idempotence, service gates, private Relay, sidecar health, and rotation", () => {

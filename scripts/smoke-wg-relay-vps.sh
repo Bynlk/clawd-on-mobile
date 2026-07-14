@@ -62,6 +62,11 @@ CONTROL_READY=0
 FAILURE_REPORTED=0
 VPS_PASSWORD="${CLAWD_TEST_VPS_PASSWORD-}"
 
+set_phase() {
+  PHASE="$1"
+  printf '[smoke] %s\n' "${PHASE}" >&2
+}
+
 report_error() {
   local status=$?
   trap - ERR
@@ -153,11 +158,11 @@ run_privileged() {
   fi
 }
 
-PHASE="SSH connection"
+set_phase "SSH connection"
 run_ssh true </dev/null >/dev/null
 CONTROL_READY=1
 
-PHASE="secure bundle staging"
+set_phase "secure bundle staging"
 install -d -m 700 "${LOCAL_BUNDLE}/app/node_modules"
 install -m 755 "${PROJECT_ROOT}/relay/install-wg-relay.sh" "${LOCAL_BUNDLE}/install-wg-relay.sh"
 for file in relay-server.js pair-registry.js relay-token-store.js wg-management.js; do
@@ -174,7 +179,7 @@ ENDPOINT_ASSIGNMENT="ENDPOINT_HOST='${VPS_HOST}'"
 INSTALL_COMMAND="env ${ENDPOINT_ASSIGNMENT} bash '${REMOTE_ROOT}/install-wg-relay.sh'"
 
 for deployment in 1 2; do
-  PHASE="idempotent deployment ${deployment}/2"
+  set_phase "idempotent deployment ${deployment}/2"
   if [ "${deployment}" -eq 1 ]; then
     run_privileged "${INSTALL_COMMAND}" >"${FIRST_STDOUT}" 2>"${FIRST_STDERR}"
   else
@@ -182,7 +187,7 @@ for deployment in 1 2; do
   fi
 done
 
-PHASE="systemd enable/active and private listener checks"
+set_phase "systemd enable/active and private listener checks"
 REMOTE_CHECK_COMMAND="$(cat <<'REMOTE_CHECKS'
 set -euo pipefail
 systemctl is-enabled --quiet wg-quick@clawd
@@ -212,7 +217,7 @@ REMOTE_CHECKS
 )"
 run_privileged "${REMOTE_CHECK_COMMAND}" >/dev/null
 
-PHASE="current sidecar build and verification"
+set_phase "current sidecar build and verification"
 CURRENT_TARGET="$(node -p '`${process.platform}-${process.arch}`')"
 case "${CURRENT_TARGET}" in
   win32-x64|win32-arm64|darwin-x64|darwin-arm64|linux-x64|linux-arm64) ;;
@@ -230,7 +235,7 @@ VPS_PASSWORD=""
 unset CLAWD_SMOKE_ASKPASS_SECRET CLAWD_TEST_VPS_PASSWORD
 rm -f "${ASKPASS_PATH}"
 
-PHASE="public Relay TCP exposure, sidecar health, and rotation rejection probes"
+set_phase "public Relay TCP exposure, sidecar health, and rotation rejection probes"
 CLAWD_SMOKE_PROJECT_ROOT="${PROJECT_ROOT}" \
 CLAWD_SMOKE_SIDECAR_BINARY="${SIDECAR_BINARY}" \
 CLAWD_SMOKE_FIRST_READBACK="${FIRST_STDOUT}" \
@@ -466,7 +471,7 @@ function assertPublicRelayTcpClosed(host, port) {
 });
 NODE
 
-PHASE="complete"
+set_phase "complete"
 printf '%s\n' \
   'WireGuard Relay VPS smoke checklist (secrets redacted)' \
   '[PASS] idempotent deployment 1/2 and 2/2' \
