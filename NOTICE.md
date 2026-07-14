@@ -31,6 +31,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## WireGuard Android tunnel
+
+The Android application includes the official
+`com.wireguard.android:tunnel:1.0.20230706` AAR from the WireGuard Android
+project. The tunnel API and Android `GoBackend` sources are licensed under the
+Apache License 2.0 and carry:
+
+`Copyright © 2017-2023 WireGuard LLC. All Rights Reserved.`
+
+The AAR also embeds the `wireguard-go` userspace implementation as
+`libwg-go.so`. That implementation is licensed under the MIT License and
+carries WireGuard LLC copyright notices.
+
+The complete MIT and Apache License 2.0 terms reproduced in the following
+`wg-relay-tunnel Go dependencies` section also apply to these Android tunnel
+components.
+
 ## wg-relay-tunnel Go dependencies
 
 The cross-platform `sidecars/wg-relay-tunnel` binary includes code from the

@@ -626,3 +626,11 @@ POST /api/manage/phone/rotate
 - Task 8 TDD 证据：事务、外部确认、Activity 重建、取消传播、attempt token、Camera provider failure 和精确解绑均先出现缺符号编译失败或目标断言失败；相机真实线程交错测试还先观察到合法的 unbind/clear 反向顺序，随后把断言收敛为各一次而不强制无意义顺序。最终聚焦命令强制 `--rerun-tasks` 后为 100/100、0 failure/error/skipped。
 - Task 8 独立双审查：规格审查四轮复演 URI 清除后立即旋转、commit 后取消、保存失败后旋转和新链接覆盖旧异步结果；最终为 0 Critical、0 Important、0 Minor。质量审查推动修复 commit=false 内存/磁盘模型、CameraX 全局 unbind、取消与恢复竞态；统一存储契约后的最终复审同样为 0 Critical、0 Important、0 Minor。Task 8 规格与质量均通过。
 - Task 8 最终验证：`./gradlew --no-daemon testDebugUnitTest --rerun-tasks` 退出码 0，XML 汇总 35 suites、651/651、0 failure/error/skipped；`./gradlew --no-daemon lintDebug --rerun-tasks` 退出码 0，31/31 tasks；`./gradlew --no-daemon assembleDebug --rerun-tasks` 退出码 0，41/41 tasks并生成 debug APK。PC `node --test test/wg-relay-pairing-qr.test.js` 为 7/7。`git diff --check` 退出码 0，授权范围仅为 Task 8 Android 文件与本进度记录；未访问 VPS、未使用真实凭据、未修改 Task 9+。
+
+### Task 9：Android 内置 WireGuard（2026-07-14）
+
+- 依赖与配置：固定引入官方 `com.wireguard.android:tunnel:1.0.20230706`；`WireGuardConfigFactory` 只生成一个 Peer、一个私有 `/24` AllowedIP，并通过 `IncludedApplications=com.clawd.mobile` 限制仅本 App 流量进入 VPN，不设置 DNS 或默认路由。
+- 生命周期：`ClawdWireGuardTunnel` 使用稳定名称 `clawd-remote`；`WireGuardController` 覆盖未配对、权限请求、启动、已连接、失败、停止和已断开状态，重复 start/stop 合并或幂等，权限拒绝不触碰 backend，错误只暴露稳定错误码。
+- TDD 证据：配置与控制器测试分别先因目标类型不存在而 RED；实现后 `./gradlew testDebugUnitTest --tests '*WireGuard*' --rerun-tasks` 为 10/10 通过、0 failure/error。
+- Manifest 与主流程复验：`:app:processDebugMainManifest --rerun-tasks` 通过；合并 Manifest 中唯一官方 `GoBackend$VpnService` 为 `exported=false` 且受 `android.permission.BIND_VPN_SERVICE` 保护。主流程使用已有 JDK 17 复跑 `./gradlew --no-daemon testDebugUnitTest --tests '*WireGuard*' :app:processDebugMainManifest`，退出码 0、BUILD SUCCESSFUL。
+- 未访问 VPS、未读取或使用真实凭据；真机 VPN 授权、握手及仅本 App 路由的运行时验收统一留到 Task 12。

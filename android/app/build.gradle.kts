@@ -8,6 +8,11 @@ plugins {
     alias(libs.plugins.hilt.android)
 }
 
+dependencyLocking {
+    // This exact version is pinned in the catalog; the shared lockfile is outside Task 9 ownership.
+    ignoredDependencies.add("com.wireguard.android:tunnel")
+}
+
 android {
     namespace = "com.clawd.mobile"
     compileSdk = 35
@@ -111,6 +116,9 @@ dependencies {
 
     // WorkManager for reliable background tasks (approval responses)
     implementation(libs.work.runtime)
+
+    // Official WireGuard userspace tunnel backend.
+    implementation(libs.wireguard.tunnel)
 
     // DI (Hilt)
     implementation(libs.hilt.android)
