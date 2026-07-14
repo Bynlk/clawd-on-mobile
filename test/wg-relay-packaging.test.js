@@ -115,6 +115,9 @@ test("VPS smoke script uses explicit test address variables and never accepts ad
   assert.match(script, /CONTROL_PATH="\$\{CONTROL_ROOT\}\/s"/);
   assert.match(script, /rm -rf "\$\{CONTROL_ROOT\}"/);
   assert.match(script, /tar --no-xattrs -C "\$\{LOCAL_BUNDLE\}" -cf - \./);
+  assert.match(script, /ENDPOINT_ASSIGNMENT="ENDPOINT_HOST=\$\{VPS_HOST\}"/);
+  assert.match(script, /INSTALL_COMMAND="env \$\{ENDPOINT_ASSIGNMENT\} bash \$\{REMOTE_ROOT\}\/install-wg-relay\.sh"/);
+  assert.doesNotMatch(script, /ENDPOINT_HOST='\$\{VPS_HOST\}'/);
   assert.match(script, /trap report_error ERR/);
   assert.match(script, /\[FAIL\].*phase=%s.*exit=%s.*diagnostics suppressed; secrets redacted/);
   assert.match(script, /set_phase\(\)/);

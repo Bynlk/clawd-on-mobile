@@ -175,8 +175,8 @@ find "${LOCAL_BUNDLE}/app/node_modules/ws" -type f -exec chmod 600 {} +
 tar --no-xattrs -C "${LOCAL_BUNDLE}" -cf - . |
   run_ssh "umask 077; rm -rf '${REMOTE_ROOT}'; mkdir -m 700 '${REMOTE_ROOT}'; tar -xf - -C '${REMOTE_ROOT}'"
 
-ENDPOINT_ASSIGNMENT="ENDPOINT_HOST='${VPS_HOST}'"
-INSTALL_COMMAND="env ${ENDPOINT_ASSIGNMENT} bash '${REMOTE_ROOT}/install-wg-relay.sh'"
+ENDPOINT_ASSIGNMENT="ENDPOINT_HOST=${VPS_HOST}"
+INSTALL_COMMAND="env ${ENDPOINT_ASSIGNMENT} bash ${REMOTE_ROOT}/install-wg-relay.sh"
 
 for deployment in 1 2; do
   set_phase "idempotent deployment ${deployment}/2"
