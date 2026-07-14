@@ -298,6 +298,7 @@ exit 1
   writeExecutable(path.join(binDir, "wg-quick"), `${prelude}[ \"\${1:-}\" = strip ]\ncat \"\${2}\" >/dev/null\n`);
   writeExecutable(path.join(binDir, "wg-quick"), `${prelude}
 [ "\${1:-}" = strip ] || exit 2
+[ "\$(basename "\${2}")" = clawd.conf ] || exit 10
 "$CLAWD_INSTALL_TEST_NODE_SOURCE" - "\${2}" <<'NODE'
 const fs = require("fs");
 const source = fs.readFileSync(process.argv[2], "utf8");

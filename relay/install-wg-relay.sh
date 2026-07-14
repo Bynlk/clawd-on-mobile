@@ -714,7 +714,12 @@ AllowedIPs = ${PC_IP}/32
 PublicKey = ${PHONE_PUB}
 AllowedIPs = ${PHONE_IP}/32" | tee "${WG_CONF_TMP}" >/dev/null
 chmod 600 "${WG_CONF_TMP}"
-wg-quick strip "${WG_CONF_TMP}" >/dev/null || die 18 "WireGuard config validation failed"
+WG_VALIDATE_DIR="$(mktemp -d "${WG_DIR_FS}/.clawd-validate.XXXXXX")"
+remember_temp "${WG_VALIDATE_DIR}"
+chmod 700 "${WG_VALIDATE_DIR}"
+WG_VALIDATE_CONF="${WG_VALIDATE_DIR}/${IFACE}.conf"
+install -m 600 "${WG_CONF_TMP}" "${WG_VALIDATE_CONF}"
+wg-quick strip "${WG_VALIDATE_CONF}" >/dev/null || die 18 "WireGuard config validation failed"
 mv "${WG_CONF_TMP}" "${WG_CONF_FS}"
 chmod 600 "${WG_CONF_FS}"
 checkpoint wireguard-config
