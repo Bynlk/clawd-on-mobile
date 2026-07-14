@@ -9,8 +9,16 @@ const { RelayBridge } = require("../src/relay-bridge-integration");
 
 test("production server injects a Mobile token provider instead of a startup snapshot", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/server.js"), "utf8");
-  assert.match(source, /initRelayBridge\(prefsModule,\s*\{[\s\S]*?getLocalToken:\s*\(\)\s*=>\s*getMobileToken\(\)/);
-  assert.doesNotMatch(source, /initRelayBridge\(prefsModule,\s*\{[\s\S]*?localToken:\s*getMobileToken\(\)/);
+  assert.match(source, /initRelayBridge\(ctx\.relayPrefs,\s*\{[\s\S]*?getLocalToken:\s*\(\)\s*=>\s*getMobileToken\(\)/);
+  assert.doesNotMatch(source, /initRelayBridge\(ctx\.relayPrefs,\s*\{[\s\S]*?localToken:\s*getMobileToken\(\)/);
+});
+
+test("production server wires RelayBridge to the live SettingsController", () => {
+  const mainSource = fs.readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(__dirname, "../src/server.js"), "utf8");
+  assert.match(mainSource, /relayPrefs:\s*_settingsController/);
+  assert.match(serverSource, /initRelayBridge\(ctx\.relayPrefs,\s*\{/);
+  assert.doesNotMatch(serverSource, /const prefsModule = require\("\.\/prefs"\)/);
 });
 
 class FakeWebSocket extends EventEmitter {
@@ -269,6 +277,41 @@ test("legacy init(prefs) remains supported", async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(bridge.status, "disconnected");
   bridge.destroy();
+});
+
+test("init subscribes to the SettingsController get/subscribeKey API", async () => {
+  const values = {
+    relayEnabled: false,
+    relayUrl: "",
+    relayToken: "",
+  };
+  const listeners = new Map();
+  const prefs = {
+    get(name) { return values[name]; },
+    subscribeKey(name, listener) {
+      listeners.set(name, listener);
+      return () => listeners.delete(name);
+    },
+  };
+  const update = (name, value) => {
+    values[name] = value;
+    listeners.get(name)(value, { ...values });
+  };
+  const { bridge } = fixture();
+
+  bridge.init(prefs);
+  assert.deepEqual([...listeners.keys()].sort(), ["relayEnabled", "relayToken", "relayUrl"]);
+  update("relayUrl", "ws://127.0.0.1:40001");
+  update("relayToken", "controller-token");
+  update("relayEnabled", true);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(FakeWebSocket.connections.length, 1);
+  assert.deepEqual(FakeWebSocket.connections[0].options.headers, {
+    Authorization: "Bearer controller-token",
+  });
+  await bridge.dispose();
+  assert.equal(listeners.size, 0);
 });
 
 test("legacy init starts when enabled config becomes complete after initialization", async () => {

@@ -1941,6 +1941,7 @@ const _serverCtx = {
   permLog,
   runtimeEvents: _runtimeEvents,
   mobileCompanionEnabled: _settingsController.get("mobileCompanionEnabled") !== false,
+  relayPrefs: _settingsController,
   getAllAgents,
 };
 const _server = require("./server")(_serverCtx);

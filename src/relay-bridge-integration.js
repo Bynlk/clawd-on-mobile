@@ -81,6 +81,9 @@ class RelayBridge extends EventEmitter {
 
   init(prefs) {
     if (this._disposed) throw new Error("Relay bridge is disposed");
+    if (!prefs || typeof prefs.get !== "function") {
+      throw new TypeError("Relay bridge prefs must expose get(name)");
+    }
     this._clearPrefsListeners();
     const current = {
       generation: ++this._prefsGeneration,
@@ -94,8 +97,13 @@ class RelayBridge extends EventEmitter {
     this._prefsState = current;
     this._reconcilePrefs(current);
 
-    if (prefs && typeof prefs.on === "function") {
+    if (typeof prefs.subscribeKey === "function" || typeof prefs.on === "function") {
       const listen = (name, handler) => {
+        if (typeof prefs.subscribeKey === "function") {
+          const dispose = prefs.subscribeKey(name, handler);
+          if (typeof dispose === "function") this._prefsDisposers.push(dispose);
+          return;
+        }
         prefs.on(name, handler);
         this._prefsDisposers.push(() => {
           if (typeof prefs.off === "function") prefs.off(name, handler);

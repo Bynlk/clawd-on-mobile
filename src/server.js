@@ -365,19 +365,22 @@ module.exports = function initServer(ctx) {
 
     // Initialize mobile companion server (MobileWSServer + WS handler + connection history)
     startMobileServerBase(httpServer, {
-      skipHttpServer: !!ctx.skipMobileServer,
+      // This phase only attaches the shared MobileWSServer state. The dedicated
+      // Mobile HTTP listener is started once, after the hook server has bound.
+      skipHttpServer: true,
     });
 
     // Initialize relay bridge (if configured in prefs)
-    try {
-      const { initRelayBridge } = require("./relay-bridge-integration");
-      const prefsModule = require("./prefs");
-      initRelayBridge(prefsModule, {
-        getLocalToken: () => getMobileToken(),
-        getLocalPort: () => mobileIntegration.getMobileServerPort() || 23334,
-      });
-    } catch (e) {
-      console.warn("[server] relay bridge 初始化失败:", e.message);
+    if (ctx.relayPrefs) {
+      try {
+        const { initRelayBridge } = require("./relay-bridge-integration");
+        initRelayBridge(ctx.relayPrefs, {
+          getLocalToken: () => getMobileToken(),
+          getLocalPort: () => mobileIntegration.getMobileServerPort() || 23334,
+        });
+      } catch (e) {
+        console.warn("[server] relay bridge 初始化失败:", e.message);
+      }
     }
 
     const listenPorts = getPortCandidatesFn();
