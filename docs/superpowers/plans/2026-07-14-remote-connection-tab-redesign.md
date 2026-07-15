@@ -1112,7 +1112,7 @@ Screenshot evidence:
 - /tmp/clawd-wg-final-remote-after-icons.png
 ```
 
-- [ ] **Step 8: Commit the final verification record and immediately push**
+- [x] **Step 8: Commit the final verification record and immediately push**
 
 If the execution record or verification fixes changed files, first verify remote/branch/diff and run all affected tests, then run:
 
@@ -1126,11 +1126,27 @@ git push origin codex/one-click-wireguard-relay
 
 Do not create an empty commit. Immediately confirm the local HEAD and origin branch match.
 
-- [ ] **Step 9: Restart the desktop app for user review**
+Follow-up implementation and verification record committed and immediately pushed as:
+
+```text
+4825361 修复：恢复移动端设置与独立图标
+HEAD == origin/codex/one-click-wireguard-relay == 4825361f558d53f5ba096609c4ca2505fff2f887
+```
+
+- [x] **Step 9: Restart the desktop app for user review**
 
 Terminate the smoke instance only if needed, launch a clean desktop instance from the same worktree, leave Settings → Remote Connection visible, and verify the process remains running. Do not merge, open a pull request, or push any remote other than origin.
 
-- [ ] **Step 10: Final repository handoff checks**
+Final desktop state:
+
+```text
+Electron PID 93445 remains running from this worktree with isolated user data and CDP 9336.
+Settings is visibly on Remote Connection.
+Values are [empty host, root, 22, empty password].
+Primary actions: 1; alerts: 0; progress rows: 0.
+```
+
+- [x] **Step 10: Final repository handoff checks**
 
 Run:
 
@@ -1143,3 +1159,15 @@ git rev-parse origin/codex/one-click-wireguard-relay
 ```
 
 Expected: clean worktree; current branch `codex/one-click-wireguard-relay`; origin URLs point only to `Bynlk/clawd-on-mobile`; local and origin HEADs are identical. Report the focused pass counts, exact full-suite baseline failures, desktop smoke result, changed file boundary, pushed commits, and running desktop state.
+
+Handoff check before the plan-only status commit:
+
+```text
+git status --short --branch
+## codex/one-click-wireguard-relay...origin/codex/one-click-wireguard-relay
+
+branch: codex/one-click-wireguard-relay
+origin fetch/push: https://github.com/Bynlk/clawd-on-mobile.git
+HEAD == origin/codex/one-click-wireguard-relay == 4825361f558d53f5ba096609c4ca2505fff2f887
+upstream was not pushed, no merge or pull request was created.
+```
