@@ -28,6 +28,7 @@ function input(overrides = {}) {
     deploymentFailure: null,
     errorCode: null,
     repairFormOpen: false,
+    statusKnown: true,
     runtimeAvailable: true,
     progressStates: createDeploymentProgress(),
     ...overrides,
@@ -197,6 +198,36 @@ test("ready and connected pages expose VPS, computer, and Android rows in order"
     "repair",
     "delete-local",
   ]);
+});
+
+test("keeps secret-dependent actions hidden until the deployed profile status is known", () => {
+  const checking = deriveWgRelayPageModel(input({ statusKnown: false }));
+
+  assert.equal(checking.mode, PAGE_MODES.READY);
+  assert.deepEqual(checking.primaryAction, {
+    kind: "connect",
+    labelKey: "wgRelayChecking",
+    disabled: true,
+  });
+  assert.deepEqual(checking.rows[1], {
+    kind: "computer",
+    state: "checking",
+    labelKey: "wgRelayComputerRow",
+    statusKey: "wgRelayStatus_checking",
+  });
+  assert.deepEqual(checking.rows[2], {
+    kind: "android",
+    state: "checking",
+    labelKey: "wgRelayAndroidRow",
+    statusKey: "wgRelayAndroidChecking",
+    action: null,
+  });
+  assert.deepEqual(checking.secondaryActions.map((action) => action.kind), [
+    "repair",
+    "delete-local",
+  ]);
+  assert.equal(JSON.stringify(checking).includes("show-pairing-qr"), false);
+  assert.equal(JSON.stringify(checking).includes("rotate-phone"), false);
 });
 
 test("omits daily rows and secondary actions outside deployed daily modes", () => {
@@ -450,7 +481,7 @@ test("normalizes progress, preserves failures, and advances validate to save", (
   })[7], "failed");
 });
 
-test("summarizes deployment progress only while deploying", () => {
+test("summarizes the failed stage without retaining pending failure details", () => {
   const uploaded = applyDeploymentProgress(createDeploymentProgress(), {
     step: "upload",
     status: "ok",
@@ -467,13 +498,32 @@ test("summarizes deployment progress only while deploying", () => {
   }));
 
   assert.equal(failure.mode, PAGE_MODES.DEPLOYMENT_FAILURE);
-  assert.equal(failure.progress, null);
+  assert.deepEqual(failure.progress, {
+    currentStage: "dependencies",
+    currentState: "failed",
+    completedCount: 3,
+    total: 10,
+    percent: 30,
+    detailStages: [
+      { key: "connect", state: "complete" },
+      { key: "fingerprint", state: "complete" },
+      { key: "upload", state: "complete" },
+      { key: "dependencies", state: "failed" },
+    ],
+  });
 
   const earlyFailure = deriveWgRelayPageModel(input({
     hasDeployedProfile: false,
     deploymentFailure: { errorCode: "deploy_failed" },
   }));
-  assert.equal(earlyFailure.progress, null);
+  assert.deepEqual(earlyFailure.progress, {
+    currentStage: "connect",
+    currentState: "failed",
+    completedCount: 0,
+    total: 10,
+    percent: 0,
+    detailStages: [{ key: "connect", state: "failed" }],
+  });
 
   const deploying = deriveWgRelayPageModel(input({
     hasDeployedProfile: false,

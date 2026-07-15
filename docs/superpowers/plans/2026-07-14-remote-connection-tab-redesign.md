@@ -917,13 +917,16 @@ Result:
 
 ```text
 npm test
-NOT GREEN. The command was interrupted after a long unrelated tail (exit 130).
+NOT GREEN. A fresh complete run exited 1 after the long installer-script tail.
 
-Observed pre-existing failure before interruption:
-test/hardware-buddy-settings.test.js
-Error: Cannot find module '../src/hardware-buddy-settings.js'
+The failure inventory remained confined to the known unrelated baseline:
+- test/hardware-buddy-settings.test.js cannot load ../src/hardware-buddy-settings.js;
+- test/permission-sanitizers.test.js has historical missing exports and stale assertions;
+- test/permission-telegram-approval.test.js expects an older result shape;
+- test/readme-contributors.test.js cannot load README.ko-KR.md / README.zh-CN.md.
 
-The interrupted runner reported many later files as not completed because Ctrl-C stopped the full-suite run while it was in the unrelated install/test tail. No focused Remote Connection suite failed before the interruption.
+A focused rerun of those four files reported 90 tests: 53 pass, 37 fail,
+0 skipped. No Remote Connection or Mobile settings test entered the failure list.
 ```
 
 - [x] **Step 4: Run independent spec-compliance and code review**
@@ -1009,13 +1012,78 @@ Acceptance audit:
 7. No stale progress during daily/failure: pure progress failure test and DOM tests for daily no `.wg-relay-progress` plus deployment failure without ten pending rows.
 8. Scope boundary: `git diff 5fbcee4 -- src/wg-relay-ipc.js src/wg-relay-deploy.js src/wg-relay-runtime.js src/preload-settings.js relay android` was empty.
 
+Follow-up fresh-install review and source audit:
+
+```text
+Root cause confirmed:
+- the developer VPS host came from that machine's persisted public profile;
+- a fresh prefs snapshot has wgRelay.profiles=[] and empty legacy Relay fields;
+- no developer host is present in source, Git inputs, or desktop packaging inputs.
+
+TDD review fixes:
+- Mobile hides the legacy Relay editor when all three legacy settings are empty,
+  while enabled-only, URL-only, and token-only snapshots retain the compatibility editor;
+- all five desktop languages define the complete legacy Relay copy, use Connection
+  Token rather than Admin Token, and format online/failure status without hard-coded Chinese;
+- both legacy inputs have programmatic label associations;
+- light/dark input boundaries, primary action text/background, and focus rings use
+  contrast-tested WG Relay tokens;
+- Repair is a native form with Enter submission, an associated password hint, and the
+  same single high-contrast primary action treatment;
+- invalid SSH ports report invalid profile rather than password required;
+- Connect and Disconnect switch to localized busy labels immediately, before a status push;
+- leaving the tab clears its runtime-only status cache, so a later return rechecks
+  secrets before restoring QR or phone-rotation actions.
+
+Fresh verification:
+- focused desktop UI/i18n/lifecycle: 233/233 pass;
+- backend/runtime/IPC/Relay/Mobile integration: 225/225 pass;
+- packaging, Relay bundle, and deploy boundaries: 117/117 pass;
+- focused Remote Connection + Mobile matrix: 51/51 pass;
+- git diff --check: pass;
+- forbidden backend/IPC/VPS installer/Relay protocol/Android diff: empty.
+
+Full npm test remains non-green for the pre-existing baseline. Re-running the four
+known files produced 90 tests: 53 pass, 37 fail. Failures are the missing
+src/hardware-buddy-settings.js module, historical permission-sanitizer exports/assertions,
+one Telegram approval assertion difference, and missing README.ko-KR.md / README.zh-CN.md.
+
+Real Electron 41 cold-start smoke (800x528 CSS viewport, isolated --user-data-dir):
+- Setup values are [empty host, root, 22, empty password]; exactly one deploy action;
+- primary action is fully visible, content has no overflow, alert/progress counts are zero;
+- Mobile has no legacy editor for fresh prefs;
+- temporarily injected legacy prefs expose two labelled inputs and localized Connection Token;
+- Repair shows three domain rows, one callout, one recommended action, no QR/progress,
+  and opens a seven-field native form with one submit action;
+- light and dark computed input/button styles meet the automated contrast gates;
+- console warning/error and runtime exception collections were empty.
+
+Final hands-on inspection through the real Electron accessibility tree and Chromium
+renderer confirmed the same from-zero Setup at 100% text scale. At 125%, all four
+fields remained unclipped with no horizontal overflow; the primary action was fully
+reachable after an 84px vertical scroll. Returning to 100% restored it to the first
+viewport. The fresh Mobile page still reports its pre-existing "Mobile token not
+available" connection-info failure because main.js does not supply getMobileToken /
+getMobileWS to registerSettingsIpc. That backend/IPC defect predates this tab work and
+was not changed under the explicit scope boundary.
+
+Screenshot evidence:
+- /tmp/clawd-wg-smoke/fresh-remote-dark-final.png
+- /tmp/clawd-wg-smoke/fresh-remote-light-final.png
+- /tmp/clawd-wg-smoke/repair-form-final.png
+- /tmp/clawd-wg-final-remote-review.png
+- /tmp/clawd-wg-final-remote-125.png
+- /tmp/clawd-wg-final-fresh-mobile.png
+```
+
 - [ ] **Step 8: Commit the final verification record and immediately push**
 
 If the execution record or verification fixes changed files, first verify remote/branch/diff and run all affected tests, then run:
 
 ```bash
-git add docs/superpowers/plans/2026-07-14-remote-connection-tab-redesign.md
-git add src/settings-wg-relay-view-model.js src/settings-tab-wg-relay.js src/settings.html src/settings.css src/settings-i18n.js test/settings-wg-relay-view-model.test.js test/settings-tab-wg-relay.test.js
+git add -f docs/superpowers/plans/2026-07-14-remote-connection-tab-redesign.md docs/superpowers/specs/2026-07-14-remote-connection-tab-redesign.md
+git add src/mobile-i18n.js src/mobile-settings.css src/settings-i18n.js src/settings-tab-mobile.js src/settings-tab-wg-relay.js src/settings-wg-relay-view-model.js src/settings.css
+git add test/settings-tab-mobile.test.js test/settings-tab-wg-relay.test.js test/settings-wg-relay-view-model.test.js
 git commit -m "更新：完成远程连接页面验收"
 git push origin codex/one-click-wireguard-relay
 ```

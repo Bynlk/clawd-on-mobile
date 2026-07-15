@@ -5,7 +5,7 @@
   padding: 20px 0;
 }
 .mobile-info-error {
-  color: var(--red);
+  color: var(--wg-relay-danger-text);
   font-size: 13px;
   padding: 10px 0;
 }
@@ -125,3 +125,20 @@
   transition: background 0.15s;
 }
 .mobile-copy-btn:hover { background: var(--accent); color: #fff; }
+
+.mobile-relay-section .wg-relay-field + .wg-relay-field {
+  margin-top: 12px;
+}
+
+.mobile-relay-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.relay-status {
+  color: var(--text-secondary);
+  font-size: 12px;
+}

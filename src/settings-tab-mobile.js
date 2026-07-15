@@ -14,6 +14,14 @@
   function t(key) { return helpers.t(key); }
   function esc(str) { return helpers.escapeHtml(str); }
 
+  function formatMessage(key, values) {
+    let message = String(t(key) || key);
+    for (const [name, value] of Object.entries(values || {})) {
+      message = message.replaceAll(`{${name}}`, String(value));
+    }
+    return message;
+  }
+
   function fetchInfo() {
     if (!window.settingsAPI || typeof window.settingsAPI.getMobileConnectionInfo !== "function") return Promise.resolve(null);
     return window.settingsAPI.getMobileConnectionInfo().catch(() => null);
@@ -248,7 +256,13 @@
 
   // ── Main render ──
 
-  // ── Section 4: Remote Relay ──
+  // ── Section 4: Legacy Remote Relay ──
+
+  function hasLegacyRelayConfig(snapshot) {
+    const value = snapshot && typeof snapshot === "object" ? snapshot : {};
+    const hasText = (candidate) => typeof candidate === "string" && candidate.trim().length > 0;
+    return value.relayEnabled === true || hasText(value.relayUrl) || hasText(value.relayToken);
+  }
 
   function renderRelaySection(container, core) {
     const box = document.createElement("div");
@@ -256,12 +270,12 @@
 
     const label = document.createElement("div");
     label.className = "mobile-section-label";
-    label.textContent = t("relayTitle") || "Remote Relay（远程中继）";
+    label.textContent = t("relayTitle");
     box.appendChild(label);
 
     const desc = document.createElement("div");
     desc.className = "mobile-section-desc";
-    desc.textContent = t("relayDesc") || "通过远程服务器中继连接，支持非局域网环境。";
+    desc.textContent = t("relayDesc");
     box.appendChild(desc);
 
     // 从 snapshot 读取当前值
@@ -272,41 +286,47 @@
 
     // Relay URL input
     const urlRow = document.createElement("div");
-    urlRow.className = "settings-row";
+    urlRow.className = "wg-relay-field";
     const urlLabel = document.createElement("label");
-    urlLabel.textContent = t("relayUrl") || "Relay URL";
+    urlLabel.className = "wg-relay-field-label";
+    urlLabel.htmlFor = "mobile-relay-url";
+    urlLabel.textContent = t("relayUrl");
     const urlInput = document.createElement("input");
+    urlInput.id = "mobile-relay-url";
     urlInput.type = "text";
     urlInput.placeholder = "wss://your-vps-ip:7891";
     urlInput.value = currentUrl;
-    urlInput.className = "settings-input";
+    urlInput.className = "mobile-relay-input";
     urlRow.appendChild(urlLabel);
     urlRow.appendChild(urlInput);
     box.appendChild(urlRow);
 
-    // Admin Token input
+    // Connection token input
     const tokenRow = document.createElement("div");
-    tokenRow.className = "settings-row";
+    tokenRow.className = "wg-relay-field";
     const tokenLabel = document.createElement("label");
-    tokenLabel.textContent = t("relayToken") || "Connection Token";
+    tokenLabel.className = "wg-relay-field-label";
+    tokenLabel.htmlFor = "mobile-relay-token";
+    tokenLabel.textContent = t("relayToken");
     const tokenInput = document.createElement("input");
+    tokenInput.id = "mobile-relay-token";
     tokenInput.type = "password";
-    tokenInput.placeholder = "输入 Admin Token";
+    tokenInput.placeholder = t("relayTokenPlaceholder");
     tokenInput.value = currentToken;
-    tokenInput.className = "settings-input";
+    tokenInput.className = "mobile-relay-input";
     tokenRow.appendChild(tokenLabel);
     tokenRow.appendChild(tokenInput);
     box.appendChild(tokenRow);
 
     // Enable toggle + status
     const actionRow = document.createElement("div");
-    actionRow.className = "settings-row";
+    actionRow.className = "mobile-relay-actions";
 
     const enableBtn = document.createElement("button");
-    enableBtn.className = "settings-btn";
+    enableBtn.className = "soft-btn";
     enableBtn.textContent = isEnabled
-      ? (t("relayDisable") || "断开 Relay")
-      : (t("relayEnable") || "连接 Relay");
+      ? t("relayDisable")
+      : t("relayEnable");
     enableBtn.onclick = () => {
       const currentlyEnabled = state?.snapshot?.relayEnabled || false;
       if (!currentlyEnabled) {
@@ -314,10 +334,10 @@
         window.settingsAPI.update("relayUrl", urlInput.value.trim());
         window.settingsAPI.update("relayToken", tokenInput.value.trim());
         window.settingsAPI.update("relayEnabled", true);
-        enableBtn.textContent = t("relayDisable") || "断开 Relay";
+        enableBtn.textContent = t("relayDisable");
       } else {
         window.settingsAPI.update("relayEnabled", false);
-        enableBtn.textContent = t("relayEnable") || "连接 Relay";
+        enableBtn.textContent = t("relayEnable");
       }
     };
     actionRow.appendChild(enableBtn);
@@ -325,19 +345,22 @@
     // Status indicator
     const statusSpan = document.createElement("span");
     statusSpan.className = "relay-status";
+    statusSpan.setAttribute("role", "status");
+    statusSpan.setAttribute("aria-live", "polite");
+    statusSpan.setAttribute("aria-atomic", "true");
     statusSpan.textContent = isEnabled
-      ? (t("relayStatusConnected") || "已启用")
-      : (t("relayStatusDisconnected") || "未连接");
+      ? t("relayStatusConnected")
+      : t("relayStatusDisconnected");
     actionRow.appendChild(statusSpan);
 
     box.appendChild(actionRow);
 
     // API status button
     const apiRow = document.createElement("div");
-    apiRow.className = "settings-row";
+    apiRow.className = "mobile-relay-actions";
     const apiBtn = document.createElement("button");
-    apiBtn.className = "settings-btn settings-btn-secondary";
-    apiBtn.textContent = t("relayCheckStatus") || "检查 Relay 状态";
+    apiBtn.className = "soft-btn";
+    apiBtn.textContent = t("relayCheckStatus");
     apiBtn.onclick = () => {
       const url = urlInput.value.trim();
       const token = tokenInput.value.trim();
@@ -347,12 +370,15 @@
       })
         .then((r) => r.json())
         .then((data) => {
-          statusSpan.textContent = `运行中 | 在线: ${data.connections?.pc || 0} PC, ${data.connections?.phone || 0} Phone`;
-          statusSpan.style.color = "#4CAF50";
+          statusSpan.textContent = formatMessage("relayStatusOnline", {
+            pc: data.connections?.pc || 0,
+            phone: data.connections?.phone || 0,
+          });
+          statusSpan.style.color = "var(--wg-relay-success-text)";
         })
         .catch(() => {
-          statusSpan.textContent = "无法连接";
-          statusSpan.style.color = "#F44336";
+          statusSpan.textContent = t("relayStatusUnavailable");
+          statusSpan.style.color = "var(--wg-relay-danger-text)";
         });
     };
     apiRow.appendChild(apiBtn);
@@ -394,11 +420,15 @@
     infoContainer.id = "mobile-connection-info";
     section.appendChild(infoContainer);
 
-    // Section 4: Remote Relay
-    const relayContainer = document.createElement("div");
-    relayContainer.id = "mobile-relay-section";
-    section.appendChild(relayContainer);
-    renderRelaySection(relayContainer, core);
+    // The one-click WireGuard flow now owns new VPS setup. Keep the old
+    // manual Relay editor only for people who already have legacy settings,
+    // so a fresh install has one unambiguous place to start.
+    if (hasLegacyRelayConfig(core.state?.snapshot)) {
+      const relayContainer = document.createElement("div");
+      relayContainer.id = "mobile-relay-section";
+      section.appendChild(relayContainer);
+      renderRelaySection(relayContainer, core);
+    }
 
     container.appendChild(section);
 

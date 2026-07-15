@@ -389,6 +389,7 @@
       deploymentFailure: view.deploymentFailure,
       errorCode: view.errorCode,
       repairFormOpen: view.repairOpen,
+      statusKnown: !profile || view.statusByProfile.has(profile.id),
       runtimeAvailable: Boolean(window.wgRelay),
       progressStates: view.progressStates,
     });
@@ -552,25 +553,29 @@
   }
 
   function renderDeploymentFailure(parent, model) {
-    const surface = document.createElement("section");
-    surface.className = "section wg-relay-deployment-failure";
+    const surface = renderDeploymentProgressSurface(
+      parent,
+      model,
+      "wg-relay-deployment-failure",
+    );
     const heading = document.createElement("h2");
     heading.textContent = t("wgRelayDeploymentFailedTitle");
-    surface.appendChild(heading);
+    surface.insertBefore(heading, surface.children[0] || null);
     const alert = document.createElement("div");
     alert.className = "wg-relay-action-callout";
     alert.setAttribute("role", "alert");
     alert.setAttribute("aria-live", "assertive");
     alert.textContent = localizedError(model.error ? model.error.safeCode : "deploy_failed");
-    surface.appendChild(alert);
+    surface.insertBefore(alert, surface.children[1] || null);
     const retry = createButton("wgRelayTryDeployAgain", "soft-btn accent wg-relay-primary-action", () => {
+      const retryContext = view.deploymentFailure && view.deploymentFailure.context;
       view.deploymentFailure = null;
       view.errorCode = null;
       view.progressStates = modelApi.createDeploymentProgress();
+      view.repairOpen = retryContext === "repair";
       requestContentRender();
     }, model.primaryAction && model.primaryAction.disabled);
     surface.appendChild(retry);
-    parent.appendChild(surface);
   }
 
   function buildProfile(draft, advanced) {
@@ -590,18 +595,19 @@
     return profile;
   }
 
-  function validDeployFields(profile, password) {
+  function validDeployProfile(profile) {
     return Boolean(profile.host && profile.sshUsername && Number.isInteger(profile.sshPort)
-      && profile.sshPort >= 1 && profile.sshPort <= 65535 && password);
+      && profile.sshPort >= 1 && profile.sshPort <= 65535);
   }
 
   function runDeploy(profile, passwordInput) {
     if (view.busy) return view.busy.promise;
     let password = passwordInput.value;
-    if (!validDeployFields(profile, password)) {
+    const profileValid = validDeployProfile(profile);
+    if (!profileValid || !password) {
       passwordInput.value = "";
       password = "";
-      view.errorCode = profile.host && profile.sshUsername ? "password_required" : "invalid_profile";
+      view.errorCode = profileValid ? "password_required" : "invalid_profile";
       requestContentRender();
       return Promise.resolve({ status: "error" });
     }
@@ -1048,8 +1054,9 @@
   }
 
   function renderRepair(parent, profile) {
-    const card = document.createElement("section");
+    const card = document.createElement("form");
     card.className = "section wg-relay-repair-card";
+    card.noValidate = true;
     const title = document.createElement("h2");
     title.textContent = t("wgRelayRepairTitle");
     card.appendChild(title);
@@ -1080,13 +1087,27 @@
     card.appendChild(relayPort.wrap);
     const password = createField({
       id: "wg-relay-repair-password", labelKey: "wgRelayFieldPassword", type: "password", value: "",
-      required: true, autocomplete: "new-password", disabled,
+      required: true, autocomplete: "new-password",
+      describedBy: "wg-relay-repair-password-hint", disabled,
     });
     card.appendChild(password.wrap);
     const passwordHint = document.createElement("p");
+    passwordHint.id = "wg-relay-repair-password-hint";
+    passwordHint.setAttribute("id", passwordHint.id);
     passwordHint.className = "wg-relay-password-hint";
     passwordHint.textContent = t("wgRelayRepairPasswordHint");
     card.appendChild(passwordHint);
+    const submitRepair = () => {
+      const next = buildProfile(draft, {
+        wgPort: Number.isInteger(draft.wgPort) ? draft.wgPort : DEFAULTS.wgPort,
+        wgSubnet: String(draft.wgSubnet || DEFAULTS.wgSubnet).trim(),
+      });
+      runDeploy({ ...profile, ...next, identityFile: undefined }, password.input);
+    };
+    card.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitRepair();
+    });
     const actions = document.createElement("div");
     actions.className = "wg-relay-actions";
     actions.appendChild(createButton("wgRelayCancel", "soft-btn", () => {
@@ -1095,13 +1116,13 @@
       view.repairOpen = false;
       requestContentRender();
     }, disabled));
-    actions.appendChild(createButton(view.busy ? "wgRelayDeploying" : "wgRelayRepairDeploy", "soft-btn accent", () => {
-      const next = buildProfile(draft, {
-        wgPort: Number.isInteger(draft.wgPort) ? draft.wgPort : DEFAULTS.wgPort,
-        wgSubnet: String(draft.wgSubnet || DEFAULTS.wgSubnet).trim(),
-      });
-      runDeploy({ ...profile, ...next, identityFile: undefined }, password.input);
-    }, disabled));
+    actions.appendChild(createButton(
+      view.busy ? "wgRelayDeploying" : "wgRelayRepairDeploy",
+      "soft-btn accent wg-relay-primary-action",
+      null,
+      disabled,
+      "submit",
+    ));
     card.appendChild(actions);
     parent.appendChild(card);
   }
@@ -1147,6 +1168,9 @@
       for (const button of Array.from(daily.querySelectorAll("button"))) {
         button.disabled = disabled || !window.wgRelay;
       }
+      const primary = daily.querySelector(".wg-relay-primary-action");
+      const primaryModel = profile ? pageModel(profile).primaryAction : null;
+      if (primary && primaryModel) primary.textContent = t(primaryModel.labelKey);
     }
   }
 
@@ -1311,10 +1335,13 @@
     }
     view.epoch++;
     view.statusRequest = null;
+    view.statusByProfile.clear();
     view.statusLoadedByProfile.clear();
     view.statusAttemptsByProfile.clear();
     view.repairOpen = false;
-    view.repairDraftByProfile.clear();
+    if (!view.deploymentFailure || view.deploymentFailure.context !== "repair") {
+      view.repairDraftByProfile.clear();
+    }
     view.statusMount = null;
     view.pendingFocusLabel = null;
     unsubscribeListeners();

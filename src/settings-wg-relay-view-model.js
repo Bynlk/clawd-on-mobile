@@ -171,6 +171,13 @@ function buildSettingsWgRelayViewModelExports() {
 
   function deploymentProgressModel(states, mode) {
     const normalized = normalizeProgress(states);
+    if (mode === PAGE_MODES.DEPLOYMENT_FAILURE
+        && !normalized.includes("failed")) {
+      let failedIndex = normalized.findIndex((state) => state === "current");
+      if (failedIndex < 0) failedIndex = normalized.findIndex((state) => state === "pending");
+      if (failedIndex < 0) failedIndex = Math.max(0, normalized.lastIndexOf("complete"));
+      normalized[failedIndex] = "failed";
+    }
     let currentIndex = normalized.findIndex((state) => state === "failed");
     if (currentIndex < 0) currentIndex = normalized.findIndex((state) => state === "current");
     if (currentIndex < 0) currentIndex = Math.max(0, normalized.lastIndexOf("complete"));
@@ -199,6 +206,7 @@ function buildSettingsWgRelayViewModelExports() {
     const rawStatusName = typeof status.status === "string" ? status.status : "idle";
     const statusName = RUNTIME_STATUSES.has(rawStatusName) ? rawStatusName : "idle";
     const operation = typeof input.operation === "string" ? input.operation : null;
+    const statusKnown = input.statusKnown !== false;
 
     const deploymentError = input.deploymentFailure
       && typeof input.deploymentFailure === "object"
@@ -219,7 +227,9 @@ function buildSettingsWgRelayViewModelExports() {
 
     const activeOperation = Boolean(operation);
     const runtimeBusy = RUNTIME_BUSY_STATUSES.has(statusName);
-    const actionsDisabled = activeOperation || runtimeBusy || !input.runtimeAvailable;
+    const maintenanceActionsDisabled = activeOperation || runtimeBusy || !input.runtimeAvailable;
+    const connectionActionsDisabled = maintenanceActionsDisabled
+      || (input.hasDeployedProfile && !statusKnown);
 
     let mode;
     if (operation === "deploy") {
@@ -243,7 +253,7 @@ function buildSettingsWgRelayViewModelExports() {
       primaryAction = {
         kind: "deploy",
         labelKey: "wgRelayDeploy",
-        disabled: actionsDisabled,
+        disabled: maintenanceActionsDisabled,
       };
     } else if (mode === PAGE_MODES.DEPLOYING) {
       primaryAction = {
@@ -255,33 +265,37 @@ function buildSettingsWgRelayViewModelExports() {
       primaryAction = {
         kind: "retry-deploy",
         labelKey: "wgRelayTryDeployAgain",
-        disabled: actionsDisabled,
+        disabled: maintenanceActionsDisabled,
       };
     } else if (!input.repairFormOpen && mode === PAGE_MODES.REPAIR_REQUIRED) {
       primaryAction = {
         kind: "repair",
         labelKey: "wgRelayRepair",
-        disabled: actionsDisabled,
+        disabled: maintenanceActionsDisabled,
       };
     } else if (!input.repairFormOpen && mode === PAGE_MODES.CONNECTED) {
       primaryAction = {
         kind: "disconnect",
-        labelKey: operation === "disconnect" || statusName === "disconnecting"
+        labelKey: !statusKnown
+          ? "wgRelayChecking"
+          : (operation === "disconnect" || statusName === "disconnecting"
           ? "wgRelayDisconnecting"
-          : "wgRelayDisconnect",
-        disabled: actionsDisabled,
+          : "wgRelayDisconnect"),
+        disabled: connectionActionsDisabled,
       };
     } else if (!input.repairFormOpen && mode === PAGE_MODES.READY) {
       primaryAction = {
         kind: "connect",
-        labelKey: operation === "connect" || runtimeBusy
+        labelKey: !statusKnown
+          ? "wgRelayChecking"
+          : (operation === "connect" || runtimeBusy
           ? "wgRelayConnecting"
-          : "wgRelayConnect",
-        disabled: actionsDisabled,
+          : "wgRelayConnect"),
+        disabled: connectionActionsDisabled,
       };
     }
 
-    const secretsAvailable = !(error && error.requiresRepair);
+    const secretsAvailable = statusKnown && !(error && error.requiresRepair);
     const dailyMode = mode === PAGE_MODES.READY
       || mode === PAGE_MODES.CONNECTED
       || mode === PAGE_MODES.REPAIR_REQUIRED;
@@ -297,21 +311,25 @@ function buildSettingsWgRelayViewModelExports() {
       },
       {
         kind: "computer",
-        state: statusName,
+        state: statusKnown ? statusName : "checking",
         labelKey: "wgRelayComputerRow",
-        statusKey: `wgRelayStatus_${statusName}`,
+        statusKey: statusKnown ? `wgRelayStatus_${statusName}` : "wgRelayStatus_checking",
       },
       {
         kind: "android",
-        state: secretsAvailable ? "pairing-available" : "unavailable",
+        state: !statusKnown
+          ? "checking"
+          : (secretsAvailable ? "pairing-available" : "unavailable"),
         labelKey: "wgRelayAndroidRow",
-        statusKey: secretsAvailable
+        statusKey: !statusKnown
+          ? "wgRelayAndroidChecking"
+          : (secretsAvailable
           ? "wgRelayAndroidPairingAvailable"
-          : "wgRelayAndroidUnavailable",
+          : "wgRelayAndroidUnavailable"),
         action: secretsAvailable && mode !== PAGE_MODES.REPAIR_REQUIRED ? {
           kind: "show-pairing-qr",
           labelKey: "wgRelayShowQr",
-          disabled: actionsDisabled,
+          disabled: connectionActionsDisabled,
         } : null,
       },
     ] : [];
@@ -319,15 +337,38 @@ function buildSettingsWgRelayViewModelExports() {
     let secondaryActions = [];
     if (input.hasDeployedProfile && dailyMode && !input.repairFormOpen) {
       secondaryActions = mode === PAGE_MODES.REPAIR_REQUIRED
-        ? [{ kind: "delete-local", labelKey: "wgRelayDelete", disabled: actionsDisabled }]
-        : [
+        ? [{
+          kind: "delete-local",
+          labelKey: "wgRelayDelete",
+          disabled: maintenanceActionsDisabled,
+        }]
+        : statusKnown ? [
           {
             kind: "rotate-phone",
             labelKey: "wgRelayRotatePhone",
-            disabled: actionsDisabled,
+            disabled: maintenanceActionsDisabled,
           },
-          { kind: "repair", labelKey: "wgRelayRepair", disabled: actionsDisabled },
-          { kind: "delete-local", labelKey: "wgRelayDelete", disabled: actionsDisabled },
+          {
+            kind: "repair",
+            labelKey: "wgRelayRepair",
+            disabled: maintenanceActionsDisabled,
+          },
+          {
+            kind: "delete-local",
+            labelKey: "wgRelayDelete",
+            disabled: maintenanceActionsDisabled,
+          },
+        ] : [
+          {
+            kind: "repair",
+            labelKey: "wgRelayRepair",
+            disabled: maintenanceActionsDisabled,
+          },
+          {
+            kind: "delete-local",
+            labelKey: "wgRelayDelete",
+            disabled: maintenanceActionsDisabled,
+          },
         ];
     }
 
@@ -337,7 +378,7 @@ function buildSettingsWgRelayViewModelExports() {
       primaryAction,
       secondaryActions,
       error,
-      progress: mode === PAGE_MODES.DEPLOYING
+      progress: mode === PAGE_MODES.DEPLOYING || mode === PAGE_MODES.DEPLOYMENT_FAILURE
         ? deploymentProgressModel(input.progressStates, mode)
         : null,
     };

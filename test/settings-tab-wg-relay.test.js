@@ -10,6 +10,7 @@ const SRC_DIR = path.join(__dirname, "..", "src");
 const VIEW_MODEL_SOURCE = fs.readFileSync(path.join(SRC_DIR, "settings-wg-relay-view-model.js"), "utf8");
 const TAB_SOURCE = fs.readFileSync(path.join(SRC_DIR, "settings-tab-wg-relay.js"), "utf8");
 const { SUPPORTED_LANGS } = require("../src/i18n");
+const prefs = require("../src/prefs");
 
 function deferred() {
   const value = {};
@@ -274,6 +275,7 @@ const TRANSLATIONS = {
   wgRelayShowDetails: "SHOW_DETAILS",
   wgRelayProgressOverall: "OVERALL_PROGRESS",
   wgRelayConnect: "CONNECT",
+  wgRelayChecking: "CHECKING",
   wgRelayConnecting: "CONNECTING",
   wgRelayDisconnect: "DISCONNECT",
   wgRelayDisconnecting: "DISCONNECTING_ACTION",
@@ -291,9 +293,11 @@ const TRANSLATIONS = {
   wgRelayAndroidRow: "ANDROID",
   wgRelayVpsConfigured: "VPS_CONFIGURED",
   wgRelayAndroidPairingAvailable: "ANDROID_READY",
+  wgRelayAndroidChecking: "ANDROID_CHECKING",
   wgRelayAndroidUnavailable: "ANDROID_UNAVAILABLE",
   wgRelayAdvancedManagement: "ADVANCED_MANAGEMENT",
   wgRelayStatus_idle: "IDLE",
+  wgRelayStatus_checking: "CHECKING_STATUS",
   wgRelayStatus_starting_tunnel: "STARTING_TUNNEL",
   wgRelayStatus_verifying_relay: "VERIFYING_RELAY",
   wgRelayStatus_connecting_relay: "CONNECTING_RELAY",
@@ -301,6 +305,8 @@ const TRANSLATIONS = {
   wgRelayStatus_disconnecting: "DISCONNECTING",
   wgRelayStatus_failed: "FAILED",
   wgRelayRecoveryRequired: "REPAIR_REQUIRED",
+  wgRelayError_invalid_profile: "SAFE_INVALID_PROFILE",
+  wgRelayError_password_required: "SAFE_PASSWORD_REQUIRED",
   wgRelayError_deploy_failed: "SAFE_DEPLOY_ERROR",
   wgRelayError_remote_commit_recovery_required: "SAFE_RECOVERY_ERROR",
   wgRelayError_profile_conflict_recovery_required: "SAFE_CONFLICT_ERROR",
@@ -328,7 +334,7 @@ const DEPLOYED_PROFILE = Object.freeze({
   deployVersion: 1,
 });
 
-function createHarness({ profile = null, api = {}, runtimeAvailable = true } = {}) {
+function createHarness({ profile = null, snapshot = null, api = {}, runtimeAvailable = true } = {}) {
   const document = new FakeDocument();
   const content = new FakeElement("main", document);
   document.body.appendChild(content);
@@ -380,7 +386,9 @@ function createHarness({ profile = null, api = {}, runtimeAvailable = true } = {
 
   const state = {
     activeTab: "wg-relay",
-    snapshot: { lang: "en", wgRelay: { profiles: profile ? [{ ...profile }] : [] } },
+    snapshot: snapshot
+      ? JSON.parse(JSON.stringify(snapshot))
+      : { lang: "en", wgRelay: { profiles: profile ? [{ ...profile }] : [] } },
   };
   const core = {
     state,
@@ -498,7 +506,9 @@ test("renderer treats querySelectorAll as NodeList and normalizes before Array-o
 });
 
 test("first-use form renders exactly four labelled required fields with safe defaults", () => {
-  const harness = createHarness();
+  const fresh = prefs.getDefaults();
+  assert.deepEqual(fresh.wgRelay.profiles, []);
+  const harness = createHarness({ snapshot: fresh });
   const form = harness.content.querySelector(".wg-relay-setup-form");
   assert.ok(form, "first use should be one setup form");
   const inputs = Array.from(form.querySelectorAll("input"));
@@ -509,9 +519,11 @@ test("first-use form renders exactly four labelled required fields with safe def
     assert.ok(label.getAttribute("for"));
     assert.ok(inputs.some((input) => input.id === label.getAttribute("for")));
   }
+  assert.equal(form.querySelector("#wg-relay-host").value, "");
   assert.equal(form.querySelector("#wg-relay-ssh-username").value, "root");
   assert.equal(form.querySelector("#wg-relay-ssh-port").value, "22");
   const password = form.querySelector("#wg-relay-password");
+  assert.equal(password.value, "");
   assert.equal(password.type, "password");
   assert.equal(password.getAttribute("autocomplete"), "new-password");
   assert.equal(password.getAttribute("aria-describedby"), "wg-relay-password-hint");
@@ -583,6 +595,17 @@ test("first-use validation keeps non-password draft and exposes one adjacent ale
     1,
   );
   assert.equal(JSON.stringify(harness.core.state.snapshot).includes("unit-test-only"), false);
+
+  setInput(nextForm.querySelector("#wg-relay-ssh-port"), "0");
+  setInput(nextForm.querySelector("#wg-relay-password"), "unit-test-only");
+  nextForm.dispatchEvent({ type: "submit", bubbles: false });
+  const invalidProfileForm = harness.content.querySelector(".wg-relay-setup-form");
+  assert.equal(harness.calls.deploy.length, 0);
+  assert.equal(
+    invalidProfileForm.querySelector(".wg-relay-error").textContent,
+    "SAFE_INVALID_PROFILE",
+    "an invalid SSH port must not be reported as a missing password",
+  );
 });
 
 test("an existing undeployed profile becomes a status card before its settings broadcast arrives", async () => {
@@ -638,10 +661,12 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   assert.ok(failure);
   assert.equal(failure.querySelectorAll(".wg-relay-action-callout").length, 1);
   assert.equal(failure.querySelector(".wg-relay-action-callout").getAttribute("role"), "alert");
-  assert.equal(failure.querySelector(".wg-relay-current-step"), null);
-  assert.equal(failure.querySelector("progress"), null);
-  assert.equal(failure.querySelector("details"), null);
-  assert.equal(failure.querySelector(".wg-relay-progress"), null);
+  assert.ok(failure.querySelector(".wg-relay-current-step"));
+  assert.equal(failure.querySelector("progress").value, 3);
+  assert.equal(failure.querySelector("progress").max, 10);
+  assert.equal(failure.querySelector("details").open, false);
+  assert.equal(failure.querySelectorAll(".wg-relay-progress-stage").length, 4);
+  assert.equal(failure.querySelectorAll(".wg-relay-progress-stage.is-pending").length, 0);
   assert.equal(failure.querySelectorAll(".accent").length, 1);
   buttonByText(failure, "TRY_DEPLOY_AGAIN").dispatchEvent({ type: "click", bubbles: false });
   assert.equal(harness.content.querySelector("#wg-relay-host").value, "relay.example.test");
@@ -685,7 +710,7 @@ test("deploy progress renders ten fixed localized stages and current/completed/f
   assert.equal(successful.content.querySelector(".wg-relay-deployment-surface"), null);
 });
 
-test("deployment failure renders only one error and one recommended action", async () => {
+test("deployment failure renders one failed-stage summary, one error, and one recommended action", async () => {
   const pending = deferred();
   const harness = createHarness({ api: { deploy: () => pending.promise } });
   setInput(harness.content.querySelector("#wg-relay-host"), "relay.example.test");
@@ -703,10 +728,14 @@ test("deployment failure renders only one error and one recommended action", asy
   );
   assert.equal(failure.querySelector(".wg-relay-action-callout").textContent, "SAFE_DEPLOY_ERROR");
   assert.deepEqual(buttons(failure).map((button) => button.textContent), ["TRY_DEPLOY_AGAIN"]);
-  assert.equal(failure.querySelector(".wg-relay-progress-stage"), null);
-  assert.equal(failure.querySelector(".wg-relay-current-step"), null);
-  assert.equal(failure.querySelector("progress"), null);
-  assert.equal(failure.querySelector("details"), null);
+  assert.ok(failure.querySelector(".wg-relay-current-step"));
+  assert.equal(failure.querySelector("progress").value, 0);
+  assert.equal(failure.querySelector("progress").max, 10);
+  assert.equal(failure.querySelector("details").open, false);
+  const rows = Array.from(failure.querySelectorAll(".wg-relay-progress-stage"));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].classList.contains("is-failed"), true);
+  assert.equal(rows.some((row) => row.classList.contains("is-pending")), false);
 });
 
 test("deployed daily card renders three domain rows, one primary action, and advanced management", async () => {
@@ -759,6 +788,82 @@ test("deployed daily card renders three domain rows, one primary action, and adv
   }
 });
 
+test("deployed profile hides secret-dependent actions while its initial status is pending", async () => {
+  const pendingStatus = deferred();
+  const harness = createHarness({
+    profile: DEPLOYED_PROFILE,
+    api: { status: () => pendingStatus.promise },
+  });
+
+  const checkingCard = harness.content.querySelector(".wg-relay-status-card");
+  assert.ok(checkingCard);
+  assert.equal(computerStatusText(harness.content), "CHECKING_STATUS");
+  const checkingPrimary = checkingCard.querySelector(".wg-relay-primary-action");
+  assert.equal(checkingPrimary.textContent, "CHECKING");
+  assert.equal(checkingPrimary.disabled, true);
+  assert.equal(buttonByText(checkingCard, "SHOW_QR"), null);
+  assert.equal(buttonByText(checkingCard, "ROTATE_PHONE"), null);
+  assert.deepEqual(
+    buttons(checkingCard.querySelector(".wg-relay-advanced-management"))
+      .map((button) => button.textContent),
+    ["REPAIR", "DELETE"],
+  );
+
+  pendingStatus.resolve({
+    status: "ok",
+    state: { profileId: "wg-test", status: "idle", generation: 1 },
+  });
+  await flushPromises();
+  assert.equal(computerStatusText(harness.content), "IDLE");
+  assert.equal(buttonByText(harness.content, "CONNECT").disabled, false);
+  assert.ok(buttonByText(harness.content, "SHOW_QR"));
+  assert.ok(buttonByText(harness.content, "ROTATE_PHONE"));
+});
+
+test("returning to the tab rechecks secrets before restoring pairing actions", async () => {
+  const recheck = deferred();
+  let statusCalls = 0;
+  const harness = createHarness({
+    profile: DEPLOYED_PROFILE,
+    api: {
+      status: async () => {
+        statusCalls++;
+        if (statusCalls === 1) {
+          return {
+            status: "ok",
+            state: { profileId: "wg-test", status: "connected", generation: 1 },
+          };
+        }
+        return recheck.promise;
+      },
+    },
+  });
+  await flushPromises();
+  assert.ok(buttonByText(harness.content, "SHOW_QR"));
+  assert.ok(buttonByText(harness.content, "ROTATE_PHONE"));
+
+  harness.core.state.activeTab = "mobile";
+  harness.core.tabs["wg-relay"].onExit();
+  harness.core.state.activeTab = "wg-relay";
+  harness.render();
+
+  assert.equal(harness.calls.status.length, 2);
+  assert.equal(computerStatusText(harness.content), "CHECKING_STATUS");
+  assert.equal(harness.content.querySelector(".wg-relay-primary-action").textContent, "CHECKING");
+  assert.equal(harness.content.querySelector(".wg-relay-primary-action").disabled, true);
+  assert.equal(buttonByText(harness.content, "SHOW_QR"), null);
+  assert.equal(buttonByText(harness.content, "ROTATE_PHONE"), null);
+
+  recheck.resolve({
+    status: "error",
+    errorCode: "secrets_not_found",
+  });
+  await flushPromises();
+  assert.equal(harness.content.querySelector(".wg-relay-primary-action").textContent, "REPAIR");
+  assert.equal(buttonByText(harness.content, "SHOW_QR"), null);
+  assert.equal(buttonByText(harness.content, "ROTATE_PHONE"), null);
+});
+
 test("rendered modes keep accessible controls, native progress, and a single accent action", async () => {
   const setup = createHarness();
   const form = setup.content.querySelector(".wg-relay-setup-form");
@@ -792,8 +897,9 @@ test("rendered modes keep accessible controls, native progress, and a single acc
       .filter((node) => node.getAttribute("role") === "alert").length,
     1,
   );
-  assert.equal(failure.querySelector("progress"), null);
-  assert.equal(failure.querySelector("details"), null);
+  assert.ok(failure.querySelector("progress"));
+  assert.ok(failure.querySelector("details"));
+  assert.equal(failure.querySelectorAll(".wg-relay-progress-stage.is-pending").length, 0);
   assert.equal(failure.querySelectorAll(".accent").length, 1);
 
   const daily = createHarness({ profile: DEPLOYED_PROFILE });
@@ -904,7 +1010,11 @@ test("a late initial status rejection cannot add an error after a newer status e
 
 test("missing runtime bridge disables every deployed-card action", () => {
   const harness = createHarness({ profile: DEPLOYED_PROFILE, runtimeAvailable: false });
-  assert.ok(buttons(harness.content).length >= 5);
+  assert.deepEqual(buttons(harness.content).map((button) => button.textContent), [
+    "CHECKING", "REPAIR", "DELETE",
+  ]);
+  assert.equal(buttonByText(harness.content, "SHOW_QR"), null);
+  assert.equal(buttonByText(harness.content, "ROTATE_PHONE"), null);
   assert.ok(buttons(harness.content).every((button) => button.disabled));
 });
 
@@ -918,11 +1028,36 @@ test("busy state blocks duplicate/destructive actions and connect/disconnect cal
   assert.equal(harness.calls.connect.length, 1);
   assert.deepEqual(harness.calls.connect[0], ["wg-test"]);
   assert.ok(buttons(harness.content).every((button) => button.disabled));
+  assert.equal(harness.content.querySelector(".wg-relay-primary-action").textContent, "CONNECTING");
   pending.resolve({ status: "ok", state: { profileId: "wg-test", status: "connected", generation: 1 } });
   await flushPromises();
   buttonByText(harness.content, "DISCONNECT").dispatchEvent({ type: "click", bubbles: false });
   await flushPromises();
   assert.deepEqual(harness.calls.disconnect[0], ["wg-test"]);
+
+  const disconnectPending = deferred();
+  const connected = createHarness({
+    profile: DEPLOYED_PROFILE,
+    api: {
+      status: async () => ({
+        status: "ok",
+        state: { profileId: "wg-test", status: "connected", generation: 1 },
+      }),
+      disconnect: () => disconnectPending.promise,
+    },
+  });
+  await flushPromises();
+  buttonByText(connected.content, "DISCONNECT").dispatchEvent({ type: "click", bubbles: false });
+  assert.equal(
+    connected.content.querySelector(".wg-relay-primary-action").textContent,
+    "DISCONNECTING_ACTION",
+  );
+  assert.ok(buttons(connected.content).every((button) => button.disabled));
+  disconnectPending.resolve({
+    status: "ok",
+    state: { profileId: "wg-test", status: "idle", generation: 2 },
+  });
+  await flushPromises();
 });
 
 test("recovery status requires repair and never attempts an automatic connection", async () => {
@@ -988,7 +1123,17 @@ test("repair asks for a new password, exposes advanced defaults, and does not re
   buttonByText(harness.content, "REPAIR").dispatchEvent({ type: "click", bubbles: false });
   const repair = harness.content.querySelector(".wg-relay-repair-card");
   assert.ok(repair);
+  assert.equal(repair.tagName, "FORM");
+  assert.equal(repair.querySelectorAll(".accent").length, 1);
+  const repairSubmit = buttonByText(repair, "REPAIR_DEPLOY");
+  assert.equal(repairSubmit.type, "submit");
+  assert.equal(repairSubmit.classList.contains("wg-relay-primary-action"), true);
   assert.equal(repair.querySelector("#wg-relay-repair-password").value, "");
+  assert.equal(
+    repair.querySelector("#wg-relay-repair-password").getAttribute("aria-describedby"),
+    "wg-relay-repair-password-hint",
+  );
+  assert.ok(repair.querySelector("#wg-relay-repair-password-hint"));
   assert.equal(repair.querySelector("#wg-relay-repair-wg-port").value, "51820");
   assert.equal(repair.querySelector("#wg-relay-repair-subnet").value, "10.8.0.0/24");
   assert.equal(repair.querySelector("#wg-relay-repair-relay-port").value, "7891");
@@ -1013,7 +1158,7 @@ test("repair asks for a new password, exposes advanced defaults, and does not re
   assert.equal(password.value, "unit-test-only-new");
   assert.equal(harness.document.activeElement, password);
 
-  buttonByText(repair, "REPAIR_DEPLOY").dispatchEvent({ type: "click", bubbles: false });
+  repair.dispatchEvent({ type: "submit", bubbles: false });
   assert.equal(harness.calls.deploy.length, 1);
   assert.equal(harness.calls.deploy[0][0].password, "unit-test-only-new");
   assert.equal(harness.calls.deploy[0][0].profile.host, "draft-relay.example.test");
@@ -1021,6 +1166,42 @@ test("repair asks for a new password, exposes advanced defaults, and does not re
   assert.equal(harness.calls.deploy[0][0].profile.wgSubnet, "10.27.0.0/24");
   assert.equal(Object.hasOwn(harness.calls.deploy[0][0].profile, "password"), false);
   assert.equal(password.value, "");
+});
+
+test("repair deployment failure returns to its non-password repair draft after a tab round trip", async () => {
+  const pendingDeploy = deferred();
+  const harness = createHarness({
+    profile: DEPLOYED_PROFILE,
+    api: {
+      status: async () => ({
+        status: "ok",
+        state: { profileId: "wg-test", status: "connected", generation: 1 },
+      }),
+      deploy: () => pendingDeploy.promise,
+    },
+  });
+  await flushPromises();
+  buttonByText(harness.content, "REPAIR").dispatchEvent({ type: "click", bubbles: false });
+  const repair = harness.content.querySelector(".wg-relay-repair-card");
+  setInput(repair.querySelector("#wg-relay-repair-host"), "draft-relay.example.test");
+  setInput(repair.querySelector("#wg-relay-repair-password"), "unit-test-only-new");
+  repair.dispatchEvent({ type: "submit", bubbles: false });
+  pendingDeploy.resolve({ status: "error", errorCode: "deploy_failed" });
+  await flushPromises();
+  assert.ok(harness.content.querySelector(".wg-relay-deployment-failure"));
+
+  harness.core.state.activeTab = "mobile";
+  harness.core.tabs["wg-relay"].onExit();
+  harness.core.state.activeTab = "wg-relay";
+  harness.render();
+  buttonByText(harness.content, "TRY_DEPLOY_AGAIN")
+    .dispatchEvent({ type: "click", bubbles: false });
+
+  const restored = harness.content.querySelector(".wg-relay-repair-card");
+  assert.ok(restored, "repair-context retry should reopen the repair form");
+  assert.equal(restored.querySelector("#wg-relay-repair-host").value, "draft-relay.example.test");
+  assert.equal(restored.querySelector("#wg-relay-repair-password").value, "");
+  assert.equal(harness.content.querySelectorAll(".accent").length, 1);
 });
 
 test("pairing QR is fetched on demand and closing it scrubs the image source and references", async () => {
@@ -1245,10 +1426,11 @@ test("all desktop languages contain every Task 4 localization key and never fall
     "wgRelayFieldHost", "wgRelayFieldSshUsername", "wgRelayFieldSshPort", "wgRelayFieldPassword",
     "wgRelayStatus_idle", "wgRelayStatus_starting_tunnel", "wgRelayStatus_verifying_relay",
     "wgRelayStatus_connecting_relay", "wgRelayStatus_connected", "wgRelayStatus_disconnecting",
-    "wgRelayStatus_failed", "wgRelayConnect", "wgRelayDisconnect", "wgRelayShowQr",
-    "wgRelayConnecting", "wgRelayDisconnecting",
+    "wgRelayStatus_failed", "wgRelayStatus_checking", "wgRelayConnect", "wgRelayDisconnect",
+    "wgRelayShowQr", "wgRelayChecking", "wgRelayConnecting", "wgRelayDisconnecting",
     "wgRelayVpsRow", "wgRelayComputerRow", "wgRelayAndroidRow",
-    "wgRelayVpsConfigured", "wgRelayAndroidPairingAvailable", "wgRelayAndroidUnavailable",
+    "wgRelayVpsConfigured", "wgRelayAndroidPairingAvailable", "wgRelayAndroidChecking",
+    "wgRelayAndroidUnavailable",
     "wgRelayAdvancedManagement", "wgRelayRepairRequiredTitle",
     "wgRelayRotatePhone", "wgRelayRepair", "wgRelayDelete", "wgRelayRecoveryRequired",
     "wgRelayStep_connect", "wgRelayStep_fingerprint", "wgRelayStep_upload", "wgRelayStep_dependencies",
@@ -1309,9 +1491,37 @@ test("source and CSS include password/a11y/responsive/reduced-motion security ho
   assert.match(css, /\.wg-relay-advanced-management/);
   assert.match(css, /@media\s*\(max-width:\s*420px\)[\s\S]*\.wg-relay-/);
   assert.match(css, /\.wg-relay-[^{]*:focus-visible/);
+  assert.match(
+    css,
+    /\.wg-relay-setup-card input:focus-visible,[\s\S]*?\{[^}]*outline:\s*2px solid var\(--wg-relay-primary-bg\);/,
+    "WG Relay focus rings must use the high-contrast theme token",
+  );
   assert.match(css, /overflow-wrap:\s*anywhere/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
   assert.match(css, /\.wg-relay-progress-state\s*\{[^}]*opacity:\s*1;/);
+  assert.match(
+    css,
+    /\.wg-relay-setup-card h2,[\s\S]*\.wg-relay-repair-card h2[\s\S]*\{[^}]*margin:\s*0;/,
+    "WG Relay forms must reset browser heading margins so the primary action stays in the first viewport",
+  );
+  assert.match(
+    css,
+    /\.wg-relay-setup-card\s*\{[^}]*gap:\s*10px;[^}]*margin-bottom:\s*0;/s,
+    "the first-use form must not create an empty overflow area below its visible primary action",
+  );
+
+  const fieldInputRule = css.match(/\.wg-relay-field input\s*\{([^}]*)\}/);
+  assert.ok(fieldInputRule, "WG Relay fields must have an explicit input rule");
+  for (const declaration of [
+    /padding:\s*8px 10px;/,
+    /border:\s*1px solid var\(--wg-relay-input-border\);/,
+    /border-radius:\s*8px;/,
+    /background:\s*var\(--panel-bg\);/,
+    /color:\s*var\(--text-primary\);/,
+    /font-family:\s*inherit;/,
+  ]) {
+    assert.match(fieldInputRule[1], declaration, `missing themed field style: ${declaration}`);
+  }
 
   const lightRoot = css.match(/:root\s*\{([^}]*)\}/);
   const darkRoot = css.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}/);
@@ -1320,6 +1530,21 @@ test("source and CSS include password/a11y/responsive/reduced-motion security ho
   const dark = new Map([...light, ...cssVariables(darkRoot[1])]);
   for (const [themeName, tokens] of [["light", light], ["dark", dark]]) {
     const panel = parseCssColor(tokens.get("--panel-bg"));
+    const inputBorder = parseCssColor(tokens.get("--wg-relay-input-border"));
+    assert.ok(
+      contrastRatio(inputBorder, panel) >= 3,
+      `${themeName} input boundary must meet WCAG non-text contrast`,
+    );
+    const primaryText = parseCssColor(tokens.get("--wg-relay-primary-text"));
+    const primaryBackground = parseCssColor(tokens.get("--wg-relay-primary-bg"));
+    assert.ok(
+      contrastRatio(primaryText, primaryBackground) >= 4.5,
+      `${themeName} primary action text must meet WCAG AA`,
+    );
+    assert.ok(
+      contrastRatio(primaryBackground, panel) >= 3,
+      `${themeName} primary action boundary must meet WCAG non-text contrast`,
+    );
     for (const semantic of ["neutral", "warning", "success", "danger"]) {
       const textToken = tokens.get(`--wg-relay-${semantic}-text`);
       const backgroundToken = tokens.get(`--wg-relay-${semantic}-bg`);
@@ -1352,6 +1577,7 @@ test("source and CSS include password/a11y/responsive/reduced-motion security ho
     }
   }
   for (const token of [
+    "--wg-relay-input-border", "--wg-relay-primary-text", "--wg-relay-primary-bg",
     "--wg-relay-warning-text", "--wg-relay-warning-bg",
     "--wg-relay-success-text", "--wg-relay-success-bg",
     "--wg-relay-danger-text", "--wg-relay-danger-bg",

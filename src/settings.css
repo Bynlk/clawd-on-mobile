@@ -30,6 +30,10 @@
   --wg-relay-danger-bg: rgba(220, 38, 38, 0.11);
   --wg-relay-current-text: #9a3f23;
   --wg-relay-progress-bg: rgba(128, 128, 128, 0.07);
+  --wg-relay-input-border: #8a8a90;
+  --wg-relay-primary-text: #ffffff;
+  --wg-relay-primary-bg: #9a3f23;
+  --wg-relay-primary-hover-bg: #7f321e;
   --scroll-thumb: rgba(0, 0, 0, 0.15);
   --scroll-thumb-hover: rgba(0, 0, 0, 0.25);
 }
@@ -60,6 +64,10 @@
     --wg-relay-danger-bg: rgba(248, 113, 113, 0.16);
     --wg-relay-current-text: #ffad91;
     --wg-relay-progress-bg: rgba(128, 128, 128, 0.07);
+    --wg-relay-input-border: #73737c;
+    --wg-relay-primary-text: #18181b;
+    --wg-relay-primary-bg: #ffad91;
+    --wg-relay-primary-hover-bg: #ffc0aa;
   }
 }
 
@@ -3416,6 +3424,17 @@ html, body {
   overflow: hidden;
 }
 
+.wg-relay-setup-card h2,
+.wg-relay-repair-card h2,
+.wg-relay-deployment-failure h2 {
+  margin: 0;
+}
+
+.wg-relay-setup-card {
+  gap: 10px;
+  margin-bottom: 0;
+}
+
 .wg-relay-card-description,
 .wg-relay-setup-card,
 .wg-relay-daily-card,
@@ -3469,12 +3488,30 @@ html, body {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--wg-relay-input-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
 }
 
 .wg-relay-primary-action {
   width: fit-content;
   min-width: 142px;
   justify-content: center;
+}
+
+.soft-btn.accent.wg-relay-primary-action {
+  color: var(--wg-relay-primary-text);
+  background: var(--wg-relay-primary-bg);
+  border-color: var(--wg-relay-primary-bg);
+}
+
+.soft-btn.accent.wg-relay-primary-action:hover:not(:disabled) {
+  background: var(--wg-relay-primary-hover-bg);
+  border-color: var(--wg-relay-primary-hover-bg);
 }
 
 .wg-relay-domain-list {
@@ -3722,7 +3759,7 @@ html, body {
 .wg-relay-status-card summary:focus-visible,
 .wg-relay-repair-card button:focus-visible,
 .wg-relay-qr-dialog button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--wg-relay-primary-bg);
   outline-offset: 2px;
 }
 

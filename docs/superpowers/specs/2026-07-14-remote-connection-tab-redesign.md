@@ -133,3 +133,63 @@ The tab module remains responsible for IPC calls, listener lifecycle, and render
 5. Repair-required state shows one error and one repair action, with invalid phone actions hidden.
 6. Maintenance and destructive actions are available under Advanced management.
 7. No stale deployment progress appears during normal daily use or after a completed failure.
+
+## Fresh-install follow-up QA
+
+The post-implementation desktop inspection used a separate Electron
+`--user-data-dir`, not the developer's normal application data. It established
+that the repair screen seen on the development machine came from that machine's
+persisted public profile while its encrypted Relay secrets were absent. The
+host was not present in source, defaults, or packaged file inputs. A fresh
+profile contains `wgRelay.profiles: []` and therefore enters Setup with an empty
+host, `root`, port `22`, an empty password, and one deploy action.
+
+The same inspection found two presentation defects that had not been visible
+in source-only checks:
+
+- Mobile settings always rendered the obsolete manual Relay URL/token editor,
+  even when all legacy Relay preferences were empty. This created a second,
+  conflicting VPS setup path for new users.
+- WireGuard Relay form inputs inherited Chromium's default controls, including
+  white backgrounds and browser fonts in dark mode. Default `h2` margins then
+  pushed the primary setup action below the first viewport once the inputs were
+  given normal control height.
+
+The follow-up keeps backend compatibility without reintroducing two setup
+paths: the legacy editor is rendered only when a user already has a legacy
+Relay URL, token, or enabled flag. New users configure their own VPS only in
+Remote Connection. Existing legacy controls use the shared themed fields and
+buttons. Relay inputs now have explicit light/dark theme styling, form heading
+margins are reset, and first-use spacing keeps the primary action fully visible
+without empty vertical overflow at the default Settings window size.
+
+Additional regression coverage verifies:
+
+1. Empty legacy preferences do not render the Mobile manual Relay editor.
+2. Existing legacy preferences still render manageable, themed controls.
+3. Relay form controls never fall back to browser-default field styling.
+4. The Setup heading and spacing preserve the first-viewport primary action.
+5. Mobile error text uses the existing accessible danger token instead of an
+   undefined CSS variable.
+
+The independent follow-up review found and closed the remaining accessibility
+and compatibility gaps. The legacy editor now has complete en / zh / zh-TW / ko
+/ ja copy, calls its credential a Connection Token, and gives both inputs
+programmatic labels. URL-only, token-only, and enabled-only legacy snapshots are
+covered independently, while `prefs.getDefaults()` is the source of truth for
+the fresh-install test.
+
+The Relay controls now use dedicated light/dark tokens whose input boundaries
+and primary-action text/background exceed the applicable 3:1 non-text and 4.5:1
+small-text contrast thresholds. Focus rings use the same high-contrast theme
+color. The source audit also converted Repair into a native form with Enter
+submission and an associated one-time-password hint, corrected invalid SSH-port
+validation, and made Connect/Disconnect busy copy update immediately. Returning
+to the tab now discards its runtime-only status cache and rechecks secrets before
+restoring QR or phone-rotation actions.
+
+Final cold-start Electron inspection at the default 800×528 CSS viewport
+confirmed the from-zero Setup, the hidden fresh-install legacy editor, the
+three-domain repair state, the seven-field exceptional Repair form, and empty
+console error/exception collections. No backend, IPC, VPS installer, Relay
+protocol, or Android file changed.
