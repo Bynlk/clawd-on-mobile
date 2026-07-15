@@ -3424,6 +3424,8 @@ registerSettingsIpc({
     return { status: "ok" };
   },
   aboutHeroSvgPath: path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg"),
+  getMobileWS: () => mobileIntegration ? mobileIntegration.getMobileWS() : null,
+  getMobileToken: () => mobileIntegration ? mobileIntegration.getMobileToken() : null,
   getLanWsServer: () => _lanWss,
 });
 

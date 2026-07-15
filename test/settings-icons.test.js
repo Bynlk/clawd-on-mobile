@@ -9,6 +9,7 @@ const vm = require("node:vm");
 const SRC_DIR = path.join(__dirname, "..", "src");
 const SETTINGS_ICONS = path.join(SRC_DIR, "settings-icons.js");
 const SETTINGS_RENDERER = path.join(SRC_DIR, "settings-renderer.js");
+const SETTINGS_RENDERER_SOURCE = fs.readFileSync(SETTINGS_RENDERER, "utf8");
 
 function loadIcons() {
   const context = { globalThis: null };
@@ -18,19 +19,17 @@ function loadIcons() {
   return context.ClawdSettingsIcons;
 }
 
-// The sidebar tab ids declared in settings-renderer.js — every one of
-// these must resolve to a real icon, not the placeholder fallback.
-const SIDEBAR_TAB_IDS = [
-  "general",
-  "agents",
-  "theme",
-  "animOverrides",
-  "shortcuts",
-  "telegram-approval",
-  "discord-presence",
-  "remote-ssh",
-  "about",
-];
+function readSidebarTabIds() {
+  const declaration = SETTINGS_RENDERER_SOURCE.match(
+    /const SIDEBAR_TABS = \[([\s\S]*?)\n\];/,
+  );
+  assert.ok(declaration, "settings-renderer.js should declare SIDEBAR_TABS");
+  return Array.from(declaration[1].matchAll(/\bid:\s*"([^"]+)"/g), (match) => match[1]);
+}
+
+// Every top-level tab declared by the renderer must resolve to a real icon,
+// so adding a tab cannot silently reuse the placeholder.
+const SIDEBAR_TAB_IDS = readSidebarTabIds();
 
 describe("settings-icons", () => {
   it("exposes a getIcon helper on globalThis", () => {
@@ -61,6 +60,15 @@ describe("settings-icons", () => {
     }
   });
 
+  it("uses distinct icons for Remote Connection and Mobile", () => {
+    const icons = loadIcons();
+    assert.notStrictEqual(
+      icons.getIcon("wg-relay"),
+      icons.getIcon("mobile"),
+      "Remote Connection and Mobile should not share the same sidebar icon",
+    );
+  });
+
   it("falls back to placeholder for unknown ids", () => {
     const icons = loadIcons();
     assert.strictEqual(icons.getIcon("no-such-tab-xyz"), icons.getIcon("placeholder"));
@@ -68,14 +76,8 @@ describe("settings-icons", () => {
 
   it("covers every tab id used by the settings renderer", () => {
     const icons = loadIcons();
-    const rendererSource = fs.readFileSync(SETTINGS_RENDERER, "utf8");
-    // Guard against a tab being added to the renderer without an icon:
-    // each id in our list must really appear in the renderer source.
+    assert.ok(SIDEBAR_TAB_IDS.length > 0, "the renderer should expose sidebar tabs");
     for (const id of SIDEBAR_TAB_IDS) {
-      assert.ok(
-        rendererSource.includes(`id: "${id}"`),
-        `settings-renderer.js should declare a tab with id "${id}"`
-      );
       assert.ok(icons.ICONS[id], `settings-icons.js should define an icon for "${id}"`);
     }
   });

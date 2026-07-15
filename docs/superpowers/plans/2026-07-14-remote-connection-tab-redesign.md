@@ -1062,10 +1062,44 @@ Final hands-on inspection through the real Electron accessibility tree and Chrom
 renderer confirmed the same from-zero Setup at 100% text scale. At 125%, all four
 fields remained unclipped with no horizontal overflow; the primary action was fully
 reachable after an 84px vertical scroll. Returning to 100% restored it to the first
-viewport. The fresh Mobile page still reports its pre-existing "Mobile token not
-available" connection-info failure because main.js does not supply getMobileToken /
-getMobileWS to registerSettingsIpc. That backend/IPC defect predates this tab work and
-was not changed under the explicit scope boundary.
+viewport. At that checkpoint, the fresh Mobile page still reported its pre-existing
+"Mobile token not available" connection-info failure because main.js did not supply
+getMobileToken / getMobileWS to registerSettingsIpc.
+
+The user's final desktop inspection brought that visible Mobile failure and the
+duplicated Remote Connection / Mobile sidebar icons into follow-up scope. The Network
+panel entries named `settings-tab-*.js` are the expected statically loaded Settings
+modules, not duplicate visible tabs; there are eleven top-level sidebar tabs plus the
+Doctor indicator. The two actual defects were:
+
+- `settings-icons.js` had no `wg-relay` or `mobile` entries, so both tab IDs used the
+  same wrench placeholder;
+- `registerSettingsIpc` received neither live Mobile Server accessor even though
+  `mobileIntegration` already owned both, so connection info always saw a null token.
+
+TDD follow-up added the missing tab IDs to the real renderer-derived icon matrix and a
+main-process wiring regression before implementation. `main.js` now supplies lazy,
+null-safe `getMobileWS` and `getMobileToken` accessors to the existing Settings IPC
+registration. No IPC channel, handler payload, Mobile Server lifecycle, Android code,
+WireGuard backend, installer, or Relay protocol changed.
+
+Fresh follow-up evidence:
+
+- desktop UI, localization, lifecycle, Remote Connection, Mobile, icon, and preload
+  suites: 240/240 pass;
+- Settings IPC, Mobile IPC, WG Relay runtime/connection/main integration, RelayBridge,
+  and Mobile Server integration suites: 256/256 pass;
+- packaging configuration, desktop/Android boundary, Remote SSH/Relay deploy, bundle,
+  and sidecar verification suites: 174/174 pass;
+- independent follow-up review found no Critical or Important issue; its targeted
+  checks passed 38/38 and Relay/Mobile lifecycle checks passed 87/87;
+- the four known unrelated baseline files still report 90 tests: 53 pass and 37 fail,
+  with the same missing module/README and historical permission assertions;
+- Electron renderer reload reported 0 warnings, 0 errors, and 0 exceptions;
+- real Mobile render contained the QR, PWA, and connection-information cards with no
+  error/loading node or horizontal overflow;
+- real Remote Connection render remained `[empty host, root, 22, empty password]`, one
+  primary action, zero alert/progress/pending rows, and no content overflow.
 
 Screenshot evidence:
 - /tmp/clawd-wg-smoke/fresh-remote-dark-final.png
@@ -1074,6 +1108,8 @@ Screenshot evidence:
 - /tmp/clawd-wg-final-remote-review.png
 - /tmp/clawd-wg-final-remote-125.png
 - /tmp/clawd-wg-final-fresh-mobile.png
+- /tmp/clawd-mobile-settings-after-wiring-masked.png
+- /tmp/clawd-wg-final-remote-after-icons.png
 ```
 
 - [ ] **Step 8: Commit the final verification record and immediately push**

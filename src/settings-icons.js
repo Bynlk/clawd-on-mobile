@@ -74,6 +74,21 @@ const ICONS = {
     '<path d="M12 16v6"/>' +
     '</svg>',
 
+  // globe (WireGuard Relay / Remote Connection)
+  "wg-relay":
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">' +
+    '<circle cx="12" cy="12" r="9"/>' +
+    '<path d="M3 12h18"/>' +
+    '<path d="M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3Z"/>' +
+    '</svg>',
+
+  // smartphone
+  mobile:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">' +
+    '<rect x="6" y="2" width="12" height="20" rx="2"/>' +
+    '<path d="M10 5h4M10 19h4"/>' +
+    '</svg>',
+
   // info circle
   about:
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">' +
